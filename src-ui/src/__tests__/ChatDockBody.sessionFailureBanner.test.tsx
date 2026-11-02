@@ -13,6 +13,7 @@
  */
 
 import { agentId } from '@kontourai/station-contracts/agent-identity';
+import { STEERING_ENGINE_DURABILITY } from '@kontourai/station-contracts/engine-capability-matrix';
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
@@ -285,6 +286,7 @@ function buildSession(overrides: Partial<ChatSession> = {}): ChatSession {
     createdAt: Date.now(),
     updatedAt: Date.now(),
     messages: [],
+    orchestrationDurability: STEERING_ENGINE_DURABILITY,
     ...overrides,
   } as ChatSession;
 }
@@ -293,6 +295,7 @@ function buildOrchestrationSession(overrides: Record<string, unknown> = {}) {
   return {
     threadId: 'thread-alpha',
     provider: 'codex',
+    durability: STEERING_ENGINE_DURABILITY,
     status: 'failed',
     lifecycleState: 'failed',
     ...overrides,
@@ -434,6 +437,7 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
       title: 'Steering chat',
     });
     activeChatsStore.updateChat('thread-alpha', {
+      orchestrationDurability: STEERING_ENGINE_DURABILITY,
       status: 'sending',
       queuedMessages: ['course correct'],
       queuedMessageMetadata: [{ id: 'queued-steer-id', mode: 'queue' }],
@@ -490,6 +494,7 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
       title: 'Steering chat',
     });
     activeChatsStore.updateChat('thread-alpha', {
+      orchestrationDurability: STEERING_ENGINE_DURABILITY,
       status: 'idle',
       queuedMessages: ['held'],
       queuedMessageMetadata: metadata,
@@ -547,6 +552,7 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
         title: 'Steering chat',
       });
       activeChatsStore.updateChat('thread-alpha', {
+        orchestrationDurability: STEERING_ENGINE_DURABILITY,
         status: 'idle',
         queuedMessages: ['held'],
         queuedMessageMetadata: metadata,
@@ -626,6 +632,7 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
       title: 'Steering chat',
     });
     activeChatsStore.updateChat('thread-alpha', {
+      orchestrationDurability: STEERING_ENGINE_DURABILITY,
       status: 'sending',
       conversationId: 'confirmed-conversation',
       currentSessionId: 'original-child',
@@ -682,6 +689,7 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
       title: 'Steering chat',
     });
     activeChatsStore.updateChat('thread-alpha', {
+      orchestrationDurability: STEERING_ENGINE_DURABILITY,
       status: 'sending',
       queuedMessages: ['legacy row'],
       currentSessionId: 'original-child',
@@ -728,6 +736,7 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
       title: 'Steering chat',
     });
     activeChatsStore.updateChat('thread-alpha', {
+      orchestrationDurability: STEERING_ENGINE_DURABILITY,
       status: 'sending',
       queuedMessages: ['held'],
       queuedMessageMetadata: metadata,
@@ -798,6 +807,7 @@ describe('ChatDockBody failed-session banner (station#3213)', () => {
       conversationId: 'race-conversation',
     });
     activeChatsStore.updateChat('thread-alpha', {
+      orchestrationDurability: STEERING_ENGINE_DURABILITY,
       status: 'sending',
       currentSessionId: 'race-child',
       openTurnId: 'race-turn',
