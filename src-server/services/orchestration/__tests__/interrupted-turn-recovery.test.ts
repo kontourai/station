@@ -3167,6 +3167,130 @@ describe('#3071: a request the interrupted turn opened is settled', () => {
     });
   }
 
+  test('a durable recovery handoff retains the pending approval and turn boundary', async () => {
+    const path = databasePath();
+    const threadId = 'durable-handoff';
+    const eventStore = bootAfterCrash({
+      path,
+      threadId,
+      provider: 'station-agent',
+      boundaryState: 'accepted',
+      duringTurn: [
+        approval(threadId, 'approval-1', { provider: 'station-agent' }),
+      ],
+    });
+    stores.push(eventStore);
+    upsertRunning(eventStore, threadId);
+    const handoff = vi.fn(async () => 'claimed' as const);
+    const service = new OrchestrationService({
+      adapterRegistry: createRegistry(),
+      eventBus: new EventBus(),
+      eventStore,
+      logger,
+      recoverDurableTurn: handoff,
+    });
+    await (service as any).interruptedTurns.consume();
+    expect(handoff).toHaveBeenCalledOnce();
+    expect(
+      eventStore
+        .listEvents(threadId)
+        .some(
+          (event) =>
+            event.payload.method === 'request.resolved' ||
+            event.payload.method === 'turn.aborted',
+        ),
+    ).toBe(false);
+    const nextBoot = new EventStore(path);
+    try {
+      expect(nextBoot.takeInterruptedTurnBoundaries()).toHaveLength(1);
+    } finally {
+      nextBoot.close();
+    }
+  });
+
+  test('a temporarily unavailable durable handoff retries without expiring its approval', async () => {
+    sleepProbe.delays.length = 0;
+    const threadId = 'durable-handoff-retry';
+    const eventStore = bootAfterCrash({
+      path: databasePath(),
+      threadId,
+      provider: 'station-agent',
+      boundaryState: 'accepted',
+      duringTurn: [
+        approval(threadId, 'approval-1', { provider: 'station-agent' }),
+      ],
+    });
+    stores.push(eventStore);
+    upsertRunning(eventStore, threadId);
+    const handoff = vi
+      .fn<() => Promise<'retry' | 'claimed'>>()
+      .mockResolvedValueOnce('retry')
+      .mockResolvedValue('claimed');
+    const service = new OrchestrationService({
+      adapterRegistry: createRegistry(),
+      eventBus: new EventBus(),
+      eventStore,
+      logger,
+      recoverDurableTurn: handoff,
+    });
+    await (service as any).interruptedTurns.consume();
+    expect(handoff).toHaveBeenCalledTimes(2);
+    expect(sleepProbe.delays).toEqual([250]);
+    expect(
+      eventStore
+        .listEvents(threadId)
+        .some(
+          (event) =>
+            event.payload.method === 'request.resolved' ||
+            event.payload.method === 'turn.aborted',
+        ),
+    ).toBe(false);
+  });
+
+  test('shutdown during a durable handoff retains the boundary for the next boot', async () => {
+    const path = databasePath();
+    const threadId = 'durable-handoff-shutdown';
+    const eventStore = bootAfterCrash({
+      path,
+      threadId,
+      provider: 'station-agent',
+      boundaryState: 'accepted',
+      duringTurn: [
+        approval(threadId, 'approval-1', { provider: 'station-agent' }),
+      ],
+    });
+    stores.push(eventStore);
+    upsertRunning(eventStore, threadId);
+    let stopRecovery = () => {};
+    const service = new OrchestrationService({
+      adapterRegistry: createRegistry(),
+      eventBus: new EventBus(),
+      eventStore,
+      logger,
+      recoverDurableTurn: async () => {
+        stopRecovery();
+        return 'claimed';
+      },
+    });
+    stopRecovery = () => (service as any).interruptedTurns.stop();
+    expect(await (service as any).interruptedTurns.consume()).toHaveLength(1);
+    expect(
+      eventStore
+        .listEvents(threadId)
+        .some(
+          (event) =>
+            event.payload.method === 'request.resolved' ||
+            event.payload.method === 'turn.aborted',
+        ),
+    ).toBe(false);
+    const nextBoot = new EventStore(path);
+    try {
+      expect(nextBoot.takeInterruptedTurnBoundaries()).toHaveLength(1);
+    } finally {
+      nextBoot.close();
+    }
+  });
+
   test('the dead turn’s approval is resolved expired before the abort, and the recovery stamp stands', async () => {
     const threadId = 'thread-approval-crash';
     const eventStore = bootAfterCrash({

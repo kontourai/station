@@ -31,14 +31,36 @@ export class ReasoningHandler implements StreamHandler {
   private chunkBuffer: StreamChunk[] = [];
 
   constructor(
-    private config: Pick<HandlerConfig, 'enableThinking' | 'debug'> = {},
+    private config: Pick<HandlerConfig, 'enableThinking' | 'debug'> & {
+      preserveInputChunks?: boolean;
+    } = {},
   ) {}
 
   async *process(
     input: AsyncIterable<StreamChunk>,
   ): AsyncGenerator<StreamChunk> {
     for await (const chunk of input) {
-      yield* this.processChunk(chunk);
+      if (this.config.preserveInputChunks === false) {
+        yield* this.processChunk(chunk);
+        continue;
+      }
+      let pending: StreamChunk | undefined;
+      for await (const emitted of this.processChunk(chunk)) {
+        const text =
+          emitted.type === 'text-delta' || emitted.type === 'reasoning-delta';
+        if (
+          text &&
+          pending?.type === emitted.type &&
+          pending.id === emitted.id
+        ) {
+          pending = { ...pending, text: pending.text + emitted.text };
+        } else {
+          if (pending) yield pending;
+          pending = text ? emitted : undefined;
+          if (!text) yield emitted;
+        }
+      }
+      if (pending) yield pending;
     }
   }
 
