@@ -15,13 +15,20 @@ import {
   within,
 } from '@testing-library/react';
 import { type ReactNode, useEffect, useState } from 'react';
-import { afterEach, describe, expect, test, vi } from 'vitest';
+import { afterAll, afterEach, describe, expect, test, vi } from 'vitest';
 
-vi.hoisted(() => {
+const originalPlatform = vi.hoisted(() => {
+  const descriptor = Object.getOwnPropertyDescriptor(navigator, 'platform');
   Object.defineProperty(navigator, 'platform', {
     value: 'Linux x86_64',
     configurable: true,
   });
+  return descriptor;
+});
+afterAll(() => {
+  if (originalPlatform)
+    Object.defineProperty(navigator, 'platform', originalPlatform);
+  else Reflect.deleteProperty(navigator, 'platform');
 });
 
 vi.mock('../../../contexts/ApiBaseContext', () => ({

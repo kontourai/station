@@ -1,13 +1,20 @@
 /** @vitest-environment jsdom */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, render, screen } from '@testing-library/react';
-import { afterEach, expect, test, vi } from 'vitest';
+import { afterAll, afterEach, expect, test, vi } from 'vitest';
 
-vi.hoisted(() => {
+const originalPlatform = vi.hoisted(() => {
+  const descriptor = Object.getOwnPropertyDescriptor(navigator, 'platform');
   Object.defineProperty(navigator, 'platform', {
     value: 'MacIntel',
     configurable: true,
   });
+  return descriptor;
+});
+afterAll(() => {
+  if (originalPlatform)
+    Object.defineProperty(navigator, 'platform', originalPlatform);
+  else Reflect.deleteProperty(navigator, 'platform');
 });
 vi.mock('../../../contexts/ApiBaseContext', () => ({
   useApiBase: () => ({ apiBase: 'http://station.test' }),
@@ -98,6 +105,7 @@ test('macOS Alt+Left in the address field stays with the text field', async () =
     address.dispatchEvent(event);
   });
   expect(event.defaultPrevented).toBe(false);
+  await act(async () => {});
   expect(
     requests.filter(
       (request) =>
