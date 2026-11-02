@@ -24,6 +24,7 @@ describe('runtime-health', () => {
   test('startRuntimeHealthChecks runs immediately and schedules repeats', async () => {
     vi.useFakeTimers();
     const runHealthChecks = vi.fn(async () => {});
+    const maintainOwnedWork = vi.fn(async () => {});
     const timers: NodeJS.Timeout[] = [];
     const logger = { debug: vi.fn(), warn: vi.fn() };
 
@@ -31,6 +32,7 @@ describe('runtime-health', () => {
       timers,
       logger,
       interval: 1000,
+      maintainOwnedWork,
       runHealthChecks,
     });
 
@@ -40,6 +42,7 @@ describe('runtime-health', () => {
     await vi.advanceTimersByTimeAsync(1000);
 
     expect(runHealthChecks).toHaveBeenCalledTimes(2);
+    expect(maintainOwnedWork).toHaveBeenCalledTimes(2);
     expect(logger.debug).toHaveBeenCalledWith('Health checks started', {
       interval: 1000,
     });

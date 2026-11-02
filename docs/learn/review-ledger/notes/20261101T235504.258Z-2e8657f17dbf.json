@@ -1,0 +1,15 @@
+{
+  "revision": "4631aa4e9fa329034d960ed4e03723d1b0bfbf2b",
+
+  "notes": [
+    {"path":"docs/guides/development.md","note":"Bounded round-1 review against d6af85a2b24: inspected the owned-process cleanup and bounded-lifetime claims against the process-utils diff. Only the cascade-only, write-only ownedProcessEvidenceFor reader was removed; terminateProcessTree, registration, exact-birth probes and unrelated-listener protection are unchanged. No broker, peer, native or installed-process qualification is added. The cascade no longer treats registry presence as Session-to-engine authority.","inputs":["docs/guides/development.md","src-server/services/infra/process-utils.ts"]},
+
+    {"path":"docs/guides/local-collaboration-lab.md","note":"Bounded round-1 review against d6af85a2b24: inspected the owned-process cleanup and bounded-lifetime claims against the process-utils diff. Only the cascade-only, write-only ownedProcessEvidenceFor reader was removed; terminateProcessTree, registration, exact-birth probes and unrelated-listener protection are unchanged. No broker, peer, native or installed-process qualification is added. The cascade no longer treats registry presence as Session-to-engine authority.","inputs":["docs/guides/local-collaboration-lab.md","src-server/services/infra/process-utils.ts"]},
+
+    {"path":"docs/guides/self-hosted-broker.md","note":"Bounded round-1 review against d6af85a2b24: inspected the owned-process cleanup and bounded-lifetime claims against the process-utils diff. Only the cascade-only, write-only ownedProcessEvidenceFor reader was removed; terminateProcessTree, registration, exact-birth probes and unrelated-listener protection are unchanged. No broker, peer, native or installed-process qualification is added. The cascade no longer treats registry presence as Session-to-engine authority.","inputs":["docs/guides/self-hosted-broker.md","src-server/services/infra/process-utils.ts"]},
+
+    {"path":"src-server/services/connections/pion-peer/README.md","note":"Bounded round-1 review against d6af85a2b24: inspected the owned-process cleanup and bounded-lifetime claims against the process-utils diff. Only the cascade-only, write-only ownedProcessEvidenceFor reader was removed; terminateProcessTree, registration, exact-birth probes and unrelated-listener protection are unchanged. No broker, peer, native or installed-process qualification is added. The cascade no longer treats registry presence as Session-to-engine authority.","inputs":["src-server/services/connections/pion-peer/README.md","src-server/services/infra/process-utils.ts"]},
+
+    {"path":"docs/reference/deploy-ledger.md","note":"Reviewed the inherited generated deployment-ledger view and JSON at the current main integration cutoff. The newly appended records retain exact source SHA, workflow URL and qualification caveats, and the Markdown remains a projection of the JSON. This review adds no publication or registry-availability claim for cascade changes; PR #4421 is still draft source work.","inputs":["docs/reference/deploy-ledger.md","docs/reference/deploy-ledger.json"]}
+  ]
+}
