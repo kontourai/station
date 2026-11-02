@@ -1,0 +1,183 @@
+import {
+  type LiveSurfaceFrameHeader,
+  parseLiveSurfaceH264Sequence,
+} from '@kontourai/station-contracts/live-surface';
+
+/**
+ * Client-side H.264 for a live surface (#4418).
+ *
+ * The host can pass Android's H.264 access units through instead of
+ * decoding them to JPEG on the server. This viewer asks for them only where
+ * WebCodecs can decode them: a secure context (loopback or HTTPS) with
+ * `VideoDecoder`. The profile is checked per stream, from the SPS the first
+ * keyframe carries, with `VideoDecoder.isConfigSupported`; a profile the
+ * browser refuses makes the viewer fall back to images.
+ *
+ * Decoding never starts on a delta: the decoder waits for a keyframe after
+ * it is created, after every reconfiguration, and after any decode error
+ * (which also resets it). The hub never sends a delta before a keyframe
+ * either; this is the client's own guard.
+ */
+
+/** Whether this page can ask for H.264 at all. */
+export function liveSurfaceH264Capable(
+  scope: { isSecureContext?: boolean; VideoDecoder?: unknown } = globalThis,
+): boolean {
+  return (
+    scope.isSecureContext === true && typeof scope.VideoDecoder === 'function'
+  );
+}
+
+export type LiveSurfaceDecodeOutcome =
+  /** The unit went to the decoder. */
+  | 'decoding'
+  /** A delta while waiting for a keyframe: dropped. */
+  | 'awaiting-keyframe'
+  /** The browser cannot decode this stream's profile: use images. */
+  | 'unsupported';
+
+export interface LiveSurfaceH264DecoderCallbacks {
+  /** A decoded picture and the header of the unit it came from. Close it. */
+  onPicture: (picture: VideoFrame, header: LiveSurfaceFrameHeader) => void;
+  /**
+   * The decoder failed and was reset; it waits for the next keyframe. The
+   * owner should ask the host for one (a fresh stream starts at one).
+   */
+  onError: (error: unknown) => void;
+}
+
+type VideoDecoderConstructor = typeof VideoDecoder;
+
+export class LiveSurfaceH264Decoder {
+  private decoder: VideoDecoder | null = null;
+  private configured: string | null = null;
+  private awaitingKeyframe = true;
+  private closed = false;
+  /** Units are decoded strictly in order, even across a config check. */
+  private chain: Promise<unknown> = Promise.resolve();
+  /** Headers of units in the decoder, in order, matched to its outputs. */
+  private readonly inFlight = new Map<number, LiveSurfaceFrameHeader>();
+
+  constructor(
+    private readonly callbacks: LiveSurfaceH264DecoderCallbacks,
+    private readonly Decoder: VideoDecoderConstructor = globalThis.VideoDecoder,
+  ) {}
+
+  /** Units the decoder holds that have not come out yet. */
+  get pending(): number {
+    return this.inFlight.size;
+  }
+
+  decode(
+    header: LiveSurfaceFrameHeader,
+    body: Uint8Array,
+  ): Promise<LiveSurfaceDecodeOutcome> {
+    const next = this.chain.then(() => this.decodeInOrder(header, body));
+    this.chain = next.catch(() => undefined);
+    return next;
+  }
+
+  private async decodeInOrder(
+    header: LiveSurfaceFrameHeader,
+    body: Uint8Array,
+  ): Promise<LiveSurfaceDecodeOutcome> {
+    if (this.closed) return 'awaiting-keyframe';
+    if (header.keyframe) {
+      const sequence = parseLiveSurfaceH264Sequence(body);
+      if (!sequence) return this.awaitKeyframe();
+      const key = `${sequence.codec}:${sequence.width}x${sequence.height}`;
+      if (key !== this.configured) {
+        const config: VideoDecoderConfig = {
+          codec: sequence.codec,
+          codedWidth: sequence.width,
+          codedHeight: sequence.height,
+          optimizeForLatency: true,
+        };
+        let supported = false;
+        try {
+          supported =
+            (await this.Decoder.isConfigSupported(config)).supported === true;
+        } catch {
+          supported = false;
+        }
+        if (this.closed) return 'awaiting-keyframe';
+        if (!supported) return 'unsupported';
+        const decoder = this.ensureDecoder();
+        try {
+          decoder.configure(config);
+        } catch (error) {
+          this.fail(error);
+          return 'unsupported';
+        }
+        this.configured = key;
+      }
+      this.awaitingKeyframe = false;
+    } else if (this.awaitingKeyframe || !this.decoder) {
+      return 'awaiting-keyframe';
+    }
+    const decoder = this.decoder!;
+    const timestamp = header.seq;
+    this.inFlight.set(timestamp, header);
+    try {
+      decoder.decode(
+        new EncodedVideoChunk({
+          type: header.keyframe ? 'key' : 'delta',
+          timestamp,
+          data: body,
+        }),
+      );
+    } catch (error) {
+      this.fail(error);
+      return 'awaiting-keyframe';
+    }
+    return 'decoding';
+  }
+
+  close(): void {
+    this.closed = true;
+    this.inFlight.clear();
+    const decoder = this.decoder;
+    this.decoder = null;
+    if (decoder && decoder.state !== 'closed') decoder.close();
+  }
+
+  private awaitKeyframe(): LiveSurfaceDecodeOutcome {
+    this.awaitingKeyframe = true;
+    return 'awaiting-keyframe';
+  }
+
+  private ensureDecoder(): VideoDecoder {
+    if (this.decoder && this.decoder.state !== 'closed') return this.decoder;
+    const decoder: VideoDecoder = new this.Decoder({
+      output: (picture) => {
+        const header = this.inFlight.get(picture.timestamp);
+        this.inFlight.delete(picture.timestamp);
+        if (this.closed || decoder !== this.decoder || !header) {
+          picture.close();
+          return;
+        }
+        this.callbacks.onPicture(picture, header);
+      },
+      error: (error) => {
+        if (decoder === this.decoder) this.fail(error);
+      },
+    });
+    this.decoder = decoder;
+    return decoder;
+  }
+
+  /** Reset after an error: nothing decodes again until a keyframe. */
+  private fail(error: unknown): void {
+    this.awaitingKeyframe = true;
+    this.configured = null;
+    this.inFlight.clear();
+    const decoder = this.decoder;
+    this.decoder = null;
+    try {
+      if (decoder && decoder.state !== 'closed') decoder.close();
+    } catch {
+      // already closed by the error
+    }
+    if (!this.closed) this.callbacks.onError(error);
+  }
+}

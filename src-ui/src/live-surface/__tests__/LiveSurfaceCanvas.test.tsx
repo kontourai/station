@@ -11,6 +11,8 @@
  * emits.
  */
 
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import {
   encodeLiveSurfaceRecord,
   type LiveSurfaceControlLease,
@@ -89,6 +91,7 @@ interface OpenStream {
   pushBytes(bytes: Uint8Array): Promise<void>;
   close(): Promise<void>;
   signal: AbortSignal | undefined;
+  url: string;
 }
 
 type InputReply = (body: {
@@ -97,7 +100,10 @@ type InputReply = (body: {
 }) => unknown | Promise<unknown>;
 
 function harness(
-  options: { inputReply?: InputReply; framesStatus?: number } = {},
+  options: {
+    inputReply?: InputReply;
+    framesStatus?: number | ((url: string) => number | undefined);
+  } = {},
 ) {
   const streams: OpenStream[] = [];
   const inputs: { epoch: number; events: unknown[] }[] = [];
@@ -115,17 +121,19 @@ function harness(
     async (input: Parameters<typeof fetch>[0], init?: RequestInit) => {
       const url = String(input);
       if (url.startsWith(FRAMES_URL)) {
-        if (options.framesStatus) {
+        const framesStatus =
+          typeof options.framesStatus === 'function'
+            ? options.framesStatus(url)
+            : options.framesStatus;
+        if (framesStatus) {
           streams.push({
+            url,
             signal: init?.signal ?? undefined,
             push: async () => {},
             pushBytes: async () => {},
             close: async () => {},
           });
-          return Response.json(
-            { success: false },
-            { status: options.framesStatus },
-          );
+          return Response.json({ success: false }, { status: framesStatus });
         }
         let controller!: ReadableStreamDefaultController<Uint8Array>;
         const stream = new ReadableStream<Uint8Array>({
@@ -139,6 +147,7 @@ function harness(
           } catch {}
         });
         streams.push({
+          url,
           signal: init?.signal ?? undefined,
           push: async (record) => {
             await act(async () => {
@@ -1413,5 +1422,164 @@ describe('LiveSurfaceCanvas: which input may take control', () => {
     click();
     await flush();
     expect(h.inputs.map((batch) => batch.epoch)).toEqual([8]);
+  });
+});
+
+describe('LiveSurfaceCanvas: client H.264 (#4418)', () => {
+  const sample = new Uint8Array(
+    readFileSync(
+      resolve(
+        import.meta.dirname,
+        '../../../../tests/fixtures/live-surface/android-emulator-1080x2400-baseline.h264',
+      ),
+    ),
+  );
+  function videoRecord(seq: number, keyframe: boolean): LiveSurfaceRecord {
+    return {
+      kind: 'frame',
+      header: {
+        surfaceId: SURFACE,
+        seq,
+        epoch: 0,
+        codec: 'h264',
+        keyframe,
+        width: 576,
+        height: 1280,
+        deviceScaleFactor: 1,
+        capturedAt: 1,
+      },
+      body: keyframe ? sample : Uint8Array.from([0, 0, 0, 1, 0x41, 0x9a]),
+    };
+  }
+
+  /** WebCodecs in a secure context; `supported` decides the profile check. */
+  function webCodecs(supported: boolean) {
+    const decoded: { type: string; timestamp: number }[] = [];
+    const decoders: { init: VideoDecoderInit }[] = [];
+    vi.stubGlobal('isSecureContext', true);
+    vi.stubGlobal(
+      'EncodedVideoChunk',
+      class {
+        constructor(init: object) {
+          Object.assign(this, init);
+        }
+      },
+    );
+    vi.stubGlobal(
+      'VideoDecoder',
+      class {
+        static async isConfigSupported(config: VideoDecoderConfig) {
+          return { supported, config };
+        }
+        state = 'unconfigured';
+        constructor(readonly init: VideoDecoderInit) {
+          decoders.push(this);
+        }
+        configure() {
+          this.state = 'configured';
+        }
+        decode(chunk: { type: string; timestamp: number }) {
+          decoded.push({ type: chunk.type, timestamp: chunk.timestamp });
+          // Emit a picture for it, as a real decoder would.
+          this.init.output({
+            timestamp: chunk.timestamp,
+            close() {},
+          } as unknown as VideoFrame);
+        }
+        close() {
+          this.state = 'closed';
+        }
+      },
+    );
+    return { decoded, decoders };
+  }
+
+  async function mount(h: ReturnType<typeof harness>) {
+    render(
+      <LiveSurfaceCanvas
+        apiBase={API}
+        surfaceId={SURFACE}
+        label="Device: emulator"
+        transport={h.transport as never}
+      />,
+    );
+    await flush();
+  }
+
+  test('a capable page asks for H.264, decodes from the keyframe and says so', async () => {
+    const codecs = webCodecs(true);
+    const h = harness();
+    await mount(h);
+    const stream = h.streams.at(-1)!;
+    expect(new URL(stream.url).searchParams.get('codec')).toBe('h264');
+    await stream.push(stateRecord(lease(0)));
+    await stream.push(videoRecord(1, true));
+    await stream.push(videoRecord(2, false));
+    await flush();
+    expect(codecs.decoded).toEqual([
+      { type: 'key', timestamp: 1 },
+      { type: 'delta', timestamp: 2 },
+    ]);
+    // Each picture is drawn at the header's size, the box input maps to.
+    expect(drawImage).toHaveBeenLastCalledWith(
+      expect.anything(),
+      0,
+      0,
+      576,
+      1280,
+    );
+    expect(screen.getByTestId('live-surface-codec').dataset.codec).toBe('h264');
+    expect(screen.getByTestId('live-surface-codec').textContent).toBe(
+      'H.264, decoded in this browser',
+    );
+  });
+
+  test('a profile the browser refuses reconnects for images', async () => {
+    const codecs = webCodecs(false);
+    const h = harness();
+    await mount(h);
+    const first = h.streams.at(-1)!;
+    await first.push(stateRecord(lease(0)));
+    await first.push(videoRecord(1, true));
+    await flush();
+    await flush();
+    expect(codecs.decoded).toEqual([]);
+    expect(first.signal?.aborted).toBe(true);
+    expect(h.streams).toHaveLength(2);
+    const second = h.streams[1]!;
+    expect(new URL(second.url).searchParams.has('codec')).toBe(false);
+    await second.push(stateRecord(lease(0)));
+    await second.push(frameRecord(2, 0));
+    expect(screen.getByTestId('live-surface-codec').textContent).toBe('PNG');
+  });
+
+  test('a host too old for ?codec= (400) is asked once more, for images, and no more', async () => {
+    webCodecs(true);
+    const h = harness({
+      framesStatus: (url) =>
+        new URL(url).searchParams.has('codec') ? 400 : undefined,
+    });
+    await mount(h);
+    await flush();
+    await flush();
+    expect(
+      h.streams.map((s) => new URL(s.url).searchParams.has('codec')),
+    ).toEqual([true, false]);
+    await h.streams[1]!.push(stateRecord(lease(0)));
+    await h.streams[1]!.push(frameRecord(1, 0));
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
+    expect(h.streams).toHaveLength(2);
+  });
+
+  test('a page without a secure context never asks for H.264', async () => {
+    vi.stubGlobal('isSecureContext', false);
+    vi.stubGlobal('VideoDecoder', class {});
+    const h = harness();
+    await mount(h);
+    expect(new URL(h.streams.at(-1)!.url).searchParams.has('codec')).toBe(
+      false,
+    );
   });
 });
