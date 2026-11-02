@@ -176,15 +176,16 @@ keeps its Model control, so a choice made before its repair carries through it. 
 filters. A visual collection rail exposes Favorites, Recent and provider routes;
 capability filters sit above the results. The current model's supported runtime
 controls stay visible beside the list, with direct thinking-effort choices.
-On phones, collections scroll horizontally and settings follow the model list. Reviewed canonical model identities still own grouping across
-provider routes; similar names do not establish equivalence.
+On phones, collections scroll horizontally and settings follow the model list.
+Reviewed canonical model identities still own grouping across provider routes;
+similar names do not establish equivalence.
 
 Agent choices are grouped as **Station**, **Coding apps**, and **My agents**;
 recent use orders rows inside their group. Bundled engine and model marks identify
-known brands. The Engine & model picker separates collection navigation, model choices and
-current-model settings. Selecting a model applies it and closes the picker;
-changing a runtime option keeps it open. Home and New Chat share its menu controller; `/model` shares
-filtering, availability and choice memory with the popup.
+known brands. The Engine & model picker separates collection navigation, model
+choices and current-model settings. Selecting a model applies it and closes the
+picker; changing a runtime option keeps it open. Home and New Chat share its menu
+controller; `/model` shares filtering, availability and choice memory with the popup.
 
 Choosing another engine is a conversation override of the selected Agent's
 execution binding. It retains the authored profile rather than substituting the

@@ -69,27 +69,25 @@ export function ModelRuntimeOptionFields({
           disabled={disabled}
         >
           <legend>Thinking effort</legend>
-          {['', ...effortOptions].map((option) => {
-            return (
-              <label key={option}>
-                <input
-                  type="radio"
-                  name={effortGroup}
-                  value={option}
-                  checked={selectedEffort === option}
-                  onChange={() =>
-                    onRuntimeOptionChange('effort', option || undefined)
-                  }
-                />
-                <span>
-                  {option
-                    ? (capabilities?.effortLabels?.[option] ??
-                      effortLabel(option))
-                    : 'Use model default'}
-                </span>
-              </label>
-            );
-          })}
+          {['', ...effortOptions].map((option) => (
+            <label key={option}>
+              <input
+                type="radio"
+                name={effortGroup}
+                value={option}
+                checked={selectedEffort === option}
+                onChange={() =>
+                  onRuntimeOptionChange('effort', option || undefined)
+                }
+              />
+              <span>
+                {option
+                  ? (capabilities?.effortLabels?.[option] ??
+                    effortLabel(option))
+                  : 'Use model default'}
+              </span>
+            </label>
+          ))}
         </fieldset>
       )}
       {effortOptions.length > 0 && effortPresentation === 'select' && (

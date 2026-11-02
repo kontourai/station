@@ -714,7 +714,6 @@ describe('SessionModelPicker', () => {
     expect(document.activeElement).toBe(last);
   });
 
-  // Effort stays a native radio group; boolean settings reuse Checkbox.
   test('shows effort choices and themes every checkbox with the shared controls', () => {
     renderPicker({
       models: [
