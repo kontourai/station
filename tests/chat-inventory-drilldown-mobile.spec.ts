@@ -203,12 +203,13 @@ test.describe('Chat inventory item drill-down on a phone', () => {
       .fill(PROMPT);
     await draft.getByRole('button', { name: 'Start', exact: true }).click();
     await waitForDispatchThroughCapacityRetries(page, chatRequests, 1);
-    // Start opens the phone dock on the chat it started (#4175). Asserted, not
-    // helped: clicking the dock's toggle here raced that open and closed it.
+    // Start opens the phone dock on the chat it started (#4175), full screen
+    // (#4391): its size control offers the restore. Asserted, not helped:
+    // clicking the dock's toggle here raced that open and closed it.
     const dock = page.locator('#chat-dock');
     const header = dock.getByTestId('chat-dock-mobile-header');
     await expect(
-      header.getByRole('button', { name: 'Collapse chat', exact: true }),
+      header.getByRole('button', { name: 'Restore chat size', exact: true }),
     ).toBeVisible({ timeout: 20_000 });
     await expect(dock.getByText(REPLY, { exact: true })).toBeVisible({
       timeout: 30_000,

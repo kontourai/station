@@ -15,6 +15,17 @@
   background: transparent;
 }
 
+/* #4391's size control is a third 44px leading control. Below 360px the bar's
+   44px floors (leading, identity, project, actions) no longer fit beside it,
+   and the title overflowed onto Switch project. There a phone chat already
+   opens full screen and Chat actions keeps Full screen, so the control
+   steps aside. */
+@media (max-width: 359px) {
+  .chat-dock__mobile-header .chat-dock__mobile-extent {
+    display: none;
+  }
+}
+
 /* New and its destination project, one split control: New starts a chat,
    the caret half shows and changes where. Both halves keep the bar's quiet
    chrome; one shared frame says they belong together. */

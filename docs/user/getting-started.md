@@ -673,9 +673,9 @@ for creating a project, including a short first-project prompt when empty.
 In **Inbox**, delegated work folds under its recorded parent.
 Expand the subtask count to read the children; children that need you stay
 visible. Task-owned chats appear under their Task as sessions. **Show work**
-filters by project or Station and stays selected on this device. Until you
-choose, it is **Current project**: the project whose page you are on, and all
-work anywhere else. If work needs
+filters by project or Station and stays selected on this device. It starts at
+**All work**; **Current project** follows the project whose page you are on,
+and shows all work anywhere else. If work needs
 you outside the filter, choose **Show all** from the notice.
 
 To clear your inbox, hover a conversation on desktop and choose **× Dismiss

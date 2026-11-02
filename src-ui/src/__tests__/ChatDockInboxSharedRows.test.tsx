@@ -385,7 +385,7 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
     },
   );
 
-  it('defaults to the project page on screen and to all work elsewhere (#4405 A36)', () => {
+  it('defaults to all work; a chosen Current project follows the project page on screen (#4405 A36)', () => {
     const items = [
       workItem({
         id: 'alpha-chat',
@@ -416,24 +416,27 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
     try {
       act(() => navigationStore.navigate('/projects/alpha'));
       const mounted = render(panel());
-      expect(
-        (
-          screen.getByRole('combobox', {
-            name: 'Inbox scope',
-          }) as HTMLSelectElement
-        ).value,
-      ).toBe('current-project');
+      const scope = () =>
+        screen.getByRole('combobox', {
+          name: 'Inbox scope',
+        }) as HTMLSelectElement;
+      // Unchosen, every open chat stays listed: the open conversation is
+      // never filtered out of its own Inbox.
+      expect(scope().value).toBe('all');
+      expect(screen.getByText('No project chat')).toBeTruthy();
+      fireEvent.change(scope(), { target: { value: 'current-project' } });
       expect(screen.getByText('Alpha project work')).toBeTruthy();
       expect(screen.queryByText('No project chat')).toBeNull();
       act(() => navigationStore.navigate('/'));
       mounted.rerender(panel());
       expect(screen.getByText('No project chat')).toBeTruthy();
       expect(screen.getByText('Alpha project work')).toBeTruthy();
-      // A chosen "All work" is kept on a project page.
+      // Back on a project page the chosen scope filters again; "All work"
+      // undoes it.
       act(() => navigationStore.navigate('/projects/alpha'));
-      fireEvent.change(screen.getByRole('combobox', { name: 'Inbox scope' }), {
-        target: { value: 'all' },
-      });
+      mounted.rerender(panel());
+      expect(screen.queryByText('No project chat')).toBeNull();
+      fireEvent.change(scope(), { target: { value: 'all' } });
       expect(screen.getByText('No project chat')).toBeTruthy();
     } finally {
       act(() => navigationStore.navigate('/'));

@@ -328,8 +328,8 @@ export interface DeviceSettings {
   diffStyle: 'unified' | 'split';
   diffWrap: boolean;
   /**
-   * `'all'`, a Station or project key, or `INBOX_SCOPE_CURRENT_PROJECT`
-   * (the default: the project page on screen, else all work).
+   * `'all'` (the default), a Station or project key, or
+   * `INBOX_SCOPE_CURRENT_PROJECT` (the project page on screen, else all work).
    */
   inboxScope: string;
   inboxOpen: boolean;
@@ -850,10 +850,10 @@ export const DEVICE_SETTINGS_REGISTRY = [
     label: 'Inbox scope',
     help: 'Limit the inbox to one project or Station on this device.',
     description: 'Selected project or Station filter for the inbox.',
-    // #4405 (A36): unchosen, the inbox follows the project page you are on
-    // (`INBOX_SCOPE_CURRENT_PROJECT`), and shows all work outside one. A
-    // stored choice, "All work" included, is kept.
-    defaultValue: INBOX_SCOPE_CURRENT_PROJECT,
+    // Unchosen, the inbox shows all work, so the conversation you open is
+    // always in it. `INBOX_SCOPE_CURRENT_PROJECT` (#4405 A36) is a choice that
+    // follows the project page you are on.
+    defaultValue: 'all',
   }),
   defineDeviceSetting({
     key: 'inboxOpen',
