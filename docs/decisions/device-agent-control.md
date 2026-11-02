@@ -76,8 +76,10 @@ explicit opt-in for these live tools as well as managed agent-device tooling.
 It defaults off and is re-read on each call and surface authorization. Shared
 station-control registration alone grants no access; disabling the setting
 refuses later events and suppresses in-flight observation publication. This
-uses a host-wide operator opt-in rather than a new per-agent switch. Codex/ACP
-credentials with weaker custody remain refused; tool visibility grants nothing.
+uses a host-wide operator opt-in rather than a new per-agent switch. Codex can
+also reach these registrations through its default-off bound-channel preview;
+Codex and ACP passthrough credentials with weaker custody remain refused. Tool
+visibility grants nothing. See the [bound-channel decision](browser-agent-actions-and-bound-channel.md).
 
 Accessibility uses the same DeviceToolsService read and 500-element/256-KiB
 truncation as the human Tools drawer. Keeping one bounded observation owner

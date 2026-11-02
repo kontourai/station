@@ -41,9 +41,10 @@ operator's computer.
   qualification remains separate from fixture evidence. See the
   [Device guide](../guides/mobile-device-workspace.md).
   This does not implement a general desktop computer-use backend.
-- Codex and managed Station do not gain browser or computer support from the
-  editor setting alone. Their delivery paths still need implementation and
-  qualification.
+- Codex can use the Station browser and Device tools through a default-off
+  [bound-channel preview](../decisions/browser-agent-actions-and-bound-channel.md).
+  The editor setting alone does not enable it. General computer access and
+  managed Station browser delivery remain proposed.
 
 ## Backend resolution
 
