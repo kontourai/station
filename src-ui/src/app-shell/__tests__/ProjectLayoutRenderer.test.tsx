@@ -1692,7 +1692,7 @@ describe('ProjectLayoutRenderer', () => {
     expect(
       within(screen.getByRole('region', { name: 'Browser' })).getByRole(
         'button',
-        { name: 'Open Browser', exact: true },
+        { name: /^Open Browser$/ },
       ),
     ).toBeTruthy();
     expect(layoutQueryMock.mock.calls).toEqual(
@@ -2091,8 +2091,7 @@ describe('ProjectLayoutRenderer', () => {
         within(screen.getByRole('region', { name: 'Browser' })).getByRole(
           'button',
           {
-            name: 'Open Browser',
-            exact: true,
+            name: /^Open Browser$/,
           },
         ) as HTMLButtonElement
       ).disabled,
@@ -2191,8 +2190,7 @@ describe('ProjectLayoutRenderer', () => {
         within(screen.getByRole('region', { name: 'Browser' })).getByRole(
           'button',
           {
-            name: 'Open Browser',
-            exact: true,
+            name: /^Open Browser$/,
           },
         ) as HTMLButtonElement
       ).disabled,
