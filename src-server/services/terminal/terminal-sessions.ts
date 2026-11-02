@@ -834,13 +834,7 @@ export class TerminalSessions<Principal> {
    * trims to the total budget. Running shells are never touched.
    */
   private async maintain(): Promise<void> {
-    if (this.readRetention) {
-      try {
-        this.retention = await this.readRetention();
-      } catch (error) {
-        logger.warn('Terminal retention settings unavailable', { error });
-      }
-    }
+    await this.refreshRetention();
     const now = Date.now();
     for (const record of [...this.records.values()]) {
       if (
@@ -1024,13 +1018,7 @@ export class TerminalSessions<Principal> {
 
   private async load(): Promise<void> {
     const restoring: SessionRecord[] = [];
-    if (this.readRetention) {
-      try {
-        this.retention = await this.readRetention();
-      } catch (error) {
-        logger.warn('Terminal retention settings unavailable', { error });
-      }
-    }
+    await this.refreshRetention();
     try {
       const records = z
         .array(recordSchema)
@@ -1044,32 +1032,7 @@ export class TerminalSessions<Principal> {
         if (this.records.has(record.terminalId))
           throw new Error('Duplicate terminal identity');
         this.records.set(record.terminalId, record);
-        // A shell the supervisor kept running across this restart is
-        // reattached. An in-process host cannot restore a PTY, so its shells
-        // have ended: keep identity and output, and never re-run a command.
-        const reattached =
-          record.status === 'running' || record.status === 'starting'
-            ? await this.host.attach?.(
-                record.terminalId,
-                this.journalSpec(record),
-              )
-            : null;
-        if (reattached && reattached !== 'ended' && record.status === 'running')
-          this.track(record, reattached, reattached.journal);
-        else if (record.status === 'running' || record.status === 'starting') {
-          // A shell whose start was never recorded is not resumed either.
-          if (reattached && reattached !== 'ended')
-            await reattached.terminate?.();
-          // The host no longer knows a shell it was running: the host itself
-          // restarted (a reboot, or an in-process host with its core). That
-          // shell may be reopened. One that ended while the host kept running
-          // stays ended.
-          else if (reattached !== 'ended' && record.status === 'running')
-            if (isShell(record)) restoring.push(record);
-          record.status = 'exited';
-          record.endedAt ??= Date.now();
-        } else if (record.hostStopped && isShell(record))
-          restoring.push(record);
+        if (await this.reconcile(record)) restoring.push(record);
       }
       // Records from before stable ordinals are numbered in creation order.
       for (const record of [...this.records.values()].sort(
@@ -1081,6 +1044,43 @@ export class TerminalSessions<Principal> {
       if (!this.notFound(error)) throw error;
     }
     await this.makeRoom(0);
+    await this.retireOversized();
+    await this.maintain();
+    await this.restoreAll(restoring);
+    if (this.records.size > 0) await this.persist();
+  }
+
+  /**
+   * Settles a loaded record against its host. A shell the supervisor kept
+   * running across this restart is reattached. Otherwise it has ended; true
+   * when it ended only because its host went away, so it may be reopened.
+   */
+  private async reconcile(record: SessionRecord): Promise<boolean> {
+    if (record.status !== 'running' && record.status !== 'starting')
+      return record.hostStopped === true && isShell(record);
+    const reattached = await this.host.attach?.(
+      record.terminalId,
+      this.journalSpec(record),
+    );
+    if (reattached && reattached !== 'ended' && record.status === 'running') {
+      this.track(record, reattached, reattached.journal);
+      return false;
+    }
+    // A shell whose start was never recorded is not resumed either.
+    if (reattached && reattached !== 'ended') await reattached.terminate?.();
+    const wasRunning = record.status === 'running';
+    record.status = 'exited';
+    record.endedAt ??= Date.now();
+    // The host no longer knows a shell it was running: the host itself
+    // restarted (a reboot, or an in-process host with its core). One that
+    // ended while the host kept running (`'ended'`) stays ended.
+    return (
+      wasRunning && reattached !== 'ended' && !reattached && isShell(record)
+    );
+  }
+
+  /** Startup: an ended journal larger than the per-terminal size is expired. */
+  private async retireOversized(): Promise<void> {
     for (const record of [...this.records.values()]) {
       // A reattached shell's host owns its journal and keeps it in bounds.
       if (this.live.has(record.terminalId)) continue;
@@ -1101,7 +1101,9 @@ export class TerminalSessions<Principal> {
       )
         await this.retire(record);
     }
-    await this.maintain();
+  }
+
+  private async restoreAll(restoring: readonly SessionRecord[]): Promise<void> {
     for (const record of restoring) {
       if (this.records.get(record.terminalId) !== record) continue;
       try {
@@ -1116,7 +1118,15 @@ export class TerminalSessions<Principal> {
         record.endedAt ??= Date.now();
       }
     }
-    if (this.records.size > 0) await this.persist();
+  }
+
+  private async refreshRetention(): Promise<void> {
+    if (!this.readRetention) return;
+    try {
+      this.retention = await this.readRetention();
+    } catch (error) {
+      logger.warn('Terminal retention settings unavailable', { error });
+    }
   }
 
   private async makeRoom(
