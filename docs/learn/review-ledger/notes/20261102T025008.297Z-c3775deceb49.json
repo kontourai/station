@@ -1,0 +1,25 @@
+{
+  "revision": "5a46f8a963da7cba42e9720adf5af51958a5f5a5",
+
+  "notes": [
+    {"path":"docs/README.md","note":"Reviewed the BrowserPane follow-up against this document: the recent-actions wait now uses the shared skeleton, its container is a labeled section, and zoom is a labeled output. Shared motion tokens and the global reduced-motion rule replace local hard-coded timings; Browser authorization and lifecycle are unchanged.","inputs":["docs/README.md","src-ui/src/workspace-panes/browser-pane/BrowserPane.tsx"]},
+
+    {"path":"docs/adr/0017-browser-preview-host.md","note":"Reviewed the BrowserPane follow-up against this document: the recent-actions wait now uses the shared skeleton, its container is a labeled section, and zoom is a labeled output. Shared motion tokens and the global reduced-motion rule replace local hard-coded timings; Browser authorization and lifecycle are unchanged.","inputs":["docs/adr/0017-browser-preview-host.md","src-ui/src/workspace-panes/browser-pane/BrowserPane.tsx"]},
+
+    {"path":"docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md","note":"Reviewed the BrowserPane follow-up against this document: the recent-actions wait now uses the shared skeleton, its container is a labeled section, and zoom is a labeled output. Shared motion tokens and the global reduced-motion rule replace local hard-coded timings; Browser authorization and lifecycle are unchanged.","inputs":["docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md","src-ui/src/workspace-panes/browser-pane/BrowserPane.tsx"]},
+
+    {"path":"docs/adr/0019-host-the-browser-pane-server-side-behind-a-host-adapter.md","note":"Reviewed the BrowserPane follow-up against this document: the recent-actions wait now uses the shared skeleton, its container is a labeled section, and zoom is a labeled output. Shared motion tokens and the global reduced-motion rule replace local hard-coded timings; Browser authorization and lifecycle are unchanged.","inputs":["docs/adr/0019-host-the-browser-pane-server-side-behind-a-host-adapter.md","src-ui/src/workspace-panes/browser-pane/BrowserPane.tsx"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the BrowserPane follow-up against this document: the recent-actions wait now uses the shared skeleton, its container is a labeled section, and zoom is a labeled output. Shared motion tokens and the global reduced-motion rule replace local hard-coded timings; Browser authorization and lifecycle are unchanged.","inputs":["docs/architecture/module-map.md","src-ui/src/workspace-panes/browser-pane/BrowserPane.tsx"]},
+
+    {"path":"docs/design/browser-preview-host-spike.md","note":"Reviewed the BrowserPane follow-up against this document: the recent-actions wait now uses the shared skeleton, its container is a labeled section, and zoom is a labeled output. Shared motion tokens and the global reduced-motion rule replace local hard-coded timings; Browser authorization and lifecycle are unchanged.","inputs":["docs/design/browser-preview-host-spike.md","src-ui/src/workspace-panes/browser-pane/BrowserPane.tsx"]},
+
+    {"path":"docs/design/browser-preview-pane-mvp.md","note":"Reviewed the BrowserPane follow-up against this document: the recent-actions wait now uses the shared skeleton, its container is a labeled section, and zoom is a labeled output. Shared motion tokens and the global reduced-motion rule replace local hard-coded timings; Browser authorization and lifecycle are unchanged.","inputs":["docs/design/browser-preview-pane-mvp.md","src-ui/src/workspace-panes/browser-pane/BrowserPane.tsx"]},
+
+    {"path":"docs/glossary.md","note":"Reviewed the BrowserPane follow-up against this document: the recent-actions wait now uses the shared skeleton, its container is a labeled section, and zoom is a labeled output. Shared motion tokens and the global reduced-motion rule replace local hard-coded timings; Browser authorization and lifecycle are unchanged.","inputs":["docs/glossary.md","src-ui/src/workspace-panes/browser-pane/BrowserPane.tsx"]},
+
+    {"path":"docs/guides/browser-workspace.md","note":"Reviewed the BrowserPane follow-up against this document: the recent-actions wait now uses the shared skeleton, its container is a labeled section, and zoom is a labeled output. Shared motion tokens and the global reduced-motion rule replace local hard-coded timings; Browser authorization and lifecycle are unchanged.","inputs":["docs/guides/browser-workspace.md","src-ui/src/workspace-panes/browser-pane/BrowserPane.tsx"]},
+
+    {"path":"docs/guides/mobile-device-workspace.md","note":"Reviewed the BrowserPane follow-up against this document: the recent-actions wait now uses the shared skeleton, its container is a labeled section, and zoom is a labeled output. Shared motion tokens and the global reduced-motion rule replace local hard-coded timings; Browser authorization and lifecycle are unchanged.","inputs":["docs/guides/mobile-device-workspace.md","src-ui/src/workspace-panes/browser-pane/BrowserPane.tsx"]}
+  ]
+}
