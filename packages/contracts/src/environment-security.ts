@@ -368,10 +368,8 @@ export const DEFAULT_GRANT_PAIRING_SCOPE: string = [
  * terminal route or the terminal WebSocket, but `standard` already includes
  * `terminal:operate` and there is no way to express "standard minus
  * terminal" by combining existing presets — `terminal:operate` is enforced
- * independently at the WebSocket layer
- * (`PAIRING_WS_SCOPES.terminal`, `pairing-route-scopes.ts`), so a session
- * carrying `standard` scope but never presenting it over HTTP would still
- * pass that separate WS check. A dedicated preset is required to grant
+ * independently by the terminal socket's ticket admission, so a session
+ * carrying `standard` scope could still open a terminal. A dedicated preset is required to grant
  * exactly the delegation surface and nothing else.
  *
  * IMPORTANT nuance (design doc §2, "what it also grants" / correction 2):

@@ -219,7 +219,7 @@ describe('first generation: promote with no listeners', () => {
   it('sends ready only after every started listener has settled', async () => {
     const channel = new FakeChannel();
     const link = await promoted(channel);
-    const listening = link.listen('terminal', okServer(), {
+    const listening = link.listen('voice', okServer(), {
       port: 0,
       host: HOST,
     });
@@ -274,11 +274,11 @@ describe('later generation: promote with held listeners', () => {
     const channel = new FakeChannel();
     const link = quietLink(channel, { adoptTimeoutMs: 20 });
     const parked = link.park();
-    channel.deliver({ type: 'promote', listeners: ['api', 'terminal'] });
-    const terminal = { close: vi.fn() };
-    channel.deliver({ type: 'listener.adopt', name: 'terminal' }, terminal);
+    channel.deliver({ type: 'promote', listeners: ['api', 'voice'] });
+    const voice = { close: vi.fn() };
+    channel.deliver({ type: 'listener.adopt', name: 'voice' }, voice);
     await expect(parked).rejects.toThrow(/never sent: api/);
-    expect(terminal.close).toHaveBeenCalledTimes(1);
+    expect(voice.close).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -445,7 +445,7 @@ describe('drain', () => {
       link.upgraded(socket as net.Socket);
       socket.write('HTTP/1.1 101 Switching Protocols\r\n\r\n');
     });
-    const { port } = await link.listen('terminal', server, {
+    const { port } = await link.listen('voice', server, {
       port: 0,
       host: HOST,
     });
@@ -919,6 +919,29 @@ describe('connection catching (protocol 1.1)', () => {
     const notASocket = { close: vi.fn() };
     channel.deliver({ type: 'connection.adopt', name: 'api' }, notASocket);
     expect(notASocket.close).toHaveBeenCalled();
+  });
+
+  it('parks under an older supervisor that still holds the retired terminal listener, closing its copy', async () => {
+    const channel = new FakeChannel();
+    const held = await rawListeningHandle();
+    const terminal = { close: vi.fn() };
+    const link = await promoted(channel, ['api', 'terminal'], {
+      api: held.handle,
+      terminal,
+    });
+    expect(terminal.close).toHaveBeenCalledTimes(1);
+    const { port } = await link.listen('api', okServer(), {
+      port: 0,
+      host: HOST,
+    });
+    expect(port).toBe(held.port);
+    const stray = await heldConnection(GET_CLOSE);
+    channel.deliver(
+      { type: 'connection.adopt', name: 'terminal' },
+      stray.socket,
+    );
+    expect(await stray.reply).toBe('');
+    expect(stray.socket.destroyed).toBe(true);
   });
 
   it('waits for an adopted connection to finish its request before a drain settles, though net.Server does not count it', async () => {

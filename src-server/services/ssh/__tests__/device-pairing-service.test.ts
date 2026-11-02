@@ -1,5 +1,4 @@
 import { createHash } from 'node:crypto';
-import { once } from 'node:events';
 import {
   mkdirSync,
   mkdtempSync,
@@ -22,10 +21,8 @@ import {
 } from '@kontourai/station-contracts';
 import { humanPrincipal } from '@kontourai/station-contracts/principal';
 import { afterEach, describe, expect, test, vi } from 'vitest';
-import { WebSocket } from 'ws';
 import { credentialAuthorizedForScope } from '../../../security/pairing-route-scopes.js';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../identity/principal-resolver.js';
-import { TerminalWebSocketServer } from '../../terminal/terminal-ws-server.js';
 import {
   DevicePairingError,
   DevicePairingService,
@@ -2286,54 +2283,6 @@ describe('DevicePairingService', () => {
       expect.objectContaining({ name: 'First phone', revokedAt: 1_000 }),
       expect.objectContaining({ name: 'Second phone', revokedAt: null }),
     ]);
-  });
-
-  test('rejects a revoked device on its next remote websocket authentication', async () => {
-    const { service } = harness();
-    const paired = pair(service, 'Terminal phone').result;
-    const terminal = new TerminalWebSocketServer(
-      {
-        subscribe: () => () => undefined,
-        open: () => undefined,
-        close: () => undefined,
-      } as never,
-      {
-        classifyPeer: () => 'remote',
-        verifyCredential: (credential) => service.verifyCredential(credential),
-        authTimeoutMs: 100,
-      },
-    );
-    const wss = terminal.start(0, '127.0.0.1');
-    await once(wss, 'listening');
-    const address = wss.address();
-    if (!address || typeof address === 'string')
-      throw new Error('missing websocket address');
-    const authenticate = async () => {
-      const socket = new WebSocket(`ws://127.0.0.1:${address.port}`);
-      await once(socket, 'open');
-      socket.send(
-        JSON.stringify({
-          type: 'auth',
-          protocolVersion: 1,
-          credential: paired.credential,
-        }),
-      );
-      return socket;
-    };
-
-    const accepted = await authenticate();
-    const [ack] = await once(accepted, 'message');
-    expect(JSON.parse(ack.toString()).type).toBe('authenticated');
-    accepted.close();
-    await once(accepted, 'close');
-
-    service.revokeDevice(paired.device.id, 'operator-credential');
-    const rejected = await authenticate();
-    const [code] = await once(rejected, 'close');
-    expect(code).toBe(4401);
-
-    terminal.stop();
-    if (wss.address()) await once(wss, 'close');
   });
 
   test('allows only one winner when confirmed exchange attempts race', async () => {
