@@ -23653,7 +23653,7 @@ describe('OrchestrationService', () => {
           expect(outcome.status).toBe('accepted');
           expect(eventStore.latestEventByMethod(threadId,'session.started')?.payload.eventId).toBe(`${threadId}:started`);
           expect(isolated.sessionRecordedOwnerId(threadId)).toBe(owner);
-          await isolated.dispatchWithReceipt({type:'sendTurn',threadId,input:'immediate authorized send'},{userId:owner});
+          await isolated.dispatchWithReceipt({type:'sendTurn',input:{threadId,input:'immediate authorized send'}},{userId:owner});
           expect(adapter.sendTurn).toHaveBeenCalledTimes(1);
           expect(attempts).toBeGreaterThanOrEqual(2);
         }
