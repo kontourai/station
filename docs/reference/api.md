@@ -2707,6 +2707,8 @@ window after their first observation. Unmarked reservations remain reclaimable
 only when no Session exists. Legacy unscoped keys fail closed for verified agent
 callers; inspect their original Session instead of automatically using a new key.
 Current operator and verified Session scopes have independent key namespaces.
+The create ledger upgrades to format 3 before admission; older writers reject
+that format rather than reclaim an expired indeterminate receipt.
 
 Admission retains at most 1,024 active or completed requests within their window,
 plus expired indeterminate receipts, in a 4 MiB ledger. Each pending request

@@ -59,10 +59,10 @@ function matchesClaimInput(claim: Claim, digest: string): boolean {
 }
 
 interface Ledger {
-  version: 2;
+  version: 3;
   claims: Record<string, Claim>;
 }
-type StoredLedger = Ledger | { version: 1; claims: Record<string, Claim> };
+type StoredLedger = Ledger | { version: 1 | 2; claims: Record<string, Claim> };
 
 export function isCreateRequestHandle(
   value: unknown,
@@ -191,18 +191,18 @@ export class CreateRequestClaims {
       throw error;
     }
     if (value === MISSING)
-      return { ledger: { version: 2, claims: {} }, migrated: false };
+      return { ledger: { version: 3, claims: {} }, migrated: false };
     if (
       !value ||
       typeof value !== 'object' ||
-      ![1, 2].includes(value.version) ||
+      ![1, 2, 3].includes(value.version) ||
       !value.claims ||
       typeof value.claims !== 'object' ||
       Array.isArray(value.claims)
     )
       throw new Error('Malformed create request claims');
     const now = Date.now();
-    let migrated = value.version === 1;
+    let migrated = value.version !== 3;
     for (const claim of Object.values(value.claims)) {
       if (
         !claim ||
@@ -236,7 +236,7 @@ export class CreateRequestClaims {
       }
     }
     return {
-      ledger: { version: 2, claims: value.claims },
+      ledger: { version: 3, claims: value.claims },
       migrated,
     };
   }

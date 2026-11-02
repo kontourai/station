@@ -56,6 +56,9 @@ test('completed receipts replay for seven days, then expire without removing unr
   const { home, file, claims } = setup();
   const effect = vi.fn(async (id: string) => handle(id));
   const first = await claims.run(input(), effect);
+  const legacy = JSON.parse(readFileSync(file, 'utf8'));
+  legacy.version = 2;
+  writeFileSync(file, JSON.stringify(legacy));
   vi.setSystemTime(new Date('2026-11-02T00:00:00Z'));
   await expect(
     claims.run({ ...input(), requestKey: 'unresolved' }, async (id) => {
@@ -245,7 +248,7 @@ test('legacy completion timestamps are durably migrated even when capacity refus
   await expect(
     claims.run({ ...input(), requestKey: 'new' }, effect),
   ).rejects.toMatchObject({ code: 'create_request_capacity' });
-  expect(JSON.parse(readFileSync(file, 'utf8')).version).toBe(2);
+  expect(JSON.parse(readFileSync(file, 'utf8')).version).toBe(3);
   vi.setSystemTime(new Date('2026-11-08T00:00:00Z'));
   await expect(
     claims.run({ ...input(), requestKey: 'new' }, effect),
