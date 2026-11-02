@@ -272,7 +272,8 @@ describe('conversation-open adapter durability', () => {
         return;
       }
       const result = await request;
-      expect(result.status).toBe('resolved');
+      if (result.status !== 'resolved')
+        throw new Error('Expected a resolved conversation.');
       expect(result.execution?.durability).toEqual(durability);
     },
   );
