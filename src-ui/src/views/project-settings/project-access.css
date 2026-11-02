@@ -52,3 +52,55 @@
   color: var(--k-negative);
   font-size: var(--k-text-sm);
 }
+
+.project-access__journey {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr));
+  gap: var(--k-space-4);
+  margin: 0;
+  padding: var(--k-space-4);
+  list-style: none;
+  border: var(--k-border-thin) solid var(--k-line);
+  border-radius: var(--k-radius-md);
+  background: var(--k-panel);
+}
+
+.project-access__journey li {
+  display: grid;
+  align-content: start;
+  gap: var(--k-space-1);
+}
+
+.project-access__journey span,
+.project-access__hint {
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+}
+
+.project-access__setup {
+  display: grid;
+  gap: var(--k-space-2);
+}
+
+.project-access__setup p {
+  margin: 0;
+}
+
+.project-access__setup button {
+  min-height: 44px;
+}
+
+.project-access .page-section__body {
+  display: grid;
+  gap: var(--k-space-4);
+}
+
+.project-access .page-section__body > h3 {
+  margin: 0;
+}
+
+.project-access__setup-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--k-space-2);
+}

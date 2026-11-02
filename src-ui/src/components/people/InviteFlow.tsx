@@ -2,6 +2,7 @@ import type { ProjectMemberRole } from '@kontourai/station-contracts/project-mem
 import { Popover } from '@kontourai/ui/react';
 import { useState } from 'react';
 import { useUnsavedGuard } from '../../hooks/useUnsavedGuard';
+import { isLoopbackOrigin } from '../../lib/accountSharingOrigin';
 import { copyToClipboard } from '../../lib/clipboard';
 import { Button } from '../Button';
 import { Checkbox } from '../Checkbox';
@@ -23,14 +24,6 @@ export function invitationLink(invitationOrigin: string, token: string) {
   return invite.href;
 }
 
-/**
- * The Project invitation form: an optional verified-email restriction, the
- * role, and Create invitation. It owns its draft (and the unsaved-changes
- * guard over a typed email); the caller builds and sends the command.
- *
- * Without `invitationOrigin` Station has no account sign-in to send a
- * recipient to, so the form says so and stays disabled.
- */
 export function InviteFlow({
   invitationOrigin,
   busy,
@@ -90,12 +83,23 @@ export function InviteFlow({
             </p>
           </Popover>
         </div>
-        {!invitationOrigin && (
-          <p>
-            Account sign-in must be configured before creating an invitation
-            link.
-          </p>
-        )}
+        <div className="invite-flow__address">
+          {invitationOrigin ? (
+            <>
+              <span>Recipients sign in at</span>
+              <code>{invitationOrigin}</code>
+              <p>
+                {isLoopbackOrigin(invitationOrigin)
+                  ? 'This address only works on this computer. Choose a reachable sign-in address before inviting someone elsewhere.'
+                  : 'Recipients must be able to reach this address. Creating a link does not make this Station public.'}
+              </p>
+            </>
+          ) : (
+            <p>
+              Configure account sign-in on this Station before creating a link.
+            </p>
+          )}
+        </div>
         <Checkbox
           checked={restrictEmail}
           disabled={unavailable}
@@ -139,21 +143,25 @@ export function InviteFlow({
   );
 }
 
-/**
- * A created invitation's link: Copy invitation, with the link itself behind
- * a disclosure for a reader who would rather select it. `onCopied` reports
- * whether the clipboard took it.
- */
 export function InvitationLinkReveal({
   link,
   onCopied,
+  expiresAt,
 }: {
   link: string;
+  expiresAt?: string;
   onCopied: (copied: boolean) => void;
 }) {
   return (
-    <div>
-      <Button onClick={() => void copyToClipboard(link).then(onCopied)}>
+    <section className="invitation-link" aria-label="Share this invitation">
+      <h3>Share this invitation</h3>
+      {expiresAt && (
+        <p>Single-use · Expires {new Date(expiresAt).toLocaleString()}</p>
+      )}
+      <Button
+        variant="primary"
+        onClick={() => void copyToClipboard(link).then(onCopied)}
+      >
         Copy invitation
       </Button>
       <details>
@@ -167,6 +175,10 @@ export function InvitationLinkReveal({
           />
         </label>
       </details>
-    </div>
+      <p>
+        Send the link privately. They sign in, accept, then request browser
+        access.
+      </p>
+    </section>
   );
 }
