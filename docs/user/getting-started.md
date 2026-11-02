@@ -483,8 +483,7 @@ show what **Start** will use:
   now (it is read-only, still loading, the check failed, or it is waiting on a
   turn the server reports as still running), the other engines are not listed
   and **Use Agent defaults** is unavailable.
-- The **project** control in the start heading shows the Project's icon (or
-  its colour when none is displayable) and name, or **Without a project**.
+- The **project** control in the start heading shows its name, or **Without a project**.
   Open it to choose a project. The list shows each project's folder and the
   folder this chat will run in. For a linked checkout, that is its resolved
   execution root. An unavailable location states why Station cannot start
@@ -515,7 +514,10 @@ chat tab that reads and replies to the conversation on the chosen Station.
 It keeps the destination visible, supports Stop and answers requests there.
 A failed or uncertain send keeps its text and delivery identity; **Check
 conversation** reads what arrived, and **Retry this message** reuses that
-message’s identity.
+message’s identity. **Edit in New Chat** opens a separate editable draft with
+those remote choices and keeps the original message. Check whether it arrived
+before sending changed work. You choose the receiver’s Project again before Start.
+This preview takes text only; attachment and visual-reply reads are unavailable.
 
 The Project choice is explicit: a Project on this computer is never matched to
 one on another computer by name or slug. This chat path uses the existing

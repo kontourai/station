@@ -105,3 +105,24 @@
 .new-chat-modal:has(.chat-start__setup) > .start-composer {
   position: static;
 }
+
+.new-chat-draft__body:has(> .new-chat-draft__lead:only-child:empty) {
+  display: none;
+}
+.new-chat-modal > .start-composer {
+  gap: clamp(var(--k-space-1), 2cqh, var(--k-space-3));
+  padding-block-start: clamp(var(--k-space-2), 4cqh, var(--k-space-5));
+  padding-block-end: max(
+    clamp(var(--k-space-2), 4cqh, var(--k-space-5)),
+    var(--safe-bottom, 0px)
+  );
+}
+.new-chat-modal .start-composer__destination {
+  padding-block: clamp(0px, calc(10cqh - 2rem), var(--k-space-5));
+}
+.new-chat-modal .start-composer__destination h2 {
+  font-size: clamp(var(--k-text-lg), 6cqh, var(--k-text-2xl));
+}
+.new-chat-modal .start-composer__box {
+  gap: clamp(var(--k-space-1), 2cqh, var(--k-space-3));
+}

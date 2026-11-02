@@ -359,6 +359,7 @@ export interface UnacknowledgedDecision {
 
 export interface ChatSession {
   peerChat?: PeerChatBinding;
+  peerChatInvalid?: boolean;
   taskShaping?: boolean;
   skillExperienceDraft?: import('./lib/skill-experience-draft').SkillExperienceDraft;
   skillExperienceDraftInvalid?: boolean;

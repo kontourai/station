@@ -8,7 +8,7 @@ import type {
 } from '../chat/fork-turn-source';
 import { LazyBoundary, LazyBoundaryError } from '../LazyBoundary';
 import { NewChatAction } from '../NewChatAction';
-import { Empty, SkeletonList } from '../state';
+import { Empty, ErrorState, SkeletonList } from '../state';
 import '../skill-experiences/skill-experiences.css';
 import { ChatDockBody } from './ChatDockBody';
 import type { ComposerActionsMenuProps } from './ComposerActionsMenu';
@@ -155,6 +155,14 @@ function ChatDockContentAreaImpl({
   onRetryConversationOpen,
   onOpenBackgroundTasks,
 }: ChatDockContentAreaProps) {
+  if (activeSession?.peerChatInvalid)
+    return (
+      <ErrorState
+        title="This remote chat’s saved destination could not be read"
+        description="Start a new chat and choose its Station again."
+        action={<NewChatAction onClick={() => onNewChat()} />}
+      />
+    );
   if (activeSession?.peerChat)
     return (
       <LazyBoundary

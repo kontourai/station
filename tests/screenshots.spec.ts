@@ -3705,6 +3705,13 @@ const SCREENS: Screen[] = [
             await expect(
               draft.getByRole('textbox', { name: 'What would you like done?' }),
             ).toBeVisible();
+            const location = draft.locator('.start-composer__location');
+            await expect(location).toBeInViewport();
+            const bounds = await location.boundingBox();
+            expect(bounds).not.toBeNull();
+            expect(bounds!.y + bounds!.height).toBeLessThanOrEqual(
+              viewport.height,
+            );
           },
         ),
       }),

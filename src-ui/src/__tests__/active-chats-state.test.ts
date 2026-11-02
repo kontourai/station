@@ -184,6 +184,17 @@ describe('active chat state helpers', () => {
     expect(restored.conversationId).toBeUndefined();
     expect(restored.projectSlug).toBe('source-project');
     expect(restored.conversationOpenPending).toBe(false);
+    for (const malformed of [{}, null, { environmentId: 'desktop-win' }]) {
+      const invalid = hydrateActiveChats([
+        { ...saved[0], peerChat: malformed },
+      ]);
+      expect(invalid.remote?.peerChat).toBeUndefined();
+      expect(invalid.remote?.peerChatInvalid).toBe(true);
+      expect(
+        hydrateActiveChats(serializeActiveChats(invalid)).remote
+          ?.peerChatInvalid,
+      ).toBe(true);
+    }
   });
 
   test('#749 reload persists only the last child identity and fails closed pending a fresh open resolution', () => {

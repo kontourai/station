@@ -120,13 +120,6 @@
 .start-composer__box:focus-within {
   border-color: var(--k-focus);
 }
-.start-composer__box .start-composer__input:focus-visible {
-  outline: none;
-}
-.start-composer__box:has(.start-composer__input:focus-visible) {
-  outline: 2px solid var(--k-focus);
-  outline-offset: 2px;
-}
 .start-composer--compact .start-composer__destination {
   justify-content: flex-start;
   padding-block: 0;

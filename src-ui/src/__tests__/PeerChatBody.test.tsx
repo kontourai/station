@@ -19,6 +19,7 @@ import { LoadFullContent } from '../components/chat/LoadFullContent';
 import { PeerChatBody } from '../components/chat-dock/PeerChatBody';
 import { serializeActiveChats } from '../contexts/active-chats-state';
 import { activeChatsStore } from '../contexts/active-chats-store';
+import { type NewChatIntent, OPEN_NEW_CHAT_EVENT } from '../lib/newChatIntent';
 import type { PeerChatBinding } from '../lib/peer-chat';
 
 const authority = {
@@ -345,4 +346,43 @@ test('answers receiver tool approvals and forms through the shared controls', as
       content: { branch: 'feature/windows' },
     }),
   );
+});
+
+test('an unconfirmed or refused message can be edited in a separate remote draft without losing its original key', async () => {
+  const { state } = wire();
+  state.uncertain = true;
+  start()();
+  let intent: NewChatIntent | undefined;
+  const opened = (event: Event) => {
+    event.preventDefault();
+    intent = (event as CustomEvent<NewChatIntent>).detail;
+  };
+  window.addEventListener(OPEN_NEW_CHAT_EVENT, opened);
+  try {
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Edit in New Chat' }),
+    );
+    expect(intent).toMatchObject({
+      initialPrompt: 'Which machine?',
+      selection: {
+        context: '__global__',
+        agentSlug: 'codex',
+        model: {
+          environmentId: 'desktop-win',
+          modelId: 'remote-model',
+        },
+      },
+    });
+    expect(intent?.startWithDefault).not.toBe(true);
+    expect(
+      activeChatsStore.getSnapshot()['peer-tab']?.peerChat?.pending?.id,
+    ).toBe('first-key');
+    expect(
+      screen.getByText(
+        /Check the conversation before sending a changed message/,
+      ),
+    ).toBeTruthy();
+  } finally {
+    window.removeEventListener(OPEN_NEW_CHAT_EVENT, opened);
+  }
 });

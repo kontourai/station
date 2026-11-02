@@ -451,7 +451,7 @@ export function useSendMessage(
         throw new Error('Replay conversations are read-only.');
       const allChats = activeChatsStore.getSnapshot();
       let currentState = allChats[sessionId];
-      if (currentState?.peerChat) {
+      if (currentState?.peerChat || currentState?.peerChatInvalid) {
         onError?.(
           new Error('Send this message from the remote chat composer.'),
         );

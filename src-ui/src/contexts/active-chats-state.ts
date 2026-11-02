@@ -372,6 +372,7 @@ export type ChatLiveUsage = {
 
 export type ChatUIState = {
   peerChat?: PeerChatBinding;
+  peerChatInvalid?: boolean;
   taskShaping?: boolean;
   skillExperienceDraft?: SkillExperienceDraft;
   skillExperienceDraftInvalid?: boolean;
@@ -838,6 +839,7 @@ export type ActiveChatMetadata = {
 
 export type PersistedActiveChat = {
   peerChat?: PeerChatBinding;
+  peerChatInvalid?: boolean;
   taskShaping?: boolean;
   skillExperienceDraft?: SkillExperienceDraft;
   skillExperienceDraftInvalid?: boolean;
@@ -1067,6 +1069,7 @@ export function hydrateActiveChats(
       continue;
     }
     const session = candidate as PersistedActiveChat;
+    const peerChat = readPeerChatBinding(session.peerChat);
     const text = (value: unknown) => optionalString(value);
     const queuedMessageFailure = readQueuedMessageFailure(
       session.queuedMessageFailure,
@@ -1162,7 +1165,10 @@ export function hydrateActiveChats(
       inputHistory: stringList(session.inputHistory),
       hasUnread: false,
       agentSlug: session.agentSlug,
-      peerChat: readPeerChatBinding(session.peerChat),
+      peerChat,
+      peerChatInvalid:
+        session.peerChatInvalid === true ||
+        (session.peerChat !== undefined && !peerChat),
       conversationId: text(session.conversationId),
       currentSessionId: text(session.currentSessionId),
       conversationOpenPending: typeof session.conversationId === 'string',
@@ -1305,6 +1311,7 @@ export function activeChatDurableId(
  */
 export function isDurableActiveChat(chat: {
   peerChat?: PeerChatBinding;
+  peerChatInvalid?: boolean;
   conversationId?: string;
   unsentMessages?: unknown[];
   queuedMessages?: unknown[];
@@ -1316,6 +1323,7 @@ export function isDurableActiveChat(chat: {
   if (chat.replay) return false;
   return Boolean(
     chat.peerChat ||
+      chat.peerChatInvalid ||
       chat.conversationId ||
       chat.unsentMessages?.length ||
       chat.skillExperienceDraft ||
@@ -1374,6 +1382,7 @@ export function serializeActiveChats(
       currentSessionId: chat.currentSessionId,
       agentSlug: chat.agentSlug!,
       peerChat: chat.peerChat,
+      peerChatInvalid: chat.peerChatInvalid,
       queuedMessages: chat.queuedMessages || [],
       queuedMessageMetadata: chat.queuedMessageMetadata,
       pendingQueueDispatch: chat.pendingQueueDispatch,
@@ -1606,6 +1615,7 @@ export function mergeChatUpdates(
   }
   const shouldPersist =
     'peerChat' in nextUpdates ||
+    'peerChatInvalid' in nextUpdates ||
     'skillExperienceDraft' in nextUpdates ||
     'skillExperienceDraftInvalid' in nextUpdates ||
     'skillExperienceActive' in nextUpdates ||

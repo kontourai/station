@@ -24,6 +24,7 @@ import {
 import type { PendingApprovalRequest } from '../../hooks/orchestration/pendingRequestRows';
 import { unansweredApprovalRequests } from '../../hooks/orchestration/pendingRequestRows';
 import { useSurfaceVisibilityFlags } from '../../hooks/useSurfaceVisibilityFlags';
+import { dispatchNewChatIntent } from '../../lib/newChatIntent';
 import { type PeerChatBinding, peerChatApiBase } from '../../lib/peer-chat';
 import type { ChatSession } from '../../types';
 import { isStreamingSession } from '../../utils/sessionDisplay';
@@ -199,7 +200,8 @@ export function PeerChatBody({
         pending: undefined,
       },
     });
-  }, [history.data, binding, chat.id, updateChat, current]);
+    send.reset();
+  }, [history.data, binding, chat.id, updateChat, current, send.reset]);
   const stop = useMutation({
     retry: false,
     mutationFn: () => {
@@ -358,9 +360,38 @@ export function PeerChatBody({
                           : 'This message is awaiting confirmation.'}
                       </p>
                       {!send.isPending && binding.pending.dispatched && (
-                        <Button onClick={() => dispatch(binding.pending!)}>
-                          Retry this message
-                        </Button>
+                        <>
+                          <Button onClick={() => dispatch(binding.pending!)}>
+                            Retry this message
+                          </Button>
+                          <Button
+                            onClick={() => {
+                              if (!current()) return;
+                              dispatchNewChatIntent({
+                                initialPrompt: binding.pending!.text,
+                                selection: {
+                                  context: '__global__',
+                                  agentSlug: binding.agentId,
+                                  model: {
+                                    modelId: binding.model ?? '',
+                                    environmentId: binding.environmentId,
+                                    executionAgentId: binding.executionAgentId,
+                                    expectedDefinitionFingerprint:
+                                      binding.expectedDefinitionFingerprint,
+                                    providerOptions:
+                                      binding.providerOptions ?? {},
+                                  },
+                                },
+                              });
+                            }}
+                          >
+                            Edit in New Chat
+                          </Button>
+                          <p>
+                            Check the conversation before sending a changed
+                            message; it may have arrived.
+                          </p>
+                        </>
                       )}
                     </div>
                   )}

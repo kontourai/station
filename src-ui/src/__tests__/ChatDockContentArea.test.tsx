@@ -3,6 +3,7 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, test, vi } from 'vitest';
 import { ChatDockContentArea } from '../components/chat-dock/ChatDockContentArea';
+import type { ChatSession } from '../types';
 
 let historyPending: Promise<void> | null = null;
 let historyError: Error | null = null;
@@ -20,6 +21,28 @@ vi.mock('../components/chat-dock/ChatDockBody', () => ({
 }));
 
 describe('ChatDockContentArea', () => {
+  test('an invalid saved remote destination cannot expose the local composer', () => {
+    const onNewChat = vi.fn();
+    renderContentArea(vi.fn(), onNewChat, false, {
+      id: 'invalid-remote',
+      agentSlug: 'codex',
+      agentName: 'Codex',
+      title: 'Remote',
+      projectSlug: 'source-project',
+      peerChatInvalid: true,
+      createdAt: 1,
+      updatedAt: 1,
+    });
+    expect(
+      screen.getByText(
+        'This remote chat’s saved destination could not be read',
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByText('Chat body')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'New chat' }));
+    expect(onNewChat).toHaveBeenCalledOnce();
+  });
+
   test('starts a chat through the empty dock action', () => {
     const onNewChat = vi.fn();
     renderContentArea(vi.fn(), onNewChat, false);
@@ -118,10 +141,11 @@ function renderContentArea(
   onCloseHistory = vi.fn(),
   onNewChat = vi.fn(),
   isHistoryOpen = true,
+  activeSession: ChatSession | null = null,
 ) {
   return render(
     <ChatDockContentArea
-      activeSession={null}
+      activeSession={activeSession}
       activeOrchestrationSession={null}
       activeOrchestrationSessionRead="present"
       onRetryOrchestrationSessions={() => {}}

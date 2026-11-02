@@ -313,6 +313,7 @@ function deriveSession(
     updatedAt: Date.now(),
     provider: chatState.provider,
     peerChat: chatState.peerChat,
+    peerChatInvalid: chatState.peerChatInvalid,
     providerOptions: chatState.providerOptions,
     lastAppliedApprovalMode: chatState.lastAppliedApprovalMode,
     approvalEscalationRejected: chatState.approvalEscalationRejected,
