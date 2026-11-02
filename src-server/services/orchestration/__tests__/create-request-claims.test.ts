@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { agentId } from '@kontourai/station-contracts/agent-identity';
 import { environmentId } from '@kontourai/station-contracts/execution-target';
@@ -529,4 +529,23 @@ test('dead unmarked reservations free capacity for another key without consultin
   expect(
     Object.keys(JSON.parse(readFileSync(file, 'utf8')).claims),
   ).toHaveLength(1);
+});
+
+test('a fresh home treats both initial ledger reads as empty and writes its first reservation before the effect', async () => {
+  const { home, file, claims } = setup();
+  expect(existsSync(file)).toBe(false);
+  const effect = vi.fn(async (id: string) => {
+    const ledger = JSON.parse(readFileSync(file, 'utf8'));
+    expect(ledger.version).toBe(1);
+    expect(Object.values(ledger.claims)).toEqual([
+      expect.objectContaining({ kind: 'foreground', sessionId: id }),
+    ]);
+    expect(Object.values(ledger.claims)[0]).not.toHaveProperty('result');
+    return handle(id);
+  });
+  const first = await claims.run(input(), effect);
+  expect(await new CreateRequestClaims(home).run(input(), effect)).toEqual(
+    first,
+  );
+  expect(effect).toHaveBeenCalledTimes(1);
 });
