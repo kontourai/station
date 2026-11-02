@@ -54,8 +54,9 @@ by themselves produce a complete visual dialog.
   (see [Sheet drag handle](#sheet-drag-handle)).
 
 A consumer may keep its content mounted with `open={false}` to preserve a
-pending decision. The closed surface is hidden and releases dialog history and
-focus; reopening captures a new return-focus target. The approval sheet uses
+pending decision. The closed surface is hidden, is not a `dialog` (no role, no
+modal claim, `inert`), and releases dialog history and focus; reopening reuses
+the same node and captures a new return-focus target. The approval sheet uses
 this lifecycle so dismissal cannot reset an in-flight answer.
 
 Give the surface an accessible name. Do not add a second document Escape
