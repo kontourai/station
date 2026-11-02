@@ -26,6 +26,7 @@ import { EventStore } from ${moduleUrl('../event-store.ts')};
 import { OrchestrationService } from ${moduleUrl('../orchestration-service.ts')};
 import { EventBus } from ${moduleUrl('../event-bus.ts')};
 import { GateTestAdapter, createGateTestRegistry } from ${moduleUrl('../../../__test-utils__/orchestration-gate-test-harness.ts')};
+import { startRuntimeHealthChecks } from ${moduleUrl('../../../runtime/bootstrap/runtime-health.ts')};
 const store = new EventStore(process.argv[1]);
 const adapter = new GateTestAdapter();
 let stops = 0;
@@ -50,6 +51,10 @@ process.on('message', async (command) => {
     if (command === 'complete') {
       adapter.events.push({ eventId: 'child-turn-completed', provider: 'claude', threadId: 'child', method: 'turn.completed', turnId: 'child-turn', finishReason: 'stop', createdAt: '2026-01-01T00:00:02.000Z' });
       await new Promise(resolve => setImmediate(resolve));
+    } else if (command === 'health') {
+      const timers = [];
+      try { await startRuntimeHealthChecks({timers, logger:{debug(){},warn(){}}, maintainOwnedWork: () => service.maintainOwnedWork(), runHealthChecks:async()=>{}}); }
+      finally { for(const timer of timers) clearInterval(timer); }
     } else await service.sweepIdleSessions();
     process.send({ stops, effects, pending: store.pendingCascadeStops().length });
   } catch (error) { process.send({ error: String(error) }); }
@@ -83,6 +88,7 @@ function message(child: ChildProcess): Promise<unknown> {
 test.each([
   'normal',
   'parking-disabled-terminal-pickup',
+  'parking-disabled-health-pickup',
   'requester-crash-before-delivery',
   'reopen-after-delivery-before-ack',
 ] as const)(
@@ -198,7 +204,11 @@ test.each([
         fault.close();
       }
       execution.child.send(
-        mode === 'parking-disabled-terminal-pickup' ? 'complete' : 'reconcile',
+        mode === 'parking-disabled-terminal-pickup'
+          ? 'complete'
+          : mode === 'parking-disabled-health-pickup'
+            ? 'health'
+            : 'reconcile',
       );
       expect(await delivered).toEqual({
         stops: 1,

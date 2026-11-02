@@ -755,13 +755,21 @@ that could adopt it. See the
    A parent Session's aggregate lifecycle stays running while owned work or
    stop obligations remain live; `ownedWork.ownLifecycleState` retains its own
    fold. Another live process picks up its pending child stop through existing
-   reconciliation, including turn completion when idle parking is disabled.
-   A terminal child with no live binding or newer admission is already settled.
+   reconciliation and the runtime health tick even with parking disabled and no
+   further turns. A terminal child is settled only without a held binding, newer
+   admission, or unresolved prepared/invoking/indeterminate boundary.
    Unknown child custody stays pending for inspection but does not prevent the
    parent stopping itself. `ownedWork.state` and `pendingStops` distinguish
    stopping locally, waiting on a peer, and unknown cleanup from running work.
    Session and Inbox status lines show **Stopping**, **Waiting on another
    Station process**, or **Unknown** through the shared status ladder.
+   Unknown custody explains why Station cannot assign the stop. In Session
+   detail, **Release and remove** can remove the parent's unknown cleanup after
+   explicit confirmation that child processes may still be running and will no
+   longer be tracked by this Session. Child history stays available; this action
+   never claims that the child stopped. Known owners and changed custody refuse
+   release. Unknown probing backs off for 30 seconds, with at most 64 entries
+   checked per maintenance pass; an explicit command requests a fresh check.
    Reopening resumes recorded obligations, and
    repeated delivery is harmless at the adapter. New result request IDs derive
    from the child execution Session and its terminal event. Historical stored

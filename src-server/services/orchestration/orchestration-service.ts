@@ -2550,6 +2550,7 @@ export class OrchestrationService {
   })();
 
   private readonly stopSessionDeletionNotifications?: () => void;
+  private readonly releaseSessionActivity?: () => void;
   private readonly sessionDeletionReaders = new Set<SessionReadScope>();
 
   retainSessionDeletionReader(authority: SessionReadScope): () => void {
@@ -2561,12 +2562,14 @@ export class OrchestrationService {
 
   constructor(private readonly options: OrchestrationServiceOptions) {
     this.nativeForkStoredReadVerifier = options.nativeForkStoredReadVerifier;
-    // All delete paths converge here, including Draft discard and attached alias cleanup.
-    this.stopSessionDeletionNotifications = options.eventStore?.observeCommits({
-      sessionHasBinding: (threadId) =>
+    this.releaseSessionActivity = options.eventStore?.bindSessionActivity(
+      (threadId) =>
         this.sessionAdapters.has(threadId) ||
         this.cascadeStopAdapters.has(threadId) ||
         this.startingSessionThreads.has(threadId),
+    );
+    // All delete paths converge here, including Draft discard and attached alias cleanup.
+    this.stopSessionDeletionNotifications = options.eventStore?.observeCommits({
       threadDeleting: (threadId) => {
         const audience = new Set(
           [...this.sessionDeletionReaders].filter((scope) =>
@@ -4418,6 +4421,7 @@ export class OrchestrationService {
     ]);
     this.activeEventAdapters.clear();
     this.adoption.unregisterOwner();
+    this.releaseSessionActivity?.();
     const failures = [
       ...(await retirementResults),
       ...cascadeResults,
@@ -10994,6 +10998,51 @@ export class OrchestrationService {
           this.persistReceipt(receipt);
           return { receipt, result: undefined };
         }
+        case 'releaseUnknownOwnedWork': {
+          if (command.confirmation !== 'child-process-may-still-be-running')
+            throw new Error(
+              'Confirm that child processes may still be running.',
+            );
+          const store = this.options.eventStore;
+          if (!store) throw new Error('Cascade event store is unavailable.');
+          store.requestCascadeRecheck(command.threadId);
+          await this.reconcileCascadeStops();
+          await this.sessionExecutionCoordinator.runLifecycleTransition(
+            command.threadId,
+            async () => {
+              if (context?.requestCurrent?.() === false)
+                throw new Error(
+                  'Authorization expired before releasing child cleanup.',
+                );
+              if (
+                this.sessionAdapters.has(command.threadId) ||
+                this.materializingSessions.has(command.threadId) ||
+                this.startingSessionThreads.has(command.threadId)
+              )
+                await this.stopSessionNow(command.threadId, false);
+              store.requestCascadeRecheck(command.threadId);
+              await this.reconcileCascadeStops();
+              if (context?.requestCurrent?.() === false)
+                throw new Error(
+                  'Authorization expired before releasing child cleanup.',
+                );
+              store.deleteThread(command.threadId, {
+                releaseUnknownOwnedWork: true,
+              });
+              // Reuse the deleted-thread gate so late provider events cannot
+              // recreate a Session the user explicitly removed.
+              this.markDraftDiscarded(command.threadId);
+              this.forgetThreadState(command.threadId, {
+                policyThreads: true,
+                flowBoundThreads: true,
+                ownerCache: true,
+                turnProgress: true,
+              });
+            },
+          );
+          this.persistReceipt(receipt);
+          return { receipt, result: undefined };
+        }
         case 'discardDraft': {
           await this.discardDraftSession(command.threadId, context ?? {});
           // Persisted AFTER the delete on purpose: `deleteThread` removes
@@ -11894,6 +11943,7 @@ export class OrchestrationService {
         ...(turnId ? { turnId } : {}),
       });
     }
+    store.requestCascadeRecheck(threadId);
     await this.reconcileCascadeStops();
     if (
       store
@@ -11921,9 +11971,14 @@ export class OrchestrationService {
     const store = this.options.eventStore;
     if (!store) return Promise.resolve();
     const reconcile = async () => {
+      let remaining = 64;
       do {
         this.cascadeStopReconcileAgain = false;
-        const intents = store.pendingCascadeStops();
+        const intents = store.pendingCascadeStops({
+          readyAt: Date.now(),
+          limit: remaining,
+        });
+        remaining -= intents.length;
         const owners = new Map<
           string,
           ReturnType<EventStore['cascadeStopOwner']>
@@ -11943,12 +11998,16 @@ export class OrchestrationService {
           } catch {
             unavailable = true;
           }
-          let owner = unavailable
-            ? { custody: 'unknown' as const, reason: 'binding-unavailable' }
-            : store.cascadeStopOwner(
-                intent.childId,
-                held || this.startingSessionThreads.has(intent.childId),
-              );
+          let owner = store.cascadeStopOwner(
+            intent.childId,
+            held || this.startingSessionThreads.has(intent.childId),
+          );
+          if (unavailable && owner.custody !== 'peer')
+            owner = {
+              ...owner,
+              custody: 'unknown',
+              reason: 'binding-unavailable',
+            };
           if (
             owner.custody === 'local' &&
             !held &&
@@ -11965,16 +12024,36 @@ export class OrchestrationService {
             store.completeCascadeStop(intent.childId, intent.terminalId);
             continue;
           }
-          const changed = store.recordCascadeStopCustody(
+          const recorded = store.recordCascadeStopCustody(
             intent.childId,
             intent.terminalId,
             owner.custody,
             owner.reason,
+            owner.custody === 'unknown' ? Date.now() + 30_000 : 0,
+            owner.snapshot,
           );
-          if (changed && owner.custody === 'unknown')
+          if (!recorded) {
+            owners.set(intent.childId, {
+              ...owner,
+              custody: 'unknown',
+              reason: 'owner-changed',
+            });
+            this.cascadeStopReconcileAgain = true;
+            continue;
+          }
+          if (
+            recorded &&
+            owner.custody === 'unknown' &&
+            (intent.custody !== owner.custody || intent.reason !== owner.reason)
+          )
             this.options.logger.warn(
               'Cascade stop custody is unknown; retaining pending intent',
-              { ...intent, ...owner },
+              {
+                ...intent,
+                custody: owner.custody,
+                reason: owner.reason,
+                owner: owner.owner,
+              },
             );
           if (owner.custody === 'local' && held && adapter)
             this.cascadeStopAdapters.set(intent.childId, adapter);
@@ -12017,11 +12096,22 @@ export class OrchestrationService {
                 intent.childId,
               );
             }
-            store.completeCascadeStop(
+            const completed = store.completeCascadeStop(
               intent.childId,
               intent.terminalId,
               interruptResult,
             );
+            if (!completed) {
+              store.recordCascadeStopCustody(
+                intent.childId,
+                intent.terminalId,
+                'unknown',
+                'unresolved-invocation',
+                Date.now() + 30_000,
+              );
+              this.cascadeStopAdapters.delete(intent.childId);
+              continue;
+            }
             if (
               !store
                 .pendingCascadeStops()
@@ -12035,7 +12125,10 @@ export class OrchestrationService {
             });
           }
         }
-      } while (this.cascadeStopReconcileAgain);
+      } while (this.cascadeStopReconcileAgain && remaining > 0);
+      // The durable backlog resumes on the next health tick, not another
+      // recursive pass that would bypass this invocation's probe budget.
+      if (remaining === 0) this.cascadeStopReconcileAgain = false;
     };
     this.cascadeStopReconciliation = Promise.resolve()
       .then(reconcile)
@@ -12045,12 +12138,17 @@ export class OrchestrationService {
     return this.cascadeStopReconciliation;
   }
 
-  private observeCascadeStops(): void {
-    void this.reconcileCascadeStops().catch((error) => {
+  async maintainOwnedWork(): Promise<void> {
+    await this.reconcileCascadeStops().catch((error) => {
       this.options.logger.warn('Cascade stop reconciliation failed', {
         error: errorMessage(error),
       });
     });
+  }
+
+  private observeCascadeStops(threadId?: string): void {
+    if (threadId) this.options.eventStore?.requestCascadeRecheck(threadId);
+    void this.maintainOwnedWork();
   }
 
   private async stopSessionNow(
@@ -14258,11 +14356,12 @@ export class OrchestrationService {
     });
     if (
       adapter &&
-      this.options.eventStore
-        ?.pendingCascadeStops()
-        .some((intent) => intent.childId === session.threadId)
+      this.options.eventStore?.pendingCascadeStops({
+        childId: session.threadId,
+        limit: 1,
+      }).length
     )
-      this.observeCascadeStops();
+      this.observeCascadeStops(session.threadId);
   }
 
   /**

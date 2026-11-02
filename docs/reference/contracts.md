@@ -60,6 +60,16 @@ parent whose child cleanup remains pending. Unknown cleanup stays visible after
 an ancestor's own Stop completes. The counts cover verified,
 non-background descendants and pending stop obligations.
 
+`releaseUnknownOwnedWork` is an orchestration command with `threadId` and
+`confirmation: 'child-process-may-still-be-running'`. It requires an at-rest
+Station-owned parent and checked unknown child custody. The writer rechecks the
+observed boundary snapshot, removes that parent's unknown obligations, and
+deletes the parent while retaining child history and cancellation fences against
+replay. It neither stops
+unknown processes nor records them as stopped. The UI asks for confirmation
+before sending it; older hosts reject the new wire type. Unresolved prepared,
+invoking or indeterminate boundaries always prevent ordinary stop settlement.
+
 New delegated-result request IDs are `dr-` followed by the first 40 hexadecimal
 characters of SHA-256 over JSON `[childSessionId, childTerminalEventId]`.
 Existing stored IDs and semantic transition keys are retained for replay.

@@ -11,10 +11,10 @@ export const CASCADE_TRIGGER_METHODS: readonly string[] = [
   'turn.aborted',
   'session.cancellation-requested',
 ];
-export const SESSION_ACTIVITY_METHODS = [
-  'session.started',
-  'turn.started',
-] as const;
+const SESSION_ACTIVITY_METHODS = ['session.started', 'turn.started'] as const;
+export function sessionActivitySql(): string {
+  return `method IN (${SESSION_ACTIVITY_METHODS.map((method) => `'${method}'`).join(', ')})`;
+}
 export function cascadeTriggerSql(alias: string): string {
   return `(${alias}.method IN (${CASCADE_TRIGGER_METHODS.map((method) => `'${method}'`).join(', ')}) OR (${alias}.method = 'session.state-changed' AND ${alias}.session_state = 'canceled'))`;
 }
@@ -166,7 +166,7 @@ export function reserveOwnershipStart(
         .prepare(`SELECT 1 FROM orchestration_cancellation_fences WHERE thread_id = ?
       UNION ALL SELECT 1 FROM orchestration_events e WHERE e.thread_id = ?
       AND ${cascadeTriggerSql('e')}
-      AND e.global_sequence > COALESCE((SELECT MAX(global_sequence) FROM orchestration_events WHERE thread_id = ? AND method IN (${SESSION_ACTIVITY_METHODS.map((method) => `'${method}'`).join(', ')})), 0) LIMIT 1`)
+      AND e.global_sequence > COALESCE((SELECT MAX(global_sequence) FROM orchestration_events WHERE thread_id = ? AND ${sessionActivitySql()}), 0) LIMIT 1`)
         .get(parentId, parentId, parentId);
       if (cancelled)
         throw new Error(
@@ -260,7 +260,7 @@ export function ownedDescendantsBottomUp(
             edge.createdSequence >= before &&
             db
               .prepare(`SELECT 1 FROM orchestration_events WHERE thread_id = ?
-        AND global_sequence > ? AND global_sequence < ? AND method IN (${SESSION_ACTIVITY_METHODS.map((method) => `'${method}'`).join(', ')}) LIMIT 1`)
+        AND global_sequence > ? AND global_sequence < ? AND ${sessionActivitySql()} LIMIT 1`)
               .get(parent, before, edge.createdSequence)
           ),
       )

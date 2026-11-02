@@ -2515,7 +2515,6 @@ type SessionWorkItemAssociationMetadataRow = Record<string, unknown>;
  * fold such an event and should instead re-read the thread's durable state.
  */
 export interface EventStoreCommitObserver {
-  sessionHasBinding?(threadId: string): boolean;
   eventCommitted?(input: {
     event: CanonicalRuntimeEvent;
     globalSequence: number;
@@ -2532,6 +2531,13 @@ export interface EventStoreCommitObserver {
    */
   lineageChanged?(input: { conversationId: string; sessionId: string }): void;
 }
+
+type CascadeStopOwner = {
+  custody: 'local' | 'peer' | 'unknown' | 'settled';
+  reason: string;
+  owner?: { pid: number; birth?: string };
+  snapshot: string;
+};
 
 /** #2309: see {@link EventStore.readTurnActivitySeed}. */
 export interface TurnActivitySeed {
@@ -3002,9 +3008,8 @@ export class EventStore {
       ensureOrchestrationEventStoreColumns(this.db);
       migrateSessionParentMentions(this.db);
       backfillSessionOwnership(this.db);
-      backfillCascadeStopIntents(
-        this.db,
-        (childId) => this.cascadeStopOwner(childId).custody === 'settled',
+      backfillCascadeStopIntents(this.db, (childId) =>
+        this.isCascadeSessionSettled(childId),
       );
       ensurePositiveTurnStartIndex(this.db);
       // #4003: Task memory (summary revisions and keyed records), apart from
@@ -5091,11 +5096,8 @@ export class EventStore {
         )).run(globalSequence);
         this.recordAttachmentRefs(event.threadId, persisted.blobRefs);
         recordSessionOwnership(this.db, event, globalSequence);
-        deriveCascadeStopIntents(
-          this.db,
-          event,
-          globalSequence,
-          (childId) => this.cascadeStopOwner(childId).custody === 'settled',
+        deriveCascadeStopIntents(this.db, event, globalSequence, (childId) =>
+          this.isCascadeSessionSettled(childId),
         );
         this.recordEventContent(event.threadId, ingress.spills);
         this.chargeCommittedToolImages(persisted.toolImageKey);
@@ -15082,14 +15084,30 @@ export class EventStore {
   ownedStopTargets(parentId: string) {
     return this.readOwnershipSnapshot(() =>
       ownedDescendantsBottomUp(this.db, parentId).filter(
-        (id) => this.cascadeStopOwner(id).custody !== 'settled',
+        (id) => !this.isCascadeSessionSettled(id),
       ),
     );
   }
 
+  private sessionBinding?: (threadId: string) => boolean;
+
+  bindSessionActivity(binding: (threadId: string) => boolean): () => void {
+    if (this.sessionBinding)
+      throw new Error('Session activity is already bound.');
+    this.sessionBinding = binding;
+    return () => {
+      if (this.sessionBinding === binding) this.sessionBinding = undefined;
+    };
+  }
+
   private hasSessionBinding(threadId: string): boolean {
-    return [...this.commitObservers].some(
-      (observer) => observer.sessionHasBinding?.(threadId) === true,
+    return this.sessionBinding?.(threadId) === true;
+  }
+
+  private isCascadeSessionSettled(childId: string): boolean {
+    return isCascadeStopSettled(
+      readCascadeSessionFacts(this.db, [childId]).get(childId)!,
+      this.hasSessionBinding(childId),
     );
   }
 
@@ -15159,8 +15177,7 @@ export class EventStore {
             if (
               childId !== rootId &&
               current.active &&
-              this.classifyCascadeStop(current, this.hasSessionBinding(childId))
-                .custody !== 'settled'
+              !isCascadeStopSettled(current, this.hasSessionBinding(childId))
             )
               runningChildCount++;
           }
@@ -15185,7 +15202,8 @@ export class EventStore {
         this.pendingCascadeStops()
           .filter(
             (intent) =>
-              intent.terminalId === terminalId && intent.custody !== 'unknown',
+              intent.terminalId === terminalId &&
+              (intent.custody !== 'unknown' || intent.reason === 'unobserved'),
           )
           .map((intent) => intent.childId),
       );
@@ -15195,7 +15213,9 @@ export class EventStore {
     });
   }
 
-  pendingCascadeStops() {
+  pendingCascadeStops(
+    options: { readyAt?: number; limit?: number; childId?: string } = {},
+  ) {
     return z
       .array(
         z.object({
@@ -15212,29 +15232,51 @@ export class EventStore {
       COALESCE(c.custody, 'unknown') AS custody, COALESCE(json_extract(c.evidence_json, '$.reason'), 'unobserved') AS reason
       FROM orchestration_cascade_stop_intents i LEFT JOIN orchestration_cascade_stop_custody c
         ON c.child_session_id = i.child_session_id AND c.terminal_event_id = i.terminal_event_id
-      WHERE i.state = 'pending' ORDER BY i.rowid`)
-          .all(),
+      WHERE i.state = 'pending'
+        AND (? IS NULL OR i.child_session_id = ?)
+        AND (? IS NULL OR COALESCE(json_extract(c.evidence_json, '$.nextProbeAt'), 0) <= ?)
+      ORDER BY COALESCE(json_extract(c.evidence_json, '$.probedAt'), 0), i.rowid LIMIT ?`)
+          .all(
+            options.childId ?? null,
+            options.childId ?? null,
+            options.readyAt ?? null,
+            options.readyAt ?? null,
+            options.limit ?? -1,
+          ),
       );
   }
 
   cascadeStopOwner(
     childId: string,
     locallyHeld = this.hasSessionBinding(childId),
-  ) {
-    return this.classifyCascadeStop(
-      readCascadeSessionFacts(this.db, [childId]).get(childId)!,
-      locallyHeld,
-    );
+  ): CascadeStopOwner {
+    const facts = readCascadeSessionFacts(this.db, [childId]).get(childId)!;
+    const snapshot = JSON.stringify(facts);
+    const initial = {
+      ...this.classifyCascadeStop(facts, locallyHeld),
+      snapshot,
+    };
+    if (initial.reason !== 'unverified-owner' || !facts.owner) return initial;
+    const observed = this.recoveryProcessIdentity.probe(facts.owner.pid);
+    const current = readCascadeSessionFacts(this.db, [childId]).get(childId)!;
+    const currentSnapshot = JSON.stringify(current);
+    if (currentSnapshot !== snapshot)
+      return {
+        custody: 'unknown',
+        reason: 'owner-changed',
+        snapshot: currentSnapshot,
+      };
+    return {
+      ...this.classifyCascadeStop(current, locallyHeld, observed),
+      snapshot: currentSnapshot,
+    };
   }
 
   private classifyCascadeStop(
     facts: CascadeSessionFacts,
     locallyHeld: boolean,
-  ): {
-    custody: 'local' | 'peer' | 'unknown' | 'settled';
-    reason: string;
-    owner?: { pid: number; birth?: string };
-  } {
+    observed?: ReturnType<TurnIdempotencyProcessIdentity['probe']>,
+  ): Omit<CascadeStopOwner, 'snapshot'> {
     if (isCascadeStopSettled(facts, locallyHeld))
       return { custody: 'settled', reason: 'terminal-and-unbound' };
     const row = facts.owner;
@@ -15263,17 +15305,16 @@ export class EventStore {
       };
     if (row.pid === process.pid)
       return { custody: 'unknown', reason: 'unverified-local-owner', owner };
-    const observed = this.recoveryProcessIdentity.probe(row.pid);
     if (
       row.identityKind === 'exact' &&
       row.birth &&
-      observed.state === 'exact' &&
+      observed?.state === 'exact' &&
       observed.identity.start === row.birth
     )
       return { custody: 'peer', reason: 'live-exact-boundary-owner', owner };
     return {
       custody: 'unknown',
-      reason: observed.state === 'dead' ? 'dead-owner' : 'unverified-owner',
+      reason: observed?.state === 'dead' ? 'dead-owner' : 'unverified-owner',
       owner,
     };
   }
@@ -15283,25 +15324,50 @@ export class EventStore {
     terminalId: string,
     custody: 'local' | 'peer' | 'unknown',
     reason: string,
+    nextProbeAt = 0,
+    expectedSnapshot?: string,
   ): boolean {
-    const result = z
-      .object({ changes: z.union([z.number(), z.bigint()]) })
-      .parse(
-        this.db
-          .prepare(`INSERT INTO orchestration_cascade_stop_custody VALUES (?, ?, ?, ?)
+    return writeTransaction(this.db, 'cascade_custody', () => {
+      const snapshot = JSON.stringify(
+        readCascadeSessionFacts(this.db, [childId]).get(childId)!,
+      );
+      if (expectedSnapshot !== undefined && snapshot !== expectedSnapshot)
+        return false;
+      this.db
+        .prepare(`INSERT INTO orchestration_cascade_stop_custody VALUES (?, ?, ?, ?)
       ON CONFLICT(child_session_id, terminal_event_id) DO UPDATE SET custody = excluded.custody, evidence_json = excluded.evidence_json
       WHERE custody != excluded.custody OR evidence_json != excluded.evidence_json`)
-          .run(childId, terminalId, custody, JSON.stringify({ reason })),
-      );
-    return Number(result.changes) > 0;
+        .run(
+          childId,
+          terminalId,
+          custody,
+          JSON.stringify({
+            reason,
+            nextProbeAt,
+            probedAt: Date.now(),
+            snapshot,
+          }),
+        );
+      return true;
+    });
+  }
+
+  requestCascadeRecheck(threadId: string): void {
+    this.db
+      .prepare(`UPDATE orchestration_cascade_stop_custody
+      SET evidence_json = json_set(evidence_json, '$.nextProbeAt', 0)
+      WHERE (child_session_id, terminal_event_id) IN (
+        SELECT child_session_id, terminal_event_id FROM orchestration_cascade_stop_intents
+        WHERE state = 'pending' AND (parent_session_id = ? OR child_session_id = ?))`)
+      .run(threadId, threadId);
   }
 
   completeCascadeStop(
     childId: string,
     terminalId: string,
     result?: InterruptTurnResult,
-  ): void {
-    completeCascadeStop(this.db, childId, terminalId, result);
+  ): boolean {
+    return completeCascadeStop(this.db, childId, terminalId, result);
   }
 
   readCascadeInterruptResult(childId: string, terminalId: string) {
@@ -17094,7 +17160,10 @@ export class EventStore {
   }
 
   /** Remove a deliberately ephemeral diagnostic session and all of its receipts. */
-  deleteThread(threadId: string): void {
+  deleteThread(
+    threadId: string,
+    options: { releaseUnknownOwnedWork?: boolean } = {},
+  ): void {
     const exists =
       this.readSessionByThread(threadId) !== undefined ||
       (this.countEventsByThreads([threadId]).get(threadId) ?? 0) > 0;
@@ -17127,24 +17196,80 @@ export class EventStore {
         threadId,
         ...this.ownedDescendantsBottomUp(threadId),
       ]);
+      const released = new Set<string>();
+      if (options.releaseUnknownOwnedWork) {
+        const pending = this.pendingCascadeStops();
+        for (const intent of pending) {
+          if (intent.parentId !== threadId || intent.childId === threadId)
+            continue;
+          if (intent.reason === 'unobserved')
+            throw new Error(
+              'Station is still checking child cleanup. Try again shortly.',
+            );
+          if (
+            pending.some(
+              (other) =>
+                other.childId === intent.childId && other.custody !== 'unknown',
+            )
+          )
+            throw new Error(
+              'A child has a verified stop owner. Wait for its stop to complete.',
+            );
+          const evidence = this.db
+            .prepare(
+              "SELECT json_extract(evidence_json, '$.snapshot') AS snapshot FROM orchestration_cascade_stop_custody WHERE child_session_id = ? AND terminal_event_id = ?",
+            )
+            .get(intent.childId, intent.terminalId);
+          if (
+            !evidence ||
+            evidence.snapshot !==
+              JSON.stringify(
+                readCascadeSessionFacts(this.db, [intent.childId]).get(
+                  intent.childId,
+                )!,
+              )
+          )
+            throw new Error(
+              'The child’s ownership changed. Check its cleanup again before releasing it.',
+            );
+          released.add(intent.childId);
+        }
+        for (const intent of pending) {
+          if (intent.parentId !== threadId || !released.has(intent.childId))
+            continue;
+          // Untracking does not authorize replay of a previously fenced turn.
+          this.db
+            .prepare(
+              'DELETE FROM orchestration_cascade_stop_custody WHERE child_session_id = ? AND terminal_event_id = ?',
+            )
+            .run(intent.childId, intent.terminalId);
+          this.db
+            .prepare(
+              "DELETE FROM orchestration_cascade_stop_intents WHERE child_session_id = ? AND terminal_event_id = ? AND state = 'pending'",
+            )
+            .run(intent.childId, intent.terminalId);
+        }
+      }
       for (const intent of this.pendingCascadeStops()) {
         if (
           (owned.has(intent.childId) || intent.parentId === threadId) &&
-          this.cascadeStopOwner(intent.childId).custody === 'settled'
+          this.isCascadeSessionSettled(intent.childId)
         )
           this.completeCascadeStop(intent.childId, intent.terminalId);
       }
       if (
         this.pendingCascadeStops().some(
-          (intent) => owned.has(intent.childId) || intent.parentId === threadId,
+          (intent) =>
+            !released.has(intent.childId) &&
+            (owned.has(intent.childId) || intent.parentId === threadId),
         )
       )
         throw new Error(
           'Cannot delete a Session with pending ownership cleanup.',
         );
       for (const childId of owned) {
-        if (childId === threadId) continue;
-        if (this.cascadeStopOwner(childId).custody !== 'settled')
+        if (childId === threadId || released.has(childId)) continue;
+        if (!this.isCascadeSessionSettled(childId))
           throw new Error(
             'Cannot delete a Session before owned child cleanup is confirmed.',
           );

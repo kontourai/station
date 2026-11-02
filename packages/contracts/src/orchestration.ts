@@ -185,6 +185,11 @@ export type OrchestrationCommand =
     }
   | { type: 'stopSession'; threadId: string }
   | {
+      type: 'releaseUnknownOwnedWork';
+      threadId: string;
+      confirmation: 'child-process-may-still-be-running';
+    }
+  | {
       /**
        * #2436: record the conversation's approval posture. Ordered by server
        * receipt; applied at the next session start or turn start, whatever

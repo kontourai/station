@@ -10,7 +10,7 @@ import {
   CASCADE_TRIGGER_METHODS,
   cascadeTriggerSql,
   ownedDescendantsBottomUp,
-  SESSION_ACTIVITY_METHODS,
+  sessionActivitySql,
 } from './ownership-tree.js';
 import {
   ACTIVE_TURN_FOLD_METHODS,
@@ -64,6 +64,9 @@ const interruptResult = z.discriminatedUnion('outcome', [
   z.object({ outcome: z.literal('no-active-turn'), threadId: z.string() }),
 ]);
 
+const UNRESOLVED_INVOCATION_SQL =
+  "state IN ('prepared', 'invoking', 'indeterminate')";
+
 export function readCascadeInterruptResult(
   db: SqliteDatabase,
   childId: string,
@@ -81,6 +84,8 @@ export function readCascadeInterruptResult(
     );
   if (!row) return undefined;
   const result = interruptResult.parse(JSON.parse(row.result_json));
+  if (result.threadId !== childId)
+    throw new Error('Cascade interruption result has a different target.');
   return result;
 }
 
@@ -89,10 +94,23 @@ export function completeCascadeStop(
   childId: string,
   terminalId: string,
   result?: InterruptTurnResult,
-): void {
-  writeTransaction(db, 'complete_cascade_stop', () => {
+): boolean {
+  return writeTransaction(db, 'complete_cascade_stop', () => {
     if (result && result.threadId !== childId)
       throw new Error('Cascade interruption result has a different target.');
+
+    if (
+      db
+        .prepare(`SELECT 1 FROM orchestration_cascade_stop_intents
+      WHERE child_session_id = ? AND terminal_event_id = ? AND parent_session_id <> child_session_id`)
+        .get(childId, terminalId) &&
+      db
+        .prepare(
+          `SELECT 1 FROM orchestration_turn_boundaries WHERE thread_id = ? AND ${UNRESOLVED_INVOCATION_SQL} LIMIT 1`,
+        )
+        .get(childId)
+    )
+      return false;
     if (result)
       db.prepare(
         'INSERT OR IGNORE INTO orchestration_cascade_stop_results VALUES (?, ?, ?)',
@@ -108,6 +126,7 @@ export function completeCascadeStop(
       childId,
       terminalId,
     );
+    return true;
   });
 }
 
@@ -189,15 +208,24 @@ export function deriveCascadeStopIntents(
     )
   )
     return;
-  // An ancestor's durable request already includes this fenced subtree.
-  if (!requested && isCancellationFenced(db, event.threadId)) return;
+  // A retained request covers this subtree. A fence left after explicit
+  // untracking still blocks admission, but no longer delivers ancestor stops.
+  if (
+    !requested &&
+    db
+      .prepare(`SELECT 1 FROM orchestration_cancellation_fences f
+    JOIN orchestration_cascade_stop_intents i ON i.child_session_id = f.thread_id AND i.terminal_event_id = f.terminal_event_id
+    WHERE f.thread_id = ? LIMIT 1`)
+      .get(event.threadId)
+  )
+    return;
   if (
     !requested &&
     db
       .prepare(`SELECT 1 FROM orchestration_events r WHERE r.thread_id = ?
     AND r.method = 'session.cancellation-requested' AND r.global_sequence < ?
     AND r.global_sequence > COALESCE((SELECT MAX(global_sequence) FROM orchestration_events
-      WHERE thread_id = r.thread_id AND global_sequence < ? AND method IN (${SESSION_ACTIVITY_METHODS.map((method) => `'${method}'`).join(', ')})), 0) LIMIT 1`)
+      WHERE thread_id = r.thread_id AND global_sequence < ? AND ${sessionActivitySql()}), 0) LIMIT 1`)
       .get(event.threadId, sequence, sequence)
   )
     return;
@@ -215,10 +243,15 @@ const cascadeFactsRows = z.array(
     confirmed_stop: z.number(),
     terminal: z.number(),
     active: z.number(),
+    pending_boundary: z.number(),
     owner_json: z.string().nullable(),
   }),
 );
 const boundaryOwner = z.object({
+  boundaryId: z.string(),
+  sequence: z.number().nullable(),
+  updatedAt: z.string(),
+  state: z.string(),
   id: z.string(),
   pid: z.number(),
   birth: z.string().nullable(),
@@ -242,22 +275,32 @@ export function readCascadeSessionFacts(
     const chunk = unique.slice(offset, offset + 500);
     const rows = cascadeFactsRows.parse(
       db
-        .prepare(`WITH requested(child_id) AS (VALUES ${chunk.map(() => '(?)').join(', ')})
+        .prepare(`WITH requested(child_id) AS (VALUES ${chunk.map(() => '(?)').join(', ')}),
+        boundary_facts AS (SELECT thread_id, MAX(created_sequence) AS created_sequence,
+          MAX(${UNRESOLVED_INVOCATION_SQL}) AS pending_boundary
+          FROM orchestration_turn_boundaries JOIN requested ON child_id = thread_id GROUP BY thread_id)
       SELECT r.child_id,
         EXISTS (SELECT 1 FROM orchestration_cascade_stop_intents i
           JOIN orchestration_cancellation_fences f ON f.thread_id = i.child_session_id AND f.terminal_event_id = i.terminal_event_id
           WHERE i.child_session_id = r.child_id AND i.state = 'completed') AS confirmed_stop,
         EXISTS (SELECT 1 FROM orchestration_events e WHERE e.thread_id = r.child_id AND (e.method = 'session.exited' OR EXISTS (SELECT 1 FROM orchestration_cascade_stop_intents done WHERE done.child_session_id = r.child_id AND done.terminal_event_id = e.id AND done.state = 'completed'))
           AND e.global_sequence > MAX(
-            COALESCE((SELECT MAX(global_sequence) FROM orchestration_events WHERE thread_id = r.child_id AND method IN (${SESSION_ACTIVITY_METHODS.map((method) => `'${method}'`).join(', ')})), 0),
-            COALESCE(b.created_sequence, 0),
+            COALESCE((SELECT MAX(global_sequence) FROM orchestration_events WHERE thread_id = r.child_id AND ${sessionActivitySql()}), 0),
+            COALESCE(bf.created_sequence, 0),
             COALESCE((SELECT created_head FROM orchestration_ownership_starts WHERE child_session_id = r.child_id), 0)
           )) AS terminal,
+        COALESCE(bf.pending_boundary, 0) AS pending_boundary,
         (s.status = 'running' OR b.state IN ('prepared', 'invoking', 'accepted', 'indeterminate')
           OR EXISTS (SELECT 1 FROM orchestration_ownership_starts WHERE child_session_id = r.child_id)) IS TRUE AS active,
-        CASE WHEN b.boundary_id IS NULL THEN NULL ELSE json_object('id', b.owner_id, 'pid', b.owner_pid,
+        CASE WHEN b.boundary_id IS NULL THEN NULL ELSE json_object('boundaryId', b.boundary_id,
+          'sequence', b.created_sequence, 'updatedAt', b.updated_at, 'state', b.state,
+          'id', b.owner_id, 'pid', b.owner_pid,
           'birth', b.owner_birth, 'identityKind', b.owner_identity_kind) END AS owner_json
-      FROM requested r LEFT JOIN orchestration_turn_boundaries b ON b.thread_id = r.child_id
+      FROM requested r LEFT JOIN boundary_facts bf ON bf.thread_id = r.child_id
+      LEFT JOIN orchestration_turn_boundaries b ON b.boundary_id = (
+        SELECT boundary_id FROM orchestration_turn_boundaries candidate WHERE candidate.thread_id = r.child_id
+        ORDER BY CASE WHEN ${UNRESOLVED_INVOCATION_SQL} THEN 0 ELSE 1 END,
+          created_sequence DESC, boundary_id DESC LIMIT 1)
       LEFT JOIN provider_session_state s ON s.thread_id = r.child_id`)
         .all(...chunk),
     );
@@ -266,7 +309,10 @@ export function readCascadeSessionFacts(
         childId: row.child_id,
         confirmedStop: Boolean(row.confirmed_stop),
         terminal: Boolean(row.terminal),
-        active: Boolean(row.active),
+        active: Boolean(
+          row.pending_boundary ||
+            (!row.confirmed_stop && !row.terminal && row.active),
+        ),
         ...(row.owner_json === null
           ? {}
           : { owner: boundaryOwner.parse(JSON.parse(row.owner_json)) }),
@@ -275,12 +321,14 @@ export function readCascadeSessionFacts(
   return result;
 }
 
-/** A current terminal ends its old owner claim; a held binding still requires teardown. */
+/** A terminal cannot settle an unresolved invocation, including one owned by a peer. */
 export function isCascadeStopSettled(
   facts: CascadeSessionFacts,
   locallyHeld: boolean,
 ): boolean {
-  return facts.confirmedStop || (facts.terminal && !locallyHeld);
+  return (
+    !facts.active && (facts.confirmedStop || (facts.terminal && !locallyHeld))
+  );
 }
 
 export function backfillCascadeStopIntents(

@@ -270,6 +270,41 @@ export const OWNED_WORK_STATUS_WORDS = {
   unknown: 'Unknown',
 } as const;
 
+export function ownedWorkUnknownReasons(
+  owned: OrchestrationSessionSummary['ownedWork'],
+): string[] {
+  return [
+    ...new Set(
+      (owned?.pendingStops ?? [])
+        .filter((stop) => stop.custody === 'unknown')
+        .map((stop) => unknownStopReason(stop.reason)),
+    ),
+  ];
+}
+
+function unknownStopReason(reason: string): string {
+  switch (reason) {
+    case 'unresolved-invocation':
+      return 'The child still has an unresolved invocation.';
+    case 'no-session-owner':
+      return 'Station has no record of which process owns the child.';
+    case 'dead-owner':
+      return 'The Station process that owned the child has exited.';
+    case 'unverified-local-owner':
+      return 'The child names this process with a different process identity.';
+    case 'local-owner-unbound':
+      return 'This Station process no longer has an adapter for the child.';
+    case 'binding-unavailable':
+      return 'Station could not check the child’s adapter.';
+    case 'owner-changed':
+      return 'The child’s owner changed while Station was checking it.';
+    case 'unobserved':
+      return 'Station has not checked the child’s owner yet.';
+    default:
+      return 'Station cannot verify which process owns the child.';
+  }
+}
+
 /**
  * The ladder's word for a session summary, including owned cleanup custody.
  * UI facts can additionally refine running work with child counts or the

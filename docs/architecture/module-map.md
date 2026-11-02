@@ -2206,8 +2206,12 @@ Available children stop deepest first. A pending local or peer stop holds its
 ancestors; unknown child custody never holds an ancestor's own Stop.
 
 `OrchestrationService` consumes pending stops through startup, committed-event
-observation (including provider turn completion), adapter binding and existing
-reconciliation, independently of idle parking. A held binding delivers locally;
+observation (including provider turn completion), adapter binding and the
+existing runtime health tick, independently of idle parking and further turns.
+Health pickup runs before analytics and provider health checks. Each pass
+examines at most 64 pending entries; unknown custody is probed again after
+30 seconds. Explicit commands and adapter binding request an immediate recheck.
+A held binding delivers locally;
 a live peer requires matching PID and birth. This process is never its own peer.
 An unbound local claim is surfaced instead of silently waiting on itself.
 The process registry has no Session-to-engine mapping and cannot authorize a
@@ -2216,10 +2220,20 @@ reported while the ancestor proceeds. Delivery is at
 least once, and adapters make repeated stops harmless. Muse serve retains its
 Session and original host when termination is unconfirmed; a retry does not
 signal a departed leader or turn its departure into confirmation. Pending cleanup also
-prevents deletion of its evidence. A current terminal Session with no live
-binding or newer admission has nothing left to stop: its intent completes, and
-it does not prevent parent deletion. Delivery and deletion share this rule.
-A terminal from an older execution cannot settle a newer start or admission.
+prevents deletion of its evidence. Boundary facts reduce to one row per Session:
+the greatest creation sequence defines the activity cutoff, and an unresolved
+boundary supplies its owner before historical accepted rows. Any `prepared`,
+`invoking` or `indeterminate` boundary prevents settlement, even after an exit
+event. Without such a boundary, a current terminal Session with no held binding
+or newer admission has nothing left to stop. Delivery and deletion share that
+rule. A child stop whose invocation remains unresolved stays pending and is
+surfaced as unknown rather than acknowledged complete.
+
+Appending the intent uses SQL facts and the single explicit binding dependency;
+it performs no process probe in the writer transaction. Delivery probes outside
+that transaction, rereads the boundary afterward, and compares its snapshot
+again while recording custody. Completion and release recheck durable facts
+under the writer lock.
 
 Open reconstructs edges through the naming index and derives stop obligations
 from retained request and terminal events. Completed, permanently fenced
@@ -2236,6 +2250,13 @@ record and shows **Stopping**, **Waiting on another Station process**, or
 **Unknown** in Session lists, detail headers, project work and Inbox status
 lines. A closed parent with pending cleanup stays in the busy lane; the own
 lifecycle remains separate. Approval and failure retain their existing priority.
+Unknown custody also names its reason in plain words. Session detail offers
+**Release and remove**, with explicit confirmation that child processes may
+still be running and will no longer be tracked by this Session. The command
+closes an at-rest parent's retained adapter and removes its unknown cleanup with
+the parent record. It preserves cancellation fences against replay, child history and independent stop
+intents. Known child owners and changed custody snapshots refuse release. This
+is untracking, not a claim that the child's process stopped.
 Lifecycle transition validation and the completed-session send guard use the
 own fold, preserving those execution boundaries while the aggregate is busy.
 
@@ -2243,6 +2264,10 @@ own fold, preserving those execution boundaries while the aggregate is busy.
 [`ownership-cascade.test.ts`](../../src-server/services/orchestration/__tests__/ownership-cascade.test.ts),
 [`ownership-tree.test.ts`](../../src-server/services/orchestration/__tests__/ownership-tree.test.ts)
 and [`cancellation-fence.test.ts`](../../src-server/services/orchestration/__tests__/cancellation-fence.test.ts).
+[`ownership-cascade-review.test.ts`](../../src-server/services/orchestration/__tests__/ownership-cascade-review.test.ts)
+covers retained-boundary ordering, active invocations, own-PID rejection,
+transactional custody checks, probe budgets and confirmed release. These are
+ordinary focused tests; the mutation runner remains unchanged from main.
 [`cascade-stop-delivery.process.test.ts`](../../src-server/services/orchestration/__tests__/cascade-stop-delivery.process.test.ts)
 uses a real peer owner and abrupt requester exit, including delivery before a
 failed completion write. Built-in repeat-stop behavior is exercised by

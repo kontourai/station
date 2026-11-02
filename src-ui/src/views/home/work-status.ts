@@ -205,6 +205,10 @@ function rungFor(item: HomeWorkItem, facts: WorkFacts | undefined): Rung {
           lane: 'running',
           tone: ownedState === 'unknown' ? 'caution' : 'active',
           word: OWNED_WORK_STATUS_WORDS[ownedState],
+          detail:
+            ownedState === 'unknown'
+              ? facts?.ownedStopReasons?.join(' ')
+              : undefined,
         };
       const activity = facts?.activity;
       const since = epochMs(activity?.turnStartedAt);

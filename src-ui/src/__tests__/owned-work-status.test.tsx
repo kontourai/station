@@ -48,7 +48,11 @@ test.each([
         id="owned-stop"
       />,
     );
-    expect(screen.getByTestId('inbox-row-status').textContent).toBe(word);
+    expect(screen.getByText(word, { exact: true }).textContent).toBe(word);
+    if (state === 'unknown')
+      expect(screen.getByTestId('inbox-row-status').textContent).toContain(
+        'Station cannot verify which process owns the child.',
+      );
     expect(sessionLadderWord(summary)).toBe(word);
     expect(
       partitionSessionLanes({ sessions: [summary], agents: [], now }).find(

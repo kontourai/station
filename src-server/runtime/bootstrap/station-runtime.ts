@@ -5364,6 +5364,8 @@ export class StationRuntime {
     await startRuntimeHealthChecks({
       timers: this.timers,
       logger: this.logger,
+      maintainOwnedWork: () =>
+        this.orchestrationService?.maintainOwnedWork() ?? Promise.resolve(),
       runHealthChecks: async () => {
         if (!this.shutdownPromise) {
           try {
