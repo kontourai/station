@@ -8,6 +8,7 @@ import {
 } from '../../hooks/usePresenceList';
 import { useQueuedMessages } from '../../hooks/useQueuedMessages';
 import { isComposingKeyEvent } from '../../lib/isComposingKeyEvent';
+import { Button } from '../Button';
 import { ArrowDownGlyph, EditGlyph } from '../icons/Glyph';
 import { heldSendsInOrder, pendingMessageCount } from './pendingMessages';
 import './QueuedMessages.css';
@@ -20,6 +21,7 @@ interface QueuedMessagesProps {
   waitingForTools?: boolean;
   onSendMessageNow?: (messageId: string) => Promise<void>;
   canSteer?: boolean;
+  steeringUnavailableReason?: string;
   onSteer?: (message: string, clientInputId?: string) => Promise<boolean>;
   onPendingSettled?: () => void;
   /**
@@ -31,6 +33,7 @@ interface QueuedMessagesProps {
   failure?: { message: string; code?: string; at: number };
   /** Retry the head of the queue now, rather than waiting for the next turn. */
   onRetry?: () => void;
+  onReviewOrigin?: (messageId: string) => void;
   /**
    * #3157: the conversation stopped on a provider usage limit, so the queue
    * does not send on its own; Send now still does.
@@ -75,6 +78,7 @@ export interface HeldMessages {
   removalError: boolean;
   onRemove: (clientTurnId: string) => void;
   onRetry: () => void;
+  onResend?: (entry: ConversationInboxEntry) => void;
 }
 
 const HELD_STATE_LABEL: Record<ConversationInboxEntry['state'], string> = {
@@ -114,10 +118,12 @@ export function QueuedMessages({
   waitingForTools,
   onSendMessageNow,
   canSteer = false,
+  steeringUnavailableReason,
   onSteer,
   onPendingSettled,
   failure,
   onRetry,
+  onReviewOrigin,
   heldByUsageLimit,
   held,
   outbox,
@@ -183,7 +189,9 @@ export function QueuedMessages({
   const needsReview = Boolean(
     notSent ||
       (outboxCount > 0 && outbox?.needsReview) ||
-      metadata?.some((entry) => entry.delivery === 'indeterminate') ||
+      metadata?.some(
+        (entry) => entry.delivery === 'indeterminate' || entry.originUnverified,
+      ) ||
       held?.removalError ||
       held?.unavailable ||
       heldEntries.some((entry) => entry.state === 'unconfirmed'),
@@ -204,7 +212,11 @@ export function QueuedMessages({
       )
       .map((entry, index) => [entry, index + 1]),
   );
-  const localOrderStart = heldOrder.size;
+  const localSendOrder = new Map(
+    localRows
+      .filter(({ idx }) => !metadata?.[idx]?.originUnverified)
+      .map(({ idx }, order) => [idx, heldOrder.size + order + 1]),
+  );
   const visible =
     outboxCount > 0 ||
     localRows.length > 0 ||
@@ -243,10 +255,15 @@ export function QueuedMessages({
   function renderLocalRow(row: QueueRow, idx: number) {
     const msg = row.message;
     // 1 = next to send, after what Station holds.
-    const orderNum = localOrderStart + idx + 1;
+    const orderNum = localSendOrder.get(idx);
     return (
       <div className="queued-message">
-        <span className="queued-message__order">{orderNum}</span>
+        <span
+          className="queued-message__order"
+          aria-hidden={orderNum === undefined ? true : undefined}
+        >
+          {orderNum}
+        </span>
         {editingIndex === idx ? (
           <input
             ref={editInputRef}
@@ -280,47 +297,70 @@ export function QueuedMessages({
               {/* Clamped to two lines; Edit opens the full text. */}
               <span className="queued-message__body">{msg}</span>
               <span className="queued-message__status">
-                {metadata?.[idx]?.delivery
-                  ? metadata[idx].delivery === 'steering'
-                    ? 'Steer · Sending steering'
-                    : 'Steer · Delivery not confirmed; retry steering'
-                  : metadata?.[idx]?.mode === 'steer'
-                    ? waitingForTools
-                      ? 'Steer · Waiting for tools to finish'
-                      : 'Steer · Waiting for this turn to finish'
-                    : 'Queue · Queued for next turn'}
+                {metadata?.[idx]?.originUnverified
+                  ? metadata[idx].delivery
+                    ? 'Review destination · Delivery unknown'
+                    : 'Review destination'
+                  : metadata?.[idx]?.delivery
+                    ? metadata[idx].delivery === 'steering'
+                      ? 'Steer · Sending steering'
+                      : 'Steer · Delivery not confirmed; retry steering'
+                    : metadata?.[idx]?.mode === 'steer'
+                      ? waitingForTools
+                        ? 'Steer · Waiting for tools to finish'
+                        : 'Steer · Waiting for this turn to finish'
+                      : 'Queue · Queued for next turn'}
               </span>
             </span>
-            {onSendMessageNow && metadata?.[idx] && (
-              <button
-                type="button"
-                className="queued-message__btn"
-                disabled={
-                  sendNowPending ||
-                  pendingRows.has(row.id) ||
-                  !!metadata?.[idx]?.delivery
-                }
-                title="Stop the current turn immediately and send this message"
-                aria-label={`Send pending message ${orderNum} now`}
-                onClick={() => {
-                  if (pendingRef.current.has(row.id)) return;
-                  pendingRef.current.add(row.id);
-                  setPendingRows(new Set(pendingRef.current));
-                  void onSendMessageNow(metadata[idx].id).finally(() => {
-                    pendingRef.current.delete(row.id);
+            {metadata?.[idx] &&
+              (metadata[idx].originUnverified
+                ? onReviewOrigin
+                : onSendMessageNow) && (
+                <Button
+                  variant="ghost"
+                  className="queued-message__btn"
+                  disabled={
+                    !metadata[idx].originUnverified &&
+                    (sendNowPending ||
+                      pendingRows.has(row.id) ||
+                      !!metadata[idx].delivery)
+                  }
+                  title={
+                    metadata[idx].originUnverified
+                      ? 'Check the destination and prior delivery before sending this saved input.'
+                      : 'Stop the current turn immediately and send this message'
+                  }
+                  aria-label={
+                    metadata[idx].originUnverified
+                      ? 'Review and resend'
+                      : `Send pending message ${orderNum} now`
+                  }
+                  onClick={() => {
+                    if (metadata[idx].originUnverified) {
+                      onReviewOrigin?.(metadata[idx].id);
+                      return;
+                    }
+                    if (!onSendMessageNow || pendingRef.current.has(row.id))
+                      return;
+                    pendingRef.current.add(row.id);
                     setPendingRows(new Set(pendingRef.current));
-                  });
-                }}
-              >
-                Send now
-              </button>
-            )}
+                    void onSendMessageNow(metadata[idx].id).finally(() => {
+                      pendingRef.current.delete(row.id);
+                      setPendingRows(new Set(pendingRef.current));
+                    });
+                  }}
+                >
+                  {metadata[idx].originUnverified
+                    ? 'Review and resend'
+                    : 'Send now'}
+                </Button>
+              )}
             {/* The list renders reversed (newest on top, next-to-drain
                 at the bottom), so the VISUAL up direction corresponds
                 to a HIGHER real array index (drains later): ▲ calls
                 moveDown(realIdx) and ▼ calls moveUp(realIdx). Review
                 #613-1 caught the inverted wiring. */}
-            {canSteer && onSteer && (
+            {canSteer && onSteer && !metadata?.[idx]?.originUnverified && (
               <button
                 type="button"
                 disabled={pendingRows.has(row.id)}
@@ -414,7 +454,9 @@ export function QueuedMessages({
             className="queued-message__status"
             title={
               entry.state === 'queued'
-                ? 'Sent when the current turn ends, even if you close the app.'
+                ? entry.kind === 'steer'
+                  ? 'Held for the next boundary this engine or Station can accept.'
+                  : 'Sent when the current turn ends, even if you close the app.'
                 : undefined
             }
           >
@@ -425,7 +467,25 @@ export function QueuedMessages({
           )}
         </span>
         {removable && (
-          <div className="queued-message__utilities">
+          <div
+            className={
+              entry.state === 'unconfirmed'
+                ? 'queued-message__actions'
+                : 'queued-message__utilities'
+            }
+          >
+            {entry.kind === 'steer' &&
+              entry.state === 'unconfirmed' &&
+              held?.onResend && (
+                <Button
+                  variant="ghost"
+                  disabled={held.removing}
+                  title="This may duplicate the original steer. Review the text before sending."
+                  onClick={() => held.onResend?.(entry)}
+                >
+                  Review and resend
+                </Button>
+              )}
             <button
               type="button"
               disabled={held?.removing}
@@ -491,7 +551,7 @@ export function QueuedMessages({
       {held?.unavailable && (
         <div className="queued-messages__hold" role="status">
           <span className="queued-messages__failure-text">
-            Couldn’t load held messages.
+            Couldn’t load inbox entries.
           </span>
           <button
             type="button"
@@ -510,6 +570,9 @@ export function QueuedMessages({
         </div>
       )}
       <div id={queueId} className="queued-messages__content" hidden={!expanded}>
+        {steeringUnavailableReason && (
+          <p role="status">{steeringUnavailableReason}</p>
+        )}
         {failure && (
           <div className="queued-messages__failure" role="status">
             <span className="queued-messages__failure-text">

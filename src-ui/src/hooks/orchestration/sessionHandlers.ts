@@ -68,6 +68,9 @@ export function handleSessionLifecycleEvent(
   activeChatsStore.updateChat(event.threadId, {
     provider: event.provider,
     orchestrationProvider: event.provider,
+    ...(currentChat?.orchestrationProvider !== event.provider
+      ? { orchestrationDurability: undefined }
+      : {}),
     orchestrationSessionStarted: true,
     ...startedConnection,
     ...(approvalMode ? { lastAppliedApprovalMode: approvalMode } : {}),
@@ -171,6 +174,9 @@ export function handleSessionStateChangedEvent(
     status: event.to === 'running' && turnActive ? 'sending' : 'idle',
     provider: event.provider,
     orchestrationProvider: event.provider,
+    ...(chat?.orchestrationProvider !== event.provider
+      ? { orchestrationDurability: undefined }
+      : {}),
     orchestrationStatus:
       event.to === 'running' && !turnActive ? 'idle' : event.to,
     orchestrationSessionStarted: true,

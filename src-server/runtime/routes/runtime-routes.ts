@@ -6437,6 +6437,7 @@ export function configureRuntimeRoutes(
       model?: ExecutionModelRequest;
       inputDigest?: string;
       inboxPlacement?: true;
+      automaticBackground?: true;
     },
     threadId: string,
   ): Promise<SessionStartResult> {
@@ -6643,12 +6644,41 @@ export function configureRuntimeRoutes(
           inputDigest,
         );
       },
+      recordPostToolSteer: (input) => service.recordPostToolSteer(input),
+      postToolMaySteer: (threadId, turnId) =>
+        service.canSteerAtPostToolBoundary(threadId, turnId),
+      steerFidelity: (threadId) => service.steerFidelityForThread(threadId),
+      inspectSteer: (input) => eventStore.readSteerInput(input),
+      steer: stationServerEntry(
+        async ({ threadId, clientInputId, payload, turnId }) => {
+          const dispatched = await service.dispatchWithReceipt(
+            {
+              type: 'steerTurn',
+              threadId,
+              input: payload.message,
+              clientInputId,
+              turnId,
+            },
+            {
+              userId: payload.actor.userId,
+              principal: payload.actor.principal,
+              ownerAttribution: payload.actor.ownerAttribution,
+              clientOrigin: payload.clientOrigin ?? UNKNOWN_CLIENT_ORIGIN,
+            },
+          );
+          const result = dispatched.result as
+            | { outcome: string; turnId?: string }
+            | undefined;
+          return result ?? { outcome: 'indeterminate' };
+        },
+      ),
       start: stationServerEntry(
         ({ conversationId, threadId, payload, clientTurnId }) =>
           continueAsRecordedActor(
             {
               conversationId,
               message: payload.message,
+              automaticBackground: payload.automaticBackground,
               inputDigest: payload.inputDigest,
               inboxPlacement: true,
               clientTurnId,

@@ -1,0 +1,7 @@
+{
+  "revision": "81ab1979b782e2556d2fe35cdf7d2b40d13af5de",
+
+  "notes": [
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"Refs #3568 and #3575. Type-only follow-up to round-1 review: the scripted native SteerAdapter metadata is explicitly annotated ProviderAdapterMetadata, preserving its agent-runtime capability literal and truthful native declaration. Runtime bytes and the lost-ack transport/receipt/no-redelivery assertions are unchanged. The 150 route checks already passed, the receipt-confirmation omission was caught by that path, and typecheck:server-tests now passes. Existing classification, source review and qualification limits remain.","inputs":["docs/reference/agent-smoke-confidence.md","src-server/routes/orchestration/__tests__/orchestration.routes.test.ts"]}
+  ]
+}

@@ -1,8 +1,10 @@
 import {
   type BuiltInToolCategory,
   type EngineCapabilityMatrix,
+  UNKNOWN_ENGINE_DURABILITY,
 } from '@kontourai/station-contracts/engine-capability-matrix';
 import type { ProviderDurabilityProfile } from '@kontourai/station-contracts/provider';
+import { readProviderDurabilityProfile } from '@kontourai/station-contracts/provider';
 import './EngineCapabilitySummary.css';
 
 /**
@@ -46,7 +48,8 @@ export function deriveCapabilityChips(
   const chips = CAPABILITY_CHIPS.filter(
     ({ key }) => matrix[key].state !== 'unsupported',
   ).map(({ label }) => label);
-  if (matrix.durability.steerPlacement.state !== 'none')
+  const durability = readProviderDurabilityProfile(matrix);
+  if (durability && durability.steerPlacement.state !== 'none')
     chips.push('Mid-turn steering');
   return chips;
 }
@@ -175,6 +178,8 @@ export function EngineCapabilitySummary({
   connectionName: string;
 }) {
   const chips = deriveCapabilityChips(matrix);
+  const durability =
+    readProviderDurabilityProfile(matrix) ?? UNKNOWN_ENGINE_DURABILITY;
   return (
     <div className="engine-capability-summary">
       <details className="engine-capability-summary__recovery">
@@ -185,12 +190,12 @@ export function EngineCapabilitySummary({
             {' — '}
             {
               { station: 'Station', engine: 'Engine', unknown: 'Unknown' }[
-                matrix.durability.compaction.owner
+                durability.compaction.owner
               ]
             }
           </span>
           {RECOVERY_LABELS.map(({ key, label }) => {
-            const cell = matrix.durability[key];
+            const cell = durability[key];
             return (
               <span className="engine-capability-summary__tools" key={key}>
                 <strong>{label}</strong>

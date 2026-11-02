@@ -32,7 +32,10 @@ import type {
   ProviderSendTurnInput,
   ProviderSessionStartInput,
 } from '@kontourai/station-contracts/provider';
-import { SESSION_VISIBILITY_METADATA_KEY } from '@kontourai/station-contracts/provider';
+import {
+  readProviderDurabilityProfile,
+  SESSION_VISIBILITY_METADATA_KEY,
+} from '@kontourai/station-contracts/provider';
 import type { SkillExperienceStartInputV1 } from '@kontourai/station-contracts/skill-experience';
 import type {
   WorkspaceIsolationConfig,
@@ -1131,7 +1134,10 @@ export async function executeForegroundMessage(
         : undefined;
   const sessionId = continuation?.sessionId ?? conversationId;
   const transcriptSeed =
-    resolved.provider === 'station-agent' && deps.nativeMemoryOwnsTranscript
+    readProviderDurabilityProfile(
+      deps.getProviderAdapter(resolved.provider)?.metadata,
+    )?.contextCarriage.history === 'station-memory' &&
+    deps.nativeMemoryOwnsTranscript
       ? undefined
       : continuation?.transcriptSeed;
   const sendClientTurnId =
