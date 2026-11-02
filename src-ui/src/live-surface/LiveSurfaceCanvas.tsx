@@ -24,13 +24,13 @@ import { Button } from '../components/Button';
 import { useConstrainedNetwork } from '../platform/networkCost';
 import { mapClientPointToSurface } from './liveSurfaceGeometry';
 import {
-  LiveSurfaceH264Decoder,
-  liveSurfaceH264Capable,
-} from './liveSurfaceVideoDecoder';
-import {
   liveSurfaceStreamBudget,
   useSteppedPixelBox,
 } from './liveSurfaceStreamBudget';
+import {
+  LiveSurfaceH264Decoder,
+  liveSurfaceH264Capable,
+} from './liveSurfaceVideoDecoder';
 import {
   type LiveSurfaceFrame,
   type UseLiveSurfaceResult,
