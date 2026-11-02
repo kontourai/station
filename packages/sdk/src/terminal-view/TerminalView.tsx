@@ -279,7 +279,8 @@ const TOUCH_KEYS: readonly [
   key: string,
   mods?: number,
 ][] = [
-  ['Interrupt (Ctrl+C)', 'Ctrl+C', 'KeyC', 'c', 1 << 1],
+  // "^C", the terminal's own spelling: eight 44px keys fit a 390px phone.
+  ['Interrupt (Ctrl+C)', '^C', 'KeyC', 'c', 1 << 1],
   ['Escape', 'Esc', 'Escape', 'Escape'],
   ['Tab', 'Tab', 'Tab', 'Tab'],
   ['Previous command', '↑', 'ArrowUp', 'ArrowUp'],
@@ -301,8 +302,31 @@ function TouchKeys({
     run();
     controller?.focus();
   };
+  const rowRef = useRef<HTMLDivElement>(null);
+  // A row too wide for a narrow phone scrolls; the clipped edge fades so
+  // the person can see there is more (`data-overflow` names that edge).
+  useEffect(() => {
+    const row = rowRef.current;
+    if (!row) return;
+    const update = () => {
+      const start = row.scrollLeft > 1;
+      const end = row.scrollLeft < row.scrollWidth - row.clientWidth - 1;
+      row.dataset.overflow =
+        start && end ? 'both' : start ? 'start' : end ? 'end' : 'none';
+    };
+    update();
+    row.addEventListener('scroll', update, { passive: true });
+    const observer =
+      typeof ResizeObserver === 'function' ? new ResizeObserver(update) : null;
+    observer?.observe(row);
+    return () => {
+      row.removeEventListener('scroll', update);
+      observer?.disconnect();
+    };
+  }, []);
   return (
     <div
+      ref={rowRef}
       className="station-terminal__keys"
       role="toolbar"
       aria-label="Terminal keys"

@@ -197,15 +197,36 @@
 }
 
 .station-terminal__keys button {
-  flex: none;
+  /* The keys share the row: at 390px all eight fit at 44px or more. */
+  flex: 1 0 auto;
   min-width: 44px;
   min-height: 44px;
-  padding: 0 var(--k-space-2);
+  padding: 0 var(--k-space-1);
   border: 1px solid var(--k-line);
   border-radius: var(--k-radius-control, 6px);
   background: var(--k-bg);
   color: var(--k-text);
   font: inherit;
+}
+
+/* Narrower than eight keys, the row scrolls and fades out at the edge
+   that has more keys past it. */
+.station-terminal__keys[data-overflow="end"] {
+  mask-image: linear-gradient(to right, #000 calc(100% - 32px), transparent);
+}
+
+.station-terminal__keys[data-overflow="start"] {
+  mask-image: linear-gradient(to left, #000 calc(100% - 32px), transparent);
+}
+
+.station-terminal__keys[data-overflow="both"] {
+  mask-image: linear-gradient(
+    to right,
+    transparent,
+    #000 32px,
+    #000 calc(100% - 32px),
+    transparent
+  );
 }
 
 .station-terminal__keys button[aria-pressed="true"] {
