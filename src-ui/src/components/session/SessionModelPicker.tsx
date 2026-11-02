@@ -115,8 +115,7 @@ export function SessionModelPicker({
   const matchingModels = models.filter(
     (model) =>
       model.id === activeModel &&
-      (!currentExecutionAgentId ||
-        model.executionAgentId === currentExecutionAgentId) &&
+      model.executionAgentId === currentExecutionAgentId &&
       (!currentProviderId || model.providerId === currentProviderId),
   );
   const selectedModel =
@@ -286,7 +285,10 @@ export function SessionModelPicker({
       ? `${model.name} (${model.providerName})`
       : model.name;
     return (
-      <div className="session-model-picker__model-row" key={key}>
+      <div
+        className="session-model-picker__model-row"
+        key={JSON.stringify([model.executionAgentId, key])}
+      >
         <button
           type="button"
           role="option"
@@ -372,6 +374,10 @@ export function SessionModelPicker({
     );
     if (options.length === 0) return;
     const current = options.indexOf(event.currentTarget);
+    if (current === 0 && event.key === 'ArrowUp') {
+      searchRef.current?.focus();
+      return;
+    }
     const next =
       direction === 'first'
         ? 0

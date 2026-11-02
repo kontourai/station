@@ -1379,17 +1379,11 @@ then `defaultLLMProvider`, then the sole enabled LLM connection. Several enabled
 connections without a default are ambiguous; readiness does not silently choose
 one. See [Agent configuration](agent-configuration.md#agent-configuration).
 
-The chat model picker shows the resolved connection and model. Open it to
-search across ready Model connections and Engines, filter by connection or
-Favorites or Recent, and choose the exact model for this chat. Collections and
-connections have a visual navigation rail, with capability filters above the
-results. The current model's supported runtime controls appear beside the list;
-on phones they follow the list. Thinking effort has direct choices, including
-**Use model default**. Choosing a model closes the picker; changing a runtime
-option keeps it open.
-Connections that still
-need setup remain visible with their status, but cannot create an invalid
-selection.
+Search models or browse Favorites, Recent and provider collections. Filter by
+capability and adjust the current model's supported settings beside the list,
+or below it on phones. **Use model default** clears the thinking-effort override.
+Choosing a model closes the picker; runtime changes keep it open. Connections
+needing setup stay visible but cannot be selected.
 
 Favorites, recent choices, hidden models, and model order are saved for your verified person on this Station and follow that person across devices. Without a person-bound preference scope, they remain on this device. If account preferences are unavailable, changes are refused until they can be reloaded. Manage a connection's model list from its detail page. **Use project
 default**, **Use agent default**, or the other named reset shown in the picker

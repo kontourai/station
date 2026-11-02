@@ -13,6 +13,7 @@ import { beforeEach, describe, expect, test, vi } from 'vitest';
 import { ResponsiveDialogSurface } from '../components/ResponsiveDialogSurface';
 import { SessionModelPicker } from '../components/session/SessionModelPicker';
 import { deviceSettingsStore } from '../lib/device-settings-store';
+import type { SelectableModel } from '../utils/modelCapabilities';
 
 vi.mock('@kontourai/station-sdk', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@kontourai/station-sdk')>()),
@@ -104,6 +105,46 @@ function renderNestedPicker(onOuterClose = vi.fn()) {
 }
 
 describe('SessionModelPicker', () => {
+  test('keeps direct and engine routes distinct for the same model and provider', () => {
+    renderPicker({
+      currentModel: 'shared',
+      currentProviderId: 'openai',
+      models: [
+        {
+          id: 'shared',
+          name: 'Direct model',
+          providerId: 'openai',
+          capabilities: {
+            supportsEffort: true,
+            supportedEffortLevels: ['high'],
+          },
+        },
+        {
+          id: 'shared',
+          name: 'Codex model',
+          providerId: 'openai',
+          executionAgentId: 'codex',
+          capabilities: {
+            supportsEffort: true,
+            supportedEffortLevels: ['low'],
+          },
+        },
+      ] satisfies SelectableModel[],
+    });
+    expect(
+      screen
+        .getByRole('option', { name: /Direct model/ })
+        .getAttribute('aria-selected'),
+    ).toBe('true');
+    expect(
+      screen
+        .getByRole('option', { name: /Codex model/ })
+        .getAttribute('aria-selected'),
+    ).toBe('false');
+    expect(screen.getByRole('radio', { name: 'High' })).toBeTruthy();
+    expect(screen.queryByRole('radio', { name: 'Low' })).toBeNull();
+  });
+
   test('does not guess runtime settings when the current provider route is unknown', () => {
     renderPicker({
       currentModel: 'shared',
@@ -178,9 +219,10 @@ describe('SessionModelPicker', () => {
     expect(screen.getByText('Nothing matches your search.')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Clear filter' }));
     fireEvent.keyDown(search, { key: 'ArrowDown' });
-    expect(document.activeElement).toBe(
-      screen.getByRole('option', { name: /GPT-5.6/ }),
-    );
+    const firstModel = screen.getByRole('option', { name: /GPT-5.6/ });
+    expect(document.activeElement).toBe(firstModel);
+    fireEvent.keyDown(firstModel, { key: 'ArrowUp' });
+    expect(document.activeElement).toBe(search);
   });
 
   test('uses reported effort labels and disables settings for an unavailable route', () => {
