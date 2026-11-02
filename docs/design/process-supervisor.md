@@ -116,7 +116,8 @@ product decisions.
   boot consumes interrupted-turn boundaries, runs the schema gate, and opens
   single-writer stores. A handoff from generation N to N+1:
   1. Start N+1, which loads its code and reports `parked` before touching
-     the home. If it fails to park, N was never disturbed and keeps serving.
+     the home. If it fails to park within 30 seconds, N was never disturbed
+     and keeps serving.
   2. Send `drain` to N. N closes its copies of the listeners, finishes
      in-flight requests, and exits. A drain deadline then escalates to
      SIGTERM and SIGKILL. An active voice call extends the deadline up to a
@@ -179,8 +180,16 @@ product decisions.
   A crash of the active generation, outside a drain, restarts it with
   exponential backoff: 1s doubling to a 30s cap, reset after 60s of stable
   serving. A crash during a handoff counts toward the same failure budget.
-  After five failures within five minutes the supervisor gives up and exits
-  nonzero, so its launcher's restart policy takes over. Stopping the
+  A generation started while none serves (first boot, crash restart, or a
+  rollback's relaunch) has 120 seconds to park rather than a handoff's 30: it
+  loads its code cold, often on a busy host, and there is no serving
+  generation to fall back on. A generation that misses its park or readiness
+  deadline is logged by name (`did not park within …ms (park deadline)`)
+  before it is ended, and counts as a failure. After five failures within
+  five minutes, or five in a row with no generation serving between them, the
+  supervisor gives up and exits nonzero, so its launcher's restart policy
+  takes over. The second rule keeps a core that never parks from retrying
+  forever once long boot deadlines spread its failures past the window. Stopping the
   supervisor (SIGTERM, SIGINT, SIGHUP, or the `stop` request) drains the
   active generation and exits zero. That drain, voice calls included, is capped at 30 seconds
   by default, below service managers' stop timeouts; the long voice cap

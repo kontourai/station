@@ -29,6 +29,9 @@ export type ModelProviderOption = {
   detail?: string;
 };
 
+const VERSION_DOT = /(?<=\d)\.(?=\d)/g;
+const UPPERCASE_PARTS = new Set(['gpt']);
+
 /**
  * A model id made readable WITHOUT claiming a name the catalog never gave:
  * 'claude-opus-5[1m]' → 'Opus 5 (1M)'. Reached only when no catalog entry
@@ -46,9 +49,6 @@ export type ModelProviderOption = {
  * where the transcript used to print the raw id because the dot alone sent
  * it down the provider-qualified path. Any other dot still does.
  */
-const VERSION_DOT = /(?<=\d)\.(?=\d)/g;
-const UPPERCASE_PARTS = new Set(['gpt']);
-
 export function prettifyModelId(modelId: string): string {
   const id = modelId.trim();
   if (!id || /[:/]/.test(id) || id.replace(VERSION_DOT, '').includes('.'))
