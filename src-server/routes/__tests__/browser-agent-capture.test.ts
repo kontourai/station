@@ -163,6 +163,7 @@ async function harness(
     recording?: boolean;
     recordingPreview?: boolean;
     continuousFrames?: boolean;
+    stillFrame?: boolean;
     encoderPath?: string;
     beforeResolveFfmpeg?: () => Promise<void>;
     duringFrame?: (workspace: string) => void;
@@ -234,11 +235,13 @@ async function harness(
       if (method === 'Page.startScreencast' && options.recording) {
         streams++;
         notifyStreamStarted();
-        const frames = options.continuousFrames
-          ? Array.from({ length: 8 }, (_, i) =>
-              i % 2 === 0 ? FRAME_RED : FRAME_BLUE,
-            )
-          : [FRAME_RED, FRAME_BLUE];
+        const frames = options.stillFrame
+          ? [FRAME_RED]
+          : options.continuousFrames
+            ? Array.from({ length: 8 }, (_, i) =>
+                i % 2 === 0 ? FRAME_RED : FRAME_BLUE,
+              )
+            : [FRAME_RED, FRAME_BLUE];
         for (const [i, frame] of frames.entries()) {
           const timer = setTimeout(
             () => {
@@ -602,12 +605,14 @@ async function harness(
         rotation?: 90;
         onFrameConsumed?: () => void;
         pngFallback?: boolean;
+        pngWidth?: number;
         onAttach?: (
           codec: string | undefined,
           freshOnly: boolean | undefined,
         ) => void;
         pngBurst?: Buffer;
         durationMs?: number;
+        holdStill?: boolean;
       } = {},
     ) => {
       const access = await room.sessionTaskReviewAccess('agent-a');
@@ -616,6 +621,21 @@ async function harness(
       const surfaceId = live.surfaceIdFor(browser.browserSessionId);
       const entry = surfaceId ? surfaces.get(surfaceId) : undefined;
       if (!entry) throw new Error('Recording surface unavailable');
+      const watching = options.holdStill
+        ? entry.hub.attach({
+            maxFps: 10,
+            quality: 70,
+            maxWidth: 1280,
+            maxHeight: 1280,
+          })
+        : undefined;
+      if (watching) {
+        let frame: Awaited<ReturnType<typeof watching.next>>;
+        do {
+          frame = await watching.next();
+        } while (frame && frame.kind !== 'frame');
+        if (!frame) throw new Error('Still fixture closed');
+      }
       const hub =
         options.rotation ||
         options.onFrameConsumed ||
@@ -658,7 +678,11 @@ async function harness(
                     )
                       return {
                         ...record,
-                        header: { ...record.header, codec: 'png' as const },
+                        header: {
+                          ...record.header,
+                          codec: 'png' as const,
+                          width: options.pngWidth ?? record.header.width,
+                        },
                         body: PNG_64,
                       };
                     return record?.kind === 'frame' && options.rotation
@@ -675,30 +699,34 @@ async function harness(
               },
             }) as typeof entry.hub)
           : entry.hub;
-      return recordings.recordSource(
-        access,
-        {
-          durationMs: options.durationMs ?? 500,
-          stopSignal: options.stopSignal,
-          onStarted: options.onStarted,
-        },
-        async () => ({
-          entry: { ...entry, hub },
-          current: options.current ?? (() => true),
-          authorize: options.authorize ?? (async () => true),
-          checkEachFrame: true,
-          platform: 'ios',
-          adapter: 'device-live-surface',
-          device: {
-            hostId: 'ssh-0123456789ab',
-            deviceId: 'device-1',
-            name: 'Test device',
-            runtime: 'iOS',
-            appId: null,
-            appObservedAt: null,
+      try {
+        return await recordings.recordSource(
+          access,
+          {
+            durationMs: options.durationMs ?? 500,
+            stopSignal: options.stopSignal,
+            onStarted: options.onStarted,
           },
-        }),
-      );
+          async () => ({
+            entry: { ...entry, hub },
+            current: options.current ?? (() => true),
+            authorize: options.authorize ?? (async () => true),
+            checkEachFrame: true,
+            platform: 'ios',
+            adapter: 'device-live-surface',
+            device: {
+              hostId: 'ssh-0123456789ab',
+              deviceId: 'device-1',
+              name: 'Test device',
+              runtime: 'iOS',
+              appId: null,
+              appObservedAt: null,
+            },
+          }),
+        );
+      } finally {
+        watching?.close();
+      }
     },
     streamStarted,
     streams: () => streams,
@@ -1079,13 +1107,40 @@ test.skipIf(!mediaReady)(
         (frame) => frame.kind === 'frame' && frame.file.endsWith('.jpg'),
       ),
     ).toBe(true);
-    const response = await h.person(
-      `task-a/review/walkthroughs/${clip.id}/frames/${frames[1]!.frameId}`,
+    for (const frame of frames) {
+      const response = await h.person(
+        `task-a/review/walkthroughs/${clip.id}/frames/${frame.frameId}`,
+      );
+      expect(response.status).toBe(200);
+      const converted = Buffer.from(await response.arrayBuffer());
+      expect(converted.subarray(0, 2)).toEqual(Buffer.from([0xff, 0xd8]));
+      expect(jpegSize(converted)).toEqual({ width: 64, height: 64 });
+    }
+  },
+);
+
+test.skipIf(!mediaReady)(
+  'PNG conversion refuses invalid declared dimensions',
+  async () => {
+    const h = await harness({ recording: true });
+    await expect(
+      h.recordSyntheticDevice({ pngFallback: true, pngWidth: 0 }),
+    ).rejects.toMatchObject({
+      code: 'recording-unavailable',
+      message: 'Device image dimensions are invalid.',
+    });
+  },
+);
+
+test.skipIf(!mediaReady)(
+  'records a still surface already watched without waiting for a new frame',
+  async () => {
+    const h = await harness({ recording: true, stillFrame: true });
+    const clip = await h.recordSyntheticDevice({ holdStill: true });
+    expect(clip.source.recording?.mediaType).toBe('video/webm');
+    expect(clip.events.filter((event) => event.kind === 'frame')).toHaveLength(
+      1,
     );
-    expect(response.status).toBe(200);
-    const converted = Buffer.from(await response.arrayBuffer());
-    expect(converted.subarray(0, 2)).toEqual(Buffer.from([0xff, 0xd8]));
-    expect(jpegSize(converted)).toEqual({ width: 64, height: 64 });
   },
 );
 

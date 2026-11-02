@@ -155,6 +155,7 @@ class HubViewer implements LiveSurfaceViewer {
     readonly agentActions: (() => boolean) | undefined,
     /** `h264` until the viewer falls back to images; never the reverse. */
     public codec: LiveSurfaceViewerCodec,
+    readonly freshOnly: boolean,
   ) {}
 
   /**
@@ -366,8 +367,12 @@ export class LiveSurfaceHub {
       identity ? { ...identity } : undefined,
       options?.agentActions,
       codec,
+      options?.freshOnly === true,
     );
-    if (options?.freshOnly) viewer.skipFrame = this.pending;
+    if (options?.freshOnly) {
+      viewer.skipFrame = this.pending;
+      if (this.lastPublished) this.releaseReference(this.lastPublished);
+    }
     if (
       codec === 'image' &&
       !options?.freshOnly &&
@@ -528,6 +533,17 @@ export class LiveSurfaceHub {
     this.markStatePending();
   }
 
+  /** A bounded snapshot for a recorder that receives no fresh image. */
+  snapshotImage(): Extract<LiveSurfaceRecord, { kind: 'frame' }> | null {
+    const frame = this.running ? this.lastPublished : null;
+    if (!frame) return null;
+    return {
+      kind: 'frame',
+      header: { ...frame.header, capturedAt: this.now() },
+      body: Uint8Array.from(frame.body),
+    };
+  }
+
   /** @internal The hub's clock, for viewers. */
   clock(): number {
     return this.now();
@@ -535,7 +551,9 @@ export class LiveSurfaceHub {
 
   /** @internal A viewer switched from H.264 to images. */
   viewerCodecChanged(viewer: HubViewer): void {
-    if (this.running && this.lastPublished) viewer.slot = this.lastPublished;
+    if (viewer.freshOnly) viewer.skipFrame = this.pending;
+    else if (this.running && this.lastPublished)
+      viewer.slot = this.lastPublished;
     this.onTargetChanged();
   }
 
@@ -764,6 +782,8 @@ export class LiveSurfaceHub {
       viewer.slot = frame;
       viewer.notify();
     }
+    if (![...this.viewers].some((viewer) => viewer.slot === frame))
+      this.ackOnce(frame);
     const imageViewers = [...this.viewers].filter(
       (viewer) => viewer.codec === 'image',
     );
