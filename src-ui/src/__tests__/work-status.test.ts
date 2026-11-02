@@ -790,7 +790,7 @@ describe('status facts for chat, task and merged rows', () => {
       // Home partitions without facts; both consumers name the same state.
       expect(workStatus(row.item, NOW)).toMatchObject({ line, lane, rung });
       // And Home's lane model files it in that lane.
-      if (lane === 'needsYou' || lane === 'running') {
+      if (lane === 'needsYou' || lane === 'idle') {
         const lanes = partitionHomeWorkItems({
           items: [row.item],
           now: NOW,

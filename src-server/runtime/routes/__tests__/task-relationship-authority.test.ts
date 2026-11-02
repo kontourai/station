@@ -370,9 +370,8 @@ test('Task list groups authorized independent room requests and linked chats wit
       headers: { principal },
     });
     expect(response.status).toBe(200);
-    return (await response.json()).data.find(
-      (task: { id: string }) => task.id === h.task.id,
-    );
+    const body = (await response.json()) as { data: { id: string }[] };
+    return body.data.find((task) => task.id === h.task.id);
   };
   expect(await read('owner')).toMatchObject({
     workChatConversationIds: expect.arrayContaining([
