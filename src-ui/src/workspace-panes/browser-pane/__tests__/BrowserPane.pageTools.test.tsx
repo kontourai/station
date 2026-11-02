@@ -29,6 +29,10 @@ import type { LiveSurfaceControlState } from '../../../live-surface/LiveSurfaceC
 
 vi.mock('../../../contexts/ApiBaseContext', () => ({
   useApiBase: () => ({ apiBase: 'http://station.test' }),
+  useHostRequestAuthorityScope: () => undefined,
+}));
+vi.mock('../../../hooks/useSurfaceVisibilityFlags', () => ({
+  useSurfaceVisibilityFlags: () => new Set(),
 }));
 
 const controlHolder: { state: LiveSurfaceControlState | null } = {

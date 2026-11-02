@@ -62,6 +62,9 @@ export interface BrowserHost {
   onExit(fn: (reason: string) => void): () => void;
   /** Page titles observed by the host, scoped to its own targets. */
   onTitleChanged?(fn: (targetId: string, title: string) => void): () => void;
+  onFaviconChanged?(
+    fn: (targetId: string, favicon: string | undefined) => void,
+  ): () => void;
   onTargetClosed?(fn: (targetId: string) => void): () => void;
   /** Admit an exact popup target as its own session; false closes it. */
   onPopup?(
