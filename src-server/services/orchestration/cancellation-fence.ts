@@ -323,10 +323,7 @@ export function backfillCascadeStopIntents(
 }
 
 /** Call while holding the same SQLite writer transaction as admission. */
-function isCancellationFenced(
-  db: SqliteDatabase,
-  threadId: string,
-): boolean {
+function isCancellationFenced(db: SqliteDatabase, threadId: string): boolean {
   return Boolean(
     db
       .prepare(
