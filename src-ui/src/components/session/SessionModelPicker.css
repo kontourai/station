@@ -289,6 +289,11 @@
   padding: 0;
   border: 0;
 }
+.session-model-picker__effort .cb {
+  min-width: 44px;
+  min-height: 44px;
+  justify-content: center;
+}
 .model-runtime-effort-choices legend {
   padding: 0 0 var(--k-space-2);
   color: var(--k-text-muted);
