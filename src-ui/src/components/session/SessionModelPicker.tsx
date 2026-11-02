@@ -280,12 +280,7 @@ export function SessionModelPicker({
 
   const renderModelRow = (model: SelectableModel) => {
     const key = modelChoiceKey(model, currentProviderId);
-    const active =
-      model.id === activeModel &&
-      model.executionAgentId === currentExecutionAgentId &&
-      (!currentProviderId ||
-        !model.providerId ||
-        model.providerId === currentProviderId);
+    const active = model === selectedModel;
     const favorite = favoriteKeys.has(key);
     const favoriteTarget = model.providerName
       ? `${model.name} (${model.providerName})`
