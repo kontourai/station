@@ -1,10 +1,11 @@
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import os from 'node:os';
 import { join } from 'node:path';
 import { agentId } from '@kontourai/station-contracts/agent-identity';
 import { environmentId } from '@kontourai/station-contracts/execution-target';
 import { sessionReadAuthorityFromRequest } from '@kontourai/station-contracts/tenancy';
 import { DelegationFileRefusal } from '@kontourai/station-shared/delegation-files';
-import { afterEach, describe, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { SessionStartRefusedError } from '../../../providers/adapter-shape.js';
 import { withStationControlCallerContext } from '../../../tools/station-control-shared.js';
@@ -47,7 +48,13 @@ function setup() {
     claims: new CreateRequestClaims(home),
   };
 }
-afterEach(() => vi.useRealTimers());
+beforeEach(() => {
+  vi.spyOn(os, 'uptime').mockImplementation(() => Date.now() / 1000);
+});
+afterEach(() => {
+  vi.restoreAllMocks();
+  vi.useRealTimers();
+});
 
 test('completed receipts replay for seven days, then expire without removing unresolved claims', async () => {
   vi.useFakeTimers({ toFake: ['Date'] });

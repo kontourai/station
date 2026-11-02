@@ -2368,10 +2368,21 @@ Before a Session exists, [CreateRequestClaims](../../src-server/services/orchest
 binds request kind, authenticated user/tenant/principal, verified calling
 Session and key to input and the reserved reference. A per-request owner lock
 prevents concurrent reclaim. The start ports and peer POST boundary persist `starting` before their
-effect; an unmarked dead reservation with no Session is reclaimable. A typed
+effect; an unmarked dead reservation is reclaimable immediately, even with
+changed input, without consulting Session existence. Live or unreadable ownership,
+a starting mark, and indeterminate tombstones still refuse changed input. A typed
 rejected start with no Session releases it. Started/unconfirmed creates stay
 indeterminate with an inspection reference. Completed receipts replay for seven
-wall-clock days, then expire; unresolved claims are retained. Before effects,
+days of elapsed host uptime, then expire. Each ledger write persists the remaining
+duration and uptime observation under the mutation lock; forward or backward
+wall-clock jumps neither shorten nor extend that duration. If host uptime resets,
+the remaining duration is re-anchored without credit for the unobserved interval;
+repeated reboots can conservatively prolong protection. Legacy timestamped rows
+begin a full window on first observation; unfinished rows without a start time
+remain indeterminate. This host-local clock uses the same host scope as the owner
+locks, not a cross-host lease. Unresolved claims remain inspection obligations:
+after their window, a durable Session start leaves a tombstone; without such a
+record the same key can retry and may repeat an earlier unrecorded effect. Before effects,
 the owner enforces 1,024 records and 4 MiB with 3 KiB reserved per pending receipt;
 capacity is a typed HTTP 429. Legacy unfinished claims remain indeterminate.
 Evidence: [claim lifecycle and capacity](../../src-server/services/orchestration/__tests__/create-request-claims.test.ts),
