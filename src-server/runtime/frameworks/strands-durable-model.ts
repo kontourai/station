@@ -1,6 +1,7 @@
 import {
   agentWire,
   currentAgentTurn,
+  journalAgentStreamPrefix,
   nextProviderCallId,
   readAgentWire,
   runWithProviderParent,
@@ -138,15 +139,30 @@ export function durableStrandsModel<T extends Model>(
         const iterator = source[Symbol.asyncIterator]();
         let closed = false;
         try {
-          for (;;) {
-            const next = await (configuration.layer === 'provider'
-              ? iterator.next()
-              : runWithProviderParent(id, () => iterator.next()));
-            if (next.done) {
-              closed = true;
-              break;
-            }
-            const event = eventData(next.value);
+          const source = {
+            [Symbol.asyncIterator]: () => ({
+              next: async () => {
+                const next = await (configuration.layer === 'provider'
+                  ? iterator.next()
+                  : runWithProviderParent(id, () => iterator.next()));
+                if (next.done) {
+                  closed = true;
+                  return next;
+                }
+                return { done: false as const, value: eventData(next.value) };
+              },
+            }),
+          };
+          for await (const event of journalAgentStreamPrefix(
+            lease,
+            id,
+            source,
+            (event) =>
+              (event.type === 'modelContentBlockStartEvent' &&
+                event.start?.type === 'toolUseStart') ||
+              event.type === 'modelMessageStopEvent' ||
+              event.type === 'modelRedactionEvent',
+          )) {
             events.push(event);
             if (
               (event.type === 'modelContentBlockStartEvent' &&
@@ -157,11 +173,6 @@ export function durableStrandsModel<T extends Model>(
               suffix = true;
             if (suffix) held.push(event);
             else {
-              await lease.effect({
-                type: 'effectPartial',
-                id,
-                part: agentWire(event),
-              });
               yield event;
             }
           }

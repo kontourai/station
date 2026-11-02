@@ -20,12 +20,30 @@ if (!revision || !output)
     'usage: npm run bench:agent-runtime -- <revision> <output.json>',
   );
 const watchdog = setTimeout(() => {
-  throw new Error('Agent runtime benchmark exceeded ten minutes');
-}, 600_000);
+  throw new Error('Agent runtime benchmark exceeded fifteen minutes');
+}, 900_000);
 watchdog.unref();
-const samples = 1;
-const steps = 200;
-async function run(durable: boolean, profile = false) {
+const sizes = (
+  args.find((a) => a.startsWith('--sizes='))?.slice(8) ?? '10,40,80,200'
+)
+  .split(',')
+  .map(Number);
+const chunkCounts = (
+  args.find((a) => a.startsWith('--chunks='))?.slice(9) ?? '100,200,400'
+)
+  .split(',')
+  .map(Number);
+if (
+  sizes.some((n) => !Number.isSafeInteger(n) || n < 1 || n > 200) ||
+  chunkCounts.some((n) => !Number.isSafeInteger(n) || n < 100 || n > 400)
+)
+  throw new Error('Invalid bounded workload');
+async function run(
+  durable: boolean,
+  steps: number,
+  chunks: number,
+  profile = false,
+) {
   using dir = mkdtempDisposableSync(join(tmpdir(), 'agent-runtime-benchmark-'));
   const storage = new FileMemoryAdapter({ projectHomeDir: dir.path });
   await storage.createConversation({
@@ -60,6 +78,13 @@ async function run(durable: boolean, profile = false) {
       const tool = calls < steps;
       const parts: LanguageModelV3StreamPart[] = [
         { type: 'stream-start', warnings: [] },
+        { type: 'text-start', id: 'answer' },
+        ...Array.from({ length: chunks }, (_, index) => ({
+          type: 'text-delta' as const,
+          id: 'answer',
+          delta: !tool && index === chunks - 1 ? 'DONE' : 'word ',
+        })),
+        { type: 'text-end', id: 'answer' },
         ...(tool
           ? [
               {
@@ -69,11 +94,7 @@ async function run(durable: boolean, profile = false) {
                 input: '{}',
               },
             ]
-          : [
-              { type: 'text-start' as const, id: 'answer' },
-              { type: 'text-delta' as const, id: 'answer', delta: 'DONE' },
-              { type: 'text-end' as const, id: 'answer' },
-            ]),
+          : []),
         {
           type: 'finish',
           finishReason: {
@@ -134,7 +155,7 @@ async function run(durable: boolean, profile = false) {
     await inspector.post('Profiler.enable');
     await inspector.post('Profiler.start');
   }
-  const delay = monitorEventLoopDelay({ resolution: 10 });
+  const delay = monitorEventLoopDelay({ resolution: 1 });
   delay.enable();
   const elu = performance.eventLoopUtilization();
   const started = performance.now();
@@ -171,7 +192,7 @@ async function run(durable: boolean, profile = false) {
   if (
     calls !== steps ||
     tools !== steps - 1 ||
-    text !== 'DONE' ||
+    !text.endsWith('DONE') ||
     failures.length ||
     (durable && terminal !== 'completed')
   )
@@ -183,6 +204,8 @@ async function run(durable: boolean, profile = false) {
     sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * q))] ?? null;
   return {
     durable,
+    steps,
+    chunks,
     profile,
     milliseconds,
     modelCalls: calls,
@@ -192,73 +215,47 @@ async function run(durable: boolean, profile = false) {
     eventLoopDelayMs: {
       p50: delay.percentile(50) / 1e6,
       p99: delay.percentile(99) / 1e6,
+      max: delay.max / 1e6,
     },
     utilization,
   };
 }
+const environment = {
+  node: process.version,
+  platform: platform(),
+  release: release(),
+  cpu: cpus()[0]?.model,
+  logicalCpus: cpus().length,
+  sqlite: 'WAL synchronous=FULL',
+  measuredAt: new Date().toISOString(),
+};
 const results = [];
-for (let sample = 0; sample < samples; sample++) {
-  results.push(await run(false));
-  writeFileSync(
-    `${output}.baseline.json`,
-    JSON.stringify(
-      {
-        revision,
-        baseline: results.at(-1),
-        environment: {
-          node: process.version,
-          platform: platform(),
-          release: release(),
-          cpu: cpus()[0]?.model,
-          logicalCpus: cpus().length,
+for (const steps of sizes)
+  for (const chunks of chunkCounts) {
+    const baseline = await run(false, steps, chunks);
+    const durable = await run(true, steps, chunks);
+    results.push({
+      steps,
+      chunks,
+      baseline,
+      durable,
+      ratio: durable.milliseconds / baseline.milliseconds,
+    });
+    writeFileSync(
+      output,
+      JSON.stringify(
+        {
+          revision,
+          environment,
+          scope:
+            'actual Station VoltAgent adapter; scripted zero-network provider; FileMemory; fresh conversation; excludes HTTP/event projection',
+          results,
         },
-      },
-      null,
-      2,
-    ),
-  );
-  results.push(await run(true, true));
-}
-const profile = results.find((value) => value.profile);
-const median = (values: number[]) =>
-  values.sort((a, b) => a - b)[Math.floor(values.length / 2)]!;
-const baselineMs = median(
-  results.filter((value) => !value.durable).map((value) => value.milliseconds),
-);
-const durableMs = median(
-  results.filter((value) => value.durable).map((value) => value.milliseconds),
-);
-writeFileSync(
-  output,
-  JSON.stringify(
-    {
-      revision,
-      environment: {
-        node: process.version,
-        platform: platform(),
-        release: release(),
-        cpu: cpus()[0]?.model,
-        logicalCpus: cpus().length,
-        sqlite: 'WAL synchronous=FULL',
-        measuredAt: new Date().toISOString(),
-      },
-      workload: {
-        steps,
-        samples,
-        framework: 'Station VoltAgent adapter',
-        provider: 'scripted zero-network',
-        scope:
-          'native model/tool loop and FileMemory; excludes HTTP/event projection',
-        retainedHistory: 'fresh conversation per sample',
-      },
-      baselineMs,
-      durableMs,
-      ratio: durableMs / baselineMs,
-      results,
-      profile,
-    },
-    null,
-    2,
-  ),
-);
+        null,
+        2,
+      ),
+    );
+  }
+if (args.includes('--profile'))
+  await run(true, sizes.at(-1)!, chunkCounts.at(-1)!, true);
 clearTimeout(watchdog);

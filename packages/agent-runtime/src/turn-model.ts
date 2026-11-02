@@ -4,6 +4,7 @@ import type {
 } from '@ai-sdk/provider';
 import { z } from 'zod';
 import { schemaData } from './codecs.js';
+import { journalAgentStreamPrefix } from './turn-partials.js';
 import {
   currentAgentTurn,
   nextProviderCallId,
@@ -144,20 +145,20 @@ export function durableLanguageModel(
       const stream = new ReadableStream<LanguageModelV3StreamPart>({
         async start(controller) {
           try {
-            for (;;) {
-              const next = await reader.read();
-              if (next.done) break;
-              const part = next.value;
+            const source = {
+              [Symbol.asyncIterator]: () => ({ next: () => reader.read() }),
+            };
+            for await (const part of journalAgentStreamPrefix(
+              turn,
+              id,
+              source,
+              (part) => part.type.startsWith('tool-') || part.type === 'finish',
+            )) {
               parts.push(part);
               if (part.type.startsWith('tool-') || part.type === 'finish')
                 suffix = true;
               if (suffix) held.push(part);
               else {
-                await turn.effect({
-                  type: 'effectPartial',
-                  id,
-                  part: agentWire(part),
-                });
                 controller.enqueue(part);
               }
             }

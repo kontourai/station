@@ -1,8 +1,9 @@
 import { randomUUID } from 'node:crypto';
-import { existsSync } from 'node:fs';
+import { existsSync, statSync } from 'node:fs';
 import { join } from 'node:path';
+import type { DatabaseSync } from 'node:sqlite';
+import { setImmediate as yieldToHost } from 'node:timers/promises';
 import {
-  type AgentFrame,
   type AgentJournal,
   type AgentTurnLease,
   agentWire,
@@ -167,6 +168,7 @@ function createStationOwner(home: string) {
   let released = false;
   const liveness = ownerLivenessFromProbe(probeExactProcessIdentity, {
     isReleased: (id) => releasedOwners.has(id),
+    isLocallyLive: (id) => !released && id === owner.id,
   });
   let preview: FeaturePreviewSelector | undefined;
   let conversationIdentity: ((sessionId: string) => string) | undefined;
@@ -209,21 +211,51 @@ function createStationOwner(home: string) {
   >();
   const enabled = () =>
     preview?.select({ enabled: () => true, disabled: () => false }) ?? false;
-  // Each command owns its handle. No connection survives a runtime shutdown or
-  // home replacement; the journal's SQLite transaction remains the authority.
-  const journal: AgentJournal = {
-    async execute(command, context) {
+  // One private connection per owner. Journal validation detects peer and local
+  // writes; inode replacement retires the handle rather than retaining old authority.
+  let handle:
+    | { database: DatabaseSync; journal: AgentJournal; inode: number }
+    | undefined;
+  function withJournal<T>(
+    work: (value: { database: DatabaseSync; journal: AgentJournal }) => T,
+  ): T {
+    if (released) throw new Error('The durable owner has been released.');
+    const inode = existsSync(path) ? statSync(path).ino : undefined;
+    if (handle && handle.inode !== inode) {
+      handle.database.close();
+      handle = undefined;
+    }
+    if (!handle) {
       const database = openPrivateSqlite(path, 'Durable Station agent');
       try {
-        return await openSqliteAgentJournal({ database }).execute(
-          command,
-          context,
-        );
-      } finally {
+        handle = {
+          database,
+          journal: openSqliteAgentJournal({ database }),
+          inode: statSync(path).ino,
+        };
+      } catch (error) {
         database.close();
+        throw error;
+      }
+    }
+    return work(handle);
+  }
+  let yieldedAt = performance.now();
+  const journal: AgentJournal = {
+    async execute(command, context) {
+      if (performance.now() - yieldedAt >= 5) {
+        await yieldToHost();
+        yieldedAt = performance.now();
+      }
+      return withJournal((value) => value.journal.execute(command, context));
+    },
+    async close() {
+      if (handle) {
+        await handle.journal.close();
+        handle.database.close();
+        handle = undefined;
       }
     },
-    async close() {},
   };
   const runtime = createAgentRuntime({
     journal,
@@ -293,52 +325,40 @@ function createStationOwner(home: string) {
     },
     approvals(conversationId: string, turnId: string): DurableApproval[] {
       if (!existsSync(path)) return [];
-      const database = openPrivateSqlite(path, 'Durable Station agent');
-      try {
-        return readSqliteAgentApprovals({
+      return withJournal(({ database }) =>
+        readSqliteAgentApprovals({
           database,
           key: { scopeId: 'station', conversationId, invocationId: turnId },
-        });
-      } finally {
-        database.close();
-      }
+        }),
+      );
     },
     read(conversationId: string, turnId: string) {
       if (!existsSync(path)) return undefined;
-      const database = openPrivateSqlite(path, 'Durable Station agent');
-      try {
-        return readSqliteAgentTurn({
+      return withJournal(({ database }) =>
+        readSqliteAgentTurn({
           database,
           key: { scopeId: 'station', conversationId, invocationId: turnId },
-        });
-      } finally {
-        database.close();
-      }
+        }),
+      );
     },
     readFrame(conversationId: string, turnId: string, id: string) {
       if (!existsSync(path)) return undefined;
-      const database = openPrivateSqlite(path, 'Durable Station agent');
-      try {
-        return readSqliteAgentFrame({
+      return withJournal(({ database }) =>
+        readSqliteAgentFrame({
           database,
           key: { scopeId: 'station', conversationId, invocationId: turnId },
           id,
-        });
-      } finally {
-        database.close();
-      }
+        }),
+      );
     },
     frames(conversationId: string, turnId: string) {
       if (!existsSync(path)) return [];
-      const database = openPrivateSqlite(path, 'Durable Station agent');
-      try {
-        return readSqliteAgentFrames({
+      return withJournal(({ database }) =>
+        readSqliteAgentFrames({
           database,
           key: { scopeId: 'station', conversationId, invocationId: turnId },
-        });
-      } finally {
-        database.close();
-      }
+        }),
+      );
     },
     configure(options: {
       preview: FeaturePreviewSelector;
@@ -481,13 +501,9 @@ function createStationOwner(home: string) {
         frame: async (frameId, wire) => (await leaseReady).frame(frameId, wire),
         onDetach: async () => {
           await leaseReady;
-          const database = openPrivateSqlite(path, 'Durable Station agent');
-          let frames: AgentFrame[];
-          try {
-            frames = readSqliteAgentFrames({ database, key });
-          } finally {
-            database.close();
-          }
+          const frames = withJournal(({ database }) =>
+            readSqliteAgentFrames({ database, key }),
+          );
           for (const frame of frames)
             await deliver(encodeDurableAgentFrame(key.invocationId, frame));
         },
@@ -643,8 +659,7 @@ function createStationOwner(home: string) {
     },
     isCurrent(lease: AgentTurnLease) {
       if (released || lease.signal.aborted || !existsSync(path)) return false;
-      const database = openPrivateSqlite(path, 'Durable Station agent');
-      try {
+      return withJournal(({ database }) => {
         const current = readSqliteAgentTurn({ database, key: lease.key });
         return (
           !!current &&
@@ -653,9 +668,7 @@ function createStationOwner(home: string) {
           (current.turn.state === 'running' ||
             current.turn.state === 'completed')
         );
-      } finally {
-        database.close();
-      }
+      });
     },
     async pause() {
       for (const job of jobs.values()) job.pause();
@@ -663,19 +676,14 @@ function createStationOwner(home: string) {
       await Promise.all(
         [...jobs.values()].map((job) => job.completion.catch(() => {})),
       );
+      await journal.close();
       released = true;
       releasedOwners.add(owner.id);
       owners.delete(home);
     },
     list() {
       if (!existsSync(path)) return [];
-      const database = openPrivateSqlite(path, 'Durable Station agent');
-      try {
-        openSqliteAgentJournal({ database });
-        return listSqliteAgentTurns({ database });
-      } finally {
-        database.close();
-      }
+      return withJournal(({ database }) => listSqliteAgentTurns({ database }));
     },
     registerRecovery(
       execute: Resume,
@@ -689,21 +697,16 @@ function createStationOwner(home: string) {
     recover: (async (input) => {
       if (input.signal.aborted) return 'retry';
       if (!existsSync(path)) return 'not-owned';
-      const database = openPrivateSqlite(path, 'Durable Station agent');
-      let saved: ReturnType<typeof readSqliteAgentTurn>;
-      try {
-        openSqliteAgentJournal({ database });
-        saved = readSqliteAgentTurn({
+      const saved = withJournal(({ database }) =>
+        readSqliteAgentTurn({
           database,
           key: {
             scopeId: 'station',
             conversationId: input.record.threadId,
             invocationId: input.turnId,
           },
-        });
-      } finally {
-        database.close();
-      }
+        }),
+      );
       if (!saved) return 'not-owned';
       const captured = descriptor(saved.turn.spec.input);
       if (

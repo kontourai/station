@@ -349,6 +349,16 @@ export async function bootstrapRuntimeDefaultAgent(
     logger: context.logger,
   });
 
+  const durable = {
+    home: context.configLoader.getProjectHomeDir(),
+    slug: 'station',
+    definition: durableAgentDefinition({
+      spec: defaultSpec,
+      binding: directModelImplementationBinding(defaultModel),
+      runtime: context.appConfig.runtime ?? 'voltagent',
+    }),
+  };
+
   const defaultAgent = await context.framework.createTempAgent({
     agentId: 'station',
     name: 'default',
@@ -363,25 +373,9 @@ export async function bootstrapRuntimeDefaultAgent(
     tools: defaultTools,
     memoryAdapter: defaultMemoryAdapter,
     hooks: defaultHooks,
-    durable: {
-      home: context.configLoader.getProjectHomeDir(),
-      slug: 'station',
-      definition: durableAgentDefinition({
-        spec: defaultSpec,
-        binding: directModelImplementationBinding(defaultModel),
-        runtime: context.appConfig.runtime ?? 'voltagent',
-      }),
-    },
+    durable,
   });
-  bindDurableAgent(defaultAgent, {
-    home: context.configLoader.getProjectHomeDir(),
-    slug: 'station',
-    definition: durableAgentDefinition({
-      spec: defaultSpec,
-      binding: directModelImplementationBinding(defaultModel),
-      runtime: context.appConfig.runtime ?? 'voltagent',
-    }),
-  });
+  bindDurableAgent(defaultAgent, durable);
 
   context.agentHooksMap?.set('default', defaultHooks);
   context.activeAgents.set('default', defaultAgent as any);

@@ -76,10 +76,10 @@ it('a mid-stream crash retains an aborted partial and never resends a possibly d
   );
   expect(calls).toBe(1);
   expect(recoveryError?.message).toContain('INDETERMINATE');
-  const row = f.database
-    .prepare('SELECT record FROM agent_steps_effects')
-    .get();
-  const effect = JSON.parse(String(row?.record));
+  const { effect } = await restored.effect({
+    type: 'effectRead',
+    id: 'model:0',
+  });
   expect(effect.attempts[0]).toMatchObject({
     state: 'aborted',
     partials: [

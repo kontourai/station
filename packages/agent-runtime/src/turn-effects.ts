@@ -1,6 +1,7 @@
 import type { DatabaseSync } from 'node:sqlite';
 import { z } from 'zod';
 import { canonical, fence, hash, runKey, text } from './encoding.js';
+import { putAgentBody, readAgentBody } from './turn-bodies.js';
 import { agentWire, readAgentWire } from './turn-wire.js';
 import type { Fence, RunKey } from './types.js';
 
@@ -55,6 +56,11 @@ export type EffectCommand =
       readonly part: string;
     })
   | (OwnedEffect & {
+      readonly type: 'effectPartialBatch';
+      readonly id: string;
+      readonly parts: readonly string[];
+    })
+  | (OwnedEffect & {
       readonly type: 'effectComplete';
       readonly id: string;
       readonly output: string;
@@ -80,6 +86,14 @@ export const effectCommands = [
     .strict(),
   z
     .object({
+      type: z.literal('effectPartialBatch'),
+      ...owned,
+      id: text,
+      parts: z.array(payload).min(1).max(256),
+    })
+    .strict(),
+  z
+    .object({
       type: z.literal('effectComplete'),
       ...owned,
       id: text,
@@ -89,12 +103,43 @@ export const effectCommands = [
 ] as const;
 export const effectsDefinition =
   'CREATE TABLE agent_steps_effects(turn_id TEXT NOT NULL REFERENCES agent_steps_turns(id), id TEXT NOT NULL, record TEXT NOT NULL, PRIMARY KEY(turn_id,id)) STRICT';
-function validate(record: EffectRecord) {
+export const effectIndexDefinition =
+  "CREATE INDEX agent_steps_effect_states ON agent_steps_effects(turn_id,json_extract(record,'$.intent.kind')) WHERE json_extract(record,'$.state') <> 'completed'";
+const records = new WeakMap<
+  DatabaseSync,
+  Map<string, { wire: string; value: EffectRecord }>
+>();
+export function clearAgentEffects(database: DatabaseSync) {
+  records.delete(database);
+}
+function recordCache(database: DatabaseSync) {
+  let cache = records.get(database);
+  if (!cache) {
+    cache = new Map();
+    records.set(database, cache);
+  }
+  return cache;
+}
+export function unfinishedAgentEffects(
+  database: DatabaseSync,
+  turnId: string,
+  kind?: 'model' | 'provider',
+) {
+  return (
+    database
+      .prepare(
+        "SELECT 1 FROM agent_steps_effects WHERE turn_id=? AND json_extract(record,'$.state') <> 'completed' AND (json_extract(record,'$.intent.kind') IN ('model','provider') OR (? IS NULL AND json_extract(record,'$.state')='running')) AND (? IS NULL OR json_extract(record,'$.intent.kind') IN (?, 'provider')) LIMIT 1",
+      )
+      .get(turnId, kind ?? null, kind ?? null, kind ?? null) !== undefined
+  );
+}
+function validate(record: EffectRecord, bodiesValidated = false) {
   const effect = effectSchema.parse(record);
   const last = effect.attempts.at(-1);
-  readAgentWire(effect.intent.input);
+  if (!bodiesValidated) readAgentWire(effect.intent.input);
   for (const attempt of effect.attempts) {
-    for (const part of attempt.partials) readAgentWire(part);
+    if (!bodiesValidated)
+      for (const part of attempt.partials) readAgentWire(part);
     if (attempt.output !== null) {
       const decoded = readAgentWire(attempt.output);
       const output =
@@ -147,18 +192,69 @@ export function readAgentEffect(
     .prepare('SELECT * FROM agent_steps_effects WHERE turn_id=? AND id=?')
     .get(turnId, id);
   if (!row) return undefined;
-  const effect = validate(JSON.parse(String(row.record)));
+  const wire = String(row.record);
+  const cache = recordCache(database);
+  const key = JSON.stringify([turnId, id]);
+  const prior = cache.get(key);
+  if (prior?.wire === wire) return structuredClone(prior.value);
+  const header = effectSchema.parse(JSON.parse(wire));
+  if (!header.intent.input.startsWith('sha256:')) {
+    if (
+      database
+        .prepare('SELECT writer_format FROM agent_steps_meta WHERE id=1')
+        .get()?.writer_format === 'agent-steps/7'
+    )
+      throw new Error('DURABLE_AGENT_EFFECT_DAMAGED');
+    return validate(header);
+  }
+  const effect = validate({
+    ...header,
+    intent: {
+      ...header.intent,
+      input: readAgentBody(database, header.intent.input),
+    },
+    attempts: header.attempts.map((attempt) => ({
+      ...attempt,
+      partials: attempt.partials.map((ref) => readAgentBody(database, ref)),
+      output:
+        attempt.output === null
+          ? null
+          : readAgentBody(database, attempt.output),
+    })),
+  });
+  if (cache.size >= 256) cache.delete(cache.keys().next().value!);
+  cache.set(key, { wire, value: effect });
   if (effect.intent.id !== id)
     throw new Error('DURABLE_AGENT_EFFECT_ID_DAMAGED');
   return effect;
 }
 function write(database: DatabaseSync, turnId: string, effect: EffectRecord) {
-  validate(effect);
+  validate(effect, true);
+  const header = {
+    ...effect,
+    intent: {
+      ...effect.intent,
+      input: putAgentBody(database, effect.intent.input),
+    },
+    attempts: effect.attempts.map((attempt) => ({
+      ...attempt,
+      partials: attempt.partials.map((wire) => putAgentBody(database, wire)),
+      output:
+        attempt.output === null ? null : putAgentBody(database, attempt.output),
+    })),
+  };
+  const wire = canonical(header);
+  const cache = recordCache(database);
+  if (cache.size >= 256) cache.delete(cache.keys().next().value!);
+  cache.set(JSON.stringify([turnId, effect.intent.id]), {
+    wire,
+    value: structuredClone(effect),
+  });
   database
     .prepare(
       'INSERT INTO agent_steps_effects VALUES(?,?,?) ON CONFLICT(turn_id,id) DO UPDATE SET record=excluded.record',
     )
-    .run(turnId, effect.intent.id, canonical(effect));
+    .run(turnId, effect.intent.id, wire);
 }
 export function validateAgentEffects(database: DatabaseSync, turnId: string) {
   const rows = database
@@ -200,12 +296,7 @@ export function decideAgentEffect(
         : { kind: 'refused', reason: 'conflict' };
     if (
       (command.intent.kind === 'model' || command.intent.kind === 'provider') &&
-      validateAgentEffects(database, turnId).some(
-        (previous) =>
-          (previous.intent.kind === command.intent.kind ||
-            previous.intent.kind === 'provider') &&
-          previous.state !== 'completed',
-      )
+      unfinishedAgentEffects(database, turnId, command.intent.kind)
     )
       return { kind: 'refused', reason: 'busy' };
     if (
@@ -259,17 +350,22 @@ export function decideAgentEffect(
     attempt.ownerId !== command.expected.owner.id
   )
     return { kind: 'refused', reason: 'conflict' };
-  if (command.type === 'effectPartial') {
+  if (
+    command.type === 'effectPartial' ||
+    command.type === 'effectPartialBatch'
+  ) {
+    const parts =
+      command.type === 'effectPartial' ? [command.part] : command.parts;
     if (
       (effect.intent.kind !== 'model' && effect.intent.kind !== 'provider') ||
       attempt.partials.reduce(
         (n, part) => n + Buffer.byteLength(part),
-        Buffer.byteLength(command.part),
+        parts.reduce((n, part) => n + Buffer.byteLength(part), 0),
       ) >
         16 * 1024 * 1024
     )
       return { kind: 'refused', reason: 'conflict' };
-    attempt.partials.push(command.part);
+    attempt.partials.push(...parts);
   } else {
     attempt.output = command.output;
     attempt.state = 'completed';
@@ -277,4 +373,14 @@ export function decideAgentEffect(
   }
   write(database, turnId, effect);
   return { kind: 'effect', effect, execute: false };
+}
+
+export function migrateAgentEffects(database: DatabaseSync) {
+  for (const row of database
+    .prepare('SELECT turn_id,id FROM agent_steps_effects')
+    .all()) {
+    const turnId = String(row.turn_id);
+    const effect = readAgentEffect(database, turnId, String(row.id))!;
+    write(database, turnId, effect);
+  }
 }

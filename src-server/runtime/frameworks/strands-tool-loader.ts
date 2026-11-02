@@ -1,4 +1,3 @@
-import { currentAgentTurn } from '@kontourai/agent-runtime';
 import type { AgentSpec } from '@kontourai/station-contracts/agent';
 import {
   type MCPLocalClaim,
@@ -213,17 +212,15 @@ export function createStrandsFunctionTools(
         return runWithCurrentNativeOutputCall(
           toolContext?.toolUse?.toolUseId,
           () =>
-            currentAgentTurn()
-              ? executeDurableTool(
-                  {
-                    name: tool.name,
-                    id: toolContext?.toolUse?.toolUseId,
-                    args: purposeful.input,
-                    replay: tool.replay,
-                  },
-                  () => tool.execute(purposeful.input, toolContext),
-                ).then((value) => z.json().parse(value))
-              : tool.execute(purposeful.input, toolContext),
+            executeDurableTool(
+              {
+                name: tool.name,
+                id: toolContext?.toolUse?.toolUseId,
+                args: purposeful.input,
+                replay: tool.replay,
+              },
+              () => tool.execute(purposeful.input, toolContext),
+            ).then((value) => z.json().parse(value)),
         );
       },
     });

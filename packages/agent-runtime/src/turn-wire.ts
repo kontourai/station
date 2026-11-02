@@ -1,5 +1,3 @@
-import { canonical } from './encoding.js';
-
 type Wire = null | boolean | number | string | Wire[];
 /** Tagged data prevents a tool's JSON keys from impersonating a Date or BLOB. */
 export function agentWire(value: unknown): string {
@@ -39,7 +37,7 @@ export function agentWire(value: unknown): string {
       seen.delete(item);
     }
   };
-  return canonical(visit(value, 0));
+  return JSON.stringify(visit(value, 0));
 }
 export function readAgentWire(value: string): unknown {
   const visit = (node: Wire): unknown => {

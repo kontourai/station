@@ -31,6 +31,7 @@ export {
   readSqliteAgentTurn,
 } from './turn-journal.js';
 export { durableLanguageModel } from './turn-model.js';
+export { journalAgentStreamPrefix } from './turn-partials.js';
 export type { AgentFrame } from './turn-projection.js';
 export {
   type AgentToolIntent,

@@ -671,8 +671,7 @@ export async function initializeRuntime(
     deps.environmentSecurityService,
   );
   const orchestrationService = new OrchestrationService({
-    recoverDurableTurn: (input) =>
-      stationAgentRuntimeOwner(configLoader.getProjectHomeDir()).recover(input),
+    recoverDurableTurn: (input) => durableOwner.recover(input),
     nativeForkStoredReadVerifier: nativeForkStoredReadDomain.verifyForService,
     ...(deps.hostImagesPreview
       ? { hostImagesPreview: deps.hostImagesPreview }
