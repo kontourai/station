@@ -551,6 +551,47 @@ describe('Config Routes', () => {
       expect((await move()).status).toBe(200);
     });
 
+    test('Reset Station settings clears each one back to its default', async () => {
+      const home = makeTempDir('station-retention-reset-');
+      const loader = new ConfigLoader({
+        projectHomeDir: home,
+        watchFiles: false,
+      });
+      await loader.loadAppConfig();
+      const app = createConfigRoutes(loader, mockLogger);
+      const put = (body: object) =>
+        app.request('/app', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+      const keys = [
+        'terminalHistoryEnabled',
+        'terminalHistoryDirectory',
+        'terminalHistoryMaxAgeDays',
+        'terminalHistoryMaxTerminalMiB',
+        'terminalHistoryMaxTotalMiB',
+      ];
+      expect(
+        (
+          await put({
+            terminalHistoryEnabled: false,
+            terminalHistoryDirectory: join(home, 'journals'),
+            terminalHistoryMaxAgeDays: 7,
+            terminalHistoryMaxTerminalMiB: 32,
+            terminalHistoryMaxTotalMiB: 64,
+          })
+        ).status,
+      ).toBe(200);
+      const stored = () =>
+        JSON.parse(readFileSync(join(home, 'config', 'app.json'), 'utf8'));
+      for (const key of keys) expect(stored()).toHaveProperty(key);
+      // What the Station reset sends: `null` for every stored key.
+      const reset = await put(Object.fromEntries(keys.map((k) => [k, null])));
+      expect(reset.status).toBe(200);
+      for (const key of keys) expect(stored()).not.toHaveProperty(key);
+    });
+
     test('the per-terminal size is checked against the saved total', async () => {
       const { response, body, loader } = await put(
         { terminalHistoryMaxTerminalMiB: 512 },
