@@ -1164,6 +1164,14 @@ export interface OrchestrationSessionSummary extends ProviderSession {
    * path themselves.
    */
   cwdManagedWorkspace?: true;
+  /**
+   * #4433: the approval mode this session's engine last reported applying
+   * (the newest `session.configured` or `turn.started` carrying
+   * `metadata.approvalMode`). Durable, so a client that reopens or resyncs
+   * a chat shows what the engine reported instead of falling back to the
+   * inherited default until the next report.
+   */
+  appliedApprovalMode?: ApprovalMode;
   isLoaded: boolean;
   isPersisted: boolean;
   eventCount: number;

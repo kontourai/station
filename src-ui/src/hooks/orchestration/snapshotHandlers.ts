@@ -1,3 +1,4 @@
+import { isApprovalMode } from '@kontourai/station-contracts/provider';
 import type { QueryClient } from '@tanstack/react-query';
 import type { ChatUIState } from '../../contexts/active-chats-store';
 import { activeChatsStore } from '../../contexts/active-chats-store';
@@ -34,6 +35,8 @@ type SnapshotChatState = Pick<
   | 'answeredApprovals'
   | 'pendingApprovalTurnIds'
   | 'approvalToasts'
+  | 'lastAppliedApprovalMode'
+  | 'approvalTakeoverFailed'
 >;
 
 /** Fold-absent (legacy) payloads count as open — only an explicit false demotes. */
@@ -463,6 +466,18 @@ function planSnapshot(
           orchestrationModel:
             session.reportedModel ?? session.effectiveModel ?? session.model,
           orchestrationSessionStarted: true,
+          // #4433: what the engine last reported applying is client memory
+          // (`lastAppliedApprovalMode`), lost on a reload, a resync or a
+          // reopened conversation; the chip then fell back to "Default"
+          // while the engine still ran "Auto". The server's durable report
+          // fills it when nothing newer is held, and never revives a mode a
+          // failed takeover cleared.
+          ...(!chat?.lastAppliedApprovalMode &&
+          !chat?.approvalTakeoverFailed &&
+          !adoptsCurrentChild &&
+          isApprovalMode(session.appliedApprovalMode)
+            ? { lastAppliedApprovalMode: session.appliedApprovalMode }
+            : {}),
           // archive#1034: the payload's `status` is the provider's process state;
           // 'running' with no open turn (hasActiveTurn === false) must not
           // re-strand the streaming shell after a reconnect — the exact

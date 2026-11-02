@@ -883,6 +883,68 @@ describe('applyOrchestrationSnapshot chat-status sync', () => {
     });
   });
 
+  test('#4433: a reloaded chat takes the engine-reported approval mode from the server', () => {
+    // After a reload the client remembers no report, so the chip read
+    // "Default" while the engine still ran Auto.
+    const updates = applyOrdinarySnapshot(
+      {
+        sessions: [
+          {
+            provider: 'codex',
+            threadId: 'thread-approval',
+            status: 'ready',
+            appliedApprovalMode: 'auto',
+          },
+        ],
+      },
+      { 'thread-approval': {} },
+    );
+    expect(updates['thread-approval']).toMatchObject({
+      lastAppliedApprovalMode: 'auto',
+    });
+  });
+
+  test('#4433: a newer live report is not replaced, and a failed takeover is not revived', () => {
+    const updates = applyOrdinarySnapshot(
+      {
+        sessions: [
+          {
+            provider: 'codex',
+            threadId: 'thread-live-report',
+            status: 'ready',
+            appliedApprovalMode: 'auto',
+          },
+          {
+            provider: 'acp',
+            threadId: 'thread-takeover',
+            status: 'ready',
+            appliedApprovalMode: 'ask',
+          },
+          {
+            provider: 'codex',
+            threadId: 'thread-unknown',
+            status: 'ready',
+            appliedApprovalMode: 'not-a-mode',
+          },
+        ],
+      },
+      {
+        'thread-live-report': { lastAppliedApprovalMode: 'ask' },
+        'thread-takeover': { approvalTakeoverFailed: true },
+        'thread-unknown': {},
+      },
+    );
+    expect(updates['thread-live-report']).not.toHaveProperty(
+      'lastAppliedApprovalMode',
+    );
+    expect(updates['thread-takeover']).not.toHaveProperty(
+      'lastAppliedApprovalMode',
+    );
+    expect(updates['thread-unknown']).not.toHaveProperty(
+      'lastAppliedApprovalMode',
+    );
+  });
+
   test('snapshot updates the reported model without eroding a pending picker request', () => {
     const updates = applyOrdinarySnapshot(
       {
