@@ -680,12 +680,12 @@ it.each(
       for await (const part of first.stream)
         if (part.type === 'text-delta') parts.push(part.delta);
       expect(parts).toEqual(deltas);
-      await f.lease.frameBatch(
-        deltas.map((delta, index) => ({
-          id: `answer:${index}`,
-          wire: `data: ${JSON.stringify({ type: 'text-delta', id: 'answer', delta })}\n\n`,
-        })),
-      );
+      const frames = deltas.map((delta, index) => ({
+        id: `answer:${index}`,
+        wire: `data: ${JSON.stringify({ type: 'text-delta', id: 'answer', delta })}\n\n`,
+      }));
+      for (let offset = 0; offset < frames.length; offset += 1024)
+        await f.lease.frameBatch(frames.slice(offset, offset + 1024));
       const next = await runWithAgentTurn(f.lease, () =>
         model.doStream({
           prompt: Array.from({ length: 60 }, () => ({
