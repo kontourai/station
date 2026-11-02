@@ -107,6 +107,10 @@ const PNG = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR4nGP4DwQACfsD/fteaysAAAAASUVORK5CYII=',
   'base64',
 );
+const PNG_64 = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAIAAAAlC+aJAAAACXBIWXMAAAABAAAAAQBPJcTWAAAAYElEQVR4nO3PwQkAIBDAMAX3H/lwCB9BaCZo96y/HR3wqgGtAa0BrQGtAa0BrQGtAa0BrQGtAa0BrQGtAa0BrQGtAa0BrQGtAa0BrQGtAa0BrQGtAa0BrQGtAa0BrQHtAgK6AfwYG1VIAAAAAElFTkSuQmCC',
+  'base64',
+);
 const FRAME_RED = Buffer.from(
   '/9j/4AAQSkZJRgABAgAAAQABAAD//gAPTGF2YzYzLjEuMTAyAP/bAEMACAQEBAQEBQUFBQUFBgYGBgYGBgYGBgYGBgcHBwgICAcHBwYGBwcICAgICQkJCAgICAkJCgoKDAwLCw4ODhERFP/EAE0AAQEAAAAAAAAAAAAAAAAAAAAGAQEBAQAAAAAAAAAAAAAAAAAABgcQAQAAAAAAAAAAAAAAAAAAAAARAQAAAAAAAAAAAAAAAAAAAAD/wAARCABAAEADASIAAhEAAxEA/9oADAMBAAIRAxEAPwCLASbfwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAH/2Q==',
   'base64',
@@ -596,6 +600,8 @@ async function harness(
         onStarted?: () => void;
         rotation?: 90;
         onFrameConsumed?: () => void;
+        pngFallback?: boolean;
+        onAttach?: (codec: string | undefined) => void;
       } = {},
     ) => {
       const access = await room.sessionTaskReviewAccess('agent-a');
@@ -605,9 +611,13 @@ async function harness(
       const entry = surfaceId ? surfaces.get(surfaceId) : undefined;
       if (!entry) throw new Error('Recording surface unavailable');
       const hub =
-        options.rotation || options.onFrameConsumed
+        options.rotation ||
+        options.onFrameConsumed ||
+        options.pngFallback ||
+        options.onAttach
           ? (Object.assign(Object.create(entry.hub), {
               attach: (...args: Parameters<typeof entry.hub.attach>) => {
+                options.onAttach?.(args[2]?.codec);
                 const viewer = entry.hub.attach(...args);
                 return {
                   ...viewer,
@@ -615,6 +625,16 @@ async function harness(
                   next: async (...nextArgs: Parameters<typeof viewer.next>) => {
                     const record = await viewer.next(...nextArgs);
                     if (record?.kind === 'frame') options.onFrameConsumed?.();
+                    if (
+                      record?.kind === 'frame' &&
+                      options.pngFallback &&
+                      record.header.seq % 2 === 0
+                    )
+                      return {
+                        ...record,
+                        header: { ...record.header, codec: 'png' as const },
+                        body: PNG_64,
+                      };
                     return record?.kind === 'frame' && options.rotation
                       ? {
                           ...record,
@@ -1003,6 +1023,40 @@ test.skipIf(!mediaReady)(
     expect(
       parseWalkthrough(legacy.data.walkthrough).source.device,
     ).toBeUndefined();
+  },
+);
+
+test.skipIf(!mediaReady)(
+  'Device recorder requests image frames and converts PNG fallback to JPEG',
+  async () => {
+    const h = await harness({ recording: true });
+    let codec: string | undefined;
+    let count = 0;
+    const clip = await h.recordSyntheticDevice({
+      pngFallback: true,
+      onAttach: (value) => {
+        codec = value;
+      },
+      onFrameConsumed: () => {
+        count++;
+      },
+    });
+    expect(codec).toBe('image');
+    expect(count).toBeGreaterThanOrEqual(2);
+    const frames = clip.events.filter((item) => item.kind === 'frame');
+    expect(frames.length).toBeGreaterThanOrEqual(2);
+    expect(
+      frames.every(
+        (frame) => frame.kind === 'frame' && frame.file.endsWith('.jpg'),
+      ),
+    ).toBe(true);
+    const response = await h.person(
+      `task-a/review/walkthroughs/${clip.id}/frames/${frames[1]!.frameId}`,
+    );
+    expect(response.status).toBe(200);
+    expect(Buffer.from(await response.arrayBuffer()).subarray(0, 2)).toEqual(
+      Buffer.from([0xff, 0xd8]),
+    );
   },
 );
 
