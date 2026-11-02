@@ -148,6 +148,7 @@ import {
 import type { FileStorageAdapter } from '../../domain/file-storage-adapter.js';
 import { ensureStationHomeSchemaSync } from '../../domain/home-schema-gate.js';
 import { getOrchestrationDatabasePath } from '../../domain/migrations/003-orchestration-events.js';
+import type { IPtyAdapter } from '../../domain/pty-adapter.js';
 import { registerRuntimeConversationKnowledgeRoot } from '../../knowledge-store/conversation-root-bootstrap.js';
 import type { KnowledgeStoreProvider } from '../../knowledge-store/knowledge-store-provider.js';
 import type { MonitoringEmitter } from '../../monitoring/emitter.js';
@@ -239,8 +240,7 @@ import type {
 } from '../../services/secrets/secret-binding-administration.js';
 import { EnvironmentSecurityService } from '../../services/ssh/environment-security-service.js';
 import type { SshEnvironmentService } from '../../services/ssh/ssh-environment-service.js';
-import type { TerminalService } from '../../services/terminal/terminal-service.js';
-import type { TerminalWebSocketServer } from '../../services/terminal/terminal-ws-server.js';
+import type { TerminalSessions } from '../../services/terminal/terminal-sessions.js';
 import { UsageTelemetryService } from '../../services/usage-telemetry-service.js';
 import {
   consentListenerState,
@@ -1225,9 +1225,9 @@ export class StationRuntime {
   /** #4003: the one exact-identity tracker reader (host `gh` login). */
   private readonly workItemObserver: WorkItemObserver =
     new GitHubWorkItemObserver();
-  private terminalService!: TerminalService;
-  private terminalWsServer!: TerminalWebSocketServer;
-  private terminalWsStarted = false;
+  private ptyAdapter!: IPtyAdapter;
+  private readonly scopedTerminals: { sessions?: TerminalSessions<Request> } =
+    {};
   private voiceService!: VoiceSessionService;
   private voiceWsAttached = false;
   private acpBridge: ACPManager;
@@ -1833,7 +1833,6 @@ export class StationRuntime {
           await this.recoverRuntimeProjections(resetIntegrationState);
         },
         usageAggregatorRef: { get: () => this.usageAggregator },
-        getTerminalShell: () => this.appConfig?.terminalShell,
         persistEvent: (event: any) => this.eventLog.persist(event),
         bootstrapVoiceAgent: async () => this.bootstrapVoiceAgent(),
         resolveVectorDbProvider: () =>
@@ -1858,8 +1857,7 @@ export class StationRuntime {
       this.knowledgeService = services.knowledgeService;
       this.knowledgeStoreProvider = services.knowledgeStoreProvider;
       this.fileTreeService = services.fileTreeService;
-      this.terminalService = services.terminalService;
-      this.terminalWsServer = services.terminalWsServer;
+      this.ptyAdapter = services.ptyAdapter;
       this.voiceService = services.voiceService;
       this.monitoringEmitter = services.monitoringEmitter;
       this.acpBridge = services.acpBridge;
@@ -4259,18 +4257,6 @@ export class StationRuntime {
         plugins: packageProjections.pending,
       });
     await this.sshEnvironmentService.initialize();
-    // Terminal sessions are process-global and have no durable tenant
-    // binding. A hosted tenant-isolated runtime must not bind the separate
-    // terminal port until that transport has tenant authorization.
-    if (!this.terminalWsStarted && !isHostedTenantExecutionRequired()) {
-      this.terminalWsServer.start(this.port + 1, this.host, {
-        allowedBrowserOrigins: resolveStationBrowserOrigins({
-          port: this.port,
-          host: this.host,
-        }),
-      });
-      this.terminalWsStarted = true;
-    }
     let initialized: Awaited<ReturnType<typeof initializeRuntime>>;
     try {
       // Private SQLite takes ownership of old config-backed credential
@@ -4853,9 +4839,6 @@ export class StationRuntime {
         );
       }
     });
-    if (await attempt(() => this.terminalWsServer.stop())) {
-      this.terminalWsStarted = false;
-    }
 
     if (failures.length > 1) {
       throw new AggregateError(
@@ -5219,7 +5202,8 @@ export class StationRuntime {
       runtimeSearch: this.runtimeSearch,
       taskDispatcher: this.taskDispatcher,
       workItemObserver: this.workItemObserver,
-      terminalService: this.terminalService,
+      ptyAdapter: this.ptyAdapter,
+      scopedTerminals: this.scopedTerminals,
       actionOperations: this.actionOperations,
       delegationAttemptClaims: this.delegationAttemptClaims,
       orchestrationService: this.orchestrationService,
@@ -6054,8 +6038,7 @@ export class StationRuntime {
               },
             }
           : undefined,
-        terminalWsServer: this.terminalWsServer,
-        terminalService: this.terminalService,
+        terminalSessions: this.scopedTerminals.sessions,
         monitoringEmitter: this.monitoringEmitter,
         sshEnvironmentService: this.sshEnvironmentService,
         // Deliberately not handed over (station#1815): this loader is the
