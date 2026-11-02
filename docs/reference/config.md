@@ -350,7 +350,7 @@ revoked grant lookup denies the read.
   Assistant id, a bounded ambient seed, an opening message and display facts.
   The `/api/diagnostics` POST tier (`orchestration:operate`) applies; every
   agent caller is refused with 403; a seed route over 512 characters or an
-  error summary over 2,000 characters is refused with 400. Advertised by the
+  error summary over 2,000 characters is refused with 400, a closed `code` (`route-too-long`, `route-not-in-app`, `error-summary-too-long`) and both limits. Advertised by the
   `troubleshootPrepare` capability flag. Types:
   `@kontourai/station-contracts/troubleshoot`. See
   [troubleshoot with an agent](../design/troubleshoot-in-app.md).

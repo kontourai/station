@@ -76,8 +76,9 @@ The request and response types are in
 - **Surface.** The request's `surface`, else the client-origin header's
   reported surface, else `unknown`. Display-only.
 - **Seed.** A route over 512 characters, a route that is not an in-app path,
-  or an error summary over 2,000 characters is refused with 400. Nothing is
-  truncated. The route keeps only its path; the query and fragment are dropped.
+  or an error summary over 2,000 characters is refused with 400 and a closed
+  `code` (`route-too-long`, `route-not-in-app`, `error-summary-too-long`)
+  plus both limits. Nothing is truncated. The route keeps only its path; the query and fragment are dropped.
 - **Run.** The service writes `context.json`, `playbook.md` and `seed.md` to a
   new `<Station home>/cache/triage/<uuid>` with the same owner-only rules as
   `station triage` (directory `0700`, files `0600`, no symlinked cache

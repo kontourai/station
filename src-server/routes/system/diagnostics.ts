@@ -1,5 +1,9 @@
 import { TROUBLESHOOT_SURFACES } from '@kontourai/station-contracts/troubleshoot';
-import { TroubleshootSeedError } from '@kontourai/station-shared/triage-context';
+import {
+  MAX_TROUBLESHOOT_SEED_ERROR_LENGTH,
+  MAX_TROUBLESHOOT_SEED_ROUTE_LENGTH,
+  TroubleshootSeedError,
+} from '@kontourai/station-shared/triage-context';
 import { Hono } from 'hono';
 import {
   isOperatorInPersonNotAgent,
@@ -108,7 +112,19 @@ export function createDiagnosticsRoutes(
           );
         } catch (error) {
           if (error instanceof TroubleshootSeedError)
-            return c.json({ success: false, error: error.message }, 400);
+            return c.json(
+              {
+                success: false,
+                error:
+                  'Seed context was refused: the route must be an in-app path, and each field must fit its limit.',
+                code: error.reason,
+                limits: {
+                  route: MAX_TROUBLESHOOT_SEED_ROUTE_LENGTH,
+                  errorSummary: MAX_TROUBLESHOOT_SEED_ERROR_LENGTH,
+                },
+              },
+              400,
+            );
           logger.error('Failed to prepare troubleshooting', { error });
           return c.json(
             { success: false, error: 'Troubleshooting could not be prepared.' },

@@ -206,9 +206,13 @@ describe('POST /api/diagnostics/troubleshoot/prepare', () => {
     const over = `/${'a'.repeat(MAX_TROUBLESHOOT_SEED_ROUTE_LENGTH)}`;
     const refused = await prepare(app, 'operator', { seed: { route: over } });
     expect(refused.status).toBe(400);
-    expect(((await refused.json()) as { error: string }).error).toContain(
-      String(MAX_TROUBLESHOOT_SEED_ROUTE_LENGTH),
-    );
+    expect(await refused.json()).toMatchObject({
+      success: false,
+      code: 'route-too-long',
+      // Literal pinned beside the constant it is derived from.
+      limits: { route: 512, errorSummary: 2000 },
+    });
+    expect(MAX_TROUBLESHOOT_SEED_ROUTE_LENGTH).toBe(512);
     expect(runDirs(stationRoot)).toEqual([]);
 
     const accepted = await prepare(app, 'operator', {

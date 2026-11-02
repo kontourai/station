@@ -550,8 +550,16 @@ export interface TroubleshootContext {
   };
 }
 
+export type TroubleshootSeedRefusal =
+  | 'route-too-long'
+  | 'route-not-in-app'
+  | 'error-summary-too-long';
+
 export class TroubleshootSeedError extends Error {
-  constructor(message: string) {
+  constructor(
+    readonly reason: TroubleshootSeedRefusal,
+    message: string,
+  ) {
     super(message);
     this.name = 'TroubleshootSeedError';
   }
@@ -571,10 +579,12 @@ export function admitTroubleshootSeed(input: {
   if (route !== null) {
     if (route.length > MAX_TROUBLESHOOT_SEED_ROUTE_LENGTH)
       throw new TroubleshootSeedError(
+        'route-too-long',
         `Seed route exceeds ${MAX_TROUBLESHOOT_SEED_ROUTE_LENGTH} characters.`,
       );
     if (!route.startsWith('/') || route.startsWith('//'))
       throw new TroubleshootSeedError(
+        'route-not-in-app',
         'Seed route must be an in-app path starting with a single "/".',
       );
   }
@@ -583,6 +593,7 @@ export function admitTroubleshootSeed(input: {
     errorSummary.length > MAX_TROUBLESHOOT_SEED_ERROR_LENGTH
   )
     throw new TroubleshootSeedError(
+      'error-summary-too-long',
       `Seed error summary exceeds ${MAX_TROUBLESHOOT_SEED_ERROR_LENGTH} characters.`,
     );
   // Stored relative to the app root (no leading "/", so the root route is
