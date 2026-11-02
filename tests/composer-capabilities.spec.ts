@@ -393,26 +393,29 @@ async function evidence(page: Page, testInfo: TestInfo, name: string) {
   }
 }
 
-test('a missing host durability profile disables steering and explains it at both widths and themes', async ({
-  page,
-}, testInfo) => {
-  const executionRequests: Array<Record<string, unknown>> = [];
-  await page.setViewportSize({ width: 1440, height: 900 });
-  await installMockOrchestrationSse(page);
-  await seedRoutes(page, executionRequests, false, null);
-  const { composer, started } = await openStartComposer(page, 'desktop');
-  await composer
-    .getByRole('textbox', { name: 'What would you like done?' })
-    .fill('start without a profile');
-  await composer.getByRole('button', { name: 'Start', exact: true }).click();
-  await started();
-  await waitForMockOrchestrationSse(page);
-  const input = page.getByRole('group', {
-    name: 'Message composer',
-    exact: true,
-  });
-  await input.getByRole('textbox').fill('keep this follow-up');
-  for (const width of [390, 1440]) {
+for (const [label, width] of [
+  ['phone', 390],
+  ['desktop', 1440],
+] as const) {
+  test(`native Codex ${label}: a missing durability profile disables Steer`, async ({
+    page,
+  }, testInfo) => {
+    const executionRequests: Array<Record<string, unknown>> = [];
+    await page.setViewportSize({ width, height: 900 });
+    await installMockOrchestrationSse(page);
+    await seedRoutes(page, executionRequests, false, null);
+    const { composer, started } = await openStartComposer(page, label);
+    await composer
+      .getByRole('textbox', { name: 'What would you like done?' })
+      .fill('start without a profile');
+    await composer.getByRole('button', { name: 'Start', exact: true }).click();
+    await started();
+    await waitForMockOrchestrationSse(page);
+    const input = page.getByRole('group', {
+      name: 'Message composer',
+      exact: true,
+    });
+    await input.getByRole('textbox').fill('keep this follow-up');
     for (const theme of ['dark', 'light']) {
       await page.setViewportSize({ width, height: 900 });
       await page.evaluate(
@@ -437,9 +440,9 @@ test('a missing host durability profile disables steering and explains it at bot
       await page.keyboard.press('Escape');
       await expect(mode).toBeHidden();
     }
-  }
-  expect(executionRequests).toHaveLength(1);
-});
+    expect(executionRequests).toHaveLength(1);
+  });
+}
 
 for (const [label, viewport] of [
   ['desktop', { width: 1280, height: 860 }],

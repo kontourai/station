@@ -1138,7 +1138,9 @@ export function ChatDockBody({
     'native';
   const steeringUnavailableReason = activeSession.orchestrationDurability
     ? undefined
-    : 'Steering unavailable: the host did not report a durability profile.';
+    : activeOrchestrationSessionRead === 'pending'
+      ? 'Loading steering support…'
+      : 'Steering unavailable: the host did not report a durability profile.';
   const busyFollowUp =
     isTurnInFlight(activeSession) &&
     chatInput.attachments.length === 0 &&

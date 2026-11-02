@@ -242,7 +242,9 @@ function UsageLimitBannerFor({
   const canChoose = recovery?.outcome === 'armed' && dueKnown && !resetPassed;
   const blocked = recovery?.admission?.state === 'blocked';
   const body = blocked
-    ? 'Automatic recovery is paused until recovery checks succeed.'
+    ? recovery.admission?.reason === 'scan-unavailable'
+      ? 'Automatic recovery is paused: saved credential recovery records cannot be read.'
+      : 'Automatic recovery is paused: a previous credential change is unconfirmed.'
     : autoOn
       ? 'Resumes automatically.'
       : dueKnown
@@ -323,6 +325,16 @@ function UsageLimitBannerFor({
           role={blocked ? 'status' : undefined}
         >
           {body}
+          {blocked && recovery?.admission?.retryAt ? (
+            <>
+              {' '}
+              Next check{' '}
+              <time dateTime={recovery.admission.retryAt}>
+                {clockTime(new Date(recovery.admission.retryAt).getTime())}
+              </time>
+              .
+            </>
+          ) : null}
         </p>
       ) : null}
       {failed ? (

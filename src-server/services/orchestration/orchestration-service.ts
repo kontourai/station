@@ -5473,14 +5473,14 @@ export class OrchestrationService {
 
   async steerFidelityForThread(
     threadId: string,
-  ): Promise<'native' | 'emulated' | 'none'> {
+  ): Promise<'native' | 'emulated' | 'none' | 'pending'> {
     const provider =
       this.threadProviders.get(threadId) ??
       this.sessionReadModel.get(threadId)?.provider ??
       this.options.eventStore?.readSessionByThread(threadId)?.provider;
     return (
       this.durabilityProfileForProvider(provider)?.steerPlacement.state ??
-      'none'
+      (provider ? 'pending' : 'none')
     );
   }
 

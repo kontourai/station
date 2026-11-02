@@ -165,8 +165,7 @@ export async function startRuntimeHealthChecks(context: {
   });
   const interval = context.interval ?? MS_PER_MINUTE;
   const runHealthChecks = async () => {
-    await context.maintainOwnedWork();
-    await context.runHealthChecks();
+    await Promise.all([context.maintainOwnedWork(), context.runHealthChecks()]);
   };
 
   await runHealthChecks();

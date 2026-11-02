@@ -482,13 +482,27 @@ describe('thread inbox (#3568)', () => {
     expect(world.adapter.steers).toEqual([]);
   });
 
-  test('a missing adapter profile refuses a durable steer without blocking later follow-ups', async () => {
+  test('an unknown profile keeps a durable steer queued until the declaration arrives', async () => {
     let world: World;
     world = boot(path(), {
       steerFidelity: (threadId) =>
         world.service.steerFidelityForThread(threadId),
+      inspectSteer: (input) => world.store.readSteerInput(input),
+      steer: async ({ threadId, turnId, clientInputId, payload }) => {
+        const result = await world.service.dispatchWithReceipt(
+          {
+            type: 'steerTurn',
+            threadId,
+            turnId,
+            clientInputId,
+            input: payload.message,
+          },
+          { userId: payload.actor.userId },
+        );
+        return result.result;
+      },
     });
-    const owner = await runningFirstTurn(world);
+    await runningFirstTurn(world);
     delete world.adapter.metadata.durability;
     world.inbox.submitSteer({
       conversationId: THREAD,
@@ -498,22 +512,18 @@ describe('thread inbox (#3568)', () => {
     });
     await world.inbox.idle();
     expect(world.inbox.list(THREAD)).toMatchObject([
-      {
-        state: 'refused',
-        reasonCode: 'unsupported-engine',
-        message: FOLLOW_UP,
-      },
+      { state: 'queued', message: FOLLOW_UP },
     ]);
     expect(world.adapter.steers).toEqual([]);
-    expect(followUpSends()).toEqual([]);
-    world.inbox.submit({
-      conversationId: THREAD,
-      clientTurnId: 'F2',
-      payload: { ...payload, message: 'follow-up F2' },
-    });
-    await emit(world, 'turn.completed', { turnId: 'turn-1' }, owner);
-    await settle(world);
-    expect(sends).toContain('follow-up F2');
+    world.adapter.metadata.durability = STEERING_ENGINE_DURABILITY;
+    await world.inbox.reconcile();
+    await world.inbox.idle();
+    expect(world.inbox.list(THREAD)).toMatchObject([
+      { state: 'sent', message: FOLLOW_UP },
+    ]);
+    expect(world.adapter.steers).toEqual([FOLLOW_UP]);
+    await world.inbox.reconcile();
+    expect(world.adapter.steers).toEqual([FOLLOW_UP]);
   });
 
   test('the inbox drives a scripted adapter through the real receipted orchestration dispatch', async () => {

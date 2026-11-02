@@ -166,9 +166,15 @@ describe('UsageLimitBanner (#3157)', () => {
     renderBanner();
     await banner();
     expect((await screen.findByRole('status')).textContent).toContain(
-      'Automatic recovery is paused until recovery checks succeed.',
+      'Automatic recovery is paused: saved credential recovery records cannot be read.',
     );
     expect(screen.queryByText('Resumes automatically.')).toBeNull();
+    expect(
+      screen
+        .getByRole('status')
+        .querySelector('time')
+        ?.getAttribute('datetime'),
+    ).toBe('2026-09-24T21:01:00.000Z');
   });
 
   test('shows the reset as a local time and says it will resume when auto-resume is on', async () => {

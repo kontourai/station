@@ -518,6 +518,38 @@ describe('CredentialRecoveryModule', () => {
     });
   };
 
+  test('readiness warnings record each outage reason transition once', async () => {
+    const { databasePath } = await persistAcceptedLinkedReceipt();
+    const store = new EventStore(databasePath);
+    const scan = preparedScan(store).mockImplementationOnce(busy);
+    const warn = vi.fn();
+    const module = createCredentialRecoveryModuleForTest({
+      eventStore: store,
+      logger: { warn },
+      adapter: {
+        stage: vi.fn(async () => credentialAttempt()),
+        inspectStartup: async () => ({ kind: 'indeterminate' }),
+      },
+      restartResume: vi.fn(async () => ({ turnId: 'unused' })),
+      restoreSession: vi.fn(async () => undefined),
+      now: () => new Date('2026-08-12T00:00:01.000Z'),
+    });
+    try {
+      await module.reconcile();
+      expect(module.admission()).toBe('scan-unavailable');
+      await module.reconcile();
+      expect(module.admission()).toBe('reconciliation-indeterminate');
+      await module.reconcile();
+      expect(scan).toHaveBeenCalled();
+      expect(warn.mock.calls.map(([, detail]) => detail?.reason)).toEqual([
+        'scan-unavailable',
+        'reconciliation-indeterminate',
+      ]);
+    } finally {
+      store.close();
+    }
+  });
+
   test('#2823: an unreadable startup scan refuses staging until a later successful scan', async () => {
     const { eventStore, intent } = fixture();
     preparedScan(eventStore).mockImplementationOnce(busy);

@@ -382,6 +382,83 @@ test('the composed binding is single-shot and reports current local custody', ()
   }
 });
 
+test('an unbound store cannot assume a terminal child has no local binding', async () => {
+  const f = await fixture('finished');
+  const reader = new EventStore(f.path);
+  try {
+    expect(() => reader.deleteThread('parent')).toThrow();
+    expect(reader.readSessionByThread('parent')).toBeDefined();
+    reader.bindSessionActivity(() => false);
+    expect(() => reader.deleteThread('parent')).not.toThrow();
+  } finally {
+    reader.close();
+    await f.close();
+  }
+});
+
+test('service refuses release without explicit confirmation before changing cleanup', async () => {
+  const f = await fixture('unknown');
+  try {
+    await f.service.dispatch({ type: 'stopSession', threadId: 'parent' });
+    await expect(
+      Reflect.apply(f.service.dispatch, f.service, [
+        {
+          type: 'releaseUnknownOwnedWork',
+          threadId: 'parent',
+        },
+      ]),
+    ).rejects.toThrow('Confirm that child processes may still be running');
+    expect(f.store.pendingCascadeStops()).toHaveLength(1);
+    expect(f.store.readSessionByThread('parent')).toBeDefined();
+  } finally {
+    await f.close();
+  }
+});
+
+test('release refuses stale unknown custody when the recheck budget cannot reach it', async () => {
+  const f = await fixture('unknown');
+  try {
+    await f.service.dispatch({ type: 'stopSession', threadId: 'parent' });
+    for (let i = 0; i < 129; i++) {
+      const id = `backlog-${i}`;
+      f.store.appendEvent({
+        eventId: `${id}-start`,
+        threadId: id,
+        sessionId: id,
+        provider: 'claude',
+        method: 'session.started',
+        createdAt: '2026-01-01T00:00:00Z',
+      });
+      f.store['db']
+        .prepare(`INSERT INTO orchestration_cascade_stop_intents
+        VALUES ('backlog', ?, ?, 'pending')`)
+        .run(id, `${id}-stop`);
+      f.store.recordCascadeStopCustody(
+        id,
+        `${id}-stop`,
+        'unknown',
+        'no-session-owner',
+      );
+      f.store['db']
+        .prepare(
+          "UPDATE orchestration_cascade_stop_custody SET evidence_json = json_set(evidence_json, '$.probedAt', 1) WHERE child_session_id = ?",
+        )
+        .run(id);
+    }
+    await expect(
+      f.service.dispatch({
+        type: 'releaseUnknownOwnedWork',
+        threadId: 'parent',
+        confirmation: 'child-process-may-still-be-running',
+      }),
+    ).rejects.toThrow('Station is still checking child cleanup');
+    expect(f.store.pendingCascadeStops({ childId: 'child' })).toHaveLength(1);
+    expect(f.store.readSessionByThread('parent')).toBeDefined();
+  } finally {
+    await f.close();
+  }
+});
+
 test('release rechecks custody evidence rather than abandoning a changed owner', async () => {
   const f = await fixture('unknown');
   try {

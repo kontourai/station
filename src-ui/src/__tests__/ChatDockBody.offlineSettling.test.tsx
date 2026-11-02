@@ -201,7 +201,13 @@ function session(revision: number): ChatSession {
   } as ChatSession;
 }
 
-function DockFixture({ current }: { current: ChatSession }) {
+function DockFixture({
+  current,
+  read = 'present',
+}: {
+  current: ChatSession;
+  read?: 'present' | 'pending';
+}) {
   const [client] = useState(
     () => new QueryClient({ defaultOptions: { queries: { retry: false } } }),
   );
@@ -210,6 +216,7 @@ function DockFixture({ current }: { current: ChatSession }) {
     <QueryClientProvider client={client}>
       <ChatDockBody
         activeSession={current}
+        activeOrchestrationSessionRead={read}
         chatFontSize={14}
         dockHeight={400}
         showStatsPanel={false}
@@ -526,6 +533,46 @@ describe('ChatDockBody offline settling (station#2605)', () => {
     // B has never loaded: it is loading, and A's transcript is not B's.
     expect(await screen.findAllByText('Loading chat')).not.toHaveLength(0);
     expect(screen.queryByText(/Saved transcript/)).toBeNull();
+  });
+
+  test('steering support stays loading until the Session projection arrives', async () => {
+    const active = {
+      ...session(0),
+      status: 'sending',
+      orchestrationDurability: undefined,
+    } as ChatSession;
+    const view = render(<DockFixture current={active} read="pending" />);
+    await waitFor(() =>
+      expect(composerProps).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          busyFollowUp: 'queue',
+          busySteeringUnavailableReason: 'Loading steering support…',
+        }),
+      ),
+    );
+    expect(queuedMessagesProps).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        canSteer: false,
+        steeringUnavailableReason: 'Loading steering support…',
+      }),
+    );
+    view.rerender(
+      <DockFixture
+        current={{
+          ...active,
+          orchestrationDurability: STEERING_ENGINE_DURABILITY,
+        }}
+        read="present"
+      />,
+    );
+    await waitFor(() =>
+      expect(composerProps).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          busyFollowUp: 'steer',
+          busySteeringUnavailableReason: undefined,
+        }),
+      ),
+    );
   });
 
   test('canSteer requires live execution and native steering fidelity', async () => {

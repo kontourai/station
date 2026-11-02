@@ -15123,6 +15123,7 @@ export class EventStore {
   }
 
   private isCascadeSessionSettled(childId: string): boolean {
+    if (!this.sessionBinding) return false;
     return isCascadeStopSettled(
       readCascadeSessionFacts(this.db, [childId]).get(childId)!,
       this.hasSessionBinding(childId),
@@ -15371,7 +15372,7 @@ export class EventStore {
   requestCascadeRecheck(threadId: string): void {
     this.db
       .prepare(`UPDATE orchestration_cascade_stop_custody
-      SET evidence_json = json_set(evidence_json, '$.nextProbeAt', 0)
+      SET evidence_json = json_set(evidence_json, '$.nextProbeAt', 0, '$.needsRecheck', 1)
       WHERE (child_session_id, terminal_event_id) IN (
         SELECT child_session_id, terminal_event_id FROM orchestration_cascade_stop_intents
         WHERE state = 'pending' AND (parent_session_id = ? OR child_session_id = ?))`)
@@ -16756,7 +16757,14 @@ export class EventStore {
         for (const intent of pending) {
           if (intent.parentId !== threadId || intent.childId === threadId)
             continue;
-          if (intent.reason === 'unobserved')
+          if (
+            intent.reason === 'unobserved' ||
+            !this.db
+              .prepare(
+                "SELECT 1 FROM orchestration_cascade_stop_custody WHERE child_session_id = ? AND terminal_event_id = ? AND COALESCE(json_extract(evidence_json, '$.needsRecheck'), 0) = 0",
+              )
+              .get(intent.childId, intent.terminalId)
+          )
             throw new Error(
               'Station is still checking child cleanup. Try again shortly.',
             );

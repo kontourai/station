@@ -50,6 +50,29 @@ describe('runtime-health', () => {
     for (const timer of timers) clearInterval(timer);
   });
 
+  test('slow stop delivery does not starve the other health checks', async () => {
+    vi.useFakeTimers();
+    let finish!: () => void;
+    const delivery = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+    const runHealthChecks = vi.fn(async () => {});
+    const timers: NodeJS.Timeout[] = [];
+    const starting = startRuntimeHealthChecks({
+      timers,
+      logger: { debug: vi.fn(), warn: vi.fn() },
+      maintainOwnedWork: () => delivery,
+      runHealthChecks,
+    });
+    try {
+      expect(runHealthChecks).toHaveBeenCalledTimes(1);
+    } finally {
+      finish();
+      await starting;
+      for (const timer of timers) clearInterval(timer);
+    }
+  });
+
   test('records monotonic event-loop lag and treats early wakeups as zero', () => {
     let now = 100;
     let tick: (() => void) | undefined;
