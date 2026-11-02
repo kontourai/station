@@ -39,7 +39,12 @@ with no explicit working directory uses a private folder under
 `<Station home>/runtime/codex-workspaces/session/`. Its connection and session
 identity select the same folder after a restart. A Project directory,
 an explicit caller directory, an adopted session's directory, or an operator
-(host) session keeps its chosen location.
+(host) session keeps its chosen location. So does a chat with no Project
+that already runs in its own scratch folder, `<Station home>/scratch/<conversation>`
+(#4389): the adapter keeps a folder Station already made for the chat, and
+both folders go through the same preparation, so the chat gets one private
+folder. With **Chats without a project** set to **Home folder**, the chat is
+still unbound and a confined Codex session uses the private folder here.
 
 The user home is too broad a writable sandbox root: Windows sandbox setup can
 recursively change ACLs throughout it, delaying commands and granting sandbox
