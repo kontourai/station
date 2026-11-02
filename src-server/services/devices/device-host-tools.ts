@@ -148,7 +148,6 @@ export function runBoundedToolCapture(
     stdin?: string;
     maxBuffer?: number;
     partialOnTimeout?: boolean;
-    requireSampleDuration?: boolean;
     signal?: AbortSignal;
     tail?: { truncated: boolean };
   },
@@ -253,8 +252,7 @@ export function runBoundedToolCapture(
     );
     child.on('close', (code) => {
       finish(
-        (code === 0 && !options.requireSampleDuration) ||
-          (timedOut && options.partialOnTimeout)
+        code === 0 || (timedOut && options.partialOnTimeout)
           ? null
           : new DeviceToolError(
               'tool-failed',

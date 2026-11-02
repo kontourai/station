@@ -30,6 +30,7 @@ import { verifyTaskReviewEvidence } from './task-review-evidence.js';
 
 const MAX_RAW_FRAME_BYTES = 64 * 1024 * 1024;
 const MAX_FRAMES = 300;
+export const TASK_RECORDING_MAX_ACTIVE = 4;
 const ENCODE_TIMEOUT_MS = 60_000;
 const CLEANUP_TIMEOUT_MS = 10_000;
 
@@ -352,6 +353,7 @@ export class TaskBrowserRecording {
     ]);
     if (
       this.disposed ||
+      this.jobs.size >= TASK_RECORDING_MAX_ACTIVE ||
       [...this.jobs].filter((job) => job.key === key).length >= 2
     )
       throw new TaskBrowserRecordingError(

@@ -1020,7 +1020,13 @@ test.skipIf(!mediaReady)(
           authorize: async () => mode !== 'authorize' || allowed,
           ...(mode === 'rotation' ? { rotation: 90 } : {}),
         }),
-      ).rejects.toMatchObject({ code: 'recording-unavailable' });
+      ).rejects.toMatchObject({
+        code: 'recording-unavailable',
+        message:
+          mode === 'rotation'
+            ? 'Rotated Device recording is unavailable.'
+            : 'Recording authority changed.',
+      });
     }
   },
 );

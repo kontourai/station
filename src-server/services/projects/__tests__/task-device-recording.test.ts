@@ -4,7 +4,7 @@ import {
 } from '@kontourai/station-contracts/walkthrough';
 import { expect, test, vi } from 'vitest';
 import type { TaskReviewAccess } from '../../orchestration/project-task-room-runtime.js';
-import type { TaskBrowserRecording } from '../task-browser-recording.js';
+import { TaskBrowserRecording } from '../task-browser-recording.js';
 import { TaskDeviceRecording } from '../task-device-recording.js';
 
 const access = (principalId: string): TaskReviewAccess => ({
@@ -177,4 +177,61 @@ test('finished jobs do not consume recording capacity', async () => {
     );
   }
   await owner.dispose();
+});
+
+test('device job capacity is bounded across distinct Tasks and releases finished jobs', async () => {
+  const pending: Array<() => void> = [];
+  const owner = new TaskDeviceRecording({
+    recordSource: async () => {
+      await new Promise<void>((resolve) => pending.push(resolve));
+      throw new Error('finished');
+    },
+  });
+  const source = async (): Promise<never> => {
+    throw new Error('unused');
+  };
+  const jobs = ['a', 'b', 'c', 'd'].map((person) =>
+    owner.start(access(person), { durationMs: 1000 }, source),
+  );
+  expect(() => owner.start(access('e'), { durationMs: 1000 }, source)).toThrow(
+    'capacity',
+  );
+  pending[0]!();
+  await vi.waitFor(() =>
+    expect(owner.status(access('a'), jobs[0]!.id).state).toBe('failed'),
+  );
+  const next = owner.start(access('e'), { durationMs: 1000 }, source);
+  expect(next.state).toBe('starting');
+  for (const finish of pending.slice(1)) finish();
+  await owner.dispose();
+});
+
+test('shared recorder bounds active recordings across different Task keys', async () => {
+  let release!: () => void;
+  const waiting = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const recorder = new TaskBrowserRecording({
+    preview: { select: ({ enabled }: { enabled: () => boolean }) => enabled() },
+  } as never);
+  const source = async (): Promise<never> => {
+    await waiting;
+    throw new Error('fixture released');
+  };
+  const active = ['a', 'b', 'c', 'd'].map((person) =>
+    recorder.recordSource(access(person), { durationMs: 1000 }, source),
+  );
+  const extra = recorder.recordSource(
+    access('e'),
+    { durationMs: 1000 },
+    source,
+  );
+  const settled = Promise.allSettled([...active, extra]);
+  release();
+  const results = await settled;
+  await recorder.dispose();
+  expect(results[4]).toMatchObject({
+    status: 'rejected',
+    reason: { code: 'recording-unavailable' },
+  });
 });
