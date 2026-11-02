@@ -41,6 +41,7 @@ import { ReceiverExecutionRefusal } from '../../services/projects/project-contri
  * `station-control-delegation-relay.test.ts`.
  */
 const remoteFixture = vi.hoisted(() => ({
+  claimHome: '',
   ssh: undefined as
     | undefined
     | {
@@ -75,13 +76,33 @@ vi.mock('../station-control-delegation.js', async (importOriginal) => {
           : null,
     },
   });
+  const { FileDelegationAttemptClaimStore } = await import(
+    '../../services/orchestration/delegation-attempt-claim-store.js'
+  );
   type Remote = typeof remote;
   return {
     ...actual,
     discoverDelegationOptions: (input: never, r?: Remote) =>
       actual.discoverDelegationOptions(input, r ?? remote),
-    delegateTask: (input: never, service?: never, r?: Remote) =>
-      actual.delegateTask(input, service, r ?? remote),
+    delegateTask: (
+      input: Parameters<typeof actual.delegateTask>[0],
+      service?: never,
+      r?: Remote,
+    ) =>
+      actual.delegateTask(
+        {
+          ...input,
+          userId:
+            input.userId ??
+            input.readAuthority?.userId ??
+            'delegation-test-user',
+          delegationAttemptClaimStore:
+            input.delegationAttemptClaimStore ??
+            new FileDelegationAttemptClaimStore(remoteFixture.claimHome),
+        },
+        service,
+        r ?? remote,
+      ),
     executeExecutionTargetMessage: (
       input: never,
       service?: never,
@@ -121,6 +142,7 @@ vi.mock('../station-control-delegation.js', async (importOriginal) => {
 
 beforeEach(() => {
   remoteFixture.ssh = undefined;
+  remoteFixture.claimHome = makeTempDir('delegation-runtime-claims-');
 });
 
 process.env.STATION_API_BASE = 'http://control-delegation.test';
@@ -226,6 +248,8 @@ function localService() {
     ) => sessionCommands.execute(command, context),
   );
   return {
+    readPendingConversationSubmission: vi.fn(() => undefined),
+    inspectTurnDelivery: vi.fn(() => ({ outcome: 'not-received' as const })),
     prepareInitialConversationForkContext: vi.fn(() => undefined),
     assertConversationForkContextEnvironment: vi.fn(() => undefined),
     readSession: vi.fn(async (_sessionId?: string) => null),
@@ -444,6 +468,8 @@ function localDelegatedTaskService(
     tenantExecutionContext?: { tenantId: string };
   }) => authority.tenantExecutionContext?.tenantId === 'alpha';
   return {
+    readPendingConversationSubmission: vi.fn(() => undefined),
+    inspectTurnDelivery: vi.fn(() => ({ outcome: 'not-received' as const })),
     prepareInitialConversationForkContext: vi.fn(() => undefined),
     assertConversationForkContextEnvironment: vi.fn(() => undefined),
     listSessionReadModel: vi.fn(async (authority) =>
@@ -1144,6 +1170,7 @@ describe('Station Control canonical Environment + Agent execution', () => {
     );
     expect(call).toBeDefined();
     expect(bodyOf(call!)).toEqual({
+      clientTurnId: expect.any(String),
       prompt: 'Run tests',
       target: {
         environment: { kind: 'current' },
@@ -2442,6 +2469,7 @@ describe('Station Control canonical Environment + Agent execution', () => {
       String(url).endsWith('/delegations/task-1/continue'),
     );
     expect(bodyOf(call!)).toEqual({
+      clientTurnId: expect.any(String),
       message: 'Continue',
       modelOptions: { reasoningEffort: 'high' },
     });
@@ -5598,7 +5626,11 @@ describe('bound answers to a delegated input request (delegatedInputAnswers)', (
       expectedInputRequest: PEER_BINDING,
     });
     expect(posted).toEqual([
-      { message: 'Use staging', expectedInputRequest: PEER_BINDING },
+      {
+        clientTurnId: expect.any(String),
+        message: 'Use staging',
+        expectedInputRequest: PEER_BINDING,
+      },
     ]);
   });
 

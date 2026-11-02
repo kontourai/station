@@ -90,6 +90,7 @@ describe('POST /delegations — opt-in attempt seam (#485)', () => {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
+        clientTurnId: 'fixture-turn-key',
         prompt: 'Ship it',
         target: NON_PORTABLE_TARGET,
         attemptId: 'attempt-1',
@@ -111,7 +112,11 @@ describe('POST /delegations — opt-in attempt seam (#485)', () => {
     const res = await app.request('/delegations', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ prompt: 'Ship it', target: PREPARED_TARGET }),
+      body: JSON.stringify({
+        clientTurnId: 'fixture-turn-key',
+        prompt: 'Ship it',
+        target: PREPARED_TARGET,
+      }),
     });
     expect(res.status).toBe(403);
     const body = (await res.json()) as Record<string, unknown>;
@@ -133,7 +138,12 @@ describe('POST /delegations — opt-in attempt seam (#485)', () => {
     const res = await app.request('/delegations', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ prompt: 'Ship it', target, attemptId: 'a-1' }),
+      body: JSON.stringify({
+        clientTurnId: 'fixture-turn-key',
+        prompt: 'Ship it',
+        target,
+        attemptId: 'a-1',
+      }),
     });
     expect(res.status, await res.clone().text()).toBe(200);
     const input = delegateTask.mock.calls[0]![0] as {
@@ -165,6 +175,7 @@ describe('POST /delegations — opt-in attempt seam (#485)', () => {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
+        clientTurnId: 'fixture-turn-key',
         prompt: 'Ship it',
         target: PORTABLE_TARGET,
         attemptId: 'attempt-9',
@@ -195,6 +206,7 @@ describe('POST /delegations — opt-in attempt seam (#485)', () => {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
+        clientTurnId: 'fixture-turn-key',
         prompt: 'Ship it',
         target: PORTABLE_TARGET,
         attemptId: 'attempt-9',
@@ -221,7 +233,11 @@ describe('POST /delegations — opt-in attempt seam (#485)', () => {
     const res = await app.request('/delegations', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ prompt: 'Ship it', target: PORTABLE_TARGET }),
+      body: JSON.stringify({
+        clientTurnId: 'fixture-turn-key',
+        prompt: 'Ship it',
+        target: PORTABLE_TARGET,
+      }),
     });
     expect(res.status, await res.clone().text()).toBe(200);
     const input = delegateTask.mock.calls[0]![0] as Record<string, unknown>;
@@ -274,6 +290,7 @@ describe('POST /delegations — opt-in attempt seam (#485)', () => {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
+          clientTurnId: 'fixture-turn-key',
           prompt: 'Ship it',
           target: PORTABLE_TARGET,
           attemptId: 'attempt-9',
@@ -326,6 +343,7 @@ describe('POST /delegations — opt-in attempt seam (#485)', () => {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
+        clientTurnId: 'fixture-turn-key',
         prompt: 'Ship it',
         target: PORTABLE_TARGET,
         attemptId: 'attempt-9',
@@ -356,6 +374,7 @@ describe('POST /delegations — opt-in attempt seam (#485)', () => {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
+        clientTurnId: 'fixture-turn-key',
         prompt: 'Ship it',
         target: PORTABLE_TARGET,
         attemptId: 'attempt-9',

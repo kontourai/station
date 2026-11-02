@@ -269,7 +269,8 @@ CREATE TABLE IF NOT EXISTS orchestration_turn_dedup (
   value TEXT,
   created_at INTEGER NOT NULL,
   owner_json TEXT,
-  input_digest TEXT
+  input_digest TEXT,
+  resolved_at INTEGER
 );
 
 -- #3559: keys whose resolved dedup row capacity retention evicted. A retry of
@@ -278,6 +279,9 @@ CREATE TABLE IF NOT EXISTS orchestration_turn_dedup (
 CREATE TABLE IF NOT EXISTS orchestration_turn_dedup_expired (
   dedup_key TEXT PRIMARY KEY,
   expired_at INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS orchestration_turn_dedup_delete_permits (
+  dedup_key TEXT PRIMARY KEY
 );
 CREATE INDEX IF NOT EXISTS orchestration_turn_dedup_expired_at
   ON orchestration_turn_dedup_expired(expired_at);
@@ -828,6 +832,23 @@ export function ensureOrchestrationTurnDedupColumns(
       );
     }
     ensureTurnDedupInputDigest(db);
+    if (!new Set(columns.map((column) => column.name)).has('resolved_at'))
+      db.exec(
+        'ALTER TABLE orchestration_turn_dedup ADD COLUMN resolved_at INTEGER',
+      );
+    db.exec(
+      'CREATE TABLE IF NOT EXISTS orchestration_turn_dedup_delete_permits (dedup_key TEXT PRIMARY KEY)',
+    );
+    db.exec('DELETE FROM orchestration_turn_dedup_delete_permits');
+    db.exec(`CREATE INDEX IF NOT EXISTS orchestration_turn_dedup_resolved_at ON orchestration_turn_dedup(resolved_at) WHERE value IS NOT NULL;
+      CREATE TRIGGER IF NOT EXISTS orchestration_turn_dedup_reset_resolved_at
+      AFTER UPDATE OF value, created_at, owner_json ON orchestration_turn_dedup
+      WHEN NEW.resolved_at IS OLD.resolved_at AND (NEW.value IS NOT OLD.value OR NEW.created_at IS NOT OLD.created_at OR NEW.owner_json IS NOT OLD.owner_json)
+      BEGIN UPDATE orchestration_turn_dedup SET resolved_at = NULL WHERE dedup_key = NEW.dedup_key; END;
+      CREATE TRIGGER IF NOT EXISTS orchestration_turn_dedup_guard_delete
+      BEFORE DELETE ON orchestration_turn_dedup
+      WHEN OLD.value IS NOT NULL AND NOT EXISTS (SELECT 1 FROM orchestration_turn_dedup_delete_permits WHERE dedup_key = OLD.dedup_key)
+      BEGIN SELECT RAISE(ABORT, 'resolved turn dedup deletion requires a permit'); END;`);
     // This migration is deliberately additive-only. An ownerless unresolved
     // row may belong to an older runtime that is still executing its turn;
     // deleting it would permit a new runtime to execute that same turn.
