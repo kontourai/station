@@ -2236,6 +2236,10 @@ ID. Optional `source.recording` has a safe plain filename, `video/webm` media
 type, positive byte length and lowercase SHA-256 digest. The shared parser bounds
 that length by the 512 MiB upload ceiling; the Task Browser recorder applies a
 separate 16 MiB encoded limit. Imported manifests may omit both fields.
+Device Task clips may also include `source.device`, naming the host, device,
+display name, runtime and app observed at recording start; an unknown app is
+explicitly null. Older clients receive the earlier manifest shape unless they
+request Device identity.
 
 `MEDIA_UPLOAD_POLICIES` and `mediaUploadPolicy(method, path, policies)` share
 the exact Walkthrough/transcription POST matches, byte ceilings, receive idle/total

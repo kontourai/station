@@ -59,7 +59,7 @@ export interface SshToolRequest {
   timeoutMs: number;
   /** The most output the tool may print. */
   maxBuffer: number;
-  sampleDurationMs?: number;
+  tail?: boolean;
 }
 
 export type SshToolFailure =
@@ -79,6 +79,7 @@ export type SshToolOutcome =
   | {
       ok: true;
       stdout: string;
+      truncated?: boolean;
       /** With `keepGoing`: the indexes of vectors the tool refused. */
       failed?: number[];
     }
@@ -90,6 +91,8 @@ export type SshToolOutcome =
        * stopped. Absent when it never reported (nothing is known).
        */
       applied?: number;
+      exitCode?: number;
+      stderrPresent?: boolean;
     };
 
 /**
@@ -138,15 +141,13 @@ export function isValidSshToolRequest(request: SshToolRequest): boolean {
     Number.isSafeInteger(request.maxBuffer) &&
     request.maxBuffer >= 1 &&
     request.maxBuffer <= REMOTE_TOOL_LIMITS.maxBuffer &&
-    (request.sampleDurationMs === undefined ||
-      (Number.isSafeInteger(request.sampleDurationMs) &&
-        request.sampleDurationMs > 0 &&
-        request.sampleDurationMs <= 5000 &&
-        request.sampleDurationMs < request.timeoutMs &&
-        request.tool === 'xcrun' &&
-        request.args[3] === 'log' &&
-        request.args[4] === 'stream' &&
-        followedBy.length === 0)) &&
+    (request.tail === undefined ||
+      (request.tail === true &&
+        followedBy.length === 0 &&
+        ((request.tool === 'xcrun' &&
+          request.args[3] === 'log' &&
+          request.args[4] === 'show') ||
+          (request.tool === 'adb' && request.args[2] === 'logcat')))) &&
     (request.stdin === undefined ||
       (typeof request.stdin === 'string' &&
         Buffer.byteLength(request.stdin, 'utf8') <=
@@ -191,9 +192,7 @@ export async function runSshDeviceTool(input: {
         ? { followedBy: request.followedBy.map((args) => [...args]) }
         : {}),
       ...(request.keepGoing ? { keepGoing: true } : {}),
-      ...(request.sampleDurationMs !== undefined
-        ? { sampleDurationMs: request.sampleDurationMs }
-        : {}),
+      ...(request.tail ? { tail: true } : {}),
       timeoutMs: request.timeoutMs,
       maxBuffer: request.maxBuffer,
       cancelOnClose: true,
@@ -211,7 +210,11 @@ export async function runSshDeviceTool(input: {
   if (run.overflow) return { ok: false, failure: 'tool-failed' };
   const event = run.events.find((candidate) => candidate.event === 'tool');
   if (event?.ok === true) {
-    if (typeof event.stdout !== 'string' || !BASE64.test(event.stdout))
+    if (
+      typeof event.stdout !== 'string' ||
+      !BASE64.test(event.stdout) ||
+      (request.tail && typeof event.truncated !== 'boolean')
+    )
       return { ok: false, failure: 'tool-failed' };
     const stdout = Buffer.from(event.stdout, 'base64');
     if (stdout.byteLength > request.maxBuffer)
@@ -228,6 +231,7 @@ export async function runSshDeviceTool(input: {
     return {
       ok: true,
       stdout: stdout.toString('utf8'),
+      ...(event.truncated === true ? { truncated: true } : {}),
       ...(request.keepGoing && failed ? { failed } : {}),
     };
   }
@@ -239,6 +243,12 @@ export async function runSshDeviceTool(input: {
         'tool-failed',
       ...(Number.isSafeInteger(event.applied) && (event.applied as number) >= 0
         ? { applied: event.applied as number }
+        : {}),
+      ...(event.exitCode === 1 &&
+      typeof event.stderrPresent === 'boolean' &&
+      request.tool === 'adb' &&
+      request.args[3] === 'pidof'
+        ? { exitCode: 1, stderrPresent: event.stderrPresent }
         : {}),
     };
   if (run.failure === 'timeout') return { ok: false, failure: 'tool-timeout' };
@@ -262,12 +272,21 @@ export interface SshDeviceToolHost {
   generation(hostId: string): number;
 }
 
-function throwFailure(failure: SshToolFailure): never {
+function throwFailure(
+  failure: SshToolFailure,
+  exitCode?: number,
+  stderrPresent?: boolean,
+): never {
   switch (failure) {
     case 'tool-unavailable':
       throw new DeviceToolError(failure, 'the tool is not on the device host');
     case 'tool-failed':
-      throw new DeviceToolError(failure, 'the tool failed on the device host');
+      throw new DeviceToolError(
+        failure,
+        'the tool failed on the device host',
+        exitCode,
+        stderrPresent,
+      );
     case 'tool-timeout':
     case 'cancelled':
       throw new DeviceToolError('tool-timeout', 'the tool timed out');
@@ -295,13 +314,16 @@ export function createSshDeviceToolRunner(
           ...(options.stdin !== undefined ? { stdin: options.stdin } : {}),
           timeoutMs: options.timeoutMs,
           maxBuffer: options.maxBuffer ?? DEFAULT_MAX_BUFFER,
-          ...(options.sampleDurationMs !== undefined
-            ? { sampleDurationMs: options.sampleDurationMs }
-            : {}),
+          ...(options.onTruncated ? { tail: true } : {}),
         },
-        options.beforeRun ? { beforeRun: options.beforeRun } : undefined,
+        {
+          ...(options.beforeRun ? { beforeRun: options.beforeRun } : {}),
+          ...(options.signal ? { signal: options.signal } : {}),
+        },
       );
-      if (!outcome.ok) throwFailure(outcome.failure);
+      if (!outcome.ok)
+        throwFailure(outcome.failure, outcome.exitCode, outcome.stderrPresent);
+      if (outcome.truncated) options.onTruncated?.();
       return outcome.stdout;
     },
     /**

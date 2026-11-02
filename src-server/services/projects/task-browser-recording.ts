@@ -208,6 +208,7 @@ type RecordingInput = {
 /** Records through a shared live surface, leaving other viewers attached. */
 export class TaskBrowserRecording {
   private readonly jobs = new Set<{
+    key: string;
     controller: AbortController;
     done: Promise<void>;
   }>();
@@ -324,11 +325,7 @@ export class TaskBrowserRecording {
     resolveSource: () => Promise<RecordingSource>,
   ) {
     if (input.signal?.aborted) throw cancelled();
-    if (input.stopSignal?.aborted)
-      throw new TaskBrowserRecordingError(
-        'invalid-request',
-        'Recording was stopped before it started.',
-      );
+    if (input.stopSignal?.aborted) throw cancelled();
     if (
       !Number.isSafeInteger(input.durationMs) ||
       input.durationMs < 1 ||
@@ -347,7 +344,16 @@ export class TaskBrowserRecording {
         'feature_preview_disabled',
         'Enable Walkthroughs in feature previews.',
       );
-    if (this.disposed || this.jobs.size >= 2)
+    const key = JSON.stringify([
+      access.write.projectId,
+      access.write.taskId,
+      access.write.taskCreatedAt,
+      access.write.author,
+    ]);
+    if (
+      this.disposed ||
+      [...this.jobs].filter((job) => job.key === key).length >= 2
+    )
       throw new TaskBrowserRecordingError(
         'recording-unavailable',
         'Recording capacity is exhausted.',
@@ -362,7 +368,7 @@ export class TaskBrowserRecording {
       finish = (error) => (error === undefined ? resolve() : reject(error));
     });
     void done.catch(() => {});
-    const job = { controller, done };
+    const job = { key, controller, done };
     this.jobs.add(job);
     let offSurface: (() => void) | undefined;
     let cleanupFailure: unknown;

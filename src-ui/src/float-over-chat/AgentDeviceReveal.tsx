@@ -134,7 +134,7 @@ function ActiveDeviceReveal({
       if (
         !getFloatingSource(conversationId) &&
         !isFloatDismissed(conversationId, key)
-      )
+      ) {
         openFloat(conversationId, {
           kind: 'device',
           hostId: session.hostId,
@@ -144,7 +144,8 @@ function ActiveDeviceReveal({
           projectSlug,
           name: session.name,
         });
-      return;
+        return;
+      }
     }
     const outcome = open(scope, latest.session, { region: 'right' });
     if (!outcome.ok && outcome.reason === 'region-unavailable')

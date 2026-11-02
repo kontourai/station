@@ -6774,8 +6774,18 @@ The bound-only `/api/browser-agent/capture-to-task` operation derives the Task
 from the Session execution binding and returns `{ok:true,captureId,commit,digest,
 screenshot:{mimeType,data}}`; missing Task binding returns `no_task_binding`.
 A bound lead Session can also call station-control `device_capture_to_task`
-with an authorized device session. The Task is derived from the binding; the
-person capture endpoint above remains Browser-only. See
+with an authorized device session. The Task is derived from the binding. For a
+person, the Device routes require `terminal:operate` and current Task and
+Project authority:
+
+- `GET /api/tasks/:taskId/review/device-capture-sessions?projectSlug=...` lists authorized host-qualified sessions.
+- `POST /api/tasks/:taskId/review/device-captures?projectSlug=...` captures a Device Screen.
+- `POST /api/tasks/:taskId/review/device-recordings?projectSlug=...` starts a bounded Task clip.
+- `GET /api/tasks/:taskId/review/device-recordings/:jobId?projectSlug=...` reads its state.
+- `POST /api/tasks/:taskId/review/device-recordings/:jobId/stop?projectSlug=...` requests a stop.
+- `GET /api/mobile-devices/hosts/:hostId/devices/:platform/:deviceId/tools/logs?appId=...` reads one bounded app log sample.
+
+See
 [device capture](../guides/mobile-device-workspace.md#capture-a-device-screen-to-a-task)
 and [Browser capture](../guides/browser-workspace.md#capture-a-screen-for-task-review).
 

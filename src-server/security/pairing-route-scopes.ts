@@ -1138,6 +1138,14 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
   },
   // Retaining a capture persists Task data and requires operate scope.
   {
+    id: '/api/tasks/:taskId/review/device-capture-sessions:terminal-operate',
+    method: 'GET',
+    prefix: '/api/tasks/:taskId/review/device-capture-sessions',
+    exact: true,
+    scope: PAIRING_SCOPE_TERMINAL_OPERATE,
+    origin: 'explicit',
+  },
+  {
     id: '/api/tasks/:taskId/review/device-recordings:terminal-operate',
     method: '*',
     prefix: '/api/tasks/:taskId/review/device-recordings',
@@ -3755,20 +3763,6 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     { method: 'GET', path: '/api/tasks/:taskId/write-back' },
     { method: 'GET', path: '/api/tasks/:taskId/review' },
     { method: 'GET', path: '/api/tasks/:taskId/review/capture-sessions' },
-    {
-      method: 'GET',
-      path: '/api/tasks/:taskId/review/device-capture-sessions',
-    },
-    { method: 'POST', path: '/api/tasks/:taskId/review/device-captures' },
-    { method: 'POST', path: '/api/tasks/:taskId/review/device-recordings' },
-    {
-      method: 'GET',
-      path: '/api/tasks/:taskId/review/device-recordings/:jobId',
-    },
-    {
-      method: 'POST',
-      path: '/api/tasks/:taskId/review/device-recordings/:jobId/stop',
-    },
     { method: 'GET', path: '/api/tasks/:taskId/review/walkthroughs' },
     {
       method: 'GET',

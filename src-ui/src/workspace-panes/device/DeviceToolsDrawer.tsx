@@ -179,12 +179,25 @@ export function DeviceToolsDrawer(props: DeviceToolsDrawerProps) {
   const [logFilter, setLogFilter] = useState('');
   const [logLevel, setLogLevel] = useState('all');
   const [logsPaused, setLogsPaused] = useState(true);
+  const targetKey = JSON.stringify([
+    target.hostId,
+    target.platform,
+    target.deviceId,
+  ]);
+  const [logsTarget, setLogsTarget] = useState(targetKey);
+  useEffect(() => {
+    setLogsTarget(targetKey);
+    setLogsPaused(true);
+  }, [targetKey]);
   const logs = useDeviceLogs(
     requestScope,
     target,
     projectSlug,
     logAppId,
-    deviceLoopEnabled && !logsPaused && APP_ID.test(logAppId),
+    deviceLoopEnabled &&
+      !logsPaused &&
+      logsTarget === targetKey &&
+      APP_ID.test(logAppId),
   );
   const headingId = useId();
   const drawerRef = useRef<HTMLElement>(null);
@@ -324,7 +337,10 @@ export function DeviceToolsDrawer(props: DeviceToolsDrawerProps) {
             <Button
               size="sm"
               disabled={!APP_ID.test(logAppId)}
-              onClick={() => setLogsPaused(!logsPaused)}
+              onClick={() => {
+                setLogsTarget(targetKey);
+                setLogsPaused(!logsPaused);
+              }}
             >
               {logsPaused ? 'Start logs' : 'Pause logs'}
             </Button>
@@ -347,19 +363,24 @@ export function DeviceToolsDrawer(props: DeviceToolsDrawerProps) {
               </p>
             ) : null}
             {logs.data ? (
-              <pre className="device-tools__logs">
-                {logs.data.output
-                  .split('\n')
-                  .filter(
-                    (line) =>
-                      line.toLowerCase().includes(logFilter.toLowerCase()) &&
-                      (logLevel === 'all' ||
-                        /\b(error|fault)\b|(?:^|\s)(?:E|Er)(?:\s|\/)/i.test(
-                          line,
-                        )),
-                  )
-                  .join('\n')}
-              </pre>
+              <>
+                {logs.data.truncated ? (
+                  <p>Older log output was truncated.</p>
+                ) : null}
+                <pre className="device-tools__logs">
+                  {logs.data.output
+                    .split('\n')
+                    .filter(
+                      (line) =>
+                        line.toLowerCase().includes(logFilter.toLowerCase()) &&
+                        (logLevel === 'all' ||
+                          /\b(error|fault)\b|(?:^|\s)(?:E|Er|Fa)(?:\s|\/)/i.test(
+                            line,
+                          )),
+                    )
+                    .join('\n')}
+                </pre>
+              </>
             ) : null}
           </Section>
         ) : null}

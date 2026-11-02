@@ -2087,7 +2087,7 @@ test('Task capture and review comments require operate scope; capture reads use 
       'GET',
       '/api/tasks/task-a/review/device-capture-sessions',
     ),
-  ).toBe('orchestration:read');
+  ).toBe('terminal:operate');
   expect(
     requiredPairingScope('POST', '/api/tasks/task-a/review/device-captures'),
   ).toBe('terminal:operate');

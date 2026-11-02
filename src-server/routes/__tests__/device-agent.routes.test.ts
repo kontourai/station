@@ -53,7 +53,12 @@ function harness(
     | 'sdk-in-process'
     | 'url-token'
     | 'http-header-token' = 'sdk-in-process',
-  options: { operator?: boolean; idleEndMs?: number; remote?: boolean } = {},
+  options: {
+    operator?: boolean;
+    idleEndMs?: number;
+    remote?: boolean;
+    taskCapture?: 'unbound' | 'mismatch';
+  } = {},
 ) {
   const sessionId = `device-test-${Math.random()}`;
   const { token } = mintStationControlMcpToken(sessionId, channel);
@@ -210,6 +215,7 @@ function harness(
         appId,
         processId: '42',
         output: 'local log',
+        truncated: false,
         readAt: new Date().toISOString(),
       }),
     ),
@@ -225,6 +231,7 @@ function harness(
         appId,
         processId: '43',
         output: 'remote log',
+        truncated: false,
         readAt: new Date().toISOString(),
       }),
     ),
@@ -293,6 +300,24 @@ function harness(
         : resolveStationControlCallerFromToken(presented, record);
     },
     automation,
+    ...(options.taskCapture
+      ? {
+          taskCapture: () => ({
+            runtime: {
+              sessionTaskReviewAccess: async () =>
+                options.taskCapture === 'unbound'
+                  ? { kind: 'not-found' }
+                  : {
+                      kind: 'granted',
+                      write: { projectId: 'another-project' },
+                    },
+            } as never,
+            captures: {} as never,
+            recordings: {} as never,
+            localProjectIdFor: (id: string) => id,
+          }),
+        }
+      : {}),
   });
   const humanDevices = createMobileDeviceRoutes(host, {
     isRequestPrincipalCurrent: () => active,
@@ -509,6 +534,37 @@ test('opening an existing device while a person drives preserves their lease', a
   expect(h.packets).toEqual([]);
 });
 
+test('record-to-task validates its preview, bounds, binding and recorder availability', async () => {
+  const h = harness();
+  const body = { deviceSessionId: 'session', durationMs: 1000 };
+  h.setLoopEnabled(false);
+  expect(await (await h.raw('record-to-task', body)).json()).toMatchObject({
+    ok: false,
+    code: 'feature_preview_disabled',
+  });
+  h.setLoopEnabled(true);
+  for (const invalid of [
+    { ...body, durationMs: 0 },
+    { ...body, durationMs: 30001 },
+    { ...body, maxBytes: 0 },
+    { ...body, maxBytes: 16 * 1024 * 1024 + 1 },
+    { ...body, unexpected: true },
+  ])
+    expect(await (await h.raw('record-to-task', invalid)).json()).toMatchObject(
+      { ok: false, code: 'invalid-request' },
+    );
+  expect(await (await h.raw('record-to-task', body)).json()).toMatchObject({
+    ok: false,
+    code: 'recording-unavailable',
+  });
+  for (const taskCapture of ['unbound', 'mismatch'] as const) {
+    const other = harness('sdk-in-process', { taskCapture });
+    expect(
+      await (await other.raw('record-to-task', body)).json(),
+    ).toMatchObject({ ok: false, code: 'no_task_binding' });
+  }
+});
+
 test('device logs refuse an off preview and suppress output when it is disabled during sampling', async () => {
   const h = harness();
   const id = await h.open();
@@ -530,6 +586,7 @@ test('device logs refuse an off preview and suppress output when it is disabled 
       appId,
       processId: '42',
       output: 'private log',
+      truncated: false,
       readAt: new Date().toISOString(),
     };
   });

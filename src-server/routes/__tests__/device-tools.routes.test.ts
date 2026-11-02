@@ -89,7 +89,10 @@ afterEach(async () => {
   for (const cleanup of cleanups.splice(0)) await cleanup();
 });
 
-function setup(deviceLoopEnabled = () => true) {
+function setup(
+  deviceLoopEnabled = () => true,
+  runnerOverride?: DeviceToolRunner,
+) {
   const calls: { tool: DeviceTool; args: string[] }[] = [];
   const runner = {
     async run(tool: DeviceTool, args: readonly string[]) {
@@ -97,7 +100,7 @@ function setup(deviceLoopEnabled = () => true) {
       if (args.join(' ') === `simctl ui ${IOS} appearance`) return 'dark\n';
       if (args.join(' ') === `simctl spawn ${IOS} launchctl list`)
         return '42 0 UIKitApplication:com.example.app[abc]\n';
-      if (args.includes('stream')) return 'application log';
+      if (args.includes('show')) return 'application log';
       return '';
     },
   };
@@ -107,7 +110,10 @@ function setup(deviceLoopEnabled = () => true) {
       failure: 'hub-unavailable' as const,
     }),
   };
-  const tools = new DeviceToolsService({ runner, hub });
+  const tools = new DeviceToolsService({
+    runner: runnerOverride ?? runner,
+    hub,
+  });
   const host = {
     inventory: vi.fn(
       async (): Promise<MobileDeviceInventory> => ({
@@ -179,7 +185,7 @@ function setup(deviceLoopEnabled = () => true) {
     await sessions.dispose();
     await registry.dispose();
   });
-  return { call, calls, sessions, registry };
+  return { app, call, calls, sessions, registry };
 }
 
 const toolsPath = (id = IOS) => `/hosts/local/devices/ios/${id}/tools`;
@@ -187,6 +193,48 @@ const actionPath = (id = IOS) => `${toolsPath(id)}/actions`;
 const DARK = { type: 'set-appearance', appearance: 'dark' };
 
 describe('who may read and act (D12: view vs drive)', () => {
+  test('disconnect aborts the in-flight log runner', async () => {
+    let started!: () => void;
+    const running = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    let observed = false;
+    const runner: DeviceToolRunner = {
+      async run(_tool, args, options) {
+        if (args.includes('launchctl'))
+          return '42 0 UIKitApplication:com.example.app[abc]\n';
+        started();
+        return new Promise<string>((_resolve, reject) =>
+          options.signal?.addEventListener(
+            'abort',
+            () => {
+              observed = true;
+              reject(new DeviceToolError('tool-failed', 'cancelled'));
+            },
+            { once: true },
+          ),
+        );
+      },
+    };
+    const { app } = setup(() => true, runner);
+    const abort = new AbortController();
+    const pending = app.request(
+      new Request(
+        `http://station.test${toolsPath()}/logs?appId=com.example.app`,
+        {
+          headers: {
+            'x-test-actor': 'operator',
+            'x-test-human': 'user:ada/device:1',
+          },
+          signal: abort.signal,
+        },
+      ),
+    );
+    await running;
+    abort.abort();
+    await pending;
+    expect(observed).toBe(true);
+  });
   test('logs are unavailable while the developer-loop preview is off', async () => {
     const { call, calls } = setup(() => false);
     const response = await call(

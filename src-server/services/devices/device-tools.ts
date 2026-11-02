@@ -75,6 +75,7 @@ export type DeviceToolsErrorCode =
   | 'unsupported'
   | 'tool-unavailable'
   | 'tool-failed'
+  | 'app-not-running'
   | 'tool-timeout'
   | 'hub-unavailable'
   /** The SSH device host's operator has not enabled its hub (#2442). */
@@ -83,7 +84,11 @@ export type DeviceToolsErrorCode =
   | 'device-host-unavailable';
 
 export class DeviceToolsError extends Error {
-  constructor(readonly code: DeviceToolsErrorCode) {
+  constructor(
+    readonly code: DeviceToolsErrorCode,
+    readonly exitCode?: number,
+    readonly stderrPresent?: boolean,
+  ) {
     super(`Device tool refused: ${code}`);
     this.name = 'DeviceToolsError';
   }
@@ -269,7 +274,9 @@ export const DEVICE_TOOL_ARGV_SHAPES: Readonly<
       'spawn',
       IOS_UDID,
       'log',
-      'stream',
+      'show',
+      '--last',
+      '5s',
       '--style',
       'compact',
       '--predicate',
@@ -787,7 +794,8 @@ export interface DeviceToolRunner {
       timeoutMs: number;
       stdin?: string;
       maxBuffer?: number;
-      sampleDurationMs?: number;
+      signal?: AbortSignal;
+      onTruncated?: () => void;
       /**
        * Asked once the runner may run (after any wait for the host) and
        * before anything runs; throws to refuse. A runner that never waits
@@ -826,7 +834,7 @@ export function createDeviceToolRunner(
         : locateExecutable('adb', standardAdbDirs()));
   const run = options.run ?? runBoundedToolCapture;
   return {
-    async run(tool, args, { beforeRun, sampleDurationMs, ...runOptions }) {
+    async run(tool, args, { beforeRun, onTruncated, ...runOptions }) {
       const command = await locate(tool);
       if (!command)
         throw new DeviceToolError(
@@ -834,18 +842,13 @@ export function createDeviceToolRunner(
           `${tool} is not installed`,
         );
       await beforeRun?.();
-      return run(
-        command,
-        args,
-        sampleDurationMs === undefined
-          ? runOptions
-          : {
-              ...runOptions,
-              timeoutMs: sampleDurationMs,
-              partialOnTimeout: true,
-              requireSampleDuration: true,
-            },
-      );
+      const tail = onTruncated ? { truncated: false } : undefined;
+      const output = await run(command, args, {
+        ...runOptions,
+        ...(tail ? { tail } : {}),
+      });
+      if (tail?.truncated) onTruncated?.();
+      return output;
     },
   };
 }
@@ -903,6 +906,7 @@ function reasonOf(error: unknown): DeviceToolsUnreadableReason {
 }
 
 export class DeviceToolsService {
+  private readonly activeLogs = new Set<string>();
   /** What THIS Station last set, per device (iOS cannot read location). */
   private readonly lastLocation = new Map<
     string,
@@ -929,7 +933,8 @@ export class DeviceToolsService {
     options: {
       stdin?: string;
       maxBuffer?: number;
-      sampleDurationMs?: number;
+      signal?: AbortSignal;
+      onTruncated?: () => void;
       beforeRun?: () => Promise<void>;
     } = {},
   ): Promise<string> {
@@ -947,7 +952,11 @@ export class DeviceToolsService {
       if (error instanceof DeviceHostBusyError) throw error;
       if (error instanceof DeviceToolsAdmissionError) throw error;
       if (error instanceof DeviceToolError)
-        throw new DeviceToolsError(error.code);
+        throw new DeviceToolsError(
+          error.code,
+          error.exitCode,
+          error.stderrPresent,
+        );
       throw new DeviceToolsError('tool-failed');
     }
   }
@@ -1127,78 +1136,120 @@ export class DeviceToolsService {
     target: DeviceToolsTarget,
     appId: string,
     beforeRun?: () => Promise<void>,
+    signal?: AbortSignal,
   ) {
     this.assertOwnHost(target);
     assertTarget(target.platform, target.deviceId);
     assertAppId(appId);
-    const pid = async () => {
+    const key = this.key(target);
+    if (this.activeLogs.has(key)) throw new DeviceHostBusyError();
+    this.activeLogs.add(key);
+    try {
+      let truncated = false;
+      const pid = async () => {
+        let output: string;
+        try {
+          output =
+            target.platform === 'ios'
+              ? await this.exec(
+                  'xcrun',
+                  ['simctl', 'spawn', target.deviceId, 'launchctl', 'list'],
+                  { beforeRun, signal },
+                )
+              : await this.exec(
+                  'adb',
+                  ['-s', target.deviceId, 'shell', 'pidof', appId],
+                  { beforeRun, signal },
+                );
+        } catch (error) {
+          if (
+            target.platform === 'android' &&
+            error instanceof DeviceToolsError &&
+            error.code === 'tool-failed' &&
+            error.exitCode === 1 &&
+            error.stderrPresent === false
+          )
+            throw new DeviceToolsError('app-not-running');
+          throw error;
+        }
+        const found =
+          target.platform === 'ios'
+            ? output.split(/\r?\n/).flatMap((line) => {
+                const match = /^(\d+)\s+\S+\s+UIKitApplication:([^[]+)\[/.exec(
+                  line,
+                );
+                return match?.[2] === appId ? [match[1]!] : [];
+              })
+            : output.trim().split(/\s+/).filter(Boolean);
+        if (found.length !== 1 || !PROCESS_ID.test(found[0]!))
+          throw new DeviceToolsError('app-not-running');
+        return found[0]!;
+      };
+      const processId = await pid();
       const output =
         target.platform === 'ios'
           ? await this.exec(
               'xcrun',
-              ['simctl', 'spawn', target.deviceId, 'launchctl', 'list'],
-              { beforeRun },
+              [
+                'simctl',
+                'spawn',
+                target.deviceId,
+                'log',
+                'show',
+                '--last',
+                '5s',
+                '--style',
+                'compact',
+                '--predicate',
+                `processIdentifier == ${processId}`,
+              ],
+              {
+                maxBuffer: 256 * 1024,
+                beforeRun,
+                signal,
+                onTruncated: () => {
+                  truncated = true;
+                },
+              },
             )
           : await this.exec(
               'adb',
-              ['-s', target.deviceId, 'shell', 'pidof', appId],
-              { beforeRun },
+              [
+                '-s',
+                target.deviceId,
+                'logcat',
+                '-d',
+                '-t',
+                '1000',
+                '--pid',
+                processId,
+              ],
+              {
+                maxBuffer: 256 * 1024,
+                beforeRun,
+                signal,
+                onTruncated: () => {
+                  truncated = true;
+                },
+              },
             );
-      const found =
-        target.platform === 'ios'
-          ? output.split(/\r?\n/).flatMap((line) => {
-              const match = /^(\d+)\s+\S+\s+UIKitApplication:([^[]+)\[/.exec(
-                line,
-              );
-              return match?.[2] === appId ? [match[1]!] : [];
-            })
-          : output.trim().split(/\s+/).filter(Boolean);
-      if (found.length !== 1 || !PROCESS_ID.test(found[0]!))
+      if ((await pid()) !== processId)
         throw new DeviceToolsError('tool-failed');
-      return found[0]!;
-    };
-    const processId = await pid();
-    const output =
-      target.platform === 'ios'
-        ? await this.exec(
-            'xcrun',
-            [
-              'simctl',
-              'spawn',
-              target.deviceId,
-              'log',
-              'stream',
-              '--style',
-              'compact',
-              '--predicate',
-              `processIdentifier == ${processId}`,
-            ],
-            { sampleDurationMs: 3000, maxBuffer: 256 * 1024, beforeRun },
-          )
-        : await this.exec(
-            'adb',
-            [
-              '-s',
-              target.deviceId,
-              'logcat',
-              '-d',
-              '-t',
-              '1000',
-              '--pid',
-              processId,
-            ],
-            { maxBuffer: 256 * 1024, beforeRun },
-          );
-    if ((await pid()) !== processId) throw new DeviceToolsError('tool-failed');
-    return {
-      hostId: target.hostId,
-      platform: target.platform,
-      deviceId: target.deviceId,
-      appId,
-      processId,
-      output,
-      readAt: new Date(this.now()).toISOString(),
-    };
+      const lines = output.split('\n');
+      if (lines.length > 1000) truncated = true;
+      return {
+        hostId: target.hostId,
+        platform: target.platform,
+        deviceId: target.deviceId,
+        appId,
+        processId,
+        output: lines.slice(-1000).join('\n'),
+        truncated,
+        readAt: new Date(this.now()).toISOString(),
+      };
+    } finally {
+      this.activeLogs.delete(key);
+    }
   }
 
   /** One app's permissions, read back (Android; iOS cannot report them). */

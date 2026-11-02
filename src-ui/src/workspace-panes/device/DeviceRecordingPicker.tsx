@@ -81,7 +81,11 @@ export function DeviceRecordingPicker({
           projectSlug: target.projectSlug,
           durationMs: 30000,
         });
-        if (job.state === 'failed' || job.state === 'completed')
+        if (
+          job.state === 'failed' ||
+          job.state === 'completed' ||
+          job.state === 'cancelled'
+        )
           throw new Error('Recording did not start.');
         started.current = {
           taskId,

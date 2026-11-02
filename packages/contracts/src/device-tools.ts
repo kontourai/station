@@ -215,6 +215,7 @@ export type DeviceToolsFailure =
   | 'unsupported'
   | 'tool-unavailable'
   | 'tool-failed'
+  | 'app-not-running'
   | 'tool-timeout'
   | 'hub-unavailable'
   /** The path names an SSH device host this Station does not have. */

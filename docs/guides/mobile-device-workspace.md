@@ -236,10 +236,13 @@ use `device_record_to_task` with a duration of up to 30 seconds.
 
 With **Device developer loop** enabled, the Tools drawer can sample logs for
 one running app ID. Start or pause the sample and filter the displayed output
-by text or level. Station bounds the sample and checks the app's process ID
-again before publishing; samples can have gaps. `device_logs` provides the
-same bounded read to an authorized agent. Both tools use the selected device
-host, including an enabled SSH host.
+by text or level. iOS reads the last five seconds; Android reads up to the last
+1,000 logcat lines for the app PID. Station retains at most 1,000 lines and
+256 KiB and reports truncation, then checks the PID again before publishing.
+Samples can have gaps. `device_logs` provides the same bounded read to an
+authorized agent. Agent logs and recording claim the input lease, are refused
+while a person controls the device, and hold the lease while running. Both
+tools use the selected device host, including an enabled SSH host.
 
 The commit records the observed Task workspace. It does not establish which
 build is installed on the device or which app is in the foreground; attach

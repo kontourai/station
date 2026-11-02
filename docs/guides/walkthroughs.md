@@ -35,6 +35,12 @@ authorization/recovery and usability evidence beyond fixture and synthesized-spe
 
 ## Record a Task clip
 
+With Device developer loop and Walkthroughs enabled, a person can record a
+Device clip from the Device pane, and a Task-bound agent can use
+`device_record_to_task`. The clip records its host, device and app observed at
+the start. The agent holds the input lease through recording and publication;
+human control prevents its claim. See [Device recording](mobile-device-workspace.md#capture-a-device-screen-to-a-task).
+
 With Walkthroughs enabled, a bound lead Session can call the sensitive
 `station-browser` tool `browser_record_to_task` with `durationMs` (1–30,000),
 and optional `browserSessionId`, `label`, and `maxBytes` (at most 16 MiB). The
