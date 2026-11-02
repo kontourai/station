@@ -57,6 +57,7 @@ import {
   readAppearanceCache,
 } from './appearance-cache';
 import { parseLayoutPanelsRecord } from './layout-panels-record';
+import { resolveThemeMode, systemPrefersLight } from './theme-mode';
 
 const ENVELOPE_STORAGE_KEY = 'station-device-settings-v1';
 
@@ -1099,9 +1100,14 @@ class DeviceSettingsStore {
     };
   };
 
-  private writeAccountPatch(patch: AccountPreferencesPatch): void {
+  private writeAccountPatch(input: AccountPreferencesPatch): void {
     const account = this.account;
     if (!account) return;
+    // System is the absence of a saved mode, never a stored value (#4407).
+    const patch: AccountPreferencesPatch =
+      (input.theme as string | null | undefined) === 'system'
+        ? { ...input, theme: null }
+        : input;
     if (account.writable && account.values) {
       account.values = applyAccountPreferencePatch(account.values, patch);
       this.snapshot = this.resolve();
@@ -1178,6 +1184,13 @@ class DeviceSettingsStore {
     key: K,
     value: DeviceSettings[K],
   ): void => {
+    // Choosing System clears a saved light or dark choice rather than
+    // storing `system`: an older client or server knows only light and dark
+    // and reads the absence as "no choice" (#4407).
+    if (key === 'theme' && value === 'system') {
+      this.reset('theme');
+      return;
+    }
     if (
       this.account &&
       ACCOUNT_PREFERENCE_KEYS.some((candidate) => candidate === key)
@@ -1278,22 +1291,25 @@ export function resolveBootTheme(
   envelopeRaw: string | null,
   priorRaw: string | null,
   appearanceRaw: string | null = null,
+  prefersLight: boolean = systemPrefersLight(),
 ): 'light' | 'dark' {
   // The account appearance this device last rendered wins, as in
   // startup-theme.js (lib/appearance-cache.ts).
   const cached = bootAppearanceFrom(appearanceRaw);
-  if (cached) return cached.theme;
+  if (cached) return resolveThemeMode(cached.theme, prefersLight);
   if (envelopeRaw !== null) {
     try {
       const parsed = JSON.parse(envelopeRaw);
       const theme = parsed?.values?.theme;
-      if (theme === 'light' || theme === 'dark') return theme;
+      if (theme === 'light' || theme === 'dark' || theme === 'system')
+        return resolveThemeMode(theme, prefersLight);
     } catch {
       // Fall through to the prior/default path below.
     }
   }
   if (priorRaw === 'light' || priorRaw === 'dark') return priorRaw;
-  return 'dark';
+  // No saved choice: System, the default (#4407).
+  return resolveThemeMode('system', prefersLight);
 }
 
 /**

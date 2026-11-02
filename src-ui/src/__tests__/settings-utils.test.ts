@@ -101,7 +101,7 @@ describe('settings utils', () => {
 
       // Simulate a fresh browser: clear the device store before importing.
       deviceSettingsStore.importEnvelope({ version: 1, values: {} });
-      expect(deviceSettingsStore.get('theme')).toBe('dark');
+      expect(deviceSettingsStore.get('theme')).toBe('system');
 
       const { serverConfig } = await parseImportedSettingsFile(
         jsonFile(payload),
@@ -194,7 +194,7 @@ describe('settings utils', () => {
         parseImportedSettingsFile(jsonFile(futureFile)),
       ).rejects.toThrow(DeviceSettingsImportVersionError);
       // Nothing was adopted from the rejected file.
-      expect(deviceSettingsStore.get('theme')).toBe('dark');
+      expect(deviceSettingsStore.get('theme')).toBe('system');
     });
 
     test('an invalid composite value (inboxSections: null) is dropped instead of crashing a consumer', async () => {

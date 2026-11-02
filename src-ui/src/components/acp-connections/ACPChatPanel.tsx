@@ -26,6 +26,7 @@ import { useConfig } from '../../contexts/ConfigContext';
 import { useProject } from '../../contexts/ProjectsContext';
 import { useACPConnections } from '../../hooks/useACPConnections';
 import { useCreateChatSession } from '../../hooks/useActiveChatSessions';
+import { useActiveStationName } from '../../hooks/useActiveStationName';
 import { useChatInput } from '../../hooks/useChatInput';
 import { useMobileVisualViewport } from '../../hooks/useMobileVisualViewport';
 import type { ChatMessage, ChatSession, FileAttachment } from '../../types';
@@ -165,13 +166,17 @@ export function ACPChatPanel({
         credentialState: mentionCredentialEvidence.credentialState,
       })
     : null;
+  // #4402: "via <machine>" for the seeded "Default" connection.
+  const activeStationName = useActiveStationName();
   const owner = useMemo(
     () =>
       ownerAttributionFromStation(
-        activeConnection,
+        activeConnection && activeStationName
+          ? { ...activeConnection, name: activeStationName }
+          : activeConnection,
         verifiedBuildLabel ? `Station ${verifiedBuildLabel}` : null,
       ),
-    [activeConnection],
+    [activeConnection, activeStationName],
   );
   const accountableHuman = useMemo(
     () => accountableHumanFromUser(user),

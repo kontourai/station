@@ -725,7 +725,8 @@ describe("the Station Agent's own definition (#3662)", () => {
     });
 
     const station = await loader.loadAgent('station');
-    expect(station.name).toBe('Station');
+    // #4388: a new home names the built-in agent Station Assistant.
+    expect(station.name).toBe('Station Assistant');
     expect(station.execution?.agentConnectionId).toBeUndefined();
     // And the registry still owns the identity, unchanged.
     const registry = await loadOrCreateAgentRegistry(loader);

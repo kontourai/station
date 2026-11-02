@@ -26,7 +26,7 @@
 
 .child-work-transcript__label {
   color: var(--text-tertiary);
-  font-size: var(--text-2xs);
+  font-size: var(--k-text-sm);
   font-weight: 600;
   letter-spacing: 0.02em;
 }
@@ -58,7 +58,7 @@
   border-radius: var(--radius-sm);
   background: var(--bg-tertiary);
   font-family: var(--font-mono);
-  font-size: var(--text-2xs);
+  font-size: var(--k-text-sm);
   white-space: pre-wrap;
 }
 
@@ -66,5 +66,5 @@
 .child-work-transcript__cut {
   margin: 0;
   color: var(--text-tertiary);
-  font-size: var(--text-2xs);
+  font-size: var(--k-text-sm);
 }

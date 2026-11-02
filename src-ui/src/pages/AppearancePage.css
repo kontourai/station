@@ -23,7 +23,7 @@
 
 .appearance__hint {
   color: var(--k-text-muted);
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
 }
 
 /* The visible focus ring belongs on the label, because the input is clipped.
@@ -157,7 +157,7 @@
   border-radius: 50%;
   background: var(--accent-primary);
   color: var(--text-on-accent);
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
 }
 
 .appearance-theme__preview {
@@ -245,7 +245,7 @@
 
 .appearance-theme__detail {
   color: var(--k-text-muted);
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
 }
 
 /* ── Flavor ── */

@@ -23,7 +23,7 @@
    measurement that chose them) rather than inventing a second pill scale. */
 .connections-computers__chip {
   display: inline-block;
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
   font-weight: 600;
   padding: var(--k-border-thick) var(--k-space-2);
   border-radius: var(--k-radius-control);
@@ -33,7 +33,7 @@
 }
 
 .connections-computers__state {
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
   font-weight: 600;
   white-space: nowrap;
   color: var(--k-text-faint);

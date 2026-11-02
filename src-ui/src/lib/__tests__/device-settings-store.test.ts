@@ -31,6 +31,33 @@ describe('device-settings-store', () => {
     vi.resetModules();
   });
 
+  test('#4407: choosing System clears a saved mode instead of storing it', async () => {
+    const { deviceSettingsStore: store } = await freshStore();
+    expect(store.get('theme')).toBe('system');
+    store.set('theme', 'light');
+    expect(
+      JSON.parse(localStorage.getItem(ENVELOPE_KEY) ?? '{}').values,
+    ).toMatchObject({ theme: 'light' });
+    store.set('theme', 'system');
+    expect(store.get('theme')).toBe('system');
+    expect(
+      Object.hasOwn(
+        JSON.parse(localStorage.getItem(ENVELOPE_KEY) ?? '{}').values,
+        'theme',
+      ),
+    ).toBe(false);
+
+    // A signed-in person's System is a reset of the account value: a server
+    // that knows only light and dark never receives `system`.
+    const write = vi.fn();
+    const detach = store.bindAccountPreferences({ theme: 'dark' }, write);
+    expect(store.get('theme')).toBe('dark');
+    store.set('theme', 'system');
+    expect(write).toHaveBeenLastCalledWith({ theme: null });
+    expect(store.get('theme')).toBe('system');
+    detach();
+  });
+
   test('account values never leak to device storage, and retirement restores this device', async () => {
     const { deviceSettingsStore: store } = await freshStore();
     store.set('theme', 'dark');
@@ -590,9 +617,22 @@ describe('device-settings-store', () => {
       expect(resolveBootTheme(null, 'light')).toBe('light');
     });
 
-    test('defaults to dark when both are absent', async () => {
+    test('with no saved choice follows the device (#4407), dark when it cannot say', async () => {
       const { resolveBootTheme } = await freshStore();
       expect(resolveBootTheme(null, null)).toBe('dark');
+      expect(resolveBootTheme(null, null, null, true)).toBe('light');
+      expect(resolveBootTheme(null, null, null, false)).toBe('dark');
+      const noTheme = JSON.stringify({ version: 3, values: {} });
+      expect(resolveBootTheme(noTheme, null, null, true)).toBe('light');
+    });
+
+    test('a saved light or dark choice is kept whatever the device asks (#4407)', async () => {
+      const { resolveBootTheme } = await freshStore();
+      const dark = JSON.stringify({ version: 3, values: { theme: 'dark' } });
+      expect(resolveBootTheme(dark, null, null, true)).toBe('dark');
+      const light = JSON.stringify({ version: 3, values: { theme: 'light' } });
+      expect(resolveBootTheme(light, null, null, false)).toBe('light');
+      expect(resolveBootTheme(null, 'dark', null, true)).toBe('dark');
     });
 
     test('never throws on a malformed envelope, falling back to prior/default', async () => {
@@ -685,7 +725,7 @@ describe('device-settings-store', () => {
           values: { theme: 'light' },
         }),
       ).toThrow(DeviceSettingsImportVersionError);
-      expect(deviceSettingsStore.get('theme')).toBe('dark');
+      expect(deviceSettingsStore.get('theme')).toBe('system');
     });
 
     test('drops an invalid composite value (inboxSections: null) and reports it, rather than crashing a consumer that dereferences it', async () => {
@@ -987,7 +1027,7 @@ describe('device-settings-store', () => {
       const listener = vi.fn();
       deviceSettingsStore.subscribe(listener);
 
-      expect(deviceSettingsStore.get('theme')).toBe('dark');
+      expect(deviceSettingsStore.get('theme')).toBe('system');
 
       const externalEnvelope = { version: 1, values: { theme: 'light' } };
       localStorage.setItem(ENVELOPE_KEY, JSON.stringify(externalEnvelope));
@@ -1217,7 +1257,8 @@ describe('device-settings-store', () => {
       const listener = vi.fn();
       deviceSettingsStore.subscribe(listener);
 
-      deviceSettingsStore.set('theme', 'dark');
+      // The theme default is System (#4407).
+      deviceSettingsStore.set('theme', 'system');
 
       expect(deviceSettingsStore.getSnapshot()).toBe(beforeSnapshot);
       expect(deviceSettingsStore.getEnvelope()).toBe(beforeEnvelope);
@@ -1269,7 +1310,7 @@ describe('device-settings-store', () => {
     test('importing the module constructs the singleton instead of throwing', async () => {
       const settings = await withDeniedStorage(() => freshStore());
 
-      expect(settings.deviceSettingsStore.get('theme')).toBe('dark');
+      expect(settings.deviceSettingsStore.get('theme')).toBe('system');
     });
 
     test('writes are best-effort no-ops rather than throws', async () => {

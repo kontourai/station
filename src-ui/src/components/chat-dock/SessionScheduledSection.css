@@ -21,7 +21,7 @@
 .session-scheduled__title {
   margin: 0;
   color: var(--k-text-muted);
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
   font-weight: 600;
 }
 
@@ -124,7 +124,7 @@
 
 .session-scheduled__when {
   color: var(--k-text-muted);
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }

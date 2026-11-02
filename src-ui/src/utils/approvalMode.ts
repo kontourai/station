@@ -156,11 +156,11 @@ const ENGINE_MODE_DESCRIPTIONS: Partial<
     // commands: Codex's hosted web search and MCP tool calls are not
     // sandboxed commands, so they fall outside it.
     //
-    // #4389: "this folder" alone read as a project folder, but a chat with no
-    // project runs in the home folder (`resolveStartSessionCwd`), so the copy
-    // names that case instead of implying a narrower bound.
+    // #4389: a chat with no project now runs in a private folder of its own
+    // (`no-project-chat-folder.ts`), or in the home folder where Settings
+    // chose that; the start composer names which. The bound is that folder.
     codex:
-      'Codex settings apply until you pick one. If unset, it asks to go online or write outside temp and the chat folder (home if no project).',
+      'Codex settings apply until you pick one. If unset, it asks to go online or write outside temp and the chat’s own folder.',
   },
   ask: {
     codex:

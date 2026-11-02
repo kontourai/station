@@ -100,6 +100,14 @@ vi.mock('../../../hooks/useDevicePresentation', () => ({
 vi.mock('@kontourai/station-sdk', () => ({
   useSshEnvironmentsQuery: () => reads.ssh,
   usePeerCredentialsQuery: () => reads.peers,
+  // Station config behind the No project folder hint (#4389): nothing saved.
+  useConfigQuery: () => ({
+    data: undefined,
+    error: null,
+    dataUpdatedAt: 0,
+    isFetching: false,
+    refetch: vi.fn(),
+  }),
 }));
 
 const PAIRED = {
