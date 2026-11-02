@@ -24,7 +24,7 @@ import {
 import type { PendingApprovalRequest } from '../../hooks/orchestration/pendingRequestRows';
 import { unansweredApprovalRequests } from '../../hooks/orchestration/pendingRequestRows';
 import { useSurfaceVisibilityFlags } from '../../hooks/useSurfaceVisibilityFlags';
-import { dispatchNewChatIntent } from '../../lib/newChatIntent';
+import type { NewChatIntent } from '../../lib/newChatIntent';
 import { type PeerChatBinding, peerChatApiBase } from '../../lib/peer-chat';
 import type { ChatSession } from '../../types';
 import { isStreamingSession } from '../../utils/sessionDisplay';
@@ -46,9 +46,11 @@ import './PeerChatBody.css';
 export function PeerChatBody({
   chat,
   binding,
+  onEditDraft,
 }: {
   chat: Pick<ChatSession, 'id' | 'input' | 'agentName'>;
   binding: PeerChatBinding;
+  onEditDraft?: (intent: NewChatIntent) => void;
 }) {
   const host = useHostRequestAuthorityScope();
   const scope = host;
@@ -364,29 +366,34 @@ export function PeerChatBody({
                           <Button onClick={() => dispatch(binding.pending!)}>
                             Retry this message
                           </Button>
-                          <Button
-                            onClick={() => {
-                              if (!current()) return;
-                              dispatchNewChatIntent({
-                                initialPrompt: binding.pending!.text,
-                                selection: {
-                                  context: '__global__',
-                                  agentSlug: binding.agentId,
-                                  model: {
-                                    modelId: binding.model ?? '',
-                                    environmentId: binding.environmentId,
-                                    executionAgentId: binding.executionAgentId,
-                                    expectedDefinitionFingerprint:
-                                      binding.expectedDefinitionFingerprint,
-                                    providerOptions:
-                                      binding.providerOptions ?? {},
+                          {onEditDraft && (
+                            <Button
+                              onClick={() => {
+                                if (!current()) return;
+                                onEditDraft({
+                                  initialPrompt: binding.pending!.text,
+                                  selection: {
+                                    context: '__global__',
+                                    agentSlug: binding.agentId,
+                                    model: {
+                                      ...(binding.model
+                                        ? { modelId: binding.model }
+                                        : {}),
+                                      environmentId: binding.environmentId,
+                                      executionAgentId:
+                                        binding.executionAgentId,
+                                      expectedDefinitionFingerprint:
+                                        binding.expectedDefinitionFingerprint,
+                                      providerOptions:
+                                        binding.providerOptions ?? {},
+                                    },
                                   },
-                                },
-                              });
-                            }}
-                          >
-                            Edit in New Chat
-                          </Button>
+                                });
+                              }}
+                            >
+                              Edit in New Chat
+                            </Button>
+                          )}
                           <p>
                             Check the conversation before sending a changed
                             message; it may have arrived.

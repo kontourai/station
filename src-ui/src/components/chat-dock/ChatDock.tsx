@@ -4238,6 +4238,16 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                       >
                         <ChatDockContentArea
                           onNewChat={handleStartNewChatWithMessage}
+                          onEditPeerChatDraft={(intent) =>
+                            requestNewChat({
+                              ...intent,
+                              selection: intent.selection && {
+                                ...intent.selection,
+                                context:
+                                  scopedProjectSlug ?? intent.selection.context,
+                              },
+                            })
+                          }
                           onRetryConversationOpen={retryActiveConversationOpen}
                           activeSession={activeSession}
                           workingDirectory={sessionDisplayCwd}

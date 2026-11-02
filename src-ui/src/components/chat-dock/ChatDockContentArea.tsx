@@ -1,6 +1,7 @@
 import type { OrchestrationSessionSummary } from '@kontourai/station-sdk';
 import { type ComponentProps, memo } from 'react';
 import type { AgentData } from '../../contexts/AgentsContext';
+import type { NewChatIntent } from '../../lib/newChatIntent';
 import type { ChatSession, FileAttachment } from '../../types';
 import type {
   ForkTurnSource,
@@ -103,6 +104,7 @@ interface ChatDockContentAreaProps {
     attachments?: FileAttachment[],
     migratedTurnId?: string,
   ) => void | Promise<void>;
+  onEditPeerChatDraft?: (intent: NewChatIntent) => void;
   onRetryConversationOpen?: () => void | Promise<void>;
   /** station#1301 slice 1: opens the Background tasks sheet. */
   onOpenBackgroundTasks?: () => void;
@@ -153,6 +155,7 @@ function ChatDockContentAreaImpl({
   onResendFromMessage,
   onNewChat,
   onRetryConversationOpen,
+  onEditPeerChatDraft,
   onOpenBackgroundTasks,
 }: ChatDockContentAreaProps) {
   if (activeSession?.peerChatInvalid)
@@ -171,6 +174,7 @@ function ChatDockContentAreaImpl({
         componentProps={{
           chat: activeSession,
           binding: activeSession.peerChat,
+          onEditDraft: onEditPeerChatDraft,
         }}
         pending={<SkeletonList label="Opening remote chat" />}
       />

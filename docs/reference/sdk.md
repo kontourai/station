@@ -1851,7 +1851,9 @@ launcher; the foreground thread-execution path has no portable admission
 in this slice, so a non-portable Project workspace resolved onto a paired
 Station is refused rather than run as an unrelated same-slug Project, and
 the thread-default environment picker preserves — but no longer newly
-offers — paired-Station selections.
+offers — paired-Station selections. The separate `paired-station-chats` preview
+starts a fresh foreground conversation with an explicitly selected receiver
+Project; it does not interpret a source workspace as portable execution authority.
 
 ### `delegateTask(apiBase, input, options?)` with files
 
