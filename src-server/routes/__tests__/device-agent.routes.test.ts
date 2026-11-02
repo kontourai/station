@@ -53,7 +53,12 @@ function harness(
     | 'sdk-in-process'
     | 'url-token'
     | 'http-header-token' = 'sdk-in-process',
-  options: { operator?: boolean; idleEndMs?: number; remote?: boolean } = {},
+  options: {
+    operator?: boolean;
+    idleEndMs?: number;
+    remote?: boolean;
+    operatorDevice?: boolean;
+  } = {},
 ) {
   const sessionId = `device-test-${Math.random()}`;
   const { token } = mintStationControlMcpToken(sessionId, channel);
@@ -61,6 +66,7 @@ function harness(
   let active = true;
   let enabled = true;
   let operator = options.operator === true;
+  let operatorDevice = options.operatorDevice === true;
   let principalId = 'admin';
   let conversationId = 'conversation';
   let callingSession = sessionId;
@@ -267,14 +273,17 @@ function harness(
       mayAccessDevice: async () => shared && active,
     },
     agentReveals: {
+      operatorDeviceMayView: () => operatorDevice && active,
       projectAccess: {
         resolveProject: (slug) =>
           slug === 'alpha' ? { id: 'project' } : undefined,
-        authorizeProject: async () =>
+        authorizeProject: async (_request, _project, _purpose, options) =>
           active
-            ? operator
-              ? { kind: 'operator' }
-              : { kind: 'project-admin', principalId }
+            ? operatorDevice && options?.allowOperatorDeviceView
+              ? { kind: 'operator-device' }
+              : operator
+                ? { kind: 'operator' }
+                : { kind: 'project-admin', principalId }
             : undefined,
       },
       list: (projectId, conversation, principal) =>
@@ -402,6 +411,9 @@ function harness(
     revokeShare: () => {
       shared = false;
     },
+    revokeOperatorDevice: () => {
+      operatorDevice = false;
+    },
     revokeMember: () => {
       active = false;
     },
@@ -439,6 +451,20 @@ test('reveal requests are conversation scoped, deduplicated, optional and rechec
   expect((await read()).data.reveals).toEqual([]);
   h.revokeMember();
   expect((await h.humanDevices.request(path)).status).toBe(403);
+});
+
+test('an operator-owned device can read agent reveals without a Project device share, and loses that access when rebound', async () => {
+  const h = harness('sdk-in-process', { operator: true, operatorDevice: true });
+  await h.open();
+  h.revokeShare();
+  const path = '/agent-reveals?projectSlug=alpha&conversationId=conversation';
+  const read = async () =>
+    (await (await h.humanDevices.request(path)).json()) as {
+      data: { reveals: unknown[] };
+    };
+  expect((await read()).data.reveals).toHaveLength(1);
+  h.revokeOperatorDevice();
+  expect((await read()).data.reveals).toEqual([]);
 });
 
 test('an authorized retry refreshes reveal admission after Agent credentials rotate', async () => {
