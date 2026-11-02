@@ -1,6 +1,8 @@
+import { spawnChildWorkload } from '@kontourai/station-shared/child-workload';
 import type { IPtyAdapter, IPtyProcess } from '../../domain/pty-adapter.js';
 import { isPtyUnavailableError } from '../../domain/pty-adapter.js';
 import { childProcessEnvironment } from '../../utils/child-process-environment.js';
+import { spawnCommandProcess } from './command-process.js';
 import type { TerminalJournal } from './terminal-journal.js';
 import { resolveTerminalShellCandidates } from './terminal-shells.js';
 
@@ -18,17 +20,28 @@ export interface ShellLaunch {
   env?: Readonly<Record<string, string>>;
 }
 
+/**
+ * `interactive` runs in a PTY. `command` runs a named launch without one,
+ * stdout and stderr together, and is ended once its output passes
+ * `outputCapBytes` (see `command-process.ts`).
+ */
+export type ShellSpawnKind =
+  | { kind?: 'interactive' }
+  | { kind: 'command'; outputCapBytes: number };
+
 /** Handles may be local PTYs or proxies to supervisor-owned workloads. */
 export interface ShellHost {
-  spawn(input: {
-    terminalId: string;
-    cwd: string;
-    cols: number;
-    rows: number;
-    journal: ShellJournalSpec;
-    /** Absent: the configured interactive shell. */
-    launch?: ShellLaunch;
-  }): Promise<IPtyProcess>;
+  spawn(
+    input: {
+      terminalId: string;
+      cwd: string;
+      cols: number;
+      rows: number;
+      journal: ShellJournalSpec;
+      /** Absent: the configured interactive shell. A command requires one. */
+      launch?: ShellLaunch;
+    } & ShellSpawnKind,
+  ): Promise<IPtyProcess>;
   /**
    * A shell this host kept running while the core restarted, or null when it
    * has ended. Only hosts that outlive the core (the supervisor's) have one.
@@ -106,6 +119,22 @@ export function terminalShellEnvironment(
 }
 
 /**
+ * A command has no terminal: it is not told it can draw colors or a pager,
+ * unless its launch asks for them.
+ */
+export function commandEnvironment(
+  extra?: Readonly<Record<string, string>>,
+): NodeJS.ProcessEnv {
+  return childProcessEnvironment(extra ? { ...extra } : undefined);
+}
+
+/** The one program a command session runs; it has no shell fallback. */
+export function commandLaunch(launch: ShellLaunch | undefined): ShellLaunch {
+  if (!launch) throw new Error('A command session needs a named launch');
+  return launch;
+}
+
+/**
  * The programs a host may start for a spawn: a named launch has exactly one,
  * with no fallback, so a missing executable is reported instead of another
  * program starting in its place.
@@ -134,6 +163,21 @@ export class InProcessShellHost implements ShellHost {
   ) {}
 
   async spawn(input: Parameters<ShellHost['spawn']>[0]): Promise<IPtyProcess> {
+    if (input.kind === 'command') {
+      const launch = commandLaunch(input.launch);
+      // Through the child-workload launcher, so a host that scopes child
+      // resources scopes an agent's command as it did before #3994.
+      return spawnCommandProcess(
+        {
+          command: launch.file,
+          args: launch.args,
+          cwd: input.cwd,
+          env: commandEnvironment(launch.env),
+          outputCapBytes: input.outputCapBytes,
+        },
+        spawnChildWorkload,
+      );
+    }
     return spawnFirstShell(
       this.pty,
       await shellCandidates(input.launch, this.configuredShell),

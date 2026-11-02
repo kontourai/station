@@ -22,6 +22,8 @@ export interface ManagedTerminal {
   signal: string | null;
   /** True once the child has exited, whichever way it went. */
   exited: boolean;
+  /** ACP `outputByteLimit`: output is truncated from the beginning to this. */
+  outputByteLimit?: number;
   /**
    * Set when the child never started — the spawn itself failed. The failure
    * is reported through the shell's failure channel (`output` plus the

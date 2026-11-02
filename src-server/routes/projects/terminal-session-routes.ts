@@ -151,6 +151,27 @@ export function createTerminalSessionRoutes(
     );
     return c.json({ success: true });
   });
+  app.post('/:slug/terminal-sessions/:terminalId/restart', async (c) => {
+    const input = z
+      .object({
+        bindingKey: binding,
+        subdirectory: z.string().min(1).max(4096).optional(),
+      })
+      .strict()
+      .parse(await c.req.json());
+    const result = await sessions.restart(
+      c.req.raw,
+      scope(c.req.param('slug'), input.bindingKey),
+      z.string().uuid().parse(c.req.param('terminalId')),
+      input.subdirectory === undefined
+        ? {}
+        : { subdirectory: input.subdirectory },
+    );
+    return c.json({
+      success: true,
+      data: { ...result, journal: { lastSeq: result.journal.lastSeq } },
+    });
+  });
   app.delete('/:slug/terminal-sessions/:terminalId', async (c) => {
     await sessions.close(
       c.req.raw,

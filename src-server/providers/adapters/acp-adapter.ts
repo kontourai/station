@@ -94,6 +94,7 @@ import {
   ACPProcess,
   type ACPProcessOptions,
 } from '../../services/acp/acp-process.js';
+import type { AcpSessionTerminals } from '../../services/acp/acp-session-terminals.js';
 import {
   clearEngineSignInRefusal,
   engineSignInStatus,
@@ -497,6 +498,16 @@ export interface AcpAdapterOptions {
       | 'coordinator-control'
       | 'coordinator-knowledge',
   ) => void;
+  /**
+   * #3994: the agent session's terminals as command terminal sessions,
+   * confined to `cwd`. Undefined where the host has no terminal sessions;
+   * its terminals are then plain child processes.
+   */
+  agentTerminals?: (input: {
+    threadId: string;
+    projectSlug?: string;
+    cwd: string;
+  }) => AcpSessionTerminals | undefined;
 }
 
 /** Last-known slash command surfaced by a live ACP session (aggregated across sessions in `getCommands()` — see Risks: no per-connection threadId param on the shared shape). */
@@ -1254,6 +1265,13 @@ export class AcpAdapter implements ProviderAdapterShape {
     );
 
     const terminals = new Map<string, ManagedTerminal>();
+    const sessionTerminals = this.options.agentTerminals?.({
+      threadId: input.threadId,
+      ...(typeof input.metadata?.projectSlug === 'string' && {
+        projectSlug: input.metadata.projectSlug,
+      }),
+      cwd,
+    });
     let terminalCounter = 0;
     const logger = this.options.logger ?? console;
 
@@ -1295,6 +1313,7 @@ export class AcpAdapter implements ProviderAdapterShape {
           this.buildClient(record, {
             cwd,
             terminals,
+            ...(sessionTerminals && { sessionTerminals }),
             nextTerminalId: () => `acp-term-${++terminalCounter}`,
             logger,
           }),
@@ -2876,6 +2895,7 @@ export class AcpAdapter implements ProviderAdapterShape {
     context: {
       cwd: string;
       terminals: Map<string, ManagedTerminal>;
+      sessionTerminals?: AcpSessionTerminals;
       nextTerminalId: () => string;
       logger: AcpLogger;
     },
@@ -2883,6 +2903,9 @@ export class AcpAdapter implements ProviderAdapterShape {
     const client = createACPBridgeClient({
       cwd: context.cwd,
       terminals: context.terminals,
+      ...(context.sessionTerminals && {
+        sessionTerminals: context.sessionTerminals,
+      }),
       // Constructed only to satisfy createACPBridgeClient's parameter type —
       // never invoked, since `requestPermission` is overridden below with the
       // adapter's own canonical implementation.

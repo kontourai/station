@@ -47,6 +47,27 @@ export type TerminalLaunchProfile =
   | { kind: 'shell' }
   | { kind: 'agent'; connectionId: string; mode: string };
 
+/** Longest relative working directory a client may request for a session. */
+export const TERMINAL_SUBDIRECTORY_MAX_LENGTH = 4096;
+
+/**
+ * Socket control request: end the attached session's program and start it
+ * again under the same terminal id. Its journal continues in a new segment,
+ * so output before the restart stays readable. `subdirectory` (relative)
+ * moves it within its binding's root; without it the current directory is
+ * kept if it is still inside that root. Requires operate authority. Commands
+ * and server-owned launches are refused.
+ *
+ * Answered by `{ type: 'done', requestId, channel, restartedAfterSeq }`:
+ * the new run's output follows `restartedAfterSeq` on the same channel.
+ */
+export interface TerminalRestartRequest {
+  type: 'restart';
+  requestId: string;
+  channel: number;
+  subdirectory?: string;
+}
+
 /** Close codes a client must not retry with the same authority. */
 export const TERMINAL_CLOSE = {
   /** The connection outlived its maximum lifetime; reconnect with a new ticket. */

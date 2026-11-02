@@ -179,6 +179,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // command children it kills as trees; a core restart is a second
   // TerminalSessions on the same private home. No ports or host state.
   'src-server/services/terminal/__tests__/supervisor-shell-host.process.test.ts',
+  // Command sessions (output cap, exit, ACP agent terminals) and restart of
+  // a real PTY, in private homes; no ports or host state.
+  'src-server/services/terminal/__tests__/terminal-command-sessions.process.test.ts',
   // Two disposable workers contend on private SQLite connections; no shared host output or timing assertion.
   'src-server/services/outside-agent/__tests__/oauth-concurrency.test.ts',
   // Two cache-enabled server bootstrap processes drive real MCP, Strands, CLI and shell children.

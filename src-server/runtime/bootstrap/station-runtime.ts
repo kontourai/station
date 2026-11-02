@@ -10,6 +10,7 @@ import { CodexRolloutSessionSource } from '../../providers/sessions/codex-rollou
 import { GrokSessionSource } from '../../providers/sessions/grok-session-source.js';
 import { OpenCodeSessionSource } from '../../providers/sessions/opencode-session-source.js';
 import { createConversationMessageReader } from '../../routes/chat/conversation-message-reader.js';
+import { agentTerminalsFor } from '../../services/acp/acp-session-terminals.js';
 import { engineSignIn } from '../../services/acp/engine-sign-in.js';
 import { lanDiscoveryFor } from '../../services/connections/lan-discovery.js';
 import { NativeSurfaceRegistry } from '../../services/connections/native-surface-registry.js';
@@ -4355,6 +4356,16 @@ export class StationRuntime {
           integrationSecretResolver: this.secretBindingAdministration,
           resolveAcpPreToolPolicy: (input) =>
             this.resolveExternalPreToolPolicy(input, 'self-reported'),
+          acpAgentTerminals: agentTerminalsFor({
+            sessions: () => this.scopedTerminals.sessions,
+            projectId: (slug) => {
+              try {
+                return this.storageAdapter.getProject(slug).id;
+              } catch {
+                return undefined;
+              }
+            },
+          }),
           eventLog: this.eventLog,
           bedrockAdapter: this.bedrockAdapter,
           claudeAdapter: this.claudeAdapter,

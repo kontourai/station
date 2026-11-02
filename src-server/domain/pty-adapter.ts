@@ -23,6 +23,8 @@ export interface IPtyProcess {
       exitCode: number;
       signal: number | null;
       outputIncomplete?: boolean;
+      /** A command session's output passed its cap and it was ended. */
+      outputCapped?: boolean;
     }) => void,
   ): () => void;
 }

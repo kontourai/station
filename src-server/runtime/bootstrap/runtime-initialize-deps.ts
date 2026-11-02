@@ -11,6 +11,7 @@ import type { EngineAgentCatalog } from '../../domain/agent-registry.js';
 import type { FileStorageAdapter } from '../../domain/file-storage-adapter.js';
 import type { MonitoringEmitter } from '../../monitoring/emitter.js';
 import type { ProviderSessionStartInput } from '../../providers/adapter-shape.js';
+import type { AcpAdapterOptions } from '../../providers/adapters/acp-adapter.js';
 import type { BedrockAdapter } from '../../providers/adapters/bedrock-adapter.js';
 import type { ClaudeAdapter } from '../../providers/adapters/claude-adapter.js';
 import type { CodexAdapter } from '../../providers/adapters/codex-adapter.js';
@@ -138,6 +139,8 @@ interface RuntimeInitializationContext {
   resolveAcpPreToolPolicy?: (
     input: ProviderSessionStartInput,
   ) => Promise<StagedPreToolPolicyEvaluator | undefined>;
+  /** #3994: an ACP agent's terminals as command terminal sessions. */
+  acpAgentTerminals?: AcpAdapterOptions['agentTerminals'];
   toolNameReverseMapping: Map<string, string>;
   eventLog: RuntimeEventLog;
   bedrockAdapter: BedrockAdapter;
@@ -224,6 +227,7 @@ export function createRuntimeInitializationDeps(
     resolveUnattendedGrant: context.resolveUnattendedGrant,
     integrationSecretResolver: context.integrationSecretResolver,
     resolveAcpPreToolPolicy: context.resolveAcpPreToolPolicy,
+    acpAgentTerminals: context.acpAgentTerminals,
     eventLog: context.eventLog,
     bedrockAdapter: context.bedrockAdapter,
     claudeAdapter: context.claudeAdapter,

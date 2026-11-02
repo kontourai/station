@@ -24,6 +24,7 @@ import { DEFAULT_SYSTEM_PROMPT } from '../../domain/config-loader.js';
 import type { FileStorageAdapter } from '../../domain/file-storage-adapter.js';
 import type { MonitoringEmitter } from '../../monitoring/emitter.js';
 import type { ProviderSessionStartInput } from '../../providers/adapter-shape.js';
+import type { AcpAdapterOptions } from '../../providers/adapters/acp-adapter.js';
 import {
   AcpAdapter,
   acpConnectionDefaultCwd,
@@ -280,6 +281,8 @@ export interface InitializeRuntimeDeps {
   resolveAcpPreToolPolicy?: (
     input: ProviderSessionStartInput,
   ) => Promise<StagedPreToolPolicyEvaluator | undefined>;
+  /** #3994: an ACP agent's terminals as command terminal sessions. */
+  acpAgentTerminals?: AcpAdapterOptions['agentTerminals'];
   modelCatalog?: BedrockModelCatalog;
   framework?: RuntimeFramework;
   voltAgent?: VoltAgent;
@@ -460,6 +463,7 @@ export async function initializeRuntime(
     resolveToolServer: (id) =>
       configLoader.loadIntegration(id).catch(() => null),
     resolvePreToolPolicy: deps.resolveAcpPreToolPolicy,
+    agentTerminals: deps.acpAgentTerminals,
     // archive#1684: the wire-safe substitution for the built-in
     // station-control server on the ACP channel (see
     // acp-mcp-passthrough.ts's header comment). Same per-session,

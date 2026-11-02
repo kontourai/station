@@ -135,6 +135,10 @@ export class TerminalJournal {
       });
     }
     this.nextSeq = previous + 1;
+    // A journal reopened by a new writer (a restarted session, possibly in
+    // another process) continues numbering in a new segment, so an earlier
+    // run's records are never mixed into the same file as the next run's.
+    this.sealed = this.segments.length > 0;
     await this.compact();
   }
 

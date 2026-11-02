@@ -581,7 +581,11 @@ describe('terminal gateway admission (#3994)', () => {
     const view = store.attach(signIn, opened.terminalId);
     await expect.poll(() => view.state).toBe('ready');
     expect(view.write('exit\r')).toBe(true);
-    await expect(opened.exited).resolves.toEqual({ exitCode: 7 });
+    await expect(opened.exited).resolves.toEqual({
+      exitCode: 7,
+      signal: null,
+      outputCapped: false,
+    });
     await expect.poll(() => view.status).toBe('exited');
     // Another scope cannot close it.
     await expect(

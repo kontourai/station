@@ -15,12 +15,14 @@ import { z } from 'zod/v3';
 import { FileTerminalHistoryStore } from '../../adapters/file-terminal-history-store.js';
 import type { IPtyProcess } from '../../domain/pty-adapter.js';
 import { createLogger } from '../../utils/logger.js';
+import { DEFAULT_COMMAND_OUTPUT_CAP_BYTES } from './command-process.js';
 import {
   type HostedShellProcess,
   isHostedShellProcess,
   type ShellHost,
   type ShellJournalSpec,
   type ShellLaunch,
+  type ShellSpawnKind,
 } from './shell-host.js';
 import {
   resolveTerminalJournalOptions,
@@ -77,6 +79,29 @@ const recordSchema = scopeSchema
       ])
       .optional(),
     exitCode: z.number().int().nullable().optional(),
+    /** The signal number that ended it, when one did. */
+    exitSignal: z.number().int().nullable().optional(),
+    /**
+     * Absent: an interactive PTY. `command`: a server-launched program with
+     * no PTY whose output is capped at `outputCapBytes` (an agent's ACP
+     * terminal). Its program is never stored, so it cannot be restarted.
+     */
+    kind: z.literal('command').optional(),
+    outputCapBytes: z.number().int().optional(),
+    /** Its output passed `outputCapBytes` and it was ended. */
+    outputCapped: z.boolean().optional(),
+    /**
+     * The latest explicit restart: the same id, a new run whose output
+     * begins after `afterSeq` in a new journal segment.
+     */
+    restart: z
+      .object({
+        count: z.number().int().min(1),
+        afterSeq: z.number().int().nonnegative(),
+        at: z.number(),
+      })
+      .strict()
+      .optional(),
     legacy: z
       .object({
         projectSlug: z.string(),
@@ -91,7 +116,18 @@ type LiveSession = {
   process: IPtyProcess;
   exit: Promise<void>;
 };
-type TerminalExit = { exitCode: number | null };
+type TerminalExit = {
+  exitCode: number | null;
+  /** The signal number that ended it, or null. */
+  signal: number | null;
+  outputCapped: boolean;
+};
+/** A command's cap is refused outside these bounds, never clamped. */
+const outputCapSchema = z
+  .number()
+  .int()
+  .min(1024)
+  .max(1024 ** 3);
 type SessionJournal = Pick<
   TerminalJournal,
   'read' | 'flush' | 'discard' | 'seal' | 'append' | 'backpressured' | 'drained'
@@ -204,24 +240,11 @@ export class TerminalSessions<Principal> {
           throw new TerminalSessionRefusal('Launch profile unavailable');
         launch = await this.authority.resolveLaunch(principal, scope, profile);
       }
-      const root = await realpath(
-        await this.authority.resolveRoot(principal, scope),
+      const { root, cwd } = await this.confine(
+        principal,
+        scope,
+        input.subdirectory ?? '.',
       );
-      const requested = input.subdirectory ?? '.';
-      if (isAbsolute(requested))
-        throw new TerminalSessionRefusal(
-          'Terminal subdirectory must be relative',
-        );
-      const cwd = await realpath(resolve(root, requested));
-      const inside = relative(root, cwd);
-      if (
-        inside === '..' ||
-        inside.startsWith(`..${sep}`) ||
-        isAbsolute(inside)
-      )
-        throw new TerminalSessionRefusal(
-          'Terminal directory is outside its binding',
-        );
       await this.check(principal, scope, 'operate');
       let legacyHistory = '';
       if (input.legacy) {
@@ -281,16 +304,7 @@ export class TerminalSessions<Principal> {
           record.legacy.imported = true;
           await this.persist();
         }
-        // Authorization and the binding's canonical root are checked again
-        // after I/O and immediately before the only process-launch seam.
-        await this.check(principal, scope, 'operate');
-        if (
-          (await realpath(
-            await this.authority.resolveRoot(principal, scope),
-          )) !== root ||
-          (await realpath(cwd)) !== cwd
-        )
-          throw new TerminalSessionRefusal('Terminal binding changed');
+        await this.recheck(principal, scope, root, cwd);
         // A host that journals output itself continues this journal on disk.
         await journal.flush();
         const proc = await this.host.spawn({
@@ -321,12 +335,33 @@ export class TerminalSessions<Principal> {
    */
   openInternal(
     scope: TerminalSessionScope,
-    input: { cwd: string; cols: number; rows: number; launch: ShellLaunch },
+    input: {
+      cwd: string;
+      cols: number;
+      rows: number;
+      launch: ShellLaunch;
+      /**
+       * `command`: no PTY, output capped at `outputCapBytes` (default 16
+       * MiB). The caller confines `cwd`; this only canonicalizes it.
+       */
+      kind?: 'command';
+      outputCapBytes?: number;
+    },
   ): Promise<{ terminalId: string; exited: Promise<TerminalExit> }> {
     return this.serialize(async () => {
       await this.ready;
       if (this.disposed)
         throw new TerminalSessionRefusal('Terminal sessions stopped');
+      const outputCapBytes =
+        input.kind === 'command'
+          ? outputCapSchema.parse(
+              input.outputCapBytes ?? DEFAULT_COMMAND_OUTPUT_CAP_BYTES,
+            )
+          : undefined;
+      const spawnKind: ShellSpawnKind =
+        outputCapBytes === undefined
+          ? {}
+          : { kind: 'command', outputCapBytes };
       const cwd = await realpath(input.cwd);
       const record = recordSchema.parse({
         ...scopeSchema.parse(scope),
@@ -336,7 +371,9 @@ export class TerminalSessions<Principal> {
         rows: input.rows,
         status: 'starting',
         createdAt: Date.now(),
-        launch: { kind: 'server' },
+        ...(outputCapBytes === undefined
+          ? { launch: { kind: 'server' } }
+          : { kind: 'command', outputCapBytes }),
       });
       await this.makeRoom(1);
       this.records.set(record.terminalId, record);
@@ -354,6 +391,7 @@ export class TerminalSessions<Principal> {
           rows: record.rows,
           journal: this.journalSpec(record.terminalId),
           launch: input.launch,
+          ...spawnKind,
         });
         this.track(record, proc, journal);
         record.status = 'running';
@@ -373,18 +411,169 @@ export class TerminalSessions<Principal> {
   closeInternal(scope: TerminalSessionScope, terminalId: string) {
     return this.serialize(async () => {
       await this.ready;
-      const record = this.records.get(terminalId);
-      if (
-        !record ||
-        record.projectId !== scope.projectId ||
-        record.bindingKey !== scope.bindingKey
-      )
-        throw new TerminalSessionRefusal('Terminal not found');
+      const record = this.internalRecord(scope, terminalId);
       await this.stop(terminalId);
       if (record.status !== 'failed') record.status = 'exited';
       await (await this.journal(record)).flush();
       await this.persist();
     });
+  }
+
+  /**
+   * A server-owned launch's journal, for the server component that started
+   * it (an agent's ACP terminal); refuses an id outside `scope`.
+   */
+  async readInternal(
+    scope: TerminalSessionScope,
+    terminalId: string,
+    fromSeq = 0,
+    maxReadBytes = Number.MAX_SAFE_INTEGER,
+  ) {
+    await this.ready;
+    const record = this.internalRecord(scope, terminalId);
+    if (record.journalUnavailable)
+      throw new TerminalSessionRefusal('Terminal journal unavailable');
+    const journal = await (await this.journal(record)).read(
+      fromSeq,
+      maxReadBytes,
+    );
+    return { ...record, journal };
+  }
+
+  private internalRecord(scope: TerminalSessionScope, terminalId: string) {
+    const record = this.records.get(terminalId);
+    if (
+      !record ||
+      record.projectId !== scope.projectId ||
+      record.bindingKey !== scope.bindingKey
+    )
+      throw new TerminalSessionRefusal('Terminal not found');
+    return record;
+  }
+
+  /**
+   * Ends the running program, if any, and starts it again under the same
+   * id (#3994): its journal continues in a new segment, so earlier output
+   * stays readable. `subdirectory` moves it within its binding's root; an
+   * unchanged directory is confined to the binding again, which may have
+   * moved. Server launches and commands store no program and are refused.
+   */
+  restart(
+    principal: Principal,
+    scope: TerminalSessionScope,
+    terminalId: string,
+    input: { subdirectory?: string } = {},
+  ) {
+    return this.serialize(async () => {
+      const record = await this.find(principal, scope, terminalId, 'operate');
+      await this.ready;
+      if (this.disposed)
+        throw new TerminalSessionRefusal('Terminal sessions stopped');
+      if (record.kind === 'command' || record.launch?.kind === 'server')
+        throw new TerminalSessionRefusal('This terminal cannot be restarted');
+      if (record.journalUnavailable)
+        throw new TerminalSessionRefusal('Terminal journal unavailable');
+      if (record.legacy && !record.legacy.imported)
+        throw new TerminalSessionRefusal('Terminal history import incomplete');
+      let launch: ShellLaunch | undefined;
+      if (record.launch && record.launch.kind !== 'shell') {
+        if (!this.authority.resolveLaunch)
+          throw new TerminalSessionRefusal('Launch profile unavailable');
+        launch = await this.authority.resolveLaunch(
+          principal,
+          record,
+          record.launch,
+        );
+      }
+      const { root, cwd } = await this.confine(
+        principal,
+        record,
+        input.subdirectory ?? (() => record.cwd),
+      );
+      await this.stop(terminalId);
+      const previous = await this.journal(record);
+      // The next run's records start a new segment of the same journal.
+      previous.seal();
+      await previous.flush();
+      const { lastSeq } = await previous.read(0, 2048);
+      await this.recheck(principal, record, root, cwd);
+      record.status = 'starting';
+      record.cwd = cwd;
+      delete record.exitCode;
+      delete record.exitSignal;
+      record.restart = {
+        count: (record.restart?.count ?? 0) + 1,
+        afterSeq: lastSeq,
+        at: Date.now(),
+      };
+      await this.persist();
+      try {
+        const proc = await this.host.spawn({
+          terminalId,
+          cwd,
+          cols: record.cols,
+          rows: record.rows,
+          journal: this.journalSpec(terminalId),
+          ...(launch && { launch }),
+        });
+        this.track(record, proc, previous);
+        record.status = 'running';
+        await this.persist();
+      } catch (error) {
+        record.status = 'failed';
+        await this.persist();
+        throw error;
+      }
+      return this.read(principal, record, terminalId, lastSeq, 2048);
+    });
+  }
+
+  /**
+   * The binding's canonical root and a directory inside it: a relative
+   * `requested` path, or a function of the root for a stored directory.
+   */
+  private async confine(
+    principal: Principal,
+    scope: TerminalSessionScope,
+    requested: string | ((root: string) => string),
+  ): Promise<{ root: string; cwd: string }> {
+    const root = await realpath(
+      await this.authority.resolveRoot(principal, scope),
+    );
+    if (typeof requested === 'string' && isAbsolute(requested))
+      throw new TerminalSessionRefusal(
+        'Terminal subdirectory must be relative',
+      );
+    const cwd = await realpath(
+      typeof requested === 'string'
+        ? resolve(root, requested)
+        : requested(root),
+    );
+    const inside = relative(root, cwd);
+    if (inside === '..' || inside.startsWith(`..${sep}`) || isAbsolute(inside))
+      throw new TerminalSessionRefusal(
+        'Terminal directory is outside its binding',
+      );
+    return { root, cwd };
+  }
+
+  /**
+   * Authorization and the binding's canonical root are checked again after
+   * I/O and immediately before each process-launch seam.
+   */
+  private async recheck(
+    principal: Principal,
+    scope: TerminalSessionScope,
+    root: string,
+    cwd: string,
+  ): Promise<void> {
+    await this.check(principal, scope, 'operate');
+    if (
+      (await realpath(await this.authority.resolveRoot(principal, scope))) !==
+        root ||
+      (await realpath(cwd)) !== cwd
+    )
+      throw new TerminalSessionRefusal('Terminal binding changed');
   }
 
   /**
@@ -459,12 +648,19 @@ export class TerminalSessions<Principal> {
       }
       if (record.status !== 'failed') record.status = 'exited';
       record.exitCode = event.outputIncomplete ? null : event.exitCode;
-      this.live.delete(record.terminalId);
+      record.exitSignal = event.outputIncomplete ? null : event.signal;
+      if (event.outputCapped) record.outputCapped = true;
+      if (this.live.get(record.terminalId)?.process === proc)
+        this.live.delete(record.terminalId);
       this.changed(record.terminalId);
       unsubscribeData();
       unsubscribeExit();
       exit();
-      this.exits.get(record.terminalId)?.({ exitCode: record.exitCode });
+      this.exits.get(record.terminalId)?.({
+        exitCode: record.exitCode,
+        signal: record.exitSignal ?? null,
+        outputCapped: record.outputCapped === true,
+      });
       this.exits.delete(record.terminalId);
       void this.persist().catch((error: unknown) =>
         logger.error('Terminal exit persistence failed', { error }),

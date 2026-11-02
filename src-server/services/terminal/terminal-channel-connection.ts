@@ -6,7 +6,9 @@ import {
   TERMINAL_MAX_OUTSTANDING_OUTPUT_FRAMES,
   TERMINAL_MIN_WINDOW_BYTES,
   TERMINAL_OUTPUT,
+  TERMINAL_SUBDIRECTORY_MAX_LENGTH,
   TERMINAL_WINDOW_BYTES,
+  type TerminalRestartRequest,
 } from '@kontourai/station-contracts/terminal-transport';
 import { WebSocket } from 'ws';
 import { z } from 'zod/v3';
@@ -76,7 +78,20 @@ const attachment = {
     .max(TERMINAL_WINDOW_BYTES)
     .default(TERMINAL_WINDOW_BYTES),
 };
+const restartSchema = z
+  .object({
+    type: z.literal('restart'),
+    ...request,
+    channel: channelId,
+    subdirectory: z
+      .string()
+      .min(1)
+      .max(TERMINAL_SUBDIRECTORY_MAX_LENGTH)
+      .optional(),
+  })
+  .strict() satisfies z.ZodType<TerminalRestartRequest>;
 const commandSchema = z.discriminatedUnion('type', [
+  restartSchema,
   z
     .object({
       type: z.literal('open'),
@@ -380,6 +395,24 @@ export class TerminalChannelConnection<Principal> {
         channel: work.channel,
         cwd,
       });
+      return;
+    }
+    if (work.type === 'restart') {
+      const restarted = await this.sessions.restart(
+        this.principal,
+        channel.scope,
+        channel.terminalId,
+        work.subdirectory === undefined
+          ? {}
+          : { subdirectory: work.subdirectory },
+      );
+      this.send({
+        type: 'done',
+        requestId: work.requestId,
+        channel: work.channel,
+        restartedAfterSeq: restarted.restart?.afterSeq ?? 0,
+      });
+      this.pump(work.channel, channel);
       return;
     }
     if (work.type === 'resize')

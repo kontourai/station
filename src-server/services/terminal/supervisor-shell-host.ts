@@ -14,6 +14,8 @@ import type {
 import type { IPtyAdapter, IPtyProcess } from '../../domain/pty-adapter.js';
 import { createLogger } from '../../utils/logger.js';
 import {
+  commandEnvironment,
+  commandLaunch,
   type HostedShellProcess,
   InProcessShellHost,
   type ShellHost,
@@ -141,6 +143,7 @@ class WorkloadProcess implements HostedShellProcess {
         signal: event.exit.signal,
         outputIncomplete:
           event.exit.outputIncomplete || event.exit.journalFailed,
+        ...(event.exit.outputCapped && { outputCapped: true }),
       };
       this.exit = exit;
       for (const listener of [...this.exitListeners]) listener(exit);
@@ -227,21 +230,24 @@ export class SupervisorShellHost implements ShellHost {
   ) {}
 
   async spawn(input: Parameters<ShellHost['spawn']>[0]): Promise<IPtyProcess> {
-    // A named launch (an agent CLI, an engine sign-in) runs as the workload
-    // itself, never replaced by a fallback shell.
+    // A named launch (an agent CLI, an engine sign-in, an agent's command)
+    // runs as the workload itself, never replaced by a fallback shell.
+    const command = input.kind === 'command';
     const candidates = await shellCandidates(
-      input.launch,
+      command ? commandLaunch(input.launch) : input.launch,
       this.configuredShell,
     );
     const env: Record<string, string> = {};
     for (const [key, value] of Object.entries(
-      terminalShellEnvironment(input.launch?.env),
+      command
+        ? commandEnvironment(input.launch?.env)
+        : terminalShellEnvironment(input.launch?.env),
     ))
       if (value !== undefined) env[key] = value;
     const info = (await this.channel.requestWorkload({
       op: 'spawn',
       workloadId: input.terminalId,
-      kind: 'interactive',
+      kind: command ? 'command' : 'interactive',
       candidates: candidates.map((candidate) => ({
         command: candidate.shell,
         args: candidate.args ?? [],
@@ -251,6 +257,9 @@ export class SupervisorShellHost implements ShellHost {
       cols: input.cols,
       rows: input.rows,
       journal: input.journal,
+      ...(input.kind === 'command' && {
+        outputCapBytes: input.outputCapBytes,
+      }),
     })) as WorkloadInfo;
     return new WorkloadProcess(this.channel, info, input.journal);
   }
