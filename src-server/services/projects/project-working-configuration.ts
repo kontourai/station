@@ -100,11 +100,11 @@ export class ProjectWorkingConfigurationRefusal extends Error {
 }
 export type ProjectWorkingAuthority = () => boolean | Promise<boolean>;
 type Context = { projectId: string; cwd?: string };
-const refuse = (
+function refuse(
   code: ConstructorParameters<typeof ProjectWorkingConfigurationRefusal>[0],
-): never => {
+): never {
   throw new ProjectWorkingConfigurationRefusal(code);
-};
+}
 const current = async (authority: ProjectWorkingAuthority) => {
   if (!(await authority())) refuse('unavailable');
 };
