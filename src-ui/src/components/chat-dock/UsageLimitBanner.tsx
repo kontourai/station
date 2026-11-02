@@ -145,9 +145,11 @@ function UsageLimitBannerFor({
   }, [refreshKey]);
 
   const dueMs = recovery?.dueAt ? Date.parse(recovery.dueAt) : Number.NaN;
+  const refreshAt = recovery?.admission?.retryAt ?? recovery?.dueAt;
+  const refreshMs = refreshAt ? Date.parse(refreshAt) : Number.NaN;
   useEffect(() => {
-    if (!enabled || !Number.isFinite(dueMs)) return;
-    const wait = dueMs - Date.now();
+    if (!enabled || !Number.isFinite(refreshMs)) return;
+    const wait = refreshMs - Date.now();
     if (wait <= 0) {
       setNowMs(Date.now());
       return;
@@ -160,7 +162,7 @@ function UsageLimitBannerFor({
       void refetch();
     }, wait + SETTLE_MS);
     return () => clearTimeout(timer);
-  }, [enabled, dueMs, refetch]);
+  }, [enabled, refreshMs, refetch]);
 
   // A stop this view watched wait, and that a read then shows no longer
   // waiting, says how it settled, briefly: that one read is the last. Engaging
@@ -238,11 +240,14 @@ function UsageLimitBannerFor({
   // A stop still waiting for a known reset can be decided for this stop
   // alone: resume at the reset, or don't, whatever the setting says.
   const canChoose = recovery?.outcome === 'armed' && dueKnown && !resetPassed;
-  const body = autoOn
-    ? 'Resumes automatically.'
-    : dueKnown
-      ? null
-      : 'Reset time unknown. Resume when your limit is back.';
+  const blocked = recovery?.admission?.state === 'blocked';
+  const body = blocked
+    ? 'Automatic recovery is paused until recovery checks succeed.'
+    : autoOn
+      ? 'Resumes automatically.'
+      : dueKnown
+        ? null
+        : 'Reset time unknown. Resume when your limit is back.';
   const failed = resume.isError || resumeAtReset.isError || hold.isError;
   const busy = resume.isPending || resumeAtReset.isPending || hold.isPending;
   const resumeNowButton = (
@@ -312,7 +317,14 @@ function UsageLimitBannerFor({
           </>
         ) : null}
       </p>
-      {body ? <p className="usage-limit-banner__body">{body}</p> : null}
+      {body ? (
+        <p
+          className="usage-limit-banner__body"
+          role={blocked ? 'status' : undefined}
+        >
+          {body}
+        </p>
+      ) : null}
       {failed ? (
         <p className="usage-limit-banner__error" role="alert">
           That didn't go through. Try again.

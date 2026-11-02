@@ -1,6 +1,6 @@
 import { describe, expect, test, vi } from 'vitest';
 import { fullAccessGrantForTesting } from '../../../security/coding-authority.js';
-import { createInMemorySessionTurnBoundaryAuthority } from '../../orchestration/session-turn-boundary.js';
+import { createInMemorySessionTurnBoundaryAuthority } from '../../orchestration/session-turn-boundary-binding.js';
 import {
   createTaskDispatcher,
   type TaskDispatchGraphState,
