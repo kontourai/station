@@ -319,6 +319,12 @@ for (const mode of [
     }
     expect(await owner.recover(handoff)).toBe('claimed');
     expect(await owner.recover(handoff)).toBe('claimed');
+    if (!cancelled)
+      expect(
+        owner
+          .frames('conversation', 'turn')
+          .filter((frame) => frame.wire.includes('"type":"text-delta"')),
+      ).toHaveLength('RECOVERED'.length);
     const history = store.listEvents('conversation');
     expect(
       history.filter((event) => event.payload.method === 'turn.completed'),

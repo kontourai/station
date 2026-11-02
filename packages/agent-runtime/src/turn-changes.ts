@@ -1,4 +1,5 @@
 import type { DatabaseSync } from 'node:sqlite';
+import { agentStatement } from './turn-statements.js';
 
 export const changeDefinitions = [
   "CREATE TABLE agent_steps_changes(seq INTEGER PRIMARY KEY AUTOINCREMENT, turn_id TEXT NOT NULL, kind TEXT NOT NULL CHECK(kind IN ('effect','approval')), id TEXT NOT NULL) STRICT",
@@ -17,8 +18,10 @@ export const changeDefinitions = [
 ] as const;
 export function agentChangeCursor(database: DatabaseSync): number {
   const cursor =
-    database.prepare('SELECT max(seq) AS n FROM agent_steps_changes').get()
-      ?.n ?? 0;
+    agentStatement(
+      database,
+      'SELECT max(seq) AS n FROM agent_steps_changes',
+    ).get()?.n ?? 0;
   if (typeof cursor !== 'number' || !Number.isSafeInteger(cursor) || cursor < 0)
     throw new Error('DURABLE_AGENT_CHANGE_DAMAGED');
   return cursor;

@@ -6,6 +6,7 @@ import {
   putAgentBody,
   readAgentBody,
 } from './turn-bodies.js';
+import { agentStatement } from './turn-statements.js';
 import { agentWire, readAgentWire } from './turn-wire.js';
 import type { Fence, RunKey } from './types.js';
 
@@ -244,11 +245,10 @@ export function unfinishedAgentEffects(
   kind?: 'model' | 'provider',
 ) {
   return (
-    database
-      .prepare(
-        "SELECT 1 FROM agent_steps_effects WHERE turn_id=? AND json_extract(record,'$.state') <> 'completed' AND (json_extract(record,'$.intent.kind') IN ('model','provider') OR (? IS NULL AND json_extract(record,'$.state')='running')) AND (? IS NULL OR json_extract(record,'$.intent.kind') IN (?, 'provider')) LIMIT 1",
-      )
-      .get(turnId, kind ?? null, kind ?? null, kind ?? null) !== undefined
+    agentStatement(
+      database,
+      "SELECT 1 FROM agent_steps_effects WHERE turn_id=? AND json_extract(record,'$.state') <> 'completed' AND (json_extract(record,'$.intent.kind') IN ('model','provider') OR (? IS NULL AND json_extract(record,'$.state')='running')) AND (? IS NULL OR json_extract(record,'$.intent.kind') IN (?, 'provider')) LIMIT 1",
+    ).get(turnId, kind ?? null, kind ?? null, kind ?? null) !== undefined
   );
 }
 function validate(
@@ -310,9 +310,10 @@ export function readAgentEffect(
   turnId: string,
   id: string,
 ) {
-  const row = database
-    .prepare('SELECT * FROM agent_steps_effects WHERE turn_id=? AND id=?')
-    .get(turnId, id);
+  const row = agentStatement(
+    database,
+    'SELECT * FROM agent_steps_effects WHERE turn_id=? AND id=?',
+  ).get(turnId, id);
   if (!row) return undefined;
   const wire = String(row.record);
   const cache = recordCache(database).values;
@@ -352,17 +353,19 @@ export function readAgentEffect(
     );
   }
   const header = effectSchema.parse(batched ? { ...raw, version: 1 } : raw);
-  const writer = database
-    .prepare('SELECT writer_format FROM agent_steps_meta WHERE id=1')
-    .get()?.writer_format;
+  const writer = agentStatement(
+    database,
+    'SELECT writer_format FROM agent_steps_meta WHERE id=1',
+  ).get()?.writer_format;
   if (!tailed && writer === 'agent-steps/10')
     throw new Error('DURABLE_AGENT_EFFECT_DAMAGED');
   if (
     !batched &&
     header.intent.input.startsWith('sha256:') &&
-    database
-      .prepare('SELECT writer_format FROM agent_steps_meta WHERE id=1')
-      .get()?.writer_format === 'agent-steps/9'
+    agentStatement(
+      database,
+      'SELECT writer_format FROM agent_steps_meta WHERE id=1',
+    ).get()?.writer_format === 'agent-steps/9'
   )
     throw new Error('DURABLE_AGENT_EFFECT_DAMAGED');
   if (!header.intent.input.startsWith('sha256:')) {
@@ -374,9 +377,10 @@ export function readAgentEffect(
         'agent-steps/10',
       ].includes(
         String(
-          database
-            .prepare('SELECT writer_format FROM agent_steps_meta WHERE id=1')
-            .get()?.writer_format,
+          agentStatement(
+            database,
+            'SELECT writer_format FROM agent_steps_meta WHERE id=1',
+          ).get()?.writer_format,
         ),
       )
     )
@@ -438,16 +442,16 @@ function write(
     wire,
     effect,
   );
-  database
-    .prepare(
-      'INSERT INTO agent_steps_effects VALUES(?,?,?) ON CONFLICT(turn_id,id) DO UPDATE SET record=excluded.record',
-    )
-    .run(turnId, effect.intent.id, wire);
+  agentStatement(
+    database,
+    'INSERT INTO agent_steps_effects VALUES(?,?,?) ON CONFLICT(turn_id,id) DO UPDATE SET record=excluded.record',
+  ).run(turnId, effect.intent.id, wire);
 }
 export function validateAgentEffects(database: DatabaseSync, turnId: string) {
-  const rows = database
-    .prepare('SELECT id FROM agent_steps_effects WHERE turn_id=? ORDER BY id')
-    .all(turnId);
+  const rows = agentStatement(
+    database,
+    'SELECT id FROM agent_steps_effects WHERE turn_id=? ORDER BY id',
+  ).all(turnId);
   if (rows.length > 1024) throw new Error('DURABLE_AGENT_EFFECT_CAPACITY');
   return rows.map((row) => readAgentEffect(database, turnId, String(row.id))!);
 }
@@ -489,11 +493,10 @@ export function decideAgentEffect(
       return { kind: 'refused', reason: 'busy' };
     if (
       Number(
-        database
-          .prepare(
-            'SELECT count(*) AS n FROM agent_steps_effects WHERE turn_id=?',
-          )
-          .get(turnId)?.n,
+        agentStatement(
+          database,
+          'SELECT count(*) AS n FROM agent_steps_effects WHERE turn_id=?',
+        ).get(turnId)?.n,
       ) >= 1024
     )
       return { kind: 'refused', reason: 'busy' };
@@ -511,11 +514,10 @@ export function decideAgentEffect(
   if (command.type === 'effectBegin') {
     if (effect.intent.kind === 'entry')
       return { kind: 'refused', reason: 'conflict' };
-    const approval = database
-      .prepare(
-        'SELECT record FROM agent_steps_approvals WHERE turn_id=? AND tool_id=?',
-      )
-      .get(turnId, id);
+    const approval = agentStatement(
+      database,
+      'SELECT record FROM agent_steps_approvals WHERE turn_id=? AND tool_id=?',
+    ).get(turnId, id);
     const decision = approval && JSON.parse(String(approval.record));
     if (decision && (decision.state !== 'approved' || now >= decision.deadline))
       return { kind: 'refused', reason: 'busy' };
@@ -565,9 +567,10 @@ export function decideAgentEffect(
 }
 
 export function migrateAgentEffects(database: DatabaseSync) {
-  for (const row of database
-    .prepare('SELECT turn_id,id FROM agent_steps_effects')
-    .all()) {
+  for (const row of agentStatement(
+    database,
+    'SELECT turn_id,id FROM agent_steps_effects',
+  ).all()) {
     const turnId = String(row.turn_id);
     const effect = readAgentEffect(database, turnId, String(row.id))!;
     write(database, turnId, effect, 1);
@@ -575,9 +578,10 @@ export function migrateAgentEffects(database: DatabaseSync) {
 }
 
 export function migrateAgentEffectBatches(database: DatabaseSync) {
-  for (const row of database
-    .prepare('SELECT turn_id,id FROM agent_steps_effects')
-    .all()) {
+  for (const row of agentStatement(
+    database,
+    'SELECT turn_id,id FROM agent_steps_effects',
+  ).all()) {
     const turnId = String(row.turn_id);
     write(
       database,
@@ -589,9 +593,10 @@ export function migrateAgentEffectBatches(database: DatabaseSync) {
 }
 
 export function migrateAgentEffectTails(database: DatabaseSync) {
-  for (const row of database
-    .prepare('SELECT turn_id,id FROM agent_steps_effects')
-    .all()) {
+  for (const row of agentStatement(
+    database,
+    'SELECT turn_id,id FROM agent_steps_effects',
+  ).all()) {
     const turnId = String(row.turn_id);
     write(database, turnId, readAgentEffect(database, turnId, String(row.id))!);
   }

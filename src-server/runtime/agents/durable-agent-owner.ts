@@ -70,11 +70,13 @@ export interface DurableAgentDescriptor {
   readonly kernelInvocationId?: string;
   readonly startEvent?: DurableNativeStart;
   readonly mcpPromptOrigin?: VerifiedMcpPromptOrigin;
+  readonly projection?: 'input-chunks/1';
 }
 function descriptor(input: string): DurableAgentDescriptor {
   return z
     .object({
       version: z.literal(1),
+      projection: z.literal('input-chunks/1').optional(),
       slug: z.string().min(1),
       definition: z.string().min(1),
       input: z.string(),
@@ -223,7 +225,7 @@ function createStationOwner(home: string) {
     work: (value: { database: DatabaseSync; journal: AgentJournal }) => T,
   ): T {
     if (released) throw new Error('The durable owner has been released.');
-    const inode = existsSync(path) ? statSync(path).ino : undefined;
+    const inode = statSync(path, { throwIfNoEntry: false })?.ino;
     if (handle && handle.inode !== inode) {
       handle.database.close();
       handle = undefined;
@@ -437,6 +439,7 @@ function createStationOwner(home: string) {
       const workspaceRoot = currentNativeExecutionWorkspace()?.workspaceRoot;
       const captured: DurableAgentDescriptor = {
         version: 1,
+        projection: 'input-chunks/1',
         slug: input.slug,
         definition: input.definition,
         input: input.input,

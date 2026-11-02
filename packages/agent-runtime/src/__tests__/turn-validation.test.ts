@@ -5,7 +5,11 @@ import { constants, DatabaseSync } from 'node:sqlite';
 import { afterEach, expect, it } from 'vitest';
 import { createAgentRuntime, openSqliteAgentJournal } from '../index.js';
 import { agentWire } from '../internal.js';
-import { bodyDefinitions, putAgentBody } from '../turn-bodies.js';
+import {
+  bodyChunkDefinitions,
+  bodyDefinitions,
+  putAgentBody,
+} from '../turn-bodies.js';
 import { key, owner } from './fixture.js';
 import { turnFixture } from './turn-fixture.js';
 
@@ -17,6 +21,7 @@ function removeChangeTracking(database: DatabaseSync) {
     .all())
     database.exec(`DROP TRIGGER ${String(row.name)}`);
   database.exec('DROP TABLE agent_steps_changes');
+  database.exec('DROP TABLE agent_steps_body_chunks');
 }
 const cleanup: Array<() => void | Promise<void>> = [];
 afterEach(async () => {
@@ -210,60 +215,65 @@ it('deleting an old receipt cannot remint an effect after a retained connection 
   );
 });
 
-it('writer 8 partials retain their logical bytes when converted into immutable batches', async () => {
-  const f = await turnFixture();
-  cleanup.push(() => f.close());
-  await f.lease.effect({
-    type: 'effectPlan',
-    intent: {
+for (const previous of [8, 9] as const)
+  it(`writer ${previous} partials retain their logical bytes when converted into immutable batches`, async () => {
+    const f = await turnFixture();
+    cleanup.push(() => f.close());
+    await f.lease.effect({
+      type: 'effectPlan',
+      intent: {
+        id: 'model:old',
+        kind: 'model',
+        replay: 'unsafe',
+        input: agentWire({ prompt: 'retained' }),
+      },
+    });
+    await f.lease.effect({ type: 'effectBegin', id: 'model:old' });
+    await f.lease.effect({
+      type: 'effectPartial',
       id: 'model:old',
-      kind: 'model',
-      replay: 'unsafe',
-      input: agentWire({ prompt: 'retained' }),
-    },
+      part: agentWire({ type: 'text-delta', id: 'a', delta: 'audit' }),
+    });
+    const { effect } = await f.lease.effect({
+      type: 'effectRead',
+      id: 'model:old',
+    });
+    const header = {
+      ...effect,
+      version: previous === 9 ? 2 : 1,
+      intent: { ...effect.intent, input: effect.inputDigest },
+      attempts: effect.attempts.map((attempt) => ({
+        ...attempt,
+        partials:
+          previous === 9
+            ? [putAgentBody(f.database, agentWire(attempt.partials))]
+            : attempt.partials.map((part) => putAgentBody(f.database, part)),
+      })),
+    };
+    f.database
+      .prepare('UPDATE agent_steps_effects SET record=? WHERE id=?')
+      .run(JSON.stringify(header), 'model:old');
+    f.database.exec(
+      `DROP TABLE agent_steps_body_chunks; DROP TABLE agent_steps_meta; CREATE TABLE agent_steps_meta(id INTEGER PRIMARY KEY CHECK(id=1), writer_format TEXT NOT NULL CHECK(writer_format='agent-steps/${previous}')) STRICT; INSERT INTO agent_steps_meta VALUES(1,'agent-steps/${previous}')`,
+    );
+    await expect(f.crash.reopen()).resolves.toBeDefined();
+    expect(
+      (await f.lease.effect({ type: 'effectRead', id: 'model:old' })).effect,
+    ).toEqual(effect);
+    expect(
+      f.database.prepare('SELECT writer_format FROM agent_steps_meta').get()
+        ?.writer_format,
+    ).toBe('agent-steps/10');
+    expect(
+      JSON.parse(
+        String(
+          f.database
+            .prepare('SELECT record FROM agent_steps_effects WHERE id=?')
+            .get('model:old')?.record,
+        ),
+      ).version,
+    ).toBe(3);
   });
-  await f.lease.effect({ type: 'effectBegin', id: 'model:old' });
-  await f.lease.effect({
-    type: 'effectPartial',
-    id: 'model:old',
-    part: agentWire({ type: 'text-delta', id: 'a', delta: 'audit' }),
-  });
-  const { effect } = await f.lease.effect({
-    type: 'effectRead',
-    id: 'model:old',
-  });
-  const header = {
-    ...effect,
-    intent: { ...effect.intent, input: effect.inputDigest },
-    attempts: effect.attempts.map((attempt) => ({
-      ...attempt,
-      partials: attempt.partials.map((part) => putAgentBody(f.database, part)),
-    })),
-  };
-  f.database
-    .prepare('UPDATE agent_steps_effects SET record=? WHERE id=?')
-    .run(JSON.stringify(header), 'model:old');
-  f.database.exec(
-    "DROP TABLE agent_steps_meta; CREATE TABLE agent_steps_meta(id INTEGER PRIMARY KEY CHECK(id=1), writer_format TEXT NOT NULL CHECK(writer_format='agent-steps/8')) STRICT; INSERT INTO agent_steps_meta VALUES(1,'agent-steps/8')",
-  );
-  await expect(f.crash.reopen()).resolves.toBeDefined();
-  expect(
-    (await f.lease.effect({ type: 'effectRead', id: 'model:old' })).effect,
-  ).toEqual(effect);
-  expect(
-    f.database.prepare('SELECT writer_format FROM agent_steps_meta').get()
-      ?.writer_format,
-  ).toBe('agent-steps/10');
-  expect(
-    JSON.parse(
-      String(
-        f.database
-          .prepare('SELECT record FROM agent_steps_effects WHERE id=?')
-          .get('model:old')?.record,
-      ),
-    ).version,
-  ).toBe(3);
-});
 
 it('400 individually committed text chunks retain bounded storage and an exact aborted prefix', async () => {
   const f = await turnFixture();
@@ -349,4 +359,70 @@ it('a host clock cannot change durable state inside its timestamp callback', asy
   expect(
     f.database.prepare('SELECT count(*) AS n FROM clock_probe').get()?.n,
   ).toBe(0);
+});
+
+it('growing request histories share immutable chunks and refuse damaged chunk bytes', async () => {
+  const f = await turnFixture();
+  cleanup.push(() => f.close());
+  const wires: string[] = [];
+  let history = '';
+  for (let index = 0; index < 24; index++) {
+    history += `message-${index}:`.padEnd(4096, 'Greek λ and emoji 🌻 ');
+    const wire = agentWire({ messages: history });
+    wires.push(wire);
+    await f.lease.tool(
+      {
+        id: `history:${index}`,
+        replay: 'unsafe',
+        input: { messages: history },
+      },
+      async () => null,
+    );
+  }
+  const stored =
+    Number(
+      f.database
+        .prepare(
+          'SELECT sum(length(CAST(wire AS BLOB))) AS n FROM agent_steps_bodies',
+        )
+        .get()?.n,
+    ) +
+    Number(
+      f.database
+        .prepare(
+          'SELECT sum(length(CAST(wire AS BLOB))) AS n FROM agent_steps_body_chunks',
+        )
+        .get()?.n,
+    );
+  expect(stored).toBeLessThan(
+    2 * Buffer.byteLength(wires.at(-1)!) + 24 * 16 * 1024,
+  );
+  expect(stored).toBeLessThan(
+    wires.reduce((n, wire) => n + Buffer.byteLength(wire), 0) / 2,
+  );
+  await f.crash.reopen();
+  for (let index = 0; index < wires.length; index++) {
+    const { effect } = await f.lease.effect({
+      type: 'effectRead',
+      id: `history:${index}`,
+    });
+    expect(effect.intent.input).toBe(wires[index]);
+  }
+  f.database.exec('DROP TRIGGER agent_steps_body_chunks_no_update');
+  const changed = agentWire('changed');
+  f.database
+    .prepare(
+      'UPDATE agent_steps_body_chunks SET wire=?,byte_length=? WHERE digest=(SELECT digest FROM agent_steps_body_chunks LIMIT 1)',
+    )
+    .run(changed, Buffer.byteLength(changed));
+  f.database.exec(bodyChunkDefinitions[1]);
+  await expect(f.lease.assertCurrent()).rejects.toThrow('CHUNK_DAMAGED');
+});
+
+it('a retained schema proof cannot hide a removed immutable-body trigger', async () => {
+  const f = await retainedFixture();
+  cleanup.push(() => f.close());
+  await f.lease.assertCurrent();
+  f.database.exec('DROP TRIGGER agent_steps_bodies_no_delete');
+  await expect(f.lease.assertCurrent()).rejects.toThrow('WRITER_UNSUPPORTED');
 });

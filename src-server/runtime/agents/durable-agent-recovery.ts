@@ -186,6 +186,7 @@ export function configureDurableAgentRecovery(options: {
               conversationId,
               userId: input.options.userId as string,
               traceId: String(input.options.traceId ?? turnId),
+              preserveInputChunks: input.projection === 'input-chunks/1',
             });
             const writer = {
               write: async (wire: string) => {

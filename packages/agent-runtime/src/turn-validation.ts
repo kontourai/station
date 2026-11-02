@@ -3,6 +3,7 @@ import { readAgentApproval } from './turn-approvals.js';
 import { clearAgentBodies } from './turn-bodies.js';
 import { agentChangeCursor } from './turn-changes.js';
 import { clearAgentEffects, readAgentEffect } from './turn-effects.js';
+import { agentStatement } from './turn-statements.js';
 
 type Observation = {
   data: string;
@@ -14,12 +15,13 @@ const observations = new WeakMap<DatabaseSync, Observation>();
 function observation(database: DatabaseSync): Omit<Observation, 'turns'> {
   return {
     data: JSON.stringify([
-      database.prepare('PRAGMA data_version').get()?.data_version,
-      database.prepare('SELECT total_changes() AS n').get()?.n,
+      agentStatement(database, 'PRAGMA data_version').get()?.data_version,
+      agentStatement(database, 'SELECT total_changes() AS n').get()?.n,
     ]),
     schema: JSON.stringify([
-      database.prepare('PRAGMA schema_version').get()?.schema_version,
-      database.prepare('PRAGMA temp.schema_version').get()?.schema_version,
+      agentStatement(database, 'PRAGMA schema_version').get()?.schema_version,
+      agentStatement(database, 'PRAGMA temp.schema_version').get()
+        ?.schema_version,
     ]),
     cursor: agentChangeCursor(database),
   };
@@ -45,21 +47,19 @@ export function synchronizeAgentValidation(
   const cursor = previous.turns.get(turnId);
   if (cursor === undefined) return true;
   if (previous.data === current.data && cursor === current.cursor) return false;
-  const changed = database
-    .prepare(
-      'SELECT kind,id FROM agent_steps_changes WHERE turn_id=? AND seq>? GROUP BY kind,id',
-    )
-    .all(turnId, cursor);
+  const changed = agentStatement(
+    database,
+    'SELECT kind,id FROM agent_steps_changes WHERE turn_id=? AND seq>? GROUP BY kind,id',
+  ).all(turnId, cursor);
   for (const row of changed) {
     const id = String(row.id);
     if (row.kind === 'effect') {
       if (!readAgentEffect(database, turnId, id))
         throw new Error('DURABLE_AGENT_CHANGED_EFFECT_MISSING');
-      const approval = database
-        .prepare(
-          'SELECT id FROM agent_steps_approvals WHERE turn_id=? AND tool_id=?',
-        )
-        .get(turnId, id);
+      const approval = agentStatement(
+        database,
+        'SELECT id FROM agent_steps_approvals WHERE turn_id=? AND tool_id=?',
+      ).get(turnId, id);
       if (approval) readAgentApproval(database, turnId, String(approval.id));
     } else if (row.kind === 'approval') {
       if (!readAgentApproval(database, turnId, id))

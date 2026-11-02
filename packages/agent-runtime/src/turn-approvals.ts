@@ -2,6 +2,7 @@ import type { DatabaseSync } from 'node:sqlite';
 import { z } from 'zod';
 import { canonical, fence, hash, runKey, text } from './encoding.js';
 import { readAgentEffect } from './turn-effects.js';
+import { agentStatement } from './turn-statements.js';
 import { readAgentWire } from './turn-wire.js';
 import type { Fence, RunKey } from './types.js';
 
@@ -68,9 +69,10 @@ export function readAgentApproval(
   turnId: string,
   id: string,
 ) {
-  const row = database
-    .prepare('SELECT * FROM agent_steps_approvals WHERE turn_id=? AND id=?')
-    .get(turnId, id);
+  const row = agentStatement(
+    database,
+    'SELECT * FROM agent_steps_approvals WHERE turn_id=? AND id=?',
+  ).get(turnId, id);
   if (!row) return undefined;
   const approval = approvalSchema.parse(JSON.parse(String(row.record)));
   const tool = readAgentEffect(database, turnId, approval.toolId);
@@ -87,9 +89,10 @@ export function readAgentApproval(
   return approval;
 }
 export function validateAgentApprovals(database: DatabaseSync, turnId: string) {
-  const rows = database
-    .prepare('SELECT id FROM agent_steps_approvals WHERE turn_id=?')
-    .all(turnId);
+  const rows = agentStatement(
+    database,
+    'SELECT id FROM agent_steps_approvals WHERE turn_id=?',
+  ).all(turnId);
   if (rows.length > 128) throw new Error('DURABLE_AGENT_APPROVAL_CAPACITY');
   return rows.map(
     (row) => readAgentApproval(database, turnId, String(row.id))!,
@@ -109,11 +112,10 @@ export function decideAgentApproval(
   let approval = readAgentApproval(database, turnId, command.id);
   if (command.type === 'approvalPlan') {
     if (!approval) {
-      const existing = database
-        .prepare(
-          'SELECT id FROM agent_steps_approvals WHERE turn_id=? AND tool_id=?',
-        )
-        .get(turnId, command.toolId);
+      const existing = agentStatement(
+        database,
+        'SELECT id FROM agent_steps_approvals WHERE turn_id=? AND tool_id=?',
+      ).get(turnId, command.toolId);
       if (existing)
         approval = readAgentApproval(database, turnId, String(existing.id));
     }
@@ -131,11 +133,10 @@ export function decideAgentApproval(
       return { kind: 'refused', reason: 'conflict' };
     if (
       Number(
-        database
-          .prepare(
-            'SELECT count(*) AS n FROM agent_steps_approvals WHERE turn_id=?',
-          )
-          .get(turnId)?.n,
+        agentStatement(
+          database,
+          'SELECT count(*) AS n FROM agent_steps_approvals WHERE turn_id=?',
+        ).get(turnId)?.n,
       ) >= 128
     )
       return { kind: 'refused', reason: 'busy' };
@@ -150,9 +151,10 @@ export function decideAgentApproval(
       state: 'pending',
       decisionAt: null,
     };
-    database
-      .prepare('INSERT INTO agent_steps_approvals VALUES(?,?,?,?)')
-      .run(turnId, approval.id, approval.toolId, canonical(approval));
+    agentStatement(
+      database,
+      'INSERT INTO agent_steps_approvals VALUES(?,?,?,?)',
+    ).run(turnId, approval.id, approval.toolId, canonical(approval));
   } else {
     if (
       approval?.state !== 'pending' ||
@@ -166,11 +168,10 @@ export function decideAgentApproval(
     approval.state = now >= approval.deadline ? 'expired' : command.decision;
     approval.revision = '1';
     approval.decisionAt = now;
-    database
-      .prepare(
-        'UPDATE agent_steps_approvals SET record=? WHERE turn_id=? AND id=?',
-      )
-      .run(canonical(approval), turnId, approval.id);
+    agentStatement(
+      database,
+      'UPDATE agent_steps_approvals SET record=? WHERE turn_id=? AND id=?',
+    ).run(canonical(approval), turnId, approval.id);
   }
   return { kind: 'approval', approval };
 }

@@ -288,6 +288,7 @@ export function createStreamingPipeline(
     userId: string | undefined;
     traceId: string;
     plugin?: string;
+    preserveInputChunks?: boolean;
     /** Engine + model, carried onto tool events so they can be grouped by them (archive#3074). */
     provider?: string;
     model?: string;
@@ -304,7 +305,12 @@ export function createStreamingPipeline(
 
   // Add handlers in order (elicitation handled via callback + injectable stream)
   pipeline
-    .use(new ReasoningHandler({ enableThinking: true }))
+    .use(
+      new ReasoningHandler({
+        enableThinking: true,
+        preserveInputChunks: contextData.preserveInputChunks,
+      }),
+    )
     .use(new ToolCallHandler())
     .use(metadataHandler)
     .use(completionHandler);

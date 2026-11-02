@@ -283,6 +283,7 @@ async function run(
   await owner.pause();
   const journalBytes = diskBytes(journalPath);
   let bodiesBytes = 0;
+  let bodyChunkBytes = 0;
   let framesBytes = 0;
   let frames = 0;
   if (journalBytes) {
@@ -295,6 +296,14 @@ async function run(
           )
           .get()?.n,
       );
+      bodyChunkBytes = Number(
+        database
+          .prepare(
+            'SELECT coalesce(sum(length(CAST(wire AS BLOB))),0) AS n FROM agent_steps_body_chunks',
+          )
+          .get()?.n,
+      );
+      bodiesBytes += bodyChunkBytes;
       const projected = database
         .prepare(
           'SELECT count(*) AS n,coalesce(sum(length(CAST(record AS BLOB))),0) AS bytes FROM agent_steps_frames',
@@ -345,6 +354,7 @@ async function run(
       onDiskBytes,
       journalBytes,
       bodiesBytes,
+      bodyChunkBytes,
       framesBytes,
       frames,
       walPeakBytes,

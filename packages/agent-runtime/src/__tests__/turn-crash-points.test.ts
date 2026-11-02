@@ -10,6 +10,7 @@ function removeChangeTracking(database: DatabaseSync) {
     .all())
     database.exec(`DROP TRIGGER ${String(row.name)}`);
   database.exec('DROP TABLE agent_steps_changes');
+  database.exec('DROP TABLE agent_steps_body_chunks');
 }
 const cleanup: (() => Promise<void>)[] = [];
 afterEach(async () => {

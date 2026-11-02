@@ -17,7 +17,12 @@ import {
   readAgentApproval,
   validateAgentApprovals,
 } from './turn-approvals.js';
-import { bodyDefinitions, readAgentBody } from './turn-bodies.js';
+import {
+  bodyChunkDefinitions,
+  bodyDefinitions,
+  readAgentBody,
+  readAgentBodyChunk,
+} from './turn-bodies.js';
 import { changeDefinitions } from './turn-changes.js';
 import {
   agentEffectHeader,
@@ -44,6 +49,7 @@ import {
   readAgentFrame,
   readAgentFrames,
 } from './turn-projection.js';
+import { agentStatement } from './turn-statements.js';
 import {
   acceptAgentValidation,
   invalidateAgentValidation,
@@ -229,6 +235,7 @@ const writer9Definitions = [
 const currentDefinitions = [
   writer9Definitions[0]!.replaceAll('agent-steps/9', 'agent-steps/10'),
   ...writer9Definitions.slice(1),
+  ...bodyChunkDefinitions,
 ];
 const idOf = (key: RunKey) => canonical(key);
 const affinityKey = (spec: AgentTurnSpec): RunKey => ({
@@ -256,41 +263,46 @@ function validateAgentJournalSchema(
   inTransaction = false,
 ) {
   if (
-    database.prepare('PRAGMA journal_mode').get()?.journal_mode !== 'wal' ||
-    database.prepare('PRAGMA synchronous').get()?.synchronous !== 2 ||
-    database.prepare('PRAGMA foreign_keys').get()?.foreign_keys !== 1 ||
+    agentStatement(database, 'PRAGMA journal_mode').get()?.journal_mode !==
+      'wal' ||
+    agentStatement(database, 'PRAGMA synchronous').get()?.synchronous !== 2 ||
+    agentStatement(database, 'PRAGMA foreign_keys').get()?.foreign_keys !== 1 ||
     (database.isTransaction && !inTransaction)
   )
     throw new Error('DURABLE_AGENT_STORAGE_POLICY');
   if (
-    database
-      .prepare('SELECT writer_format FROM agent_steps_meta WHERE id=1')
-      .get()?.writer_format !== 'agent-steps/10'
+    agentStatement(
+      database,
+      'SELECT writer_format FROM agent_steps_meta WHERE id=1',
+    ).get()?.writer_format !== 'agent-steps/10'
   )
     throw new Error('DURABLE_AGENT_WRITER_UNSUPPORTED');
   const schema = JSON.stringify([
-    database.prepare('PRAGMA main.schema_version').get()?.schema_version,
-    database.prepare('PRAGMA temp.schema_version').get()?.schema_version,
+    agentStatement(database, 'PRAGMA main.schema_version').get()
+      ?.schema_version,
+    agentStatement(database, 'PRAGMA temp.schema_version').get()
+      ?.schema_version,
   ]);
   if (validatedSchemas.get(database) === schema) return;
-  const rows = database
-    .prepare(
-      "SELECT sql FROM main.sqlite_schema WHERE (lower(name) GLOB 'agent_steps_*' OR lower(tbl_name) GLOB 'agent_steps_*') AND sql IS NOT NULL ORDER BY sql",
-    )
-    .all();
+  const rows = agentStatement(
+    database,
+    "SELECT sql FROM main.sqlite_schema WHERE (lower(name) GLOB 'agent_steps_*' OR lower(tbl_name) GLOB 'agent_steps_*') AND sql IS NOT NULL ORDER BY sql",
+  ).all();
   if (
     canonical(rows.map((r) => r.sql).sort()) !==
       canonical([...currentDefinitions].sort()) ||
-    database
-      .prepare(
-        "SELECT 1 FROM temp.sqlite_schema WHERE lower(name) GLOB 'agent_steps_*' OR lower(tbl_name) GLOB 'agent_steps_*'",
-      )
-      .get() ||
-    database.prepare('SELECT count(*) AS n FROM main.agent_steps_meta').get()
-      ?.n !== 1 ||
-    database
-      .prepare('SELECT writer_format FROM agent_steps_meta WHERE id=1')
-      .get()?.writer_format !== 'agent-steps/10'
+    agentStatement(
+      database,
+      "SELECT 1 FROM temp.sqlite_schema WHERE lower(name) GLOB 'agent_steps_*' OR lower(tbl_name) GLOB 'agent_steps_*'",
+    ).get() ||
+    agentStatement(
+      database,
+      'SELECT count(*) AS n FROM main.agent_steps_meta',
+    ).get()?.n !== 1 ||
+    agentStatement(
+      database,
+      'SELECT writer_format FROM agent_steps_meta WHERE id=1',
+    ).get()?.writer_format !== 'agent-steps/10'
   )
     throw new Error('DURABLE_AGENT_WRITER_UNSUPPORTED');
   validatedSchemas.set(database, schema);
@@ -300,11 +312,10 @@ function readAffinity(
   database: DatabaseSync,
   key: Pick<RunKey, 'scopeId' | 'conversationId'>,
 ) {
-  const id = database
-    .prepare(
-      'SELECT provider_session_id FROM agent_steps_affinity WHERE scope=? AND conversation=?',
-    )
-    .get(key.scopeId, key.conversationId)?.provider_session_id;
+  const id = agentStatement(
+    database,
+    'SELECT provider_session_id FROM agent_steps_affinity WHERE scope=? AND conversation=?',
+  ).get(key.scopeId, key.conversationId)?.provider_session_id;
   if (
     typeof id !== 'string' ||
     !/^[a-f0-9]{8}(-[a-f0-9]{4}){3}-[a-f0-9]{12}$/.test(id)
@@ -317,11 +328,10 @@ function settledAt(
   database: DatabaseSync,
   turn: AgentTurnRecord,
 ): number | null {
-  const row = database
-    .prepare(
-      'SELECT state,settled_at FROM agent_steps_terminal WHERE turn_id=?',
-    )
-    .get(idOf(turn.spec.key));
+  const row = agentStatement(
+    database,
+    'SELECT state,settled_at FROM agent_steps_terminal WHERE turn_id=?',
+  ).get(idOf(turn.spec.key));
   if (turn.state === 'running') {
     if (row) throw new Error('DURABLE_AGENT_TERMINAL_DAMAGED');
     return null;
@@ -358,9 +368,10 @@ function readSnapshot<T>(
   }
 }
 function selectedTurn(database: DatabaseSync, key: RunKey, changed: boolean) {
-  const row = database
-    .prepare('SELECT * FROM agent_steps_turns WHERE id=?')
-    .get(idOf(runKey.parse(key)));
+  const row = agentStatement(
+    database,
+    'SELECT * FROM agent_steps_turns WHERE id=?',
+  ).get(idOf(runKey.parse(key)));
   if (!row) return undefined;
   const turn = validateRow(row);
   if (changed) {
@@ -465,8 +476,10 @@ export function listSqliteAgentTurns({
   validateAgentJournalSchema(database);
   database.exec('BEGIN');
   try {
-    const turns = database
-      .prepare(`SELECT * FROM agent_steps_turns WHERE ${unresolved}`)
+    const turns = agentStatement(
+      database,
+      `SELECT * FROM agent_steps_turns WHERE ${unresolved}`,
+    )
       .all()
       .map(validateRow);
     for (const turn of turns) {
@@ -492,8 +505,7 @@ export function auditSqliteAgentJournal({
   validateAgentJournalSchema(database);
   database.exec('BEGIN');
   try {
-    const turns = database
-      .prepare('SELECT * FROM agent_steps_turns')
+    const turns = agentStatement(database, 'SELECT * FROM agent_steps_turns')
       .all()
       .map(validateRow);
     let effects = 0;
@@ -505,13 +517,20 @@ export function auditSqliteAgentJournal({
       readAffinity(database, affinityKey(turn.spec));
       settledAt(database, turn);
     }
-    for (const row of database
-      .prepare('SELECT digest FROM agent_steps_bodies')
-      .all())
+    for (const row of agentStatement(
+      database,
+      'SELECT digest FROM agent_steps_bodies',
+    ).all())
       readAgentBody(database, String(row.digest));
-    for (const row of database
-      .prepare('SELECT seq,turn_id,kind,id FROM agent_steps_changes')
-      .all()) {
+    for (const row of agentStatement(
+      database,
+      'SELECT digest FROM agent_steps_body_chunks',
+    ).all())
+      readAgentBodyChunk(database, String(row.digest));
+    for (const row of agentStatement(
+      database,
+      'SELECT seq,turn_id,kind,id FROM agent_steps_changes',
+    ).all()) {
       if (
         typeof row.seq !== 'number' ||
         !Number.isSafeInteger(row.seq) ||
@@ -524,9 +543,10 @@ export function auditSqliteAgentJournal({
       )
         throw new Error('DURABLE_AGENT_CHANGE_DAMAGED');
     }
-    for (const row of database
-      .prepare('SELECT * FROM agent_steps_affinity')
-      .all()) {
+    for (const row of agentStatement(
+      database,
+      'SELECT * FROM agent_steps_affinity',
+    ).all()) {
       const key = runKey.parse({
         scopeId: row.scope,
         conversationId: row.conversation,
@@ -535,14 +555,22 @@ export function auditSqliteAgentJournal({
       readAffinity(database, key);
     }
     if (
-      database.prepare('PRAGMA foreign_key_check(agent_steps_frames)').all()
-        .length ||
-      database.prepare('PRAGMA foreign_key_check(agent_steps_terminal)').all()
-        .length ||
-      database.prepare('PRAGMA foreign_key_check(agent_steps_effects)').all()
-        .length ||
-      database.prepare('PRAGMA foreign_key_check(agent_steps_approvals)').all()
-        .length
+      agentStatement(
+        database,
+        'PRAGMA foreign_key_check(agent_steps_frames)',
+      ).all().length ||
+      agentStatement(
+        database,
+        'PRAGMA foreign_key_check(agent_steps_terminal)',
+      ).all().length ||
+      agentStatement(
+        database,
+        'PRAGMA foreign_key_check(agent_steps_effects)',
+      ).all().length ||
+      agentStatement(
+        database,
+        'PRAGMA foreign_key_check(agent_steps_approvals)',
+      ).all().length
     )
       throw new Error('DURABLE_AGENT_JOURNAL_DAMAGED');
     return { turns: turns.length, effects, approvals };
@@ -563,11 +591,10 @@ export function openSqliteAgentJournal(options: {
   const affinity = (turnSpec: AgentTurnSpec) =>
     readAffinity(database, affinityKey(turnSpec));
   const seedAffinity = (key: RunKey) => {
-    database
-      .prepare(
-        'INSERT INTO agent_steps_affinity VALUES(?,?,?) ON CONFLICT(scope,conversation) DO NOTHING',
-      )
-      .run(key.scopeId, key.conversationId, randomUUID());
+    agentStatement(
+      database,
+      'INSERT INTO agent_steps_affinity VALUES(?,?,?) ON CONFLICT(scope,conversation) DO NOTHING',
+    ).run(key.scopeId, key.conversationId, randomUUID());
   };
   const owned = (turn: AgentTurnRecord): AgentJournalResult => ({
     kind: 'owned',
@@ -578,18 +605,18 @@ export function openSqliteAgentJournal(options: {
   const validateSchema = (inTransaction = false) =>
     validateAgentJournalSchema(database, inTransaction);
   if (
-    database.prepare('PRAGMA journal_mode').get()?.journal_mode !== 'wal' ||
-    database.prepare('PRAGMA synchronous').get()?.synchronous !== 2 ||
-    database.prepare('PRAGMA foreign_keys').get()?.foreign_keys !== 1 ||
+    agentStatement(database, 'PRAGMA journal_mode').get()?.journal_mode !==
+      'wal' ||
+    agentStatement(database, 'PRAGMA synchronous').get()?.synchronous !== 2 ||
+    agentStatement(database, 'PRAGMA foreign_keys').get()?.foreign_keys !== 1 ||
     database.isTransaction
   )
     throw new Error('DURABLE_AGENT_STORAGE_POLICY');
   if (
-    !database
-      .prepare(
-        "SELECT 1 FROM main.sqlite_schema WHERE lower(name) GLOB 'agent_steps_*' OR lower(tbl_name) GLOB 'agent_steps_*'",
-      )
-      .get()
+    !agentStatement(
+      database,
+      "SELECT 1 FROM main.sqlite_schema WHERE lower(name) GLOB 'agent_steps_*' OR lower(tbl_name) GLOB 'agent_steps_*'",
+    ).get()
   ) {
     database.exec('BEGIN IMMEDIATE');
     try {
@@ -601,14 +628,15 @@ export function openSqliteAgentJournal(options: {
       throw error;
     }
   }
-  const priorWriter = database
-    .prepare('SELECT writer_format FROM main.agent_steps_meta WHERE id=1')
-    .get()?.writer_format;
+  const priorWriter = agentStatement(
+    database,
+    'SELECT writer_format FROM main.agent_steps_meta WHERE id=1',
+  ).get()?.writer_format;
   if (priorWriter === 'agent-steps/5') {
-    const actual = database
-      .prepare(
-        "SELECT sql FROM main.sqlite_schema WHERE (lower(name) GLOB 'agent_steps_*' OR lower(tbl_name) GLOB 'agent_steps_*') AND sql IS NOT NULL",
-      )
+    const actual = agentStatement(
+      database,
+      "SELECT sql FROM main.sqlite_schema WHERE (lower(name) GLOB 'agent_steps_*' OR lower(tbl_name) GLOB 'agent_steps_*') AND sql IS NOT NULL",
+    )
       .all()
       .map((row) => row.sql)
       .sort();
@@ -617,18 +645,18 @@ export function openSqliteAgentJournal(options: {
       .sort();
     if (
       canonical(actual) !== canonical(expected) ||
-      database
-        .prepare(
-          "SELECT 1 FROM temp.sqlite_schema WHERE lower(name) GLOB 'agent_steps_*' OR lower(tbl_name) GLOB 'agent_steps_*'",
-        )
-        .get()
+      agentStatement(
+        database,
+        "SELECT 1 FROM temp.sqlite_schema WHERE lower(name) GLOB 'agent_steps_*' OR lower(tbl_name) GLOB 'agent_steps_*'",
+      ).get()
     )
       throw new Error('DURABLE_AGENT_MIGRATION_REFUSED');
     database.exec('BEGIN IMMEDIATE');
     try {
-      for (const row of database
-        .prepare('SELECT * FROM main.agent_steps_turns')
-        .all()) {
+      for (const row of agentStatement(
+        database,
+        'SELECT * FROM main.agent_steps_turns',
+      ).all()) {
         const turn = validateRow(row);
         if (turn.spec.affinityConversationId !== undefined)
           throw new Error('DURABLE_AGENT_MIGRATION_REFUSED');
@@ -653,10 +681,10 @@ export function openSqliteAgentJournal(options: {
     priorWriter === 'agent-steps/3' ||
     priorWriter === 'agent-steps/4'
   ) {
-    const actual = database
-      .prepare(
-        "SELECT sql FROM main.sqlite_schema WHERE (lower(name) GLOB 'agent_steps_*' OR lower(tbl_name) GLOB 'agent_steps_*') AND sql IS NOT NULL",
-      )
+    const actual = agentStatement(
+      database,
+      "SELECT sql FROM main.sqlite_schema WHERE (lower(name) GLOB 'agent_steps_*' OR lower(tbl_name) GLOB 'agent_steps_*') AND sql IS NOT NULL",
+    )
       .all()
       .map((r) => r.sql)
       .sort();
@@ -675,18 +703,18 @@ export function openSqliteAgentJournal(options: {
       .sort();
     if (
       canonical(actual) !== canonical(expected) ||
-      database
-        .prepare(
-          "SELECT 1 FROM temp.sqlite_schema WHERE lower(name) GLOB 'agent_steps_*' OR lower(tbl_name) GLOB 'agent_steps_*'",
-        )
-        .get()
+      agentStatement(
+        database,
+        "SELECT 1 FROM temp.sqlite_schema WHERE lower(name) GLOB 'agent_steps_*' OR lower(tbl_name) GLOB 'agent_steps_*'",
+      ).get()
     )
       throw new Error('DURABLE_AGENT_MIGRATION_REFUSED');
     database.exec('BEGIN IMMEDIATE');
     try {
-      for (const row of database
-        .prepare('SELECT * FROM main.agent_steps_turns')
-        .all()) {
+      for (const row of agentStatement(
+        database,
+        'SELECT * FROM main.agent_steps_turns',
+      ).all()) {
         const turn = validateRow(row);
         if (
           turn.cancelRequested !== undefined ||
@@ -700,9 +728,10 @@ export function openSqliteAgentJournal(options: {
       database.exec("INSERT INTO agent_steps_meta VALUES(1,'agent-steps/6')");
       if (priorWriter === 'agent-steps/1') database.exec(effectsDefinition);
       else
-        for (const row of database
-          .prepare('SELECT id FROM main.agent_steps_turns')
-          .all())
+        for (const row of agentStatement(
+          database,
+          'SELECT id FROM main.agent_steps_turns',
+        ).all())
           if (
             validateAgentEffects(database, String(row.id)).some(
               (effect) =>
@@ -715,28 +744,32 @@ export function openSqliteAgentJournal(options: {
       if (priorWriter === 'agent-steps/1' || priorWriter === 'agent-steps/2')
         database.exec(approvalsDefinition);
       else
-        for (const row of database
-          .prepare('SELECT id FROM agent_steps_turns')
-          .all())
+        for (const row of agentStatement(
+          database,
+          'SELECT id FROM agent_steps_turns',
+        ).all())
           validateAgentApprovals(database, String(row.id));
       if (priorWriter !== 'agent-steps/4') {
         database.exec(affinityDefinition);
         database.exec(unresolvedDefinition);
         for (const sql of definitions.slice(7, 9)) database.exec(sql);
-        for (const row of database
-          .prepare('SELECT * FROM agent_steps_turns')
-          .all())
+        for (const row of agentStatement(
+          database,
+          'SELECT * FROM agent_steps_turns',
+        ).all())
           seedAffinity(validateRow(row).spec.key);
       }
       database.exec(terminalDefinition);
       database.exec(framesDefinition);
-      for (const row of database
-        .prepare('SELECT * FROM agent_steps_turns WHERE active=0')
-        .all()) {
+      for (const row of agentStatement(
+        database,
+        'SELECT * FROM agent_steps_turns WHERE active=0',
+      ).all()) {
         const turn = validateRow(row);
-        database
-          .prepare('INSERT INTO agent_steps_terminal VALUES(?,?,?)')
-          .run(idOf(turn.spec.key), turn.state, Date.now());
+        agentStatement(
+          database,
+          'INSERT INTO agent_steps_terminal VALUES(?,?,?)',
+        ).run(idOf(turn.spec.key), turn.state, Date.now());
       }
       database.exec('COMMIT');
     } catch (error) {
@@ -745,23 +778,23 @@ export function openSqliteAgentJournal(options: {
     }
   }
   if (
-    database
-      .prepare('SELECT writer_format FROM agent_steps_meta WHERE id=1')
-      .get()?.writer_format === 'agent-steps/6'
+    agentStatement(
+      database,
+      'SELECT writer_format FROM agent_steps_meta WHERE id=1',
+    ).get()?.writer_format === 'agent-steps/6'
   ) {
-    const actual = database
-      .prepare(
-        "SELECT sql FROM main.sqlite_schema WHERE (lower(name) GLOB 'agent_steps_*' OR lower(tbl_name) GLOB 'agent_steps_*') AND sql IS NOT NULL ORDER BY sql",
-      )
+    const actual = agentStatement(
+      database,
+      "SELECT sql FROM main.sqlite_schema WHERE (lower(name) GLOB 'agent_steps_*' OR lower(tbl_name) GLOB 'agent_steps_*') AND sql IS NOT NULL ORDER BY sql",
+    )
       .all()
       .map((row) => row.sql);
     if (
       canonical(actual) !== canonical([...definitions].sort()) ||
-      database
-        .prepare(
-          "SELECT 1 FROM temp.sqlite_schema WHERE lower(name) GLOB 'agent_steps_*' OR lower(tbl_name) GLOB 'agent_steps_*'",
-        )
-        .get()
+      agentStatement(
+        database,
+        "SELECT 1 FROM temp.sqlite_schema WHERE lower(name) GLOB 'agent_steps_*' OR lower(tbl_name) GLOB 'agent_steps_*'",
+      ).get()
     )
       throw new Error('DURABLE_AGENT_MIGRATION_REFUSED');
     database.exec('BEGIN IMMEDIATE');
@@ -780,30 +813,31 @@ export function openSqliteAgentJournal(options: {
     }
   }
   if (
-    database
-      .prepare('SELECT writer_format FROM agent_steps_meta WHERE id=1')
-      .get()?.writer_format === 'agent-steps/7'
+    agentStatement(
+      database,
+      'SELECT writer_format FROM agent_steps_meta WHERE id=1',
+    ).get()?.writer_format === 'agent-steps/7'
   ) {
-    const actual = database
-      .prepare(
-        "SELECT sql FROM main.sqlite_schema WHERE (lower(name) GLOB 'agent_steps_*' OR lower(tbl_name) GLOB 'agent_steps_*') AND sql IS NOT NULL ORDER BY sql",
-      )
+    const actual = agentStatement(
+      database,
+      "SELECT sql FROM main.sqlite_schema WHERE (lower(name) GLOB 'agent_steps_*' OR lower(tbl_name) GLOB 'agent_steps_*') AND sql IS NOT NULL ORDER BY sql",
+    )
       .all()
       .map((row) => row.sql);
     if (
       canonical(actual) !== canonical([...writer7Definitions].sort()) ||
-      database
-        .prepare(
-          "SELECT 1 FROM temp.sqlite_schema WHERE lower(name) GLOB 'agent_steps_*' OR lower(tbl_name) GLOB 'agent_steps_*'",
-        )
-        .get()
+      agentStatement(
+        database,
+        "SELECT 1 FROM temp.sqlite_schema WHERE lower(name) GLOB 'agent_steps_*' OR lower(tbl_name) GLOB 'agent_steps_*'",
+      ).get()
     )
       throw new Error('DURABLE_AGENT_MIGRATION_REFUSED');
     database.exec('BEGIN IMMEDIATE');
     try {
-      for (const row of database
-        .prepare('SELECT * FROM agent_steps_turns')
-        .all()) {
+      for (const row of agentStatement(
+        database,
+        'SELECT * FROM agent_steps_turns',
+      ).all()) {
         const turn = validateRow(row);
         const id = idOf(turn.spec.key);
         validateAgentEffects(database, id);
@@ -824,30 +858,31 @@ export function openSqliteAgentJournal(options: {
     }
   }
   if (
-    database
-      .prepare('SELECT writer_format FROM agent_steps_meta WHERE id=1')
-      .get()?.writer_format === 'agent-steps/8'
+    agentStatement(
+      database,
+      'SELECT writer_format FROM agent_steps_meta WHERE id=1',
+    ).get()?.writer_format === 'agent-steps/8'
   ) {
-    const actual = database
-      .prepare(
-        "SELECT sql FROM main.sqlite_schema WHERE (lower(name) GLOB 'agent_steps_*' OR lower(tbl_name) GLOB 'agent_steps_*') AND sql IS NOT NULL ORDER BY sql",
-      )
+    const actual = agentStatement(
+      database,
+      "SELECT sql FROM main.sqlite_schema WHERE (lower(name) GLOB 'agent_steps_*' OR lower(tbl_name) GLOB 'agent_steps_*') AND sql IS NOT NULL ORDER BY sql",
+    )
       .all()
       .map((row) => row.sql);
     if (
       canonical(actual) !== canonical([...writer8Definitions].sort()) ||
-      database
-        .prepare(
-          "SELECT 1 FROM temp.sqlite_schema WHERE lower(name) GLOB 'agent_steps_*' OR lower(tbl_name) GLOB 'agent_steps_*'",
-        )
-        .get()
+      agentStatement(
+        database,
+        "SELECT 1 FROM temp.sqlite_schema WHERE lower(name) GLOB 'agent_steps_*' OR lower(tbl_name) GLOB 'agent_steps_*'",
+      ).get()
     )
       throw new Error('DURABLE_AGENT_MIGRATION_REFUSED');
     database.exec('BEGIN IMMEDIATE');
     try {
-      for (const row of database
-        .prepare('SELECT * FROM agent_steps_turns')
-        .all()) {
+      for (const row of agentStatement(
+        database,
+        'SELECT * FROM agent_steps_turns',
+      ).all()) {
         const turn = validateRow(row);
         const id = idOf(turn.spec.key);
         validateAgentEffects(database, id);
@@ -868,30 +903,31 @@ export function openSqliteAgentJournal(options: {
     }
   }
   if (
-    database
-      .prepare('SELECT writer_format FROM agent_steps_meta WHERE id=1')
-      .get()?.writer_format === 'agent-steps/9'
+    agentStatement(
+      database,
+      'SELECT writer_format FROM agent_steps_meta WHERE id=1',
+    ).get()?.writer_format === 'agent-steps/9'
   ) {
-    const actual = database
-      .prepare(
-        "SELECT sql FROM main.sqlite_schema WHERE (lower(name) GLOB 'agent_steps_*' OR lower(tbl_name) GLOB 'agent_steps_*') AND sql IS NOT NULL ORDER BY sql",
-      )
+    const actual = agentStatement(
+      database,
+      "SELECT sql FROM main.sqlite_schema WHERE (lower(name) GLOB 'agent_steps_*' OR lower(tbl_name) GLOB 'agent_steps_*') AND sql IS NOT NULL ORDER BY sql",
+    )
       .all()
       .map((row) => row.sql);
     if (
       canonical(actual) !== canonical([...writer9Definitions].sort()) ||
-      database
-        .prepare(
-          "SELECT 1 FROM temp.sqlite_schema WHERE lower(name) GLOB 'agent_steps_*' OR lower(tbl_name) GLOB 'agent_steps_*'",
-        )
-        .get()
+      agentStatement(
+        database,
+        "SELECT 1 FROM temp.sqlite_schema WHERE lower(name) GLOB 'agent_steps_*' OR lower(tbl_name) GLOB 'agent_steps_*'",
+      ).get()
     )
       throw new Error('DURABLE_AGENT_MIGRATION_REFUSED');
     database.exec('BEGIN IMMEDIATE');
     try {
-      for (const row of database
-        .prepare('SELECT * FROM agent_steps_turns')
-        .all()) {
+      for (const row of agentStatement(
+        database,
+        'SELECT * FROM agent_steps_turns',
+      ).all()) {
         const turn = validateRow(row);
         const id = idOf(turn.spec.key);
         validateAgentEffects(database, id);
@@ -900,6 +936,7 @@ export function openSqliteAgentJournal(options: {
         affinity(turn.spec);
         settledAt(database, turn);
       }
+      for (const sql of bodyChunkDefinitions) database.exec(sql);
       migrateAgentEffectTails(database);
       database.exec('DROP TABLE agent_steps_meta');
       database.exec(currentDefinitions[0]!);
@@ -914,9 +951,10 @@ export function openSqliteAgentJournal(options: {
   invalidateAgentValidation(database);
   validateSchema();
   const validateUnresolved = () => {
-    for (const row of database
-      .prepare(`SELECT * FROM agent_steps_turns WHERE ${unresolved}`)
-      .all()) {
+    for (const row of agentStatement(
+      database,
+      `SELECT * FROM agent_steps_turns WHERE ${unresolved}`,
+    ).all()) {
       const id = idOf(validateRow(row).spec.key);
       validateAgentEffects(database, id);
       validateAgentApprovals(database, id);
@@ -931,9 +969,10 @@ export function openSqliteAgentJournal(options: {
   });
   let validateSelected = false;
   const read = (key: RunKey) => {
-    const row = database
-      .prepare('SELECT * FROM agent_steps_turns WHERE id=?')
-      .get(idOf(key));
+    const row = agentStatement(
+      database,
+      'SELECT * FROM agent_steps_turns WHERE id=?',
+    ).get(idOf(key));
     if (!row) return undefined;
     const turn = validateRow(row);
     if (validateSelected) {
@@ -946,17 +985,16 @@ export function openSqliteAgentJournal(options: {
   };
   const write = (turn: AgentTurnRecord) => {
     turnSchema.parse(turn);
-    database
-      .prepare(
-        'INSERT INTO agent_steps_turns VALUES(?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET active=excluded.active,record=excluded.record',
-      )
-      .run(
-        idOf(turn.spec.key),
-        turn.spec.key.scopeId,
-        turn.spec.key.conversationId,
-        Number(turn.state === 'running'),
-        canonical(turn),
-      );
+    agentStatement(
+      database,
+      'INSERT INTO agent_steps_turns VALUES(?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET active=excluded.active,record=excluded.record',
+    ).run(
+      idOf(turn.spec.key),
+      turn.spec.key.scopeId,
+      turn.spec.key.conversationId,
+      Number(turn.state === 'running'),
+      canonical(turn),
+    );
   };
   return {
     async execute(
@@ -966,9 +1004,15 @@ export function openSqliteAgentJournal(options: {
       if (closed) throw new Error('DURABLE_AGENT_STORAGE_CLOSED');
       const command = commandSchema.parse(raw);
       const clock = () => {
-        const before = database.prepare('SELECT total_changes() AS n').get()?.n;
+        const before = agentStatement(
+          database,
+          'SELECT total_changes() AS n',
+        ).get()?.n;
         const at = (context.now ?? Date.now)();
-        if (database.prepare('SELECT total_changes() AS n').get()?.n !== before)
+        if (
+          agentStatement(database, 'SELECT total_changes() AS n').get()?.n !==
+          before
+        )
           throw new Error('DURABLE_AGENT_CLOCK_CHANGED_STATE');
         return at;
       };
@@ -977,19 +1021,25 @@ export function openSqliteAgentJournal(options: {
         validateSchema(true);
         const key = command.type === 'open' ? command.spec.key : command.key;
         validateSelected = synchronizeAgentValidation(database, idOf(key));
-        const beforeIds = database
-          .prepare(
-            `SELECT id FROM agent_steps_turns WHERE ${unresolved} ORDER BY id`,
-          )
-          .all()
-          .map((row) => String(row.id));
+        const trackMembership =
+          participants.length > 0 || command.type !== 'projectFrame';
+        const beforeIds = !trackMembership
+          ? []
+          : agentStatement(
+              database,
+              `SELECT id FROM agent_steps_turns WHERE ${unresolved} ORDER BY id`,
+            )
+              .all()
+              .map((row) => String(row.id));
         const probe = (candidate: OwnerIdentity) => {
-          const changes = database
-            .prepare('SELECT total_changes() AS n')
-            .get()?.n;
+          const changes = agentStatement(
+            database,
+            'SELECT total_changes() AS n',
+          ).get()?.n;
           const verdict = context.liveness(structuredClone(candidate));
           if (
-            database.prepare('SELECT total_changes() AS n').get()?.n !== changes
+            agentStatement(database, 'SELECT total_changes() AS n').get()?.n !==
+            changes
           )
             throw new Error('DURABLE_AGENT_LIVENESS_CHANGED_STATE');
           return verdict;
@@ -1000,8 +1050,10 @@ export function openSqliteAgentJournal(options: {
             return turn ? owned(turn) : { kind: 'absent' };
           if (command.type === 'open') {
             if (turn) return { kind: 'refused', reason: 'conflict' };
-            const active = database
-              .prepare(`SELECT * FROM agent_steps_turns WHERE ${unresolved}`)
+            const active = agentStatement(
+              database,
+              `SELECT * FROM agent_steps_turns WHERE ${unresolved}`,
+            )
               .all()
               .map(validateRow);
             if (
@@ -1103,9 +1155,10 @@ export function openSqliteAgentJournal(options: {
             const at = clock();
             if (!Number.isSafeInteger(at) || at < 1)
               throw new Error('DURABLE_AGENT_CLOCK_UNAVAILABLE');
-            database
-              .prepare('INSERT INTO agent_steps_terminal VALUES(?,?,?)')
-              .run(idOf(key), turn.state, at);
+            agentStatement(
+              database,
+              'INSERT INTO agent_steps_terminal VALUES(?,?,?)',
+            ).run(idOf(key), turn.state, at);
           }
           turn.fence.revision = String(BigInt(turn.fence.revision) + 1n);
           write(turn);
@@ -1140,25 +1193,28 @@ export function openSqliteAgentJournal(options: {
         }
         validateSchema(true);
         if (
+          participants.length > 0 &&
           answer.kind === 'frame' &&
           canonical(readAgentFrame(database, idOf(key), answer.frame.id)) !==
             canonical(answer.frame)
         )
           throw new Error('DURABLE_AGENT_PARTICIPANT_CHANGED_STATE');
-        const expectedIds = new Set(beforeIds);
-        if (answer.kind === 'owned') {
-          if (answer.turn.state === 'running') expectedIds.add(idOf(key));
-          else expectedIds.delete(idOf(key));
-        }
-        const afterIds = database
-          .prepare(
+        if (trackMembership) {
+          const expectedIds = new Set(beforeIds);
+          if (answer.kind === 'owned') {
+            if (answer.turn.state === 'running') expectedIds.add(idOf(key));
+            else expectedIds.delete(idOf(key));
+          }
+          const afterIds = agentStatement(
+            database,
             `SELECT id FROM agent_steps_turns WHERE ${unresolved} ORDER BY id`,
           )
-          .all()
-          .map((row) => String(row.id))
-          .sort();
-        if (canonical(afterIds) !== canonical([...expectedIds].sort()))
-          throw new Error('DURABLE_AGENT_PARTICIPANT_CHANGED_MEMBERSHIP');
+            .all()
+            .map((row) => String(row.id))
+            .sort();
+          if (canonical(afterIds) !== canonical([...expectedIds].sort()))
+            throw new Error('DURABLE_AGENT_PARTICIPANT_CHANGED_MEMBERSHIP');
+        }
         if (
           answer.kind === 'owned' &&
           canonical(read(answer.turn.spec.key)) !== canonical(answer.turn)
@@ -1182,11 +1238,10 @@ export function openSqliteAgentJournal(options: {
           throw new Error('DURABLE_AGENT_PARTICIPANT_CHANGED_STATE');
         if (answer.kind === 'effect') {
           const expected = agentEffectHeader(database, answer.effect);
-          const actual = database
-            .prepare(
-              'SELECT record FROM agent_steps_effects WHERE turn_id=? AND id=?',
-            )
-            .get(idOf(key), answer.effect.intent.id)?.record;
+          const actual = agentStatement(
+            database,
+            'SELECT record FROM agent_steps_effects WHERE turn_id=? AND id=?',
+          ).get(idOf(key), answer.effect.intent.id)?.record;
           if (
             typeof actual !== 'string' ||
             (actual !== expected && canonical(JSON.parse(actual)) !== expected)

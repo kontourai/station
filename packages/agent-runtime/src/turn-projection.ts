@@ -1,6 +1,7 @@
 import type { DatabaseSync } from 'node:sqlite';
 import { z } from 'zod';
 import { canonical, fence, hash, runKey, text } from './encoding.js';
+import { agentStatement } from './turn-statements.js';
 import type { Fence, RunKey } from './types.js';
 
 const frameSchema = z
@@ -52,19 +53,20 @@ export function readAgentFrame(
   turnId: string,
   id: string,
 ) {
-  const row = database
-    .prepare('SELECT * FROM agent_steps_frames WHERE turn_id=? AND id=?')
-    .get(turnId, id);
+  const row = agentStatement(
+    database,
+    'SELECT * FROM agent_steps_frames WHERE turn_id=? AND id=?',
+  ).get(turnId, id);
   return row ? parseFrame(row) : undefined;
 }
 export function readAgentFrames(
   database: DatabaseSync,
   turnId: string,
 ): AgentFrame[] {
-  const frames = database
-    .prepare(
-      'SELECT * FROM agent_steps_frames WHERE turn_id=? ORDER BY position',
-    )
+  const frames = agentStatement(
+    database,
+    'SELECT * FROM agent_steps_frames WHERE turn_id=? ORDER BY position',
+  )
     .all(turnId)
     .map(parseFrame);
   if (
@@ -84,11 +86,10 @@ export function projectAgentFrame(
   if (existing) return { kind: 'frame', frame: existing };
   const position =
     Number(
-      database
-        .prepare(
-          'SELECT max(position) AS n FROM agent_steps_frames WHERE turn_id=?',
-        )
-        .get(turnId)?.n ?? -1,
+      agentStatement(
+        database,
+        'SELECT max(position) AS n FROM agent_steps_frames WHERE turn_id=?',
+      ).get(turnId)?.n ?? -1,
     ) + 1;
   if (
     position >= 1_048_576 ||
@@ -103,8 +104,9 @@ export function projectAgentFrame(
     digest: hash(command.wire),
     createdAt: new Date(now).toISOString(),
   });
-  database
-    .prepare('INSERT INTO agent_steps_frames VALUES(?,?,?,?)')
-    .run(turnId, frame.id, frame.position, canonical(frame));
+  agentStatement(
+    database,
+    'INSERT INTO agent_steps_frames VALUES(?,?,?,?)',
+  ).run(turnId, frame.id, frame.position, canonical(frame));
   return { kind: 'frame', frame };
 }
