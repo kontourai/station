@@ -13,7 +13,7 @@ export interface StationDocsTopic {
 }
 
 export const STATION_DOCS_CONTENT_DIGEST =
-  '91dc9478fad917e7980a74758eccd1934ef7b8dd9b9f6918ade56dd953a69654';
+  '22a8120de4a130262bf29bb6084b5d9ab0747b9595eff720a64d7c1e4725afa7';
 export const STATION_DOCS_TOPICS: readonly StationDocsTopic[] = [
   {
     id: 'station-overview',
@@ -150,7 +150,7 @@ export const STATION_DOCS_TOPICS: readonly StationDocsTopic[] = [
       'orchestration',
       'lifecycle',
     ],
-    body: 'A session is a bounded episode of agent work. It can be associated with a project, a layout, an agent, and an evidence-gated Flow run. Starting a direct chat creates a session; it does not silently create a durable Task.\n\nA turn is one user-to-agent interaction inside a session. A turn may stream text, reasoning, tool calls, approval requests, and terminal or artifact events.\n\nA run is the execution accounting: status, attempt count, retry eligibility, output references, and failure classification. An agent run is tied to an agent session; a scheduled run comes from a scheduled job instead of an interactive session.\n\nAdapters project reported engine events into a shared canonical model.\nCapabilities and available evidence still differ: an absent event, usage value,\nor terminal result must not be invented to make engines look uniform. An idle\nturn is not necessarily a terminal Session, and optional Flow gating must not\nbe inferred from ordinary execution completion.',
+    body: 'A session is a bounded episode of agent work. It can be associated with a project, a layout, an agent, and an evidence-gated Flow run. Starting a direct chat creates a session; it does not silently create a durable Task.\n\nA turn is one user-to-agent interaction inside a session. A turn may stream text, reasoning, tool calls, approval requests, and terminal or artifact events.\n\nA run is the execution accounting: status, attempt count, retry eligibility, output references, and failure classification. An agent run is tied to an agent session; a scheduled run comes from a scheduled job instead of an interactive session.\n\nAdapters project reported engine events into a shared canonical model.\nCapabilities and available evidence still differ: an absent event, usage value,\nor terminal result must not be invented to make engines look uniform. An idle\nturn is not necessarily a terminal Session, and optional Flow gating must not\nbe inferred from ordinary execution completion.\n\nReport-member Sessions can use a recorded sealed-source policy instead of the\nordinary managed-journal policy for the same engine. They do not admit generic\nSteer or Queue as new paid work; use their bounded report/group controls. An\ninterruption or saved cursor does not prove provider termination, release unknown\naccounting or authorize replay. See the [Session input restrictions](session-api.md#submit-steer-follow-up-or-display-input)\nand [report-group API](api.md#report-groups).',
     parentId: 'manual',
     sourcePath: 'docs/reference/station-docs.md',
     sourceAnchor: 'sessions-turns-and-runs',

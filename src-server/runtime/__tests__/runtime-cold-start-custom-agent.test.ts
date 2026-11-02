@@ -2558,6 +2558,15 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
     const previousRoutes =
       routeMocks.configureRuntimeRoutes.getMockImplementation();
     const previousConsent = consentMock.getMockImplementation();
+    const externalSourceRoots = [
+      ['STATION_EXTERNAL_CLAUDE_SOURCE_ROOT', 'claude'],
+      ['STATION_EXTERNAL_CODEX_SOURCE_ROOT', 'codex'],
+      ['STATION_EXTERNAL_OPENCODE_SOURCE_ROOT', 'opencode'],
+      ['STATION_EXTERNAL_GROK_SOURCE_ROOT', 'grok'],
+    ] as const;
+    const previousSourceRoots = externalSourceRoots.map(
+      ([name]) => [name, process.env[name]] as const,
+    );
     if (!previousCore || !previousHono || !previousRoutes || !previousConsent)
       throw new Error('Cold-start mock implementations are required');
     signal.throwIfAborted();
@@ -2628,6 +2637,7 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
     const restore = () => {
       if (restored) return;
       restored = true;
+      for (const [name, value] of previousSourceRoots) vi.stubEnv(name, value);
       read.mockRestore();
       close.mockRestore();
       fetchFence.mockRestore();
@@ -2641,6 +2651,12 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
     const backupDir = `${home}-backup`;
     try {
       signal.throwIfAborted();
+      // Boot starts real transcript discovery after 2.5s, inside the drain hold.
+      for (const [name, suffix] of externalSourceRoots) {
+        const sourceRoot = join(home, 'fixture-external-sources', suffix);
+        mkdirSync(sourceRoot, { recursive: true, mode: 0o700 });
+        vi.stubEnv(name, sourceRoot);
+      }
       coreMock.mockImplementation(function ForwardedVoltAgent(...args) {
         return new realCore.VoltAgent(...args);
       });
