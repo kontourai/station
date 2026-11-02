@@ -1,5 +1,6 @@
 import {
   type CSSProperties,
+  type ReactNode,
   type Ref,
   type RefObject,
   useCallback,
@@ -149,6 +150,12 @@ export interface TurnActionsMenuProps {
   reasoning?: { content: string };
   /** Opens the menu from the bubble it belongs to (a right-click on it). */
   handleRef?: Ref<OverflowMenuHandle>;
+  /**
+   * #4404 (A40): the phone's answer sheet lists these rows itself, as the
+   * user bubble's sheet does, instead of a second ⋯ whose popup clipped the
+   * sheet's title.
+   */
+  inline?: boolean;
 }
 
 /** Lazy per-turn overflow, using the same focus primitive as app header menus. */
@@ -159,6 +166,7 @@ export default function TurnActionsMenu({
   provenance,
   reasoning,
   handleRef,
+  inline = false,
 }: TurnActionsMenuProps) {
   const [view, setView] = useState<
     'closed' | 'menu' | 'picker' | 'provenance' | 'reasoning'
@@ -200,6 +208,113 @@ export default function TurnActionsMenu({
     setView('menu');
   });
 
+  // Menu items in the ⋯ popup; plain buttons in the phone sheet (`inline`),
+  // where "Answer details" would repeat the sheet's own title. One list,
+  // so the two presentations cannot offer different actions.
+  const rows = (itemRole?: 'menuitem') => {
+    const item = (key: string, label: ReactNode, onSelect: () => void) => (
+      <button key={key} type="button" role={itemRole} onClick={onSelect}>
+        {label}
+      </button>
+    );
+    return [
+      provenance
+        ? item('provenance', itemRole ? 'Answer details' : 'Provenance', () =>
+            setView('provenance'),
+          )
+        : null,
+      reasoning && reasoningWordCount > 0
+        ? item(
+            'reasoning',
+            `Reasoning (${reasoningWordCount.toLocaleString()} ${reasoningWordCount === 1 ? 'word' : 'words'})`,
+            () => setView('reasoning'),
+          )
+        : null,
+      taskTarget ? (
+        <LazyBoundary
+          key="task"
+          load={loadConnectedAttachAnswerToTaskButton}
+          componentProps={{
+            ...taskTarget,
+            menuItem: itemRole === 'menuitem',
+            onOpen: () => setView('picker'),
+            onClose: () => setView('closed'),
+            returnFocusTarget: triggerRef.current,
+          }}
+          pending={null}
+          unavailable={() => (
+            <span className="turn-footer__unavailable-note">
+              Add to Task is unavailable.
+            </span>
+          )}
+        />
+      ) : null,
+      forkSource && onForkFromTurn
+        ? item('fork', 'Fork from here…', () => {
+            close();
+            onForkFromTurn(forkSource);
+          })
+        : null,
+    ];
+  };
+
+  const dialogs = (
+    <>
+      {view === 'provenance' && provenance && (
+        <Dialog
+          eyebrow="This turn"
+          title="Provenance"
+          subtitle="What Station observed about how this answer was produced."
+          closeLabel="Close provenance"
+          onClose={closeDialog}
+          size="md"
+          returnFocusTarget={triggerRef.current ?? undefined}
+        >
+          <TurnProvenanceCard
+            provenance={provenance.envelope}
+            statedInRow={provenance.statedInRow}
+            accountableHuman={provenance.accountableHuman}
+            shareContent={provenance.shareContent}
+            defaultOpen
+          />
+        </Dialog>
+      )}
+      {view === 'reasoning' && reasoning && (
+        <Dialog
+          eyebrow="This turn"
+          title="Reasoning"
+          subtitle={`${reasoningWordCount.toLocaleString()} ${reasoningWordCount === 1 ? 'word' : 'words'} recorded for this turn.`}
+          closeLabel="Close reasoning"
+          onClose={closeDialog}
+          size="md"
+          returnFocusTarget={triggerRef.current ?? undefined}
+        >
+          <div
+            className="turn-reasoning-dialog__body"
+            style={{
+              color: 'var(--text-secondary)',
+              fontStyle: 'italic',
+              lineHeight: 1.5,
+              whiteSpace: 'pre-wrap',
+            }}
+          >
+            {reasoning.content}
+          </div>
+        </Dialog>
+      )}
+    </>
+  );
+
+  if (inline)
+    return (
+      <>
+        <fieldset className="message-details__menu" aria-label="Answer actions">
+          {rows()}
+        </fieldset>
+        {dialogs}
+      </>
+    );
+
   return (
     <span className="turn-footer__actions-menu">
       <button
@@ -236,100 +351,11 @@ export default function TurnActionsMenu({
                 }
               }}
             >
-              {provenance && (
-                <button
-                  type="button"
-                  role="menuitem"
-                  onClick={() => setView('provenance')}
-                >
-                  Answer details
-                </button>
-              )}
-              {reasoning && reasoningWordCount > 0 && (
-                <button
-                  type="button"
-                  role="menuitem"
-                  onClick={() => setView('reasoning')}
-                >
-                  Reasoning ({reasoningWordCount.toLocaleString()}{' '}
-                  {reasoningWordCount === 1 ? 'word' : 'words'})
-                </button>
-              )}
-              {taskTarget && (
-                <LazyBoundary
-                  load={loadConnectedAttachAnswerToTaskButton}
-                  componentProps={{
-                    ...taskTarget,
-                    menuItem: true,
-                    onOpen: () => setView('picker'),
-                    onClose: () => setView('closed'),
-                    returnFocusTarget: triggerRef.current,
-                  }}
-                  pending={null}
-                  unavailable={() => (
-                    <span className="turn-footer__unavailable-note">
-                      Add to Task is unavailable.
-                    </span>
-                  )}
-                />
-              )}
-              {forkSource && onForkFromTurn && (
-                <button
-                  type="button"
-                  role="menuitem"
-                  onClick={() => {
-                    close();
-                    onForkFromTurn(forkSource);
-                  }}
-                >
-                  Fork from here…
-                </button>
-              )}
+              {rows('menuitem')}
             </div>,
             document.body,
           )}
-          {view === 'provenance' && provenance && (
-            <Dialog
-              eyebrow="This turn"
-              title="Provenance"
-              subtitle="What Station observed about how this answer was produced."
-              closeLabel="Close provenance"
-              onClose={closeDialog}
-              size="md"
-              returnFocusTarget={triggerRef.current ?? undefined}
-            >
-              <TurnProvenanceCard
-                provenance={provenance.envelope}
-                statedInRow={provenance.statedInRow}
-                accountableHuman={provenance.accountableHuman}
-                shareContent={provenance.shareContent}
-                defaultOpen
-              />
-            </Dialog>
-          )}
-          {view === 'reasoning' && reasoning && (
-            <Dialog
-              eyebrow="This turn"
-              title="Reasoning"
-              subtitle={`${reasoningWordCount.toLocaleString()} ${reasoningWordCount === 1 ? 'word' : 'words'} recorded for this turn.`}
-              closeLabel="Close reasoning"
-              onClose={closeDialog}
-              size="md"
-              returnFocusTarget={triggerRef.current ?? undefined}
-            >
-              <div
-                className="turn-reasoning-dialog__body"
-                style={{
-                  color: 'var(--text-secondary)',
-                  fontStyle: 'italic',
-                  lineHeight: 1.5,
-                  whiteSpace: 'pre-wrap',
-                }}
-              >
-                {reasoning.content}
-              </div>
-            </Dialog>
-          )}
+          {dialogs}
         </>
       )}
     </span>

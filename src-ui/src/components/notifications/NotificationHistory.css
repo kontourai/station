@@ -34,6 +34,32 @@
   font-family: var(--k-font-ui);
 }
 
+/* #4404 (A43): the phone presentation, chosen by `useIsMobile` in the
+   component, so no page-local media query. A bottom sheet over a dimmed page;
+   tapping the dimmed page closes it (the component's outside-press rule). */
+.notification-history-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: var(--layer-dialog);
+  background: rgb(0 0 0 / 40%);
+}
+
+.notification-history--sheet {
+  top: auto;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  max-height: min(
+    85dvh,
+    calc(100dvh - var(--app-toolbar-total-height) - var(--k-space-4))
+  );
+  margin-top: 0;
+  padding-bottom: var(--safe-bottom, 0px);
+  border-bottom: none;
+  border-radius: var(--k-radius-overlay) var(--k-radius-overlay) 0 0;
+}
+
 .notification-history__header {
   display: flex;
   align-items: center;

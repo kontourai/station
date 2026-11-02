@@ -1315,20 +1315,27 @@ describe('CodingWorkbench — one quiet bar, the inbox beside a tool, and names 
         </CodingWorkbench>
       </NavigationProvider>,
     );
-    // The tip is drawn on the body while the item is hovered or focused
-    // (the rail scrolls, and would clip a tip of its own).
+    // The tip is drawn on the body while the item is hovered (the rail
+    // scrolls, and would clip a tip of its own).
     const tip = (name: string) => {
-      fireEvent.focusIn(railItem(name));
+      fireEvent.pointerEnter(railItem(name));
       const shown = screen.getByRole('tooltip');
       expect(shown.parentElement).toBe(window.document.body);
       const text = shown.textContent;
-      fireEvent.focusOut(railItem(name));
+      fireEvent.pointerLeave(railItem(name));
       expect(screen.queryByRole('tooltip')).toBeNull();
       return text;
     };
     expect(tip('Files')).toBe('src/app/files.ts');
     expect(railItem('Files').getAttribute('aria-label')).toBe('Files');
     expect(tip('Diff, 2 changed files')).toBe('Diff, 2 changed files');
+
+    // #4401: focus handed back to a rail item after a pointer interaction
+    // (a closed panel restores it) is not visible focus, so it raises no tip
+    // that would stay over the rail once the pointer has gone.
+    act(() => railItem('Files').focus());
+    expect(window.document.activeElement).toBe(railItem('Files'));
+    expect(screen.queryByRole('tooltip')).toBeNull();
   });
 });
 

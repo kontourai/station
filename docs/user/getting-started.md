@@ -642,7 +642,9 @@ At the end of first-run setup, **Take the tour** and **Connect another device**
 are optional alternatives to **Start your first chat**. Both save the same selected answers before opening their next step.
 
 On a phone, the dock starts at **Inbox** unless you open a specific
-conversation. Its Inbox icon returns to the work list; the chat title stays
+conversation. A conversation opens full screen; **Restore chat size** in the
+chat bar shrinks it to a peek and **Full screen chat** grows it back. The menu
+drawer lists your recent chats. Its Inbox icon returns to the work list; the chat title stays
 as context. Search opens from the magnifier. Your search, list position and
 unsent message stay in place when switching back to a conversation. Collapse
 and reopen restore the last view. Use the compose icon at the right of the

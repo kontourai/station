@@ -160,6 +160,9 @@ outside pointer input, navigation and changing sidebar presentation dismiss
 the popup. The header's sidebar control toggles the desktop rail or the
 mobile drawer. The header retains breadcrumbs, its Layout picker,
 notifications and Station controls, and ends with its region controls. The
+phone drawer is the one exception to places-only: it lists up to five
+**Recent chats** under Activity, because a phone has no docked Inbox beside
+the page (#4397); the desktop map does not. The
 account control moved to the footer
 ([pane workspace plan](../plans/pane-workspace.md)); the phone's `⋯` menu keeps
 a Profile row while the drawer is closed.

@@ -475,6 +475,33 @@ repeat the app toolbar’s navigation and Station controls. VisualViewport fitti
 bounds the workbench above the on-screen keyboard; actual device and browser
 checks remain necessary.
 
+### Phone chat shell
+
+A chat on a phone is full screen, as in a messaging app: opening one from
+Home, the Inbox, the drawer or a started draft maximizes the dock. The half
+height is a deliberate peek. The open dock's bar carries a 44px **Full screen
+chat** / **Restore chat size** control beside its leading control, so both
+states are one tap. With no chat yet, the bar offers New chat and the
+Inbox title, not a pressed **Back to chat** or Chat actions.
+
+The drawer lists up to five **Recent chats**, newest first and each
+conversation once, read through Home's work items and opened through Home's
+Continue action; **See all** opens the dock's Inbox. The list loads with the
+open drawer only.
+
+The answer's **⋯** sheet lists the answer's actions itself (Provenance,
+Reasoning, Add to Task) below its summary row, instead of a second **⋯** whose
+popup covered the sheet title. Notifications open as a bottom sheet over a
+dimmed page, exposed as a dialog; desktop keeps the anchored popover. A phone
+Inbox row's second line reads the engine mark, the engine's name and then the
+project, from the start of the row.
+
+A short window with a fine pointer (a desktop browser emulating a phone held
+sideways) keeps the desktop shell, as `MOBILE_MEDIA_QUERY` decides. Its open
+bottom dock track never takes the content row's floor, `min(35%, 160px)` of the
+frame, so a page in `main` keeps room above the dock. Device emulation that
+resizes only the viewport reports `pointer: fine`; it is not a phone check.
+
 
 ## Fresh-phone welcome and initial CSS
 

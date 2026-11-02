@@ -7549,10 +7549,18 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
     --region-right-track: var(--region-right-size, 400px);
   }
 
+  /* #4394: the open bottom track never takes the content row's floor
+     (`min(35%, 160px)` of the frame). A short window (a desktop browser
+     emulating a phone held sideways, 915x412) kept a 320px dock under a
+     40px toolbar and the page in `main` rendered at 0px height. The
+     collapsed bar and a maximized dock have their own rows below. */
   .app__main:has(> [data-region="bottom"]) {
-    --region-bottom-track: var(
-      --region-bottom-size,
-      var(--dock-slot-size, 300px)
+    --region-bottom-track: min(
+      var(--region-bottom-size, var(--dock-slot-size, 300px)),
+      max(
+        var(--chat-dock-header-height, 38px),
+        calc(100% - var(--app-toolbar-total-height, 0px) - min(35%, 160px))
+      )
     );
   }
 

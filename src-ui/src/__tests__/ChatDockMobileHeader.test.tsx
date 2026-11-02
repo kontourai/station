@@ -8,6 +8,7 @@ import { beforeAll, beforeEach, describe, expect, test, vi } from 'vitest';
 import type { DockMoreAction } from '../components/chat-dock/ChatDockHeaderMoreMenu';
 import {
   type ChatDockMobileDockToggle,
+  type ChatDockMobileExtentToggle,
   ChatDockMobileHeader,
   type ChatDockMobileProjectSwitcher,
 } from '../components/chat-dock/ChatDockMobileHeader';
@@ -123,11 +124,17 @@ function renderHeader(
     };
     activeCount?: number;
     unreadCount?: number;
+    extentToggle?: ChatDockMobileExtentToggle | null;
+    hasConversation?: boolean;
+    inboxActive?: boolean;
   } = {},
 ) {
   const onClear = overrides.onClear ?? vi.fn<() => void>();
   renderWithIsolatedConnections(
     <ChatDockMobileHeader
+      inboxActive={overrides.inboxActive}
+      hasConversation={overrides.hasConversation}
+      extentToggle={overrides.extentToggle}
       showDrawerToggle={false}
       showConnection={overrides.showConnection ?? true}
       sessionTitle="New chat"
@@ -637,4 +644,52 @@ test('opens Chat inventory from the actions sheet, not a third bar control', asy
     screen.getByRole('button', { name: 'Chat actions' }),
   );
   expect(screen.queryByRole('menuitem', { name: 'Chat inventory' })).toBeNull();
+});
+
+describe('full-screen and peek control (#4391)', () => {
+  test('an open dock shows a full-screen control that grows it', () => {
+    const onToggle = vi.fn();
+    renderHeader({ extentToggle: { maximized: false, onToggle } });
+    const control = screen.getByRole('button', { name: 'Full screen chat' });
+    expect(control.classList).toContain('chat-dock__mobile-header-icon');
+    fireEvent.click(control);
+    expect(onToggle).toHaveBeenCalledTimes(1);
+  });
+
+  test('a full-screen chat offers Restore chat size instead', () => {
+    renderHeader({ extentToggle: { maximized: true, onToggle: vi.fn() } });
+    expect(
+      screen.getByRole('button', { name: 'Restore chat size' }),
+    ).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Full screen chat' })).toBe(
+      null,
+    );
+  });
+
+  test('no control without an open dock to resize', () => {
+    renderHeader({ extentToggle: null });
+    expect(screen.queryByRole('button', { name: 'Full screen chat' })).toBe(
+      null,
+    );
+  });
+});
+
+describe('first-run bar without a chat (#4404 A44)', () => {
+  test('offers New chat, not a pressed Back to chat or Chat actions', () => {
+    renderHeader({
+      hasConversation: false,
+      inboxActive: true,
+      showConnection: false,
+      agentIdentity: null,
+    });
+    expect(screen.queryByRole('button', { name: 'Back to chat' })).toBe(null);
+    expect(screen.queryByRole('button', { name: 'Chat actions' })).toBe(null);
+    expect(screen.getByRole('button', { name: 'New chat' })).toBeTruthy();
+  });
+
+  test('keeps Back to chat and Chat actions once a chat exists', () => {
+    renderHeader({ hasConversation: true, inboxActive: true });
+    expect(screen.getByRole('button', { name: 'Back to chat' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Chat actions' })).toBeTruthy();
+  });
 });
