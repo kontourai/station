@@ -1,0 +1,49 @@
+{
+  "revision": "ea4e0e8adc49f79abd5fba65a3bcd2b2c792b85c",
+
+  "notes": [
+    {"path":"README.md","note":"Reviewed the target-change input custody delta and live-surface or module-map references against useLiveSurface and the focused regression; the per-viewer transport and unverified platform limits remain. No other claims were changed.","inputs":["README.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/README.md","note":"Reviewed the target-change input custody delta and live-surface or module-map references against useLiveSurface and the focused regression; the per-viewer transport and unverified platform limits remain. No other claims were changed.","inputs":["docs/README.md","docs/architecture/module-map.md","src-ui/src/live-surface/useLiveSurface.ts"]},
+
+    {"path":"docs/adr/0017-browser-preview-host.md","note":"Reviewed the target-change input custody delta and live-surface or module-map references against useLiveSurface and the focused regression; the per-viewer transport and unverified platform limits remain. No other claims were changed.","inputs":["docs/adr/0017-browser-preview-host.md","src-ui/src/live-surface/useLiveSurface.ts"]},
+
+    {"path":"docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md","note":"Reviewed the target-change input custody delta and live-surface or module-map references against useLiveSurface and the focused regression; the per-viewer transport and unverified platform limits remain. No other claims were changed.","inputs":["docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md","src-ui/src/live-surface/useLiveSurface.ts"]},
+
+    {"path":"docs/adr/0019-host-the-browser-pane-server-side-behind-a-host-adapter.md","note":"Reviewed the target-change input custody delta and live-surface or module-map references against useLiveSurface and the focused regression; the per-viewer transport and unverified platform limits remain. No other claims were changed.","inputs":["docs/adr/0019-host-the-browser-pane-server-side-behind-a-host-adapter.md","src-ui/src/live-surface/useLiveSurface.ts"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"Reviewed the target-change input custody delta and live-surface or module-map references against useLiveSurface and the focused regression; the per-viewer transport and unverified platform limits remain. No other claims were changed.","inputs":["docs/architecture/abstraction-review.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the target-change input custody delta and live-surface or module-map references against useLiveSurface and the focused regression; the per-viewer transport and unverified platform limits remain. No other claims were changed.","inputs":["docs/architecture/module-map.md","src-ui/src/live-surface/useLiveSurface.ts"]},
+
+    {"path":"docs/design/browser-preview-host-spike.md","note":"Reviewed the target-change input custody delta and live-surface or module-map references against useLiveSurface and the focused regression; the per-viewer transport and unverified platform limits remain. No other claims were changed.","inputs":["docs/design/browser-preview-host-spike.md","src-ui/src/live-surface/useLiveSurface.ts"]},
+
+    {"path":"docs/design/browser-preview-pane-mvp.md","note":"Reviewed the target-change input custody delta and live-surface or module-map references against useLiveSurface and the focused regression; the per-viewer transport and unverified platform limits remain. No other claims were changed.","inputs":["docs/design/browser-preview-pane-mvp.md","src-ui/src/live-surface/useLiveSurface.ts"]},
+
+    {"path":"docs/design/event-store-ledger-migration.md","note":"Reviewed the target-change input custody delta and live-surface or module-map references against useLiveSurface and the focused regression; the per-viewer transport and unverified platform limits remain. No other claims were changed.","inputs":["docs/design/event-store-ledger-migration.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/glossary.md","note":"Reviewed the target-change input custody delta and live-surface or module-map references against useLiveSurface and the focused regression; the per-viewer transport and unverified platform limits remain. No other claims were changed.","inputs":["docs/glossary.md","docs/architecture/module-map.md","src-ui/src/live-surface/useLiveSurface.ts"]},
+
+    {"path":"docs/guides/agent-efficiency.md","note":"Reviewed the target-change input custody delta and live-surface or module-map references against useLiveSurface and the focused regression; the per-viewer transport and unverified platform limits remain. No other claims were changed.","inputs":["docs/guides/agent-efficiency.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/guides/browser-workspace.md","note":"Reviewed the target-change input custody delta and live-surface or module-map references against useLiveSurface and the focused regression; the per-viewer transport and unverified platform limits remain. No other claims were changed.","inputs":["docs/guides/browser-workspace.md","src-ui/src/live-surface/useLiveSurface.ts"]},
+
+    {"path":"docs/guides/mobile-device-workspace.md","note":"Reviewed the target-change input custody delta and live-surface or module-map references against useLiveSurface and the focused regression; the per-viewer transport and unverified platform limits remain. No other claims were changed.","inputs":["docs/guides/mobile-device-workspace.md","src-ui/src/live-surface/useLiveSurface.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Reviewed the target-change input custody delta and live-surface or module-map references against useLiveSurface and the focused regression; the per-viewer transport and unverified platform limits remain. No other claims were changed.","inputs":["docs/guides/self-configuring-agent.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/plans/agent-identity-supported-surface-inventory.md","note":"Reviewed the target-change input custody delta and live-surface or module-map references against useLiveSurface and the focused regression; the per-viewer transport and unverified platform limits remain. No other claims were changed.","inputs":["docs/plans/agent-identity-supported-surface-inventory.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/reference/settings-deep-links.md","note":"Reviewed the target-change input custody delta and live-surface or module-map references against useLiveSurface and the focused regression; the per-viewer transport and unverified platform limits remain. No other claims were changed.","inputs":["docs/reference/settings-deep-links.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Reviewed the target-change input custody delta and live-surface or module-map references against useLiveSurface and the focused regression; the per-viewer transport and unverified platform limits remain. No other claims were changed.","inputs":["docs/reference/station-docs.md","docs/architecture/module-map.md","src-server/tools/station-docs-content.ts"]},
+
+    {"path":"docs/user/concepts.md","note":"Reviewed the target-change input custody delta and live-surface or module-map references against useLiveSurface and the focused regression; the per-viewer transport and unverified platform limits remain. No other claims were changed.","inputs":["docs/user/concepts.md","docs/architecture/module-map.md"]},
+
+    {"path":"examples/repository-knowledge-graph/README.md","note":"Reviewed the target-change input custody delta and live-surface or module-map references against useLiveSurface and the focused regression; the per-viewer transport and unverified platform limits remain. No other claims were changed.","inputs":["examples/repository-knowledge-graph/README.md","docs/architecture/module-map.md"]},
+
+    {"path":"src-server/AGENTS.md","note":"Reviewed the target-change input custody delta and live-surface or module-map references against useLiveSurface and the focused regression; the per-viewer transport and unverified platform limits remain. No other claims were changed.","inputs":["src-server/AGENTS.md","docs/architecture/module-map.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Reviewed the target-change input custody delta and live-surface or module-map references against useLiveSurface and the focused regression; the per-viewer transport and unverified platform limits remain. No other claims were changed.","inputs":["src-ui/AGENTS.md","docs/architecture/module-map.md"]}
+  ]
+}
