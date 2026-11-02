@@ -9,6 +9,8 @@ import {
 } from '../../../__test-utils__/synthetic-live-surface-producer.js';
 import { LiveSurfaceControlLeaseState } from '../control-lease.js';
 import {
+  H264_FALLBACK_OVERFLOWS,
+  H264_FALLBACK_WINDOW_MS,
   H264_QUEUE_MAX_UNITS,
   KEYFRAME_REQUEST_MIN_INTERVAL_MS,
   LiveSurfaceHub,
@@ -518,6 +520,89 @@ describe('live surface hub: H.264 viewers (#4418)', () => {
     vi.advanceTimersByTime(KEYFRAME_REQUEST_MIN_INTERVAL_MS);
     expect(requestKeyframe).toHaveBeenCalledTimes(2);
     for (const viewer of [first, second, third]) viewer.close();
+    await hub.dispose();
+  });
+
+  test('a viewer that keeps overflowing is switched to images and stops asking for keyframes', async () => {
+    const { hub, unit, jpeg, requestKeyframe, setCodecDemand } =
+      await videoHub();
+    const viewer = hub.attach(PARAMS, undefined, 'h264');
+    await hub.settled();
+    await viewer.next();
+    requestKeyframe.mockClear();
+    const overflow = () => {
+      unit(true, 1);
+      for (let i = 0; i < H264_QUEUE_MAX_UNITS; i++) unit(false, 2);
+      // Past the hub-wide rate window, so each request is sent at once.
+      vi.advanceTimersByTime(600);
+    };
+    for (let i = 0; i < H264_FALLBACK_OVERFLOWS; i++) overflow();
+    // Two overflows asked for keyframes; the third switched to images.
+    expect(requestKeyframe).toHaveBeenCalledTimes(H264_FALLBACK_OVERFLOWS - 1);
+    expect(setCodecDemand).toHaveBeenLastCalledWith({
+      image: true,
+      h264: false,
+    });
+    expect((await viewer.next())?.kind).toBe('state');
+    const next = tagOf(viewer);
+    unit(true, 9);
+    vi.advanceTimersByTime(1_000);
+    jpeg();
+    expect(await next).toBe('codec jpeg');
+    overflow();
+    expect(requestKeyframe).toHaveBeenCalledTimes(H264_FALLBACK_OVERFLOWS - 1);
+    viewer.close();
+    await hub.dispose();
+  });
+
+  test('overflows spread wider than the window keep the viewer on H.264', async () => {
+    const { hub, unit, setCodecDemand } = await videoHub();
+    const viewer = hub.attach(PARAMS, undefined, 'h264');
+    await hub.settled();
+    await viewer.next();
+    for (let round = 0; round < H264_FALLBACK_OVERFLOWS + 1; round++) {
+      unit(true, 1);
+      for (let i = 0; i < H264_QUEUE_MAX_UNITS; i++) unit(false, 2);
+      vi.advanceTimersByTime(H264_FALLBACK_WINDOW_MS / 2 + 1);
+    }
+    expect(setCodecDemand).toHaveBeenLastCalledWith({
+      image: false,
+      h264: true,
+    });
+    viewer.close();
+    await hub.dispose();
+  });
+
+  test('a keyframe larger than the whole queue bound sends that viewer to images at once', async () => {
+    const { hub, setCodecDemand, requestKeyframe } = await videoHub();
+    let publish!: (header: LiveSurfaceFrameHeader, body: Uint8Array) => void;
+    (hub.producer as SyntheticLiveSurfaceProducer).start = async (_p, f) => {
+      publish = f;
+    };
+    const viewer = hub.attach(PARAMS, undefined, 'h264');
+    await hub.settled();
+    await viewer.next();
+    requestKeyframe.mockClear();
+    publish(
+      {
+        surfaceId: 'surface-1',
+        seq: 1,
+        epoch: 0,
+        codec: 'h264',
+        keyframe: true,
+        width: 320,
+        height: 200,
+        deviceScaleFactor: 1,
+        capturedAt: 1,
+      },
+      new Uint8Array(4 * 1024 * 1024 + 1),
+    );
+    expect(requestKeyframe).not.toHaveBeenCalled();
+    expect(setCodecDemand).toHaveBeenLastCalledWith({
+      image: true,
+      h264: false,
+    });
+    viewer.close();
     await hub.dispose();
   });
 

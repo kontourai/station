@@ -110,6 +110,14 @@ const FPS_FLOOR = LIVE_SURFACE_STREAM_PARAM_BOUNDS.maxFps.min;
 const H264_QUEUE_MAX_BYTES = 4 * 1024 * 1024;
 export const H264_QUEUE_MAX_UNITS = 32;
 
+/**
+ * An H.264 viewer that overflows this many times within the window cannot
+ * keep up (a slow link or a slow client): it is switched to images, which
+ * skip frames instead of forcing keyframes on every viewer.
+ */
+export const H264_FALLBACK_OVERFLOWS = 3;
+export const H264_FALLBACK_WINDOW_MS = 10_000;
+
 export type LiveSurfaceViewerCodec = 'image' | 'h264';
 
 /**
@@ -126,6 +134,8 @@ class HubViewer implements LiveSurfaceViewer {
   private readonly videoQueue: HubFrame[] = [];
   private videoBytes = 0;
   private awaitingKeyframe = true;
+  /** When this viewer's queue last overflowed, within the fallback window. */
+  private overflows: number[] = [];
   statePending = true;
   closed = false;
   /** True between handing out a record and the next `next()` call. */
@@ -138,7 +148,8 @@ class HubViewer implements LiveSurfaceViewer {
     readonly hub: LiveSurfaceHub,
     readonly requested: LiveSurfaceStreamParams,
     readonly identity: LiveSurfaceViewerIdentity | undefined,
-    readonly codec: LiveSurfaceViewerCodec,
+    /** `h264` until the viewer falls back to images; never the reverse. */
+    public codec: LiveSurfaceViewerCodec,
   ) {}
 
   /**
@@ -148,6 +159,12 @@ class HubViewer implements LiveSurfaceViewer {
    */
   offerVideo(frame: HubFrame): void {
     if (this.awaitingKeyframe && !frame.header.keyframe) return;
+    // A keyframe the queue could never hold would overflow it on every
+    // keyframe after: this viewer gets images instead.
+    if (frame.body.byteLength > H264_QUEUE_MAX_BYTES) {
+      this.fallBackToImages();
+      return;
+    }
     if (
       this.videoQueue.length >= H264_QUEUE_MAX_UNITS ||
       this.videoBytes + frame.body.byteLength > H264_QUEUE_MAX_BYTES
@@ -155,12 +172,36 @@ class HubViewer implements LiveSurfaceViewer {
       this.videoQueue.length = 0;
       this.videoBytes = 0;
       this.awaitingKeyframe = true;
+      const now = this.hub.clock();
+      this.overflows = this.overflows.filter(
+        (at) => now - at < H264_FALLBACK_WINDOW_MS,
+      );
+      this.overflows.push(now);
+      if (this.overflows.length >= H264_FALLBACK_OVERFLOWS) {
+        this.fallBackToImages();
+        return;
+      }
       this.hub.requestKeyframe();
       if (!frame.header.keyframe) return;
     }
     this.awaitingKeyframe = false;
     this.videoQueue.push(frame);
     this.videoBytes += frame.body.byteLength;
+    this.notify();
+  }
+
+  /**
+   * From now on this viewer takes images, latest-frame-wins. Its next
+   * records are a state record and the latest image; the client draws what
+   * each frame's codec says, so no reconnect is needed.
+   */
+  private fallBackToImages(): void {
+    this.codec = 'image';
+    this.videoQueue.length = 0;
+    this.videoBytes = 0;
+    this.overflows = [];
+    this.statePending = true;
+    this.hub.viewerCodecChanged(this);
     this.notify();
   }
 
@@ -418,6 +459,17 @@ export class LiveSurfaceHub {
   /** Re-send the stream state to every viewer (input health changed). */
   announce(): void {
     this.markStatePending();
+  }
+
+  /** @internal The hub's clock, for viewers. */
+  clock(): number {
+    return this.now();
+  }
+
+  /** @internal A viewer switched from H.264 to images. */
+  viewerCodecChanged(viewer: HubViewer): void {
+    if (this.running && this.lastPublished) viewer.slot = this.lastPublished;
+    this.onTargetChanged();
   }
 
   /** @internal An `h264` viewer needs a decoding point. */
