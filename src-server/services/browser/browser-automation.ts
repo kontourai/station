@@ -1448,13 +1448,13 @@ export class BrowserAutomation {
       if (
         target.x < 0 ||
         target.y < 0 ||
-        target.x > view.width ||
-        target.y > view.height
+        target.x > view.visualWidth ||
+        target.y > view.visualHeight
       )
         throw new ToolRefusal(
           refuse(
             'outside-viewport',
-            `(${target.x}, ${target.y}) is outside the ${view.width}×${view.height} viewport. Coordinates are CSS pixels of the visible viewport.`,
+            `(${target.x}, ${target.y}) is outside the ${view.visualWidth}×${view.visualHeight} viewport. Coordinates are CSS pixels of the visible viewport.`,
           ),
         );
       return {

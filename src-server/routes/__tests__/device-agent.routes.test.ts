@@ -277,9 +277,9 @@ function harness(
       projectAccess: {
         resolveProject: (slug) =>
           slug === 'alpha' ? { id: 'project' } : undefined,
-        authorizeProject: async () =>
+        authorizeProject: async (_request, _project, _purpose, options) =>
           active
-            ? operatorDevice
+            ? operatorDevice && options?.allowOperatorDeviceView
               ? { kind: 'operator-device' }
               : operator
                 ? { kind: 'operator' }

@@ -273,6 +273,9 @@ describe('live surface routes in the runtime composition', () => {
         REMOTE,
       );
       expect(ownResponse.status, JSON.stringify(h.errors.mock.calls)).toBe(200);
+      expect(await ownResponse.json()).toMatchObject({
+        data: { role: 'operator-device', canDrive: false },
+      });
       expect(
         (
           await h.app.request(
@@ -370,7 +373,7 @@ describe('live surface routes in the runtime composition', () => {
             REMOTE,
           )
         ).status,
-      ).not.toBe(200);
+      ).toBe(401);
       const status = h.result.browserService!.acquisition.status();
       vi.spyOn(
         h.result.browserService!.acquisition,

@@ -17,6 +17,13 @@ import {
 import { type ReactNode, useEffect, useState } from 'react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 
+vi.hoisted(() => {
+  Object.defineProperty(navigator, 'platform', {
+    value: 'Linux x86_64',
+    configurable: true,
+  });
+});
+
 vi.mock('../../../contexts/ApiBaseContext', () => ({
   useApiBase: () => ({ apiBase: 'http://station.test' }),
   useHostRequestAuthorityScope: () => ({
@@ -502,7 +509,7 @@ describe('BrowserPane honest states', () => {
     renderPane({
       'GET /api/browser/projects/alpha/access': ok({
         projectId: 'p-alpha',
-        role: 'operator',
+        role: 'operator-device',
         operator: false,
         canDrive: false,
         browser: 'ready',
@@ -929,6 +936,40 @@ describe('BrowserPane address bar', () => {
       'The page could not load (net::ERR_CONNECTION_REFUSED).',
     );
     expect(address.value).toBe('http://localhost:9/');
+  });
+
+  test('non-macOS Alt+Left in the address field navigates Browser history', async () => {
+    const { calls } = renderPane({
+      'GET /api/browser/projects/alpha/access': OPERATOR_ACCESS,
+      [`GET /api/browser/sessions/${SESSION}?view=summary`]: ok(sessionView()),
+      [`GET /api/browser/sessions/${SESSION}/navigation`]: ok({
+        generation: 1,
+        title: 'Example',
+        canGoBack: true,
+        canGoForward: true,
+      }),
+      [`POST /api/browser/sessions/${SESSION}/history`]: ok(sessionView()),
+    });
+    const address = await screen.findByLabelText('Address');
+    await screen.findByTestId('live-canvas');
+    act(() => address.focus());
+    const event = new KeyboardEvent('keydown', {
+      key: 'ArrowLeft',
+      altKey: true,
+      bubbles: true,
+      cancelable: true,
+    });
+    act(() => {
+      address.dispatchEvent(event);
+    });
+    expect(event.defaultPrevented).toBe(true);
+    await waitFor(() =>
+      expect(
+        calls.find(
+          (call) => call.method === 'POST' && call.path.endsWith('/history'),
+        )?.body,
+      ).toEqual({ action: 'back', generation: 1 }),
+    );
   });
 
   test('back, forward and reload go to the history route', async () => {

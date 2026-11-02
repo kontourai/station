@@ -352,6 +352,18 @@ describe('BrowserAutomation: a session id is only a selector', () => {
           { x: 100, y: 50 },
         ),
       ).toMatchObject({ ok: true });
+      expect(h.fake.mouse()).toEqual([
+        expect.objectContaining({ type: 'mouseMoved', x: 120, y: 80 }),
+        expect.objectContaining({ type: 'mousePressed', x: 120, y: 80 }),
+        expect.objectContaining({ type: 'mouseReleased', x: 120, y: 80 }),
+      ]);
+      expect(
+        await h.automation.click(
+          await authorityFor(),
+          session.browserSessionId,
+          { x: 650, y: 50 },
+        ),
+      ).toMatchObject({ ok: false, code: 'outside-viewport' });
       const record = await viewer.next();
       expect(record?.kind).toBe('state');
       if (record?.kind !== 'state') throw new Error('expected state');

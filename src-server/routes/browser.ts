@@ -972,9 +972,11 @@ export function createBrowserRoutes(deps: BrowserRoutesDeps) {
       data: {
         projectId: project.id,
         role:
-          actor.kind === 'operator' || actor.kind === 'operator-device'
-            ? 'operator'
-            : 'project-admin',
+          actor.kind === 'operator-device'
+            ? 'operator-device'
+            : actor.kind === 'operator'
+              ? 'operator'
+              : 'project-admin',
         // The profile this caller's sessions run in (D7).
         principalKey: browserProfileFor(project.id, actor)?.principalKey,
         operator,

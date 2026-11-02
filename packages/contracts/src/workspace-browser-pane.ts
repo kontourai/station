@@ -366,7 +366,7 @@ export interface BrowserNavigationView {
 
 export interface BrowserPaneAccessView {
   projectId: string;
-  role: 'operator' | 'project-admin';
+  role: 'operator' | 'operator-device' | 'project-admin';
   /** The profile the caller's own sessions run in (D7). */
   principalKey?: string;
   operator: boolean;
