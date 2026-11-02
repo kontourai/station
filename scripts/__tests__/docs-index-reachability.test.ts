@@ -5,10 +5,7 @@ import fs from 'node:fs/promises';
 import { join } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { trackTempDirs } from '../../src-server/__test-utils__/temp-dirs.js';
-import {
-  STATION_DOCS_CONTENT_DIGEST,
-  STATION_DOCS_TOPICS,
-} from '../../src-server/tools/station-docs-content.js';
+import { STATION_DOCS_TOPICS } from '../../src-server/tools/station-docs-content.js';
 import {
   buildLearningGuide,
   learningHref,
@@ -927,10 +924,14 @@ describe('learning atlas', () => {
   it('ships the exact canonical prose and tree through the credential-free MCP', async () => {
     const compiled = await readStationDocsInputs();
     expect(STATION_DOCS_TOPICS).toEqual(compiled);
-    expect(STATION_DOCS_CONTENT_DIGEST).toBe(stationDocsDigest(compiled));
+    // The digest is not committed (station-docs-mcp-server.ts computes it
+    // from STATION_DOCS_TOPICS); it must still track the content.
+    expect(stationDocsDigest(STATION_DOCS_TOPICS)).toBe(
+      stationDocsDigest(compiled),
+    );
     const changed = structuredClone(compiled);
     changed[0].body += '\nChanged behavior.';
-    expect(stationDocsDigest(changed)).not.toBe(STATION_DOCS_CONTENT_DIGEST);
+    expect(stationDocsDigest(changed)).not.toBe(stationDocsDigest(compiled));
   });
 
   it('rejects missing or uncatalogued shipped prose instead of silently omitting it', () => {
