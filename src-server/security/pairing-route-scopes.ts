@@ -168,6 +168,21 @@ function isEngineLoginLeaf(request: { method: string; path: string }): boolean {
       /^\/api\/connections\/agent\/[^/]+\/enrolment\/[^/]+\/device-code$/.test(
         path,
       )) ||
+    isEngineSignInLeaf(request)
+  );
+}
+
+/**
+ * The engine sign-in and key leaves (acp-sign-in.ts). Their handler admits
+ * the operator in person, by the operator credential or a home-possession
+ * credential, so this table admits both too.
+ */
+function isEngineSignInLeaf(request: {
+  method: string;
+  path: string;
+}): boolean {
+  const path = request.path.split('?')[0] ?? request.path;
+  return (
     (request.method === 'POST' &&
       /^\/acp\/connections\/[^/]+\/sign-in\/start$/.test(path)) ||
     (['GET', 'DELETE'].includes(request.method) &&
@@ -257,6 +272,9 @@ export function pairingScopeSatisfiesHttpRoute(
     (verifiedOperator &&
       requiredScope === PAIRING_SCOPE_ENGINE_LOGIN &&
       isEngineLoginLeaf(request)) ||
+    (verifiedHomeOperator &&
+      requiredScope === PAIRING_SCOPE_ENGINE_LOGIN &&
+      isEngineSignInLeaf(request)) ||
     (requiredScope === PAIRING_SCOPE_ACCESS_MANAGE &&
       isPairingApprovalLeaf(request) &&
       pairingScopeIncludes(grantedScope, PAIRING_SCOPE_ACCESS_APPROVE)) ||

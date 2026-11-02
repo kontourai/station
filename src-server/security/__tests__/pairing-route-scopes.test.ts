@@ -89,6 +89,35 @@ test.each([
     ).toBe(false);
   },
 );
+test.each([
+  ['POST', '/acp/connections/cursor/sign-in/start', true],
+  ['GET', '/acp/connections/cursor/sign-in/attempt', true],
+  ['PUT', '/acp/connections/cursor/credentials/CURSOR_API_KEY', true],
+  ['GET', '/api/connections/agent/claude/device-code-profiles', false],
+  ['POST', '/api/connections/agent/claude/account-login', false],
+] as const)(
+  'a home-possession operator passes engine:login on %s %s only where the sign-in handler admits it (%s)',
+  (method, path, admitted) => {
+    const route = { method, path };
+    expect(requiredPairingScope(method, path)).toBe('engine:login');
+    expect(
+      pairingScopeSatisfiesHttpRoute(
+        DEFAULT_GRANT_PAIRING_SCOPE,
+        'engine:login',
+        route,
+        false,
+        true,
+      ),
+    ).toBe(admitted);
+    expect(
+      pairingScopeSatisfiesHttpRoute(
+        DEFAULT_GRANT_PAIRING_SCOPE,
+        'engine:login',
+        route,
+      ),
+    ).toBe(false);
+  },
+);
 const RUNTIME_ROUTES_PATH = join(
   __dirname,
   '../../runtime/routes/runtime-routes.ts',

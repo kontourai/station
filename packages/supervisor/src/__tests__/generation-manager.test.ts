@@ -354,26 +354,27 @@ describe('GenerationManager', () => {
     expect(await settle(first)).toMatchObject({ outcome: 'committed' });
   });
 
-  it('restarts a crashed generation with doubling backoff and gives up after five failures', async () => {
+  it('restarts a crashed generation with doubling backoff and gives up after five failures with nothing serving', async () => {
     const { manager, generations, giveUps, launchTimes } = setup(
       (generation) => (generation === 1 ? {} : { park: false }),
     );
     await manager.start();
     generations[0]?.exit(1, null); // failure 1 at t=0
-    // Each later generation never parks and is killed at the 30s park timeout.
+    // Each later generation never parks and is killed at the 120s boot park
+    // deadline, which spreads the failures past the 5 minute window.
     await vi.advanceTimersByTimeAsync(999);
     expect(launchTimes).toEqual([0]);
     await vi.advanceTimersByTimeAsync(1);
     expect(launchTimes).toEqual([0, 1_000]);
     await vi.advanceTimersByTimeAsync(10 * 60_000);
-    // Failures 2..4 each wait 30s (park timeout) plus backoff 2s, 4s, 8s.
-    const parkTimeout = 30_000;
+    // Failures 2..4 each wait 120s (boot park deadline) plus backoff 2s, 4s, 8s.
+    const bootParkTimeout = 120_000;
     expect(launchTimes).toEqual([
       0,
       1_000,
-      1_000 + parkTimeout + 2_000,
-      1_000 + 2 * parkTimeout + 2_000 + 4_000,
-      1_000 + 3 * parkTimeout + 2_000 + 4_000 + 8_000,
+      1_000 + bootParkTimeout + 2_000,
+      1_000 + 2 * bootParkTimeout + 2_000 + 4_000,
+      1_000 + 3 * bootParkTimeout + 2_000 + 4_000 + 8_000,
     ]);
     expect(giveUps).toEqual([5]);
     expect(manager.status().active).toBeNull();

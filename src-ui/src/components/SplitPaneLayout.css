@@ -742,6 +742,9 @@
      clearance. Desktop detail headers keep their ordinary sticky treatment. */
   .split-pane__right--sheet .detail-header {
     position: static;
+    /* A flex item stacks by its z-index even when static: left at the sticky
+       header's 10 it paints over the back bar it scrolls under. */
+    z-index: auto;
   }
 
   .split-pane__header {

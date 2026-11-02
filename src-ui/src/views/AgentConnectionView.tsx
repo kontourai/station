@@ -183,9 +183,11 @@ export function AgentConnectionView({
   // Saved connections whose engine never registered (a failed first add).
   // Listed for repair here and in Add; never counted as engines Station has
   // (station#1548). Only a connection no catalogue entry names is custom.
-  const { data: unregistered = [] } = useUnregisteredACPConnections() as {
-    data?: ACPConnectionInfo[];
-  };
+  const { data: unregistered = [], isPending: unregisteredPending } =
+    useUnregisteredACPConnections() as {
+      data?: ACPConnectionInfo[];
+      isPending: boolean;
+    };
   const notConnected = useMemo<NotConnectedEngine[]>(
     () =>
       unregistered.map((connection) => ({
@@ -199,10 +201,18 @@ export function AgentConnectionView({
     selectedRuntimeId && !isAddRoute
       ? engineConnectionId(selectedRuntimeId)
       : undefined;
+  // A saved engine that never connected has no runtime record to read (its
+  // read is a 404): it is shown from the not-connected list instead.
+  const selectedNeverConnected = notConnected.some(
+    (engine) => engine.connection.id === selectedEngineConnectionId,
+  );
   const { data: runtime } = useAgentConnectionQuery(
     selectedEngineConnectionId,
     {
-      enabled: !!selectedEngineConnectionId,
+      enabled:
+        !!selectedEngineConnectionId &&
+        !unregisteredPending &&
+        !selectedNeverConnected,
     },
   );
 

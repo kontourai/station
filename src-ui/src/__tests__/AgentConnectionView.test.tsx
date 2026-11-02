@@ -124,6 +124,8 @@ function museMissingBinaryConnection() {
   };
 }
 let connectionQueryData: unknown = null;
+/** Each engine-record read the view asked for, and whether it was enabled. */
+let connectionReads: [unknown, boolean | undefined][] = [];
 let appHomeProfileQueryData: unknown = null;
 let credentialRecoveryQueryData: unknown = null;
 let credentialRecoveryQueryError: Error | null = null;
@@ -252,7 +254,10 @@ vi.mock('@kontourai/station-sdk', () => ({
     refetch: refetchAgentConnections,
   }),
   useAgentConnectionCatalogQuery: () => ({ data: agentCatalog }),
-  useAgentConnectionQuery: () => ({ data: connectionQueryData }),
+  useAgentConnectionQuery: (id: unknown, config?: { enabled?: boolean }) => {
+    connectionReads.push([id, config?.enabled]);
+    return { data: connectionQueryData };
+  },
   useSaveAgentConnectionMutation: (options: {
     onError?: (error: Error) => void;
     onSuccess?: (saved: unknown) => void;
@@ -489,6 +494,7 @@ describe('AgentConnectionView', () => {
     publicRegistryStatus = undefined;
     acpBridgeConnections = [];
     unregisteredConnections = [];
+    connectionReads = [];
     acpCheck.mockReset();
     acpInstall.mockReset();
     startChat.mockReset();
@@ -1596,6 +1602,18 @@ describe('AgentConnectionView', () => {
     expect(screen.getByRole('button', { name: 'Retry check' })).toBeTruthy();
     // A custom engine (no catalogue entry names it) can be edited too.
     expect(screen.getByRole('button', { name: 'Edit setup' })).toBeTruthy();
+  });
+
+  test('a saved engine that never connected is not read as a registered engine', async () => {
+    unregisteredConnections = [failedAdd];
+    await render(
+      <AgentConnectionView selectedRuntimeId="lab" onNavigate={vi.fn()} />,
+    );
+    expect(screen.getByRole('heading', { name: 'Lab Engine' })).toBeTruthy();
+    expect(connectionReads.filter(([id]) => id === 'lab')).not.toEqual([]);
+    expect(
+      connectionReads.filter(([id, enabled]) => id === 'lab' && enabled),
+    ).toEqual([]);
   });
 
   test('a successful repair keeps its Ready result until Done despite runtime registration', async () => {

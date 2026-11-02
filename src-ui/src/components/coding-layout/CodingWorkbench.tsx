@@ -186,9 +186,15 @@ export interface CodingWorkbenchProps {
   /**
    * The Terminal pane and how to draw it, for the lower panel on a wide
    * screen. The host renders it there and nowhere else while wide, so one
-   * terminal is never mounted twice.
+   * terminal is never mounted twice. `docked`: a dock region shows this
+   * Terminal, so the lower panel is not drawn; opening it moves it back.
    */
-  terminal?: { instance: WorkspacePaneInstance; render(): ReactNode };
+  terminal?: {
+    instance: WorkspacePaneInstance;
+    render(): ReactNode;
+    docked?: boolean;
+    undock?(): void;
+  };
   /**
    * A state the layout reports above both pages — its catalog loading or
    * failing, a pane host it could not mount. The Chat page stays usable.
@@ -310,7 +316,9 @@ export function CodingWorkbench({
       ? location.paneId
       : null;
   const sideOpen = sidePaneId !== null;
-  const lowerOpen = wide && terminal !== undefined && panels.lowerOpen;
+  const terminalDocked = terminal?.docked === true;
+  const lowerOpen =
+    wide && terminal !== undefined && panels.lowerOpen && !terminalDocked;
   /** The stack's page: on a wide screen Chat is always it. */
   const page: 'chat' | 'drill-in' = wide ? 'chat' : location.page;
   const paneId = wide ? sidePaneId : location.paneId;
@@ -767,6 +775,7 @@ export function CodingWorkbench({
         focusRailItem(terminal.instance.instanceId);
       return;
     }
+    if (terminalDocked) terminal.undock?.();
     updatePanels({ lowerOpen: true });
     setAnnouncement(`${label} below the conversation`);
     if (viaKeyboard) setLowerFocusRequest((request) => request + 1);
@@ -792,6 +801,8 @@ export function CodingWorkbench({
     }
     // The drill-in already on screen is not a new page.
     if (page === 'drill-in' && instance.instanceId === paneId) return;
+    if (instance.instanceId === terminalId && terminalDocked)
+      terminal?.undock?.();
     userMoveRef.current = performance.now();
     navigationStore.setActiveWorkspacePane(instance.instanceId, scopeKey);
   };
@@ -1484,7 +1495,7 @@ export function CodingWorkbench({
               </div>
             </section>
           </div>
-          {wide && terminal && lowerVisited ? (
+          {wide && terminal && lowerVisited && !terminalDocked ? (
             <>
               {lowerOpen ? (
                 <PanelSeparator

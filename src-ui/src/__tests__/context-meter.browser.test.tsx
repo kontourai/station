@@ -6,9 +6,8 @@ import { scrollBrowserFixture } from './scroll-browser-fixture';
 
 /**
  * The context meter in the composer's controls row, laid out by the real
- * stylesheets and design tokens in Chromium. Its track once sat in a
- * shrink-to-fit button as a `flex: 1` box and resolved to 0px, so the meter
- * read "Context:  (4.0%)" with no bar at all; jsdom cannot see that.
+ * stylesheets and design tokens in Chromium; jsdom cannot see whether the
+ * ring renders.
  */
 
 // Composer controls that are not under test, and the stats read the meter

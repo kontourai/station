@@ -202,8 +202,16 @@ records the admission and its residual risks.
   renderer consumes; the later Ghostty view uses the same interface.
 - **Coding cutover.** [TerminalPanel](../../src-ui/src/components/coding-layout/TerminalPanel.tsx)
   keeps xterm.js, the theme, selection hand-off and the mobile key toolbar on
-  the store. Tabs are keyed per Project and reconciled with the server's
-  session list, so a shell opened on one device appears on another. Saved
+  the store. Tabs derive from the server's session list for the Project
+  binding, read through one shared query, so every view of it (the lower
+  panel, a dock region, another device) shows the same tabs; only a tab whose
+  session is not open yet is a view's own. An empty panel opens a shell only
+  after that list says the binding has none, so a new browser tab or device
+  adopts the running shells. A shell's default name is its place among the
+  binding's listed shells, ended ones included, so views agree on it and
+  closing one renames no other. The Coding layout's lower panel yields to a
+  dock region showing `coding:terminal`, and opening it there moves the
+  Terminal back: one view of the shells at a time. Saved
   `coding-terminal-tabs` are migrated once into the first Project that opens:
   labels kept, the old id named for history import, any stored program
   dropped; unowned history falls back to a fresh shell. No group or split

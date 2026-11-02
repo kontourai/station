@@ -167,6 +167,9 @@ interface StackProps {
   /** The Terminal pane for the lower panel, drawn by `renderTerminal`. */
   terminal?: WorkspacePaneInstance;
   renderTerminal?: () => ReactNode;
+  /** A dock region shows the Terminal; `undock` takes it back. */
+  terminalDocked?: boolean;
+  undock?: () => void;
   /** Which panes the reader may remove (the host's close). */
   closable?: (instance: WorkspacePaneInstance) => boolean;
   /** The pane host's content; a stub when the test does not care. */
@@ -180,6 +183,8 @@ function Stack({
   wide = false,
   terminal,
   renderTerminal,
+  terminalDocked,
+  undock,
   closable,
   children,
 }: StackProps) {
@@ -205,7 +210,12 @@ function Stack({
       hostDocument={() => document}
       terminal={
         terminal
-          ? { instance: terminal, render: renderTerminal ?? (() => null) }
+          ? {
+              instance: terminal,
+              render: renderTerminal ?? (() => null),
+              docked: terminalDocked,
+              undock,
+            }
           : undefined
       }
       paneLabel={label}
@@ -948,6 +958,35 @@ describe('CodingWorkbench — panels beside and below Chat past the wide fold (#
     expect(lowerPanel()?.hasAttribute('inert')).toBe(true);
     expect(screen.getByTestId('lower-terminal')).toBeTruthy();
     expect(sidePanel().getAttribute('data-active')).toBe('true');
+  });
+
+  test('a Terminal shown in a dock is not drawn below too; opening it below moves it back', async () => {
+    const renderTerminal = vi.fn(() => (
+      <div data-testid="lower-terminal">terminal</div>
+    ));
+    const undock = vi.fn();
+    const view = renderStack({ wide: true, terminal, renderTerminal });
+    fireEvent.click(railItem('Terminal'));
+    await act(async () => undefined);
+    expect(screen.getByTestId('lower-terminal')).toBeTruthy();
+
+    view.rerender(
+      <NavigationProvider>
+        <Stack
+          wide
+          terminal={terminal}
+          renderTerminal={renderTerminal}
+          terminalDocked
+          undock={undock}
+        />
+      </NavigationProvider>,
+    );
+    expect(lowerPanel()).toBeNull();
+    expect(screen.queryByTestId('lower-terminal')).toBeNull();
+    expect(undock).not.toHaveBeenCalled();
+
+    fireEvent.click(railItem('Terminal'));
+    expect(undock).toHaveBeenCalledTimes(1);
   });
 
   test('a URL naming the Terminal on a wide screen opens it below and clears the side', async () => {

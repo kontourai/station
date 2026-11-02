@@ -60,6 +60,54 @@ describe('supervisor crash restart (real processes)', () => {
     }
   }, 60_000);
 
+  it('gives a first boot the boot park deadline, not the handoff one', async () => {
+    const home = makeTempDir('sup-slow-park-');
+    const entry = writeCoreVariant(makeTempDir('sup-entry-'), 'slow-park', {
+      FAKE_CORE_PARK_DELAY_MS: '1500',
+    });
+    const supervisor = await startSupervisor({
+      home,
+      entry,
+      args: ['--park-timeout-ms', '500', '--boot-park-timeout-ms', '20000'],
+    });
+    const status = await supervisor.status();
+    expect(status.active?.generation, supervisor.output()).toBe(1);
+    expect(status.restarts.consecutiveFailures).toBe(0);
+    expect(supervisor.output()).not.toContain('park deadline');
+  }, 60_000);
+
+  it('names a missed park deadline and gives up on a core that never parks', async () => {
+    const home = makeTempDir('sup-never-park-');
+    const entry = writeCoreVariant(makeTempDir('sup-entry-'), 'never-park', {
+      FAKE_CORE_NEVER_PARK: '1',
+    });
+    // A 1ms window never holds three failures: only the run of failures with
+    // nothing serving between them can give up.
+    const supervisor = await startSupervisor({
+      home,
+      entry,
+      args: [
+        '--boot-park-timeout-ms',
+        '300',
+        '--restart-backoff-ms',
+        '20',
+        '--restart-max-failures',
+        '3',
+        '--restart-window-ms',
+        '1',
+      ],
+      waitForServing: false,
+    });
+    const exit = await supervisor.exited;
+    const output = supervisor.output();
+    expect(exit, output).toEqual({ code: 1, signal: null });
+    expect(output).toContain(
+      'generation 1 did not park within 300ms (park deadline); ending it',
+    );
+    expect(output).toContain('restarting in 20ms (failure 1)');
+    expect(output).toContain('giving up after 3 failures');
+  }, 60_000);
+
   it('gives up and exits nonzero after repeated failures', async () => {
     const home = makeTempDir('sup-giveup-');
     const entry = writeCoreVariant(makeTempDir('sup-entry-'), 'crashing', {

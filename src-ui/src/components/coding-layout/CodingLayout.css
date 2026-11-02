@@ -173,6 +173,7 @@
 }
 
 .coding-layout__terminal-tab-add {
+  flex-shrink: 0;
   background: none;
   border: none;
   color: var(--text-secondary);
@@ -421,8 +422,8 @@
   }
 
   .coding-layout__terminal-tab-close {
-    min-width: 28px;
-    min-height: 28px;
+    min-width: 44px;
+    min-height: 44px;
     display: inline-flex;
     align-items: center;
     justify-content: center;
