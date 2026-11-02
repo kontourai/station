@@ -54,8 +54,12 @@ process.on('message', async (command) => {
       await new Promise(resolve => setImmediate(resolve));
     } else if (command === 'health') {
       const timers = [];
-      try { await startRuntimeHealthChecks({timers, logger:{debug(){},warn(){}}, maintainOwnedWork: () => service.maintainOwnedWork(), runHealthChecks:async()=>{}}); }
-      finally { for(const timer of timers) clearInterval(timer); }
+      let maintenance;
+      try {
+        await startRuntimeHealthChecks({timers, logger:{debug(){},warn(){}},
+          maintainOwnedWork: () => maintenance = service.maintainOwnedWork(), runHealthChecks:async()=>{}});
+        await maintenance;
+      } finally { for(const timer of timers) clearInterval(timer); }
     } else await service.sweepIdleSessions();
     process.send({ stops, effects, pending: store.pendingCascadeStops().length });
   } catch (error) { process.send({ error: String(error) }); }
