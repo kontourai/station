@@ -341,6 +341,20 @@ An agent cannot grant itself access, and caller-less, delegated-custody and
 bearer-exposed calls remain denied even if a session has a grant. A failed or
 revoked grant lookup denies the read.
 
+### Preparing an in-app troubleshooting run (#4470)
+
+- **`POST /api/diagnostics/troubleshoot/prepare`** — body
+  `{ surface?: 'desktop'|'web'|'mobile'|'unknown', seed?: { route?, errorSummary? } }`
+  (strict, at most 16 KiB). Writes an owner-only run under
+  `$STATION_ROOT/cache/triage/<uuid>` and returns the run id, the Station
+  Assistant id, a bounded ambient seed, an opening message and display facts.
+  The `/api/diagnostics` POST tier (`orchestration:operate`) applies; every
+  agent caller is refused with 403; a seed route over 512 characters or an
+  error summary over 2,000 characters is refused with 400. Advertised by the
+  `troubleshootPrepare` capability flag. Types:
+  `@kontourai/station-contracts/troubleshoot`. See
+  [troubleshoot with an agent](../design/troubleshoot-in-app.md).
+
 ### Correlating `read_logs` output with monitoring events (station#1897)
 
 The [correlation helper](../../src-server/utils/logger-correlation.ts) reuses
