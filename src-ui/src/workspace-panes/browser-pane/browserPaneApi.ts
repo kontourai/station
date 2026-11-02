@@ -191,6 +191,28 @@ export function browserPaneApi(apiBase: string, fetcher: BrowserFetch) {
             generation === undefined ? { viewport } : { viewport, generation },
         },
       ),
+    zoom: (browserSessionId: string, factor: number, generation?: number) =>
+      call<BrowserSessionView>(
+        fetcher,
+        `${root}/sessions/${enc(browserSessionId)}/zoom`,
+        {
+          method: 'POST',
+          body: generation === undefined ? { factor } : { factor, generation },
+        },
+      ),
+    appearance: (
+      browserSessionId: string,
+      scheme: 'system' | 'light' | 'dark',
+      generation?: number,
+    ) =>
+      call<BrowserSessionView>(
+        fetcher,
+        `${root}/sessions/${enc(browserSessionId)}/appearance`,
+        {
+          method: 'POST',
+          body: generation === undefined ? { scheme } : { scheme, generation },
+        },
+      ),
     /** A person's answer to the dialog the page holds for them. */
     answerDialog: (
       browserSessionId: string,
@@ -318,6 +340,12 @@ export function describeBrowserFailure(error: unknown, typed = ''): string {
   if (!(error instanceof BrowserApiError))
     return 'Station could not reach the browser.';
   switch (error.code) {
+    case 'feature_preview_disabled':
+      return 'Enable Browser experience in Settings → Advanced → Feature previews.';
+    case 'not-supported':
+      return 'This Station cannot perform that Browser action. Update the Station host.';
+    case 'control-interrupted':
+      return 'Browser control changed before the action finished.';
     case 'url-not-allowed':
       return error.detail?.urlRejection
         ? describeUrlRefusal(error.detail.urlRejection, typed)

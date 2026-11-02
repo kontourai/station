@@ -1,0 +1,25 @@
+{
+  "revision": "aab91222c2cc49d4676718d821a0196f2332188d",
+
+  "notes": [
+    {"path":"docs/README.md","note":"Reviewed the follow-up BrowserPane diff against this document: it restores the existing Click/Tap takeover hint, labels an agent chip Recent actions, and clarifies stale-sign-in copy. Browser authority, host, transport and lifecycle behavior documented here are unchanged.","inputs":["docs/README.md","src-ui/src/workspace-panes/browser-pane/BrowserPane.tsx"]},
+
+    {"path":"docs/adr/0017-browser-preview-host.md","note":"Reviewed the follow-up BrowserPane diff against this document: it restores the existing Click/Tap takeover hint, labels an agent chip Recent actions, and clarifies stale-sign-in copy. Browser authority, host, transport and lifecycle behavior documented here are unchanged.","inputs":["docs/adr/0017-browser-preview-host.md","src-ui/src/workspace-panes/browser-pane/BrowserPane.tsx"]},
+
+    {"path":"docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md","note":"Reviewed the follow-up BrowserPane diff against this document: it restores the existing Click/Tap takeover hint, labels an agent chip Recent actions, and clarifies stale-sign-in copy. Browser authority, host, transport and lifecycle behavior documented here are unchanged.","inputs":["docs/adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md","src-ui/src/workspace-panes/browser-pane/BrowserPane.tsx"]},
+
+    {"path":"docs/adr/0019-host-the-browser-pane-server-side-behind-a-host-adapter.md","note":"Reviewed the follow-up BrowserPane diff against this document: it restores the existing Click/Tap takeover hint, labels an agent chip Recent actions, and clarifies stale-sign-in copy. Browser authority, host, transport and lifecycle behavior documented here are unchanged.","inputs":["docs/adr/0019-host-the-browser-pane-server-side-behind-a-host-adapter.md","src-ui/src/workspace-panes/browser-pane/BrowserPane.tsx"]},
+
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the follow-up BrowserPane diff against this document: it restores the existing Click/Tap takeover hint, labels an agent chip Recent actions, and clarifies stale-sign-in copy. Browser authority, host, transport and lifecycle behavior documented here are unchanged.","inputs":["docs/architecture/module-map.md","src-ui/src/workspace-panes/browser-pane/BrowserPane.tsx"]},
+
+    {"path":"docs/design/browser-preview-host-spike.md","note":"Reviewed the follow-up BrowserPane diff against this document: it restores the existing Click/Tap takeover hint, labels an agent chip Recent actions, and clarifies stale-sign-in copy. Browser authority, host, transport and lifecycle behavior documented here are unchanged.","inputs":["docs/design/browser-preview-host-spike.md","src-ui/src/workspace-panes/browser-pane/BrowserPane.tsx"]},
+
+    {"path":"docs/design/browser-preview-pane-mvp.md","note":"Reviewed the follow-up BrowserPane diff against this document: it restores the existing Click/Tap takeover hint, labels an agent chip Recent actions, and clarifies stale-sign-in copy. Browser authority, host, transport and lifecycle behavior documented here are unchanged.","inputs":["docs/design/browser-preview-pane-mvp.md","src-ui/src/workspace-panes/browser-pane/BrowserPane.tsx"]},
+
+    {"path":"docs/glossary.md","note":"Reviewed the follow-up BrowserPane diff against this document: it restores the existing Click/Tap takeover hint, labels an agent chip Recent actions, and clarifies stale-sign-in copy. Browser authority, host, transport and lifecycle behavior documented here are unchanged.","inputs":["docs/glossary.md","src-ui/src/workspace-panes/browser-pane/BrowserPane.tsx"]},
+
+    {"path":"docs/guides/browser-workspace.md","note":"Reviewed the follow-up BrowserPane diff against this document: it restores the existing Click/Tap takeover hint, labels an agent chip Recent actions, and clarifies stale-sign-in copy. Browser authority, host, transport and lifecycle behavior documented here are unchanged.","inputs":["docs/guides/browser-workspace.md","src-ui/src/workspace-panes/browser-pane/BrowserPane.tsx"]},
+
+    {"path":"docs/guides/mobile-device-workspace.md","note":"Reviewed the follow-up BrowserPane diff against this document: it restores the existing Click/Tap takeover hint, labels an agent chip Recent actions, and clarifies stale-sign-in copy. Browser authority, host, transport and lifecycle behavior documented here are unchanged.","inputs":["docs/guides/mobile-device-workspace.md","src-ui/src/workspace-panes/browser-pane/BrowserPane.tsx"]}
+  ]
+}

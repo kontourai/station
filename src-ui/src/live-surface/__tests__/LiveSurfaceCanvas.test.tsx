@@ -26,6 +26,9 @@ import {
 import { Profiler } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { sharedActionsTouchFloor } from '../../__tests__/helpers/shared-touch-floor';
+import { KeyboardShortcutsProvider } from '../../contexts/KeyboardShortcutsContext';
+import { useKeyboardShortcut } from '../../hooks/useKeyboardShortcut';
+import { AgentActionOverlay } from '../AgentActionOverlay';
 import {
   LiveSurfaceCanvas,
   type LiveSurfaceControlState,
@@ -220,6 +223,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  vi.useRealTimers();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
@@ -252,6 +256,118 @@ async function renderLive(
 }
 
 describe('LiveSurfaceCanvas', () => {
+  test('agent geometry is placed against the shown viewport, including letterboxing', async () => {
+    const h = harness();
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(
+      function (this: HTMLElement) {
+        return this.classList.contains('live-surface__stage')
+          ? new DOMRect(0, 0, 1000, 400)
+          : new DOMRect(0, 0, 1000, 400);
+      },
+    );
+    render(
+      <LiveSurfaceCanvas
+        apiBase={API}
+        surfaceId={SURFACE}
+        label="Browser: example.com"
+        transport={h.transport as never}
+        agentActionsEnabled
+      />,
+    );
+    await flush();
+    const stream = h.streams.at(-1)!;
+    await stream.push(stateRecord(lease(0)));
+    await stream.push(frameRecord(1, 0));
+    const state = stateRecord(lease(0));
+    if (state.kind !== 'state') throw new Error('expected state');
+    await stream.push({
+      kind: 'state',
+      state: {
+        ...state.state,
+        agentActions: {
+          now: 1000,
+          events: [
+            {
+              seq: 1,
+              at: 1000,
+              generation: 1,
+              kind: 'click',
+              point: { x: 500, y: 300 },
+              box: { x: 300, y: 175, width: 200, height: 125 },
+              viewport: { x: 100, y: 50, width: 800, height: 500 },
+            },
+          ],
+        },
+      },
+    });
+    const overlay = screen.getByTestId('agent-action-overlay');
+    expect(overlay.style.width).toBe('640px');
+    expect(overlay.style.height).toBe('400px');
+    expect(screen.getByTestId('agent-cursor').style.left).toBe('50%');
+    expect(screen.getByTestId('agent-cursor').style.top).toBe('50%');
+    expect(screen.getByTestId('agent-target').style.width).toBe('25%');
+  });
+  test('the agent cursor fades after its 700 ms display window', () => {
+    vi.useFakeTimers();
+    const action = {
+      seq: 1,
+      at: 1000,
+      generation: 1,
+      kind: 'click' as const,
+      point: { x: 50, y: 50 },
+      box: { x: 40, y: 40, width: 20, height: 20 },
+      viewport: { x: 0, y: 0, width: 100, height: 100 },
+    };
+    const { container } = render(
+      <AgentActionOverlay action={action} expiresAt={1700} now={() => 1000} />,
+    );
+    const overlay = container.querySelector('.live-surface__agent-action');
+    expect(overlay?.getAttribute('data-visible')).toBe('true');
+    act(() => vi.advanceTimersByTime(700));
+    expect(overlay?.getAttribute('data-visible')).toBe('false');
+  });
+  test('page keyboard focus does not dispatch a Station shortcut', async () => {
+    const h = harness();
+    const action = vi.fn();
+    function Shortcut() {
+      useKeyboardShortcut(
+        'test.page-isolation',
+        'j',
+        ['cmd'],
+        'Test action',
+        action,
+      );
+      return null;
+    }
+    render(
+      <KeyboardShortcutsProvider>
+        <Shortcut />
+        <LiveSurfaceCanvas
+          apiBase={API}
+          surfaceId={SURFACE}
+          label="Browser: example.com"
+          transport={h.transport as never}
+        />
+      </KeyboardShortcutsProvider>,
+    );
+    const keyboard = screen.getByLabelText(
+      'Keyboard input for Browser: example.com',
+    );
+    fireEvent.keyDown(keyboard, { key: 'j', ctrlKey: true, bubbles: true });
+    fireEvent.keyDown(keyboard, { key: 'j', metaKey: true, bubbles: true });
+    expect(action).not.toHaveBeenCalled();
+    fireEvent.keyDown(document.body, {
+      key: 'j',
+      ctrlKey: true,
+      bubbles: true,
+    });
+    fireEvent.keyDown(document.body, {
+      key: 'j',
+      metaKey: true,
+      bubbles: true,
+    });
+    expect(action).toHaveBeenCalledTimes(1);
+  });
   test('measures the fitted stage before its first layout commit finishes', () => {
     const h = harness();
     let measured = false;
