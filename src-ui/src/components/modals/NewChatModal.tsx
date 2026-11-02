@@ -936,7 +936,7 @@ export function NewChatModal({
         } catch (error) {
           startedRef.current = false;
           setSelectFeedback(
-            userFacingErrorMessage(error, 'Could not open the chat.'),
+            userFacingErrorMessage(error),
           );
           setShowChatOptions(true);
         }
