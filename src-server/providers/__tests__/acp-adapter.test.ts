@@ -1,7 +1,7 @@
 import { EventEmitter } from 'node:events';
 import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, sep } from 'node:path';
 import {
   type PermissionOption,
   RequestError,
@@ -791,7 +791,9 @@ describe('AcpAdapter', () => {
       metadata: { connectionId: 'kiro' },
     });
     const managedCwd = initialSession.cwd;
-    expect(managedCwd).toContain('/runtime/acp-workspaces/session/');
+    expect(managedCwd).toContain(
+      join(sep, 'runtime', 'acp-workspaces', 'session') + sep,
+    );
     await nextEvent(iterator, 'session.started');
     await nextEvent(iterator, 'session.configured');
 
@@ -1890,8 +1892,9 @@ describe('AcpAdapter', () => {
   });
 
   test('#1011: a connection cwd still applies when the session supplies none', async () => {
+    const connectionCwd = tmpdir();
     const { adapter, processes } = createAdapter({
-      connectionOverrides: [{ id: 'kiro', cwd: '/tmp/connection-default' }],
+      connectionOverrides: [{ id: 'kiro', cwd: connectionCwd }],
     });
 
     await adapter.startSession({
@@ -1900,7 +1903,7 @@ describe('AcpAdapter', () => {
       metadata: { connectionId: 'kiro' },
     });
 
-    expect(processes[0].opts.cwd).toBe('/tmp/connection-default');
+    expect(processes[0].opts.cwd).toBe(connectionCwd);
   });
 
   test('#1403: an unbound CLI launches in a private Station-managed workspace', async () => {
@@ -1920,7 +1923,9 @@ describe('AcpAdapter', () => {
     });
 
     expect(processes[0].opts.cwd).toBe(session.cwd);
-    expect(session.cwd).toContain('/runtime/acp-workspaces/session/');
+    expect(session.cwd).toContain(
+      join(sep, 'runtime', 'acp-workspaces', 'session') + sep,
+    );
     expect(processes[0].opts.cwd).not.toBe(homedir());
     expect(processes[0].opts.cwd).not.toBe(process.cwd());
   });
@@ -1967,7 +1972,9 @@ describe('AcpAdapter', () => {
     });
 
     expect(processes[0].opts.cwd).toBe(session.cwd);
-    expect(session.cwd).toContain('/runtime/acp-workspaces/session/');
+    expect(session.cwd).toContain(
+      join(sep, 'runtime', 'acp-workspaces', 'session') + sep,
+    );
     expect(processes[0].opts.cwd).not.toBe(homedir());
     expect(processes[0].opts.cwd).not.toBe(process.cwd());
   });
@@ -1986,7 +1993,9 @@ describe('AcpAdapter', () => {
       metadata: { connectionId: 'kiro' },
     });
 
-    expect(processes[0].opts.cwd).toContain('/runtime/acp-workspaces/session/');
+    expect(processes[0].opts.cwd).toContain(
+      join(sep, 'runtime', 'acp-workspaces', 'session') + sep,
+    );
   });
 
   test('#1023 review: a connection cwd with a literal ~ is expanded, not passed through raw', async () => {

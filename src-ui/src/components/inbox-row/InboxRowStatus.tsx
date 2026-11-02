@@ -104,14 +104,11 @@ const REASON_TEST_IDS: Partial<Record<WorkStatusRung, string>> = {
   stopped: 'inbox-row-failure-reason',
 };
 
-/**
- * The one rung whose detail is a REASON the user needs in full on the row:
- * why it failed. For it the fixed one-line budget yields: the line may wrap
- * to two lines rather than cut the cause off. The whole text is always in
- * the DOM, so the row's `aria-describedby` reads all of it, and the row's
- * details surface shows it unclamped.
- */
-const REASON_RUNGS: ReadonlySet<WorkStatusRung> = new Set(['failed']);
+/** Failure and unknown child custody need a visible reason on touch lists. */
+const REASON_RUNGS: ReadonlySet<WorkStatusRung> = new Set([
+  'failed',
+  'childWork',
+]);
 
 /**
  * The row's single status line: icon, word, then whatever the ladder says
