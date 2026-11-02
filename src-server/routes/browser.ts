@@ -763,6 +763,12 @@ export function createBrowserRoutes(deps: BrowserRoutesDeps) {
     );
     if (current.status !== 200)
       return c.json(refuse(current.status), current.status);
+    if (
+      (!deps.isAgentRequest || deps.isAgentRequest(c.req.raw)) &&
+      deps.projectSettings?.get(current.session.projectId).browserEvaluate !==
+        true
+    )
+      return c.json(denied, 403);
     if (!snapshot)
       return c.json({ success: false, code: 'network-unavailable' }, 503);
     if (

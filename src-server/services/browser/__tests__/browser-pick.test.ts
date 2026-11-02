@@ -4,6 +4,7 @@ import type { BrowserLiveTarget } from '../browser-session-registry.js';
 
 function fixture(changed = false) {
   let frames = 0;
+  let loader = 'old';
   const calls: Array<{ method: string; params?: object }> = [];
   const cdp = {
     send: vi.fn(async (method: string, params?: object) => {
@@ -14,7 +15,7 @@ function fixture(changed = false) {
             frameTree: {
               frame: {
                 id: 'frame',
-                loaderId: changed && frames++ ? 'new' : 'old',
+                loaderId: changed && frames++ ? 'new' : loader,
                 url: 'https://example.test/',
               },
             },
@@ -33,7 +34,16 @@ function fixture(changed = false) {
                 tagName: 'button',
                 role: '',
                 name: '',
-                html: '<button>',
+                attributes: [
+                  {
+                    name: 'href',
+                    value: 'https://user:pass@example.test/a?token=secret#frag',
+                  },
+                  { name: 'data-info', value: 'Bearer secret-value' },
+                  { name: 'src', value: '/asset?credential=private' },
+                  { name: 'action', value: '/submit?session=private' },
+                  { name: 'data-other', value: 'sk-abcdefghijk123' },
+                ],
                 styles: {},
                 rect: { x: 10, y: 20, width: 50, height: 30 },
               },
@@ -61,7 +71,13 @@ function fixture(changed = false) {
     target: { targetId: 'target', cdpSessionId: 'session' },
     generation: 2,
   } as unknown as BrowserLiveTarget;
-  return { live, calls };
+  return {
+    live,
+    calls,
+    navigate: () => {
+      loader = 'new';
+    },
+  };
 }
 
 describe('browser element picking', () => {
@@ -86,6 +102,39 @@ describe('browser element picking', () => {
       }),
     });
     expect(result.screenshot).toBeTruthy();
+    expect(result.html).toContain('https://example.test/a?[redacted]');
+    expect(result.html).not.toMatch(
+      /user|pass|secret-value|token=|frag|credential=|session=|sk-abcdefghijk123/,
+    );
+  });
+
+  it('reuses an isolated world for the same document and replaces it after navigation', async () => {
+    const h = fixture();
+    await pickBrowserElement(
+      h.live,
+      { width: 100, height: 80 },
+      { x: 15, y: 25 },
+      false,
+    );
+    await pickBrowserElement(
+      h.live,
+      { width: 100, height: 80 },
+      { x: 15, y: 25 },
+      false,
+    );
+    expect(
+      h.calls.filter((call) => call.method === 'Page.createIsolatedWorld'),
+    ).toHaveLength(1);
+    h.navigate();
+    await pickBrowserElement(
+      h.live,
+      { width: 100, height: 80 },
+      { x: 15, y: 25 },
+      false,
+    );
+    expect(
+      h.calls.filter((call) => call.method === 'Page.createIsolatedWorld'),
+    ).toHaveLength(2);
   });
 
   it('refuses out-of-bounds points and navigation during capture', async () => {

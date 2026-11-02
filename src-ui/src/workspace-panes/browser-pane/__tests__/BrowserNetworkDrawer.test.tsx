@@ -45,6 +45,8 @@ it('filters failed requests and XHR requests through the drawer control', async 
         api={{ network } as unknown as BrowserPaneApi}
         apiBase=""
         browserSessionId="bs_test"
+        generation={1}
+        live
       />
     </QueryClientProvider>,
   );
@@ -60,4 +62,76 @@ it('filters failed requests and XHR requests through the drawer control', async 
   });
   expect(screen.getByText(/example.test\/b/)).toBeTruthy();
   expect(screen.queryByText(/example.test\/c/)).toBeNull();
+});
+
+it('polls newer updates and replaces the existing request without crossing generations', async () => {
+  const network = vi.fn(async (_id: string, after: number) =>
+    after === 0
+      ? {
+          generation: 1,
+          latestSeq: 1,
+          dropped: 0,
+          entries: [
+            {
+              requestSeq: 1,
+              seq: 1,
+              method: 'GET',
+              url: 'https://example.test/a',
+              type: 'Fetch',
+            },
+          ],
+        }
+      : {
+          generation: 1,
+          latestSeq: 2,
+          dropped: 0,
+          entries: [
+            {
+              requestSeq: 1,
+              seq: 2,
+              method: 'GET',
+              url: 'https://example.test/a',
+              type: 'Fetch',
+              status: 200,
+            },
+          ],
+        },
+  );
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  const view = render(
+    <QueryClientProvider client={client}>
+      <BrowserNetworkDrawer
+        api={{ network } as unknown as BrowserPaneApi}
+        apiBase=""
+        browserSessionId="bs_test"
+        generation={1}
+        live
+      />
+    </QueryClientProvider>,
+  );
+  expect(await screen.findByText(/Pending/)).toBeTruthy();
+  await client.refetchQueries({
+    queryKey: ['browser-network', '', 'bs_test', 1],
+  });
+  expect(await screen.findByText(/200/)).toBeTruthy();
+  expect(screen.queryAllByText(/example.test\/a/)).toHaveLength(1);
+  expect(network).toHaveBeenLastCalledWith(
+    'bs_test',
+    1,
+    expect.any(AbortSignal),
+  );
+  view.rerender(
+    <QueryClientProvider client={client}>
+      <BrowserNetworkDrawer
+        api={{ network } as unknown as BrowserPaneApi}
+        apiBase=""
+        browserSessionId="bs_test"
+        generation={2}
+        live={false}
+      />
+    </QueryClientProvider>,
+  );
+  expect(screen.queryByText(/example.test\/a/)).toBeNull();
 });

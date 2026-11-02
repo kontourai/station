@@ -669,7 +669,8 @@ element attributes and computed styles beyond visible pixels, so sharing its
 image and description with a conversation remains an explicit action. Network
 diagnostics retain only bounded in-memory metadata, without headers or bodies;
 URL credentials, query values and fragments are removed. Agent network reads
-also require the Project's Browser evaluation permission. These boundaries do
+also require **Let agents run JavaScript in this Project's pages**
+(`browserEvaluate`). These boundaries do
 not establish hostile-page or released-package qualification.
 
 The exact `POST /api/projects/:projectSlug/walkthroughs/import` and

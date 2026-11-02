@@ -97,7 +97,7 @@ describe('browser network capture', () => {
     expect(result.dropped).toBe(1);
     expect(result.entries).toEqual([
       expect.objectContaining({
-        seq: 501,
+        requestSeq: 501,
         status: 503,
         bytes: 42,
         durationMs: 250,
@@ -108,5 +108,42 @@ describe('browser network capture', () => {
     log.dispose();
     expect(log.capturing).toBe(false);
     expect(log.read().entries).toEqual([]);
+  });
+
+  it('publishes redirect status and later response updates incrementally', async () => {
+    const t = transport();
+    const log = new BrowserNetworkLog(t.cdp, 'target');
+    await log.enable();
+    t.emit('Network.requestWillBeSent', {
+      requestId: 'r',
+      request: { url: 'https://example.test/first', method: 'GET' },
+      timestamp: 1,
+    });
+    const first = log.read();
+    t.emit('Network.requestWillBeSent', {
+      requestId: 'r',
+      request: { url: 'https://example.test/next', method: 'GET' },
+      redirectResponse: { status: 302 },
+      timestamp: 2,
+    });
+    const redirect = log.read(first.latestSeq);
+    expect(redirect.entries).toEqual([
+      expect.objectContaining({
+        requestSeq: first.entries[0]!.requestSeq,
+        status: 302,
+      }),
+      expect.objectContaining({ url: 'https://example.test/next' }),
+    ]);
+    t.emit('Network.responseReceived', {
+      requestId: 'r',
+      response: { status: 200 },
+    });
+    expect(log.read(redirect.latestSeq).entries).toEqual([
+      expect.objectContaining({
+        requestSeq: redirect.entries[1]!.requestSeq,
+        status: 200,
+      }),
+    ]);
+    log.dispose();
   });
 });

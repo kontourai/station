@@ -22,6 +22,7 @@ import {
   BoardGlyph,
   CameraGlyph,
   CloseGlyph,
+  EditGlyph,
   GlobeGlyph,
   glyph,
   LockGlyph,
@@ -69,6 +70,7 @@ import {
 import { BrowserSessionList } from './BrowserSessionList';
 import { BrowserTabs } from './BrowserTabs';
 import { browserAddressInput } from './browserAddressInput';
+import { BROWSER_PAGE_CONTENT_NOTICE } from './browserArtifactContent';
 import {
   BROWSER_DEVICE_PRESETS,
   presetFor,
@@ -905,7 +907,7 @@ function BrowserSessionPane({
             kind: 'action' as const,
             id: 'annotate',
             label: 'Annotate',
-            glyph: <CameraGlyph />,
+            glyph: <EditGlyph />,
             disabled: !live,
             onSelect: () => setAnnotating(true),
           },
@@ -1170,6 +1172,8 @@ function BrowserSessionPane({
           api={api}
           apiBase={apiBase}
           browserSessionId={browserSessionId}
+          generation={generation ?? 0}
+          live={live}
         />
       ) : null}
       {panel === 'sessions' ? (
@@ -1267,8 +1271,25 @@ function BrowserSessionPane({
                   ? {
                       onAttach: () => {
                         void Promise.resolve()
-                          .then(() =>
-                            attachFiles()([
+                          .then(async () => {
+                            const attach = attachFiles();
+                            const provenance = shot.provenance;
+                            if (!provenance)
+                              throw new Error(
+                                'Screenshot provenance is unavailable.',
+                              );
+                            const current = await api.sessionSummary(
+                              provenance.browserSessionId,
+                            );
+                            if (
+                              current.state !== 'live' ||
+                              current.generation !== provenance.generation ||
+                              current.url !== provenance.url
+                            )
+                              throw new Error(
+                                'The browser changed before the screenshot could be attached.',
+                              );
+                            return attach([
                               new File(
                                 [shot.blob],
                                 `browser-screenshot.${shot.blob.type === 'image/jpeg' ? 'jpg' : 'png'}`,
@@ -1280,7 +1301,13 @@ function BrowserSessionPane({
                                     {
                                       kind: 'browser-screenshot',
                                       observedAt: shot.takenAt.toISOString(),
-                                      ...shot.provenance,
+                                      browserSessionId:
+                                        provenance.browserSessionId,
+                                      generation: provenance.generation,
+                                      untrustedPageContent: {
+                                        notice: BROWSER_PAGE_CONTENT_NOTICE,
+                                        url: provenance.url,
+                                      },
                                     },
                                     null,
                                     2,
@@ -1289,8 +1316,8 @@ function BrowserSessionPane({
                                 'browser-screenshot.json',
                                 { type: 'application/json' },
                               ),
-                            ]),
-                          )
+                            ]);
+                          })
                           .then(
                             () => setShot(null),
                             (error) =>

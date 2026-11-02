@@ -1,4 +1,5 @@
-import { useQuery } from '@tanstack/react-query';
+import type { BrowserNetworkEntryView } from '@kontourai/station-contracts/workspace-browser-pane';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { Button } from '../../components/Button';
 import { Empty, ErrorState, SkeletonBlock } from '../../components/state';
@@ -8,31 +9,62 @@ export function BrowserNetworkDrawer({
   api,
   apiBase,
   browserSessionId,
+  generation,
+  live,
 }: {
   api: BrowserPaneApi;
   apiBase: string;
   browserSessionId: string;
+  generation: number;
+  live: boolean;
 }) {
   const [filter, setFilter] = useState<'all' | 'failed' | 'xhr'>('all');
+  const queryClient = useQueryClient();
+  const queryKey = [
+    'browser-network',
+    apiBase,
+    browserSessionId,
+    generation,
+  ] as const;
   const read = useQuery({
-    queryKey: ['browser-network', apiBase, browserSessionId],
+    queryKey,
     queryFn: async ({ signal }) => {
-      let after = 0;
-      let generation: number | undefined;
-      const entries = [];
-      let dropped = 0;
+      const previous = queryClient.getQueryData<{
+        entries: BrowserNetworkEntryView[];
+        dropped: number;
+        cursor: number;
+      }>(queryKey);
+      let after = previous?.cursor ?? 0;
+      const entries = new Map(
+        (previous?.entries ?? []).map((entry) => [
+          entry.requestSeq ?? entry.seq,
+          entry,
+        ]),
+      );
+      let dropped = previous?.dropped ?? 0;
       for (let page = 0; page < 5; page++) {
         const next = await api.network(browserSessionId, after, signal);
-        if (generation !== undefined && generation !== next.generation)
+        if (generation !== next.generation)
           throw new Error('The browser changed while loading diagnostics.');
-        generation = next.generation;
         dropped = next.dropped;
-        entries.push(...next.entries);
-        if (next.entries.length < 100) break;
+        for (const entry of next.entries)
+          entries.set(entry.requestSeq ?? entry.seq, entry);
+        if (next.entries.length < 100) {
+          after = next.latestSeq;
+          break;
+        }
         after = next.entries[next.entries.length - 1]!.seq;
       }
-      return { entries, dropped };
+      return {
+        entries: [...entries.values()]
+          .sort((a, b) => a.seq - b.seq)
+          .slice(-500),
+        dropped,
+        cursor: after,
+      };
     },
+    enabled: live,
+    gcTime: 0,
     refetchInterval: 1000,
     retry: false,
   });
@@ -56,7 +88,9 @@ export function BrowserNetworkDrawer({
           <option value="xhr">XHR / Fetch</option>
         </select>
       </label>
-      {read.isPending ? (
+      {!live ? (
+        <Empty label="Browser is not running" />
+      ) : read.isPending ? (
         <SkeletonBlock label="Loading network requests" />
       ) : read.isError ? (
         <ErrorState
@@ -85,7 +119,7 @@ export function BrowserNetworkDrawer({
           ))}
         </ol>
       )}
-      {read.data?.dropped ? (
+      {live && read.data?.dropped ? (
         <p>{read.data.dropped} older requests discarded.</p>
       ) : null}
     </section>

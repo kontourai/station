@@ -343,18 +343,24 @@ in memory and discards them when capture stops. It records request method,
 redacted URL, resource type, status, transfer size and duration; it does not
 retain request or response bodies or headers. URL credentials, query values
 and fragments are removed. The read-only `browser_network` agent tool uses
-the existing Browser authority and diagnostics permissions, and returns
+Browser authority and **Let agents run JavaScript in this Project's pages**
+(`browserEvaluate`), and returns
 bounded pages of the same metadata.
 
 With the same preview enabled, **Annotate** in **⋯** opens Select, Box, Draw
 and Erase tools over the streamed page. S, B, D and E select them; Escape
-cancels and Enter attaches. Select inspects an element on the server. Box and
+cancels and Enter attaches. Select inspects an element on the server. Selecting
+elements inside iframes, including same-origin iframes, is not supported. Box and
 Draw marks use target viewport coordinates; Erase removes a mark under the
-pointer. Attach sends an image and a JSON description to the active chat's
-composer. A selected element uses its target PNG crop; otherwise the image is
-a target viewport screenshot. Marks are described in JSON, not burned into
-the image. Both files must be supported by the conversation's engine. The
+pointer. Opening annotation captures a target viewport screenshot before marks
+can be made. Attach sends an image and a JSON description to the active chat's
+composer. A selected element supplies its target PNG crop; marks also include
+the viewport screenshot captured on opening. Marks are described in JSON, not
+burned into the image. The files must be supported by the conversation's engine. The
 description and image can expose page content; attaching is an explicit share.
+The picker redacts URL credentials, queries and fragments in `href`, `src` and
+`action` attributes and known secret patterns in `data-*` values. This is a
+bounded heuristic, not a guarantee that an image or excerpt contains no secrets.
 
 **Screenshot** (in **⋯**) captures the page's viewport as PNG (JPEG over
 16 MiB, refused beyond that) with view standing, one capture at a time per

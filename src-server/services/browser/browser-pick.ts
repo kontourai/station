@@ -1,11 +1,52 @@
 import { createHash, randomUUID } from 'node:crypto';
 import type { CdpTransport } from './browser-host.js';
+import { redactNetworkUrl } from './browser-network-log.js';
 import type { BrowserLiveTarget } from './browser-session-registry.js';
 
 const MAX_HTML = 4_000;
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
 const DEADLINE_MS = 5_000;
 const active = new WeakMap<CdpTransport, Set<string>>();
+const worlds = new WeakMap<
+  CdpTransport,
+  Map<string, { frameId: string; loaderId: string; contextId: number }>
+>();
+
+function htmlExcerpt(
+  tagName: string,
+  attributes: Array<{ name: string; value: string }>,
+  pageUrl: string,
+): string {
+  const escapeAttribute = (value: string) =>
+    value.replace(
+      /[&"<>]/g,
+      (c) => ({ '&': '&amp;', '"': '&quot;', '<': '&lt;', '>': '&gt;' })[c]!,
+    );
+  const attrs = attributes.slice(0, 20).map(({ name, value }) => {
+    const key = name.slice(0, 100);
+    let safe = value.slice(0, 100);
+    if (
+      /value|token|secret|password|auth|key/i.test(key) ||
+      (key.toLowerCase().startsWith('data-') &&
+        /token|secret|password|bearer|api[_-]?key|authorization|\bsk-[A-Za-z0-9_-]{8,}|\bgh[pousr]_[A-Za-z0-9]{10,}|\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/i.test(
+          value,
+        ))
+    )
+      safe = '[redacted]';
+    else if (/^(href|src|action)$/i.test(key)) {
+      try {
+        safe = redactNetworkUrl(new URL(value, pageUrl).href);
+      } catch {
+        safe = '[invalid URL]';
+      }
+    }
+    return `${key}="${escapeAttribute(safe)}"`;
+  });
+  return `<${tagName}${attrs.length ? ` ${attrs.join(' ')}` : ''}>`.slice(
+    0,
+    MAX_HTML,
+  );
+}
 
 /** Captures one viewport point in the target's isolated world. */
 export async function pickBrowserElement(
@@ -103,16 +144,37 @@ async function pick(
       },
     );
     if (!node.backendNodeId) throw new Error('No element at point.');
-    const world = await send<{ executionContextId?: number }>(
-      'Page.createIsolatedWorld',
-      { frameId: before.id, worldName: 'station-browser-pick' },
-    );
-    if (!world.executionContextId) throw new Error('Page context unavailable.');
+    let bySession = worlds.get(cdp);
+    if (!bySession) {
+      bySession = new Map();
+      worlds.set(cdp, bySession);
+    }
+    let cached = bySession.get(session);
+    if (
+      !cached ||
+      cached.frameId !== before.id ||
+      cached.loaderId !== before.loaderId
+    ) {
+      bySession.delete(session);
+      const world = await send<{ executionContextId?: number }>(
+        'Page.createIsolatedWorld',
+        { frameId: before.id, worldName: 'station-browser-pick' },
+      );
+      if (!world.executionContextId)
+        throw new Error('Page context unavailable.');
+      cached = {
+        frameId: before.id!,
+        loaderId: before.loaderId!,
+        contextId: world.executionContextId,
+      };
+      bySession.set(session, cached);
+      if (bySession.size > 32) bySession.delete(bySession.keys().next().value!);
+    }
     const resolved = await send<{ object?: { objectId?: string } }>(
       'DOM.resolveNode',
       {
         backendNodeId: node.backendNodeId,
-        executionContextId: world.executionContextId,
+        executionContextId: cached.contextId,
         objectGroup,
       },
     );
@@ -138,10 +200,8 @@ async function pick(
         if (!selector || selector.length > 2000 || document.querySelectorAll(selector).length !== 1) return null;
         const computed = getComputedStyle(this);
         const styles = {}; for (const name of ['display','position','color','background-color','font-size','font-family','font-weight','margin','padding','border','width','height']) styles[name] = computed.getPropertyValue(name).slice(0, 200);
-        const escape = (value) => value.replace(/[&"<>]/g, (c) => ({'&':'&amp;','"':'&quot;','<':'&lt;','>':'&gt;'})[c]);
-        const attrs = []; for (let i = 0; i < Math.min(this.attributes.length, 20); i++) { const attr = this.attributes[i]; const key = attr.name.slice(0, 100); const value = /value|token|secret|password|auth|key/i.test(key) ? '[redacted]' : attr.value.slice(0, 100); attrs.push(key + '="' + escape(value) + '"'); }
-        const html = ('<' + this.localName + (attrs.length ? ' ' + attrs.join(' ') : '') + '>').slice(0, ${MAX_HTML});
-        return { selector, tagName: this.localName, role: this.getAttribute('role') || '', name: (this.getAttribute('aria-label') || '').trim().slice(0, 500), html, styles, rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height } };
+        const attributes = []; for (let i = 0; i < Math.min(this.attributes.length, 20); i++) { const attr = this.attributes[i]; attributes.push({ name: attr.name.slice(0, 100), value: attr.value.slice(0, 2048) }); }
+        return { selector, tagName: this.localName, role: this.getAttribute('role') || '', name: (this.getAttribute('aria-label') || '').trim().slice(0, 500), attributes, styles, rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height } };
       }`,
     });
     if (
@@ -155,7 +215,7 @@ async function pick(
       tagName: string;
       role: string;
       name: string;
-      html: string;
+      attributes: Array<{ name: string; value: string }>;
       styles: Record<string, string>;
       rect: { x: number; y: number; width: number; height: number };
     };
@@ -234,13 +294,19 @@ async function pick(
       before.url !== after.url
     )
       throw new Error('Page changed during selection.');
+    const { attributes, ...safePicked } = picked;
+    const html = htmlExcerpt(picked.tagName, attributes, before.url ?? '');
     return {
-      ...picked,
+      ...safePicked,
+      html,
       locator: `css=${picked.selector}`,
       url: before.url ?? '',
       capturedAt: new Date().toISOString(),
       ...(screenshot ? { screenshot, digest } : {}),
     };
+  } catch (error) {
+    worlds.get(cdp)?.delete(session);
+    throw error;
   } finally {
     void cdp
       .send('Runtime.releaseObjectGroup', { objectGroup }, session)

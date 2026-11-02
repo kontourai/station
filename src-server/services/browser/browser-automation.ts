@@ -1717,7 +1717,6 @@ export class BrowserAutomation {
     );
   }
 
-  /** A bounded accessibility snapshot with element refs, and a screenshot. */
   async network(
     authority: BrowserAgentAuthority,
     browserSessionId: unknown,
@@ -1760,12 +1759,17 @@ export class BrowserAutomation {
           'not-permitted',
           'Browser artifacts preview is disabled.',
         );
+      if (!this.deps.settings.evaluateAllowed(authority.projectId))
+        return refuse('not-permitted', EVALUATE_NOT_PERMITTED, {
+          setting: 'browserEvaluate',
+        });
       if (!result || result.generation !== selected.live.generation)
         return refuse('not-live', 'Network diagnostics are unavailable.');
-      return { ok: true as const, ...result };
+      return { ok: true as const, ...PAGE, ...result };
     });
   }
 
+  /** A bounded accessibility snapshot with element refs, and a screenshot. */
   async snapshot(
     authority: BrowserAgentAuthority,
     browserSessionId: unknown,

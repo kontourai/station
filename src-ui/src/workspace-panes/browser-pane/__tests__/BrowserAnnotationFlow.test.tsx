@@ -1,11 +1,13 @@
 /** @vitest-environment jsdom */
 import type { BrowserSessionView } from '@kontourai/station-contracts/workspace-browser-pane';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { createRef } from 'react';
 import { expect, it, vi } from 'vitest';
 import type { BrowserPaneApi } from '../browserPaneApi';
 
 const intake = vi.hoisted(() => vi.fn());
+const pickedState = vi.hoisted(() => ({ value: null as unknown }));
 vi.mock('../useBrowserArtifactIntake', () => ({
   useBrowserArtifactIntake: () => intake,
 }));
@@ -19,7 +21,7 @@ vi.mock('../BrowserAnnotation', () => ({
         type="button"
         onClick={() =>
           props.onAttach({
-            picked: null,
+            picked: pickedState.value,
             marks: [
               {
                 kind: 'box',
@@ -68,16 +70,17 @@ it('invalidates a pending handoff when the annotation is cancelled', async () =>
   } as unknown as BrowserPaneApi;
   const close = vi.fn();
   render(
-    <BrowserAnnotationFlow
-      stageRef={createRef<HTMLDivElement>()}
-      record={record}
-      api={api}
-      onClose={close}
-      onError={vi.fn()}
-    />,
+    <QueryClientProvider client={new QueryClient()}>
+      <BrowserAnnotationFlow
+        stageRef={createRef<HTMLDivElement>()}
+        record={record}
+        api={api}
+        onClose={close}
+        onError={vi.fn()}
+      />
+    </QueryClientProvider>,
   );
-  fireEvent.click(screen.getByRole('button', { name: 'Attach' }));
-  expect(screenshot).toHaveBeenCalledOnce();
+  await waitFor(() => expect(screenshot).toHaveBeenCalledOnce());
   fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
   finish(new Blob(['image'], { type: 'image/png' }));
   await waitFor(() => expect(api.sessionSummary).toHaveBeenCalledOnce());
@@ -111,19 +114,21 @@ it('hands the image and its structured viewport marks to the same conversation i
   } as unknown as BrowserPaneApi;
   const close = vi.fn();
   render(
-    <BrowserAnnotationFlow
-      stageRef={createRef<HTMLDivElement>()}
-      record={record}
-      api={api}
-      onClose={close}
-      onError={vi.fn()}
-    />,
+    <QueryClientProvider client={new QueryClient()}>
+      <BrowserAnnotationFlow
+        stageRef={createRef<HTMLDivElement>()}
+        record={record}
+        api={api}
+        onClose={close}
+        onError={vi.fn()}
+      />
+    </QueryClientProvider>,
   );
-  fireEvent.click(screen.getByRole('button', { name: 'Attach' }));
+  fireEvent.click(await screen.findByRole('button', { name: 'Attach' }));
   await waitFor(() => expect(accepted).toHaveBeenCalledOnce());
   const files = accepted.mock.calls[0]![0] as File[];
   expect(files.map((file) => file.name)).toEqual([
-    'browser-annotation.png',
+    'browser-target-viewport-screenshot-1.png',
     'browser-annotation.json',
   ]);
   const text = await new Promise<string>((resolve, reject) => {
@@ -135,7 +140,12 @@ it('hands the image and its structured viewport marks to the same conversation i
   expect(JSON.parse(text)).toMatchObject({
     browserSessionId: 'bs_test',
     generation: 1,
-    imageKind: 'target-viewport-screenshot',
+    coordinateSpace: 'viewport',
+    untrustedPageContent: {
+      url: 'https://example.test/',
+      notice: expect.stringContaining('untrusted'),
+    },
+    images: [expect.objectContaining({ kind: 'target-viewport-screenshot' })],
     marks: [
       {
         kind: 'box',
@@ -147,4 +157,81 @@ it('hands the image and its structured viewport marks to the same conversation i
     ],
   });
   expect(close).toHaveBeenCalledOnce();
+});
+
+it('captures the viewport before marking and includes it alongside an element crop', async () => {
+  const bytes = new Uint8Array([1, 2, 3]);
+  const original = Object.getOwnPropertyDescriptor(
+    Blob.prototype,
+    'arrayBuffer',
+  );
+  Object.defineProperty(Blob.prototype, 'arrayBuffer', {
+    configurable: true,
+    value: async () => bytes.buffer,
+  });
+  pickedState.value = {
+    targetId: 'private-target',
+    screenshot: 'AQID',
+    rect: { x: 12, y: 20, width: 30, height: 40 },
+    capturedAt: '2026-01-01T00:00:00.000Z',
+    name: 'Example',
+    selector: 'button',
+    html: '<button>',
+    styles: {},
+    url: 'https://example.test/',
+  };
+  const accepted = vi.fn();
+  intake.mockImplementation(() => async (files: File[]) => accepted(files));
+  const record = {
+    browserSessionId: 'bs_test',
+    generation: 1,
+    url: 'https://example.test/',
+    state: 'live',
+    viewport: { width: 800, height: 600, deviceScaleFactor: 1 },
+  } as BrowserSessionView;
+  const api = {
+    screenshot: vi
+      .fn()
+      .mockResolvedValue(new Blob([bytes], { type: 'image/png' })),
+    sessionSummary: vi.fn().mockResolvedValue(record),
+  } as unknown as BrowserPaneApi;
+  render(
+    <QueryClientProvider client={new QueryClient()}>
+      <BrowserAnnotationFlow
+        stageRef={createRef<HTMLDivElement>()}
+        record={record}
+        api={api}
+        onClose={vi.fn()}
+        onError={vi.fn()}
+      />
+    </QueryClientProvider>,
+  );
+  const attach = await screen.findByRole('button', { name: 'Attach' });
+  expect(api.screenshot).toHaveBeenCalledOnce();
+  fireEvent.click(attach);
+  await waitFor(() => expect(accepted).toHaveBeenCalledOnce());
+  const files = accepted.mock.calls[0]![0] as File[];
+  expect(files.map((file) => file.name)).toEqual([
+    'browser-target-viewport-screenshot-1.png',
+    'browser-target-element-crop-2.png',
+    'browser-annotation.json',
+  ]);
+  const text = await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(reader.error);
+    reader.readAsText(files[2]!);
+  });
+  expect(JSON.parse(text)).toMatchObject({
+    coordinateSpace: 'viewport',
+    cropOrigin: { x: 12, y: 20 },
+    untrustedPageContent: {
+      notice: expect.stringContaining('untrusted'),
+      picked: { name: 'Example' },
+    },
+  });
+  expect(text).not.toContain('private-target');
+  pickedState.value = null;
+  if (original) Object.defineProperty(Blob.prototype, 'arrayBuffer', original);
+  else delete (Blob.prototype as { arrayBuffer?: unknown }).arrayBuffer;
 });

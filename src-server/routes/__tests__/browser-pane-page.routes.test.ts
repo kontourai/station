@@ -321,6 +321,40 @@ function harness(
 
 describe('Browser pane: network diagnostics', () => {
   test.each([false, true])(
+    'agent network read requires evaluation permission: %s',
+    async (browserEvaluate) => {
+      const h = harness({ browserEvaluate, networkPreview: true });
+      try {
+        const { browserSessionId: id } = await h.open();
+        expect(
+          (await h.browser('GET', `/sessions/${id}/network`, { agent: true }))
+            .status,
+        ).toBe(browserEvaluate ? 200 : 403);
+      } finally {
+        await h.binder.dispose();
+        await h.sessions.shutdown();
+      }
+    },
+  );
+  test('refuses an agent network read if evaluation permission is revoked during capture setup', async () => {
+    const options = { browserEvaluate: true, networkPreview: true };
+    const h = harness(options);
+    try {
+      const { browserSessionId: id } = await h.open();
+      h.fake.handle('Network.enable', () => {
+        options.browserEvaluate = false;
+        return {};
+      });
+      expect(
+        (await h.browser('GET', `/sessions/${id}/network`, { agent: true }))
+          .status,
+      ).toBe(403);
+    } finally {
+      await h.binder.dispose();
+      await h.sessions.shutdown();
+    }
+  });
+  test.each([false, true])(
     'an agent cannot use the human element picker (evaluation permission: %s)',
     async (browserEvaluate) => {
       const h = harness({ browserEvaluate });

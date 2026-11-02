@@ -278,6 +278,8 @@ export interface BrowserPendingDialogView {
 }
 
 export interface BrowserNetworkEntryView {
+  /** Stable identity across incremental updates to a request. */
+  requestSeq?: number;
   seq: number;
   method: string;
   url: string;

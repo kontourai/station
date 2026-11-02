@@ -6754,11 +6754,13 @@ feature preview and Browser view authority:
   and, by default, a base64 PNG crop with its digest. It refuses a changed
   session generation or viewport and a page that changes during inspection.
   It is a person-facing operation; requests that may originate from an Agent
-  are refused, including when Browser evaluation is enabled.
+  are refused, including when Browser evaluation is enabled. Picking elements
+  inside iframes, including same-origin iframes, is not supported.
 - `GET /api/browser/sessions/:browserSessionId/network?after=<sequence>`
   returns a bounded page of in-memory request metadata. Query values, URL
   credentials and fragments are redacted; bodies and headers are not retained.
-  Requests from an Agent also require the Project's Browser diagnostics setting.
+  Requests from an Agent also require **Let agents run JavaScript in this
+  Project's pages** (`browserEvaluate`).
 
 Browser capture routes on personal hosts:
 

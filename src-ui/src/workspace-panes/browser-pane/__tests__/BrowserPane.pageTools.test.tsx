@@ -27,11 +27,19 @@ import { useEffect } from 'react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import type { LiveSurfaceControlState } from '../../../live-surface/LiveSurfaceCanvas';
 
+const artifactFixture = vi.hoisted(() => ({
+  enabled: false,
+  attach: vi.fn(async (_files: File[]) => {}),
+}));
+vi.mock('../../../hooks/useSurfaceVisibilityFlags', () => ({
+  useSurfaceVisibilityFlags: () =>
+    new Set(artifactFixture.enabled ? ['browser-artifacts'] : []),
+}));
 vi.mock('../../../contexts/ApiBaseContext', () => ({
   useApiBase: () => ({ apiBase: 'http://station.test' }),
 }));
 vi.mock('../useBrowserArtifactIntake', () => ({
-  useBrowserArtifactIntake: () => () => async () => {},
+  useBrowserArtifactIntake: () => () => artifactFixture.attach,
 }));
 
 const controlHolder: { state: LiveSurfaceControlState | null } = {
@@ -177,6 +185,8 @@ afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
   controlHolder.state = null;
+  artifactFixture.enabled = false;
+  artifactFixture.attach.mockClear();
 });
 
 describe('a dialog held for the person in control', () => {
@@ -444,6 +454,72 @@ describe('the console drawer', () => {
 });
 
 describe('screenshots', () => {
+  test('marks screenshot page provenance as untrusted in the attachment metadata', async () => {
+    artifactFixture.enabled = true;
+    controlHolder.state = control();
+    Object.assign(URL, {
+      createObjectURL: vi.fn(() => 'blob:shot'),
+      revokeObjectURL: vi.fn(),
+    });
+    renderPane({
+      [SUMMARY]: ok(sessionView()),
+      [`GET /api/browser/sessions/${SESSION}/screenshot`]: () =>
+        new Response(new Uint8Array([0x89, 0x50, 0x4e, 0x47]), {
+          status: 200,
+          headers: { 'content-type': 'image/png' },
+        }),
+    });
+    await chooseFromMenu('Screenshot');
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Attach to chat' }),
+    );
+    await waitFor(() => expect(artifactFixture.attach).toHaveBeenCalledOnce());
+    const files = artifactFixture.attach.mock.calls[0]![0];
+    const text = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result));
+      reader.onerror = () => reject(reader.error);
+      reader.readAsText(files[1]!);
+    });
+    expect(JSON.parse(text)).toMatchObject({
+      kind: 'browser-screenshot',
+      untrustedPageContent: {
+        notice: expect.stringContaining('untrusted'),
+        url: 'https://shop.example.com/cart',
+      },
+    });
+  });
+  test('refuses attaching a screenshot after its browser generation changes', async () => {
+    artifactFixture.enabled = true;
+    controlHolder.state = control();
+    let generation = 1;
+    Object.assign(URL, {
+      createObjectURL: vi.fn(() => 'blob:shot'),
+      revokeObjectURL: vi.fn(),
+    });
+    renderPane({
+      [SUMMARY]: () => ({
+        body: { success: true, data: sessionView({ generation }) },
+      }),
+      [`GET /api/browser/sessions/${SESSION}/screenshot`]: () =>
+        new Response(new Uint8Array([0x89, 0x50, 0x4e, 0x47]), {
+          status: 200,
+          headers: { 'content-type': 'image/png' },
+        }),
+    });
+    await chooseFromMenu('Screenshot');
+    const attach = await screen.findByRole('button', {
+      name: 'Attach to chat',
+    });
+    generation = 2;
+    fireEvent.click(attach);
+    expect(
+      await screen.findByText(
+        'The browser changed before the screenshot could be attached.',
+      ),
+    ).toBeTruthy();
+    expect(artifactFixture.attach).not.toHaveBeenCalled();
+  });
   test('a screenshot of the page is offered to save under a descriptive file name', async () => {
     controlHolder.state = control();
     const created: Blob[] = [];

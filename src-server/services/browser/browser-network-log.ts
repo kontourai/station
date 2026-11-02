@@ -2,6 +2,7 @@ import type { CdpTransport } from './browser-host.js';
 
 /** Network metadata is ephemeral, generation-scoped, and never includes bodies or headers. */
 export interface BrowserNetworkEntry {
+  requestSeq: number;
   seq: number;
   method: string;
   url: string;
@@ -19,6 +20,7 @@ interface NetworkEvent {
   requestId?: string;
   request?: { url?: string; method?: string };
   response?: { status?: number };
+  redirectResponse?: { status?: number };
   type?: string;
   timestamp?: number;
   encodedDataLength?: number;
@@ -88,8 +90,20 @@ export class BrowserNetworkLog {
             typeof p.request?.url !== 'string'
           )
             return;
+          const previous = this.pending.get(p.requestId);
+          if (
+            previous &&
+            typeof p.redirectResponse?.status === 'number' &&
+            Number.isFinite(p.redirectResponse.status)
+          ) {
+            previous.entry.status = p.redirectResponse.status;
+            this.revise(previous.entry);
+            this.pending.delete(p.requestId);
+          }
+          const requestSeq = ++this.seq;
           const entry: BrowserNetworkEntry = {
-            seq: ++this.seq,
+            seq: requestSeq,
+            requestSeq,
             method:
               typeof p.request.method === 'string'
                 ? p.request.method.slice(0, 20)
@@ -123,6 +137,7 @@ export class BrowserNetworkLog {
             active.entry.status = p.response.status;
           if (typeof p.type === 'string')
             active.entry.type = p.type.slice(0, 40);
+          this.revise(active.entry);
         }),
       ),
       cdp.on(
@@ -223,6 +238,15 @@ export class BrowserNetworkLog {
         0,
         (p.timestamp - active.started) * 1000,
       );
+    this.revise(active.entry);
     this.pending.delete(p.requestId);
+  }
+
+  private revise(entry: BrowserNetworkEntry): void {
+    const index = this.entries.indexOf(entry);
+    if (index < 0) return;
+    this.entries.splice(index, 1);
+    entry.seq = ++this.seq;
+    this.entries.push(entry);
   }
 }
