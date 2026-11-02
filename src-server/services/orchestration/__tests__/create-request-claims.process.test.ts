@@ -139,7 +139,9 @@ test.each(['reserved', 'starting', 'rejected'])(
       } else {
         await expect(retry).rejects.toMatchObject({
           code: 'create_request_indeterminate',
-          message: expect.stringContaining('operator reconciliation'),
+          message: expect.stringContaining(
+            'Station cannot automatically reconcile',
+          ),
         });
         expect(effect).not.toHaveBeenCalled();
       }

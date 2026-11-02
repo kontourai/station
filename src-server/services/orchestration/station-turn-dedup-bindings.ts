@@ -55,7 +55,7 @@ export const TURN_DEDUP_LEGACY_COUNT_HINT = 2000;
 /** A resolved result remains replayable for seven days after resolution. */
 export const TURN_DEDUP_RESOLVED_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 
-/** Length-prefix the thread id so embedded separators cannot collide across threads. */
+/** Length-prefix the thread id: a plain join aliases ("thread::evil", "id") with ("thread", "evil::id"). */
 export function turnDedupKey(threadId: string, clientTurnId: string): string {
   return `${turnDedupThreadPrefix(threadId)}${clientTurnId}`;
 }

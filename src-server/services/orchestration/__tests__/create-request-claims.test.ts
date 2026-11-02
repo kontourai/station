@@ -5,7 +5,7 @@ import { agentId } from '@kontourai/station-contracts/agent-identity';
 import { environmentId } from '@kontourai/station-contracts/execution-target';
 import { sessionReadAuthorityFromRequest } from '@kontourai/station-contracts/tenancy';
 import { DelegationFileRefusal } from '@kontourai/station-shared/delegation-files';
-import { afterEach, expect, test, vi } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { SessionStartRefusedError } from '../../../providers/adapter-shape.js';
 import { withStationControlCallerContext } from '../../../tools/station-control-shared.js';
@@ -56,6 +56,7 @@ test('completed receipts replay for seven days, then expire without removing unr
   const { home, file, claims } = setup();
   const effect = vi.fn(async (id: string) => handle(id));
   const first = await claims.run(input(), effect);
+  vi.setSystemTime(new Date('2026-11-02T00:00:00Z'));
   await expect(
     claims.run({ ...input(), requestKey: 'unresolved' }, async (id) => {
       await markCreateRequestStarting(id);
@@ -122,40 +123,59 @@ test('receipt byte capacity is reserved before execution, including room for the
   expect(effect).not.toHaveBeenCalled();
 });
 
-test.each([
-  [
-    'receiver unavailable',
-    new SessionStartRefusedError(
-      'receiver unavailable',
-      'provider_session_start_failed',
-    ),
-  ],
-  [
-    'delegation_files_unsupported',
-    new DelegationFileRefusal('delegation_files_unsupported'),
-  ],
-  ['bind failure', new Error('bind failure')],
-  [
-    'receiver policy refusal',
-    new ReceiverExecutionRefusal(
-      'execution_preparation_version_mismatch',
-      'receiver policy refused',
-    ),
-  ],
-])('a pre-start refusal (%s) releases the key', async (_name, refusal) => {
-  const { claims, file } = setup();
-  await expect(
-    claims.run(input(), async () => {
-      throw refusal;
-    }),
-  ).rejects.toBe(refusal);
-  expect(
-    Object.keys(JSON.parse(readFileSync(file, 'utf8')).claims),
-  ).toHaveLength(0);
-  await expect(
-    claims.run(input(), async (id) => handle(id)),
-  ).resolves.toMatchObject({ providerTurnId: 'turn-1' });
-});
+describe.each([false, true])(
+  'pre-effect refusal with existing Session=%s',
+  (existing) => {
+    test.each([
+      [
+        'receiver unavailable',
+        new SessionStartRefusedError(
+          'receiver unavailable',
+          'provider_session_start_failed',
+        ),
+      ],
+      [
+        'delegation_files_unsupported',
+        new DelegationFileRefusal('delegation_files_unsupported'),
+      ],
+      ['bind failure', new Error('bind failure')],
+      [
+        'receiver policy refusal',
+        new ReceiverExecutionRefusal(
+          'execution_preparation_version_mismatch',
+          'receiver policy refused',
+        ),
+      ],
+    ])('a pre-start refusal (%s) releases the key', async (_name, refusal) => {
+      const { claims, file } = setup();
+      await expect(
+        claims.run(
+          {
+            ...input(),
+            sessionId: existing ? 'resumed-session' : undefined,
+            sessionExists: () => existing,
+          },
+          async () => {
+            throw refusal;
+          },
+        ),
+      ).rejects.toBe(refusal);
+      expect(
+        Object.keys(JSON.parse(readFileSync(file, 'utf8')).claims),
+      ).toHaveLength(0);
+      await expect(
+        claims.run(
+          {
+            ...input(),
+            sessionId: existing ? 'resumed-session' : undefined,
+            sessionExists: () => existing,
+          },
+          async (id) => handle(id),
+        ),
+      ).resolves.toMatchObject({ providerTurnId: 'turn-1' });
+    });
+  },
+);
 
 test('a typed rejected start with no session releases even its starting mark', async () => {
   const { claims } = setup();
@@ -181,11 +201,14 @@ test("two verified local agent sessions under one user cannot replay each other'
       { token: 'fixture', resolve: () => ({ sessionId, assurance: 'bound' }) },
       () => claims.run(input(), effect),
     );
+  const operator = await claims.run(input(), effect);
   const first = await asCaller('agent-a');
   const second = await asCaller('agent-b');
   expect(first.sessionId).not.toBe(second.sessionId);
   expect(await asCaller('agent-a')).toEqual(first);
-  expect(effect).toHaveBeenCalledTimes(2);
+  expect(first.sessionId).not.toBe(operator.sessionId);
+  expect(await claims.run(input(), effect)).toEqual(operator);
+  expect(effect).toHaveBeenCalledTimes(3);
   await expect(
     withStationControlCallerContext(
       {
@@ -292,4 +315,47 @@ test('changed input conflicts while the original create is still running', async
     finish();
     await original;
   }
+});
+
+test('a starting claim expires after seven days, reclaiming capacity with an explicit duplicate-risk window', async () => {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(new Date('2026-11-01T00:00:00Z'));
+  const { home, file, claims } = setup();
+  await expect(
+    claims.run(input(), async (id) => {
+      await markCreateRequestStarting(id);
+      throw new Error('lost reply');
+    }),
+  ).rejects.toThrow('lost reply');
+  const ledger = JSON.parse(readFileSync(file, 'utf8'));
+  const originalKey = Object.keys(ledger.claims)[0];
+  const row = ledger.claims[originalKey];
+  ledger.claims = Object.fromEntries(
+    Array.from({ length: 1024 }, (_, n) => [
+      n === 0 ? originalKey : n.toString(16).padStart(64, '0'),
+      row,
+    ]),
+  );
+  writeFileSync(file, JSON.stringify(ledger));
+  const effect = vi.fn(async (id: string) => handle(id));
+  vi.setSystemTime(new Date('2026-11-07T23:59:59.999Z'));
+  await expect(
+    new CreateRequestClaims(home).run(input(), effect),
+  ).rejects.toMatchObject({
+    code: 'create_request_indeterminate',
+    message: expect.stringContaining('Station cannot automatically reconcile'),
+  });
+  await expect(
+    claims.run({ ...input(), requestKey: 'new' }, effect),
+  ).rejects.toMatchObject({
+    code: 'create_request_capacity',
+  });
+  expect(effect).not.toHaveBeenCalled();
+  vi.setSystemTime(new Date('2026-11-08T00:00:00Z'));
+  const result = await new CreateRequestClaims(home).run(input(), effect);
+  expect(result.sessionId).not.toBe(row.sessionId);
+  expect(effect).toHaveBeenCalledTimes(1);
+  expect(
+    Object.keys(JSON.parse(readFileSync(file, 'utf8')).claims),
+  ).toHaveLength(1);
 });

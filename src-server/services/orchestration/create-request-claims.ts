@@ -25,7 +25,7 @@ import { chatTurnSubmissionDigest } from './turn-submission-digest.js';
 const MAX_CLAIMS = 1024;
 const MAX_LEDGER_BYTES = 4 * 1024 * 1024;
 const MAX_RECEIPT_BYTES = 3 * 1024;
-const COMPLETED_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
+const RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 const MISSING = Symbol('missing-create-claims');
 type CreateHandle = DelegatedTaskHandle | ForegroundMessageHandle;
 interface Claim {
@@ -33,10 +33,16 @@ interface Claim {
   digest: string;
   sessionId: string;
   starting?: true;
+  startedAt?: number;
   legacyDigest?: true;
   completedAt?: number;
   result?: CreateHandle;
 }
+function claimExpired(claim: Claim, now: number): boolean {
+  const since = claim.result ? claim.completedAt : claim.startedAt;
+  return since !== undefined && now - since >= RETENTION_MS;
+}
+
 function matchesClaimInput(claim: Claim, digest: string): boolean {
   // Version 1 stored a second hash of the submission digest.
   return (
@@ -112,7 +118,7 @@ export class CreateRequestIndeterminateError extends Error {
     readonly clientTurnId: string,
   ) {
     super(
-      'Creation may have started. Inspect the returned session reference and its turn delivery using this request key. If it is absent, request operator reconciliation; do not resend under a new key.',
+      'Creation may have started. Inspect the returned conversationId with get_session or the Session API and retain the original request key. Station cannot automatically reconcile an absent Session. Do not resend under a new key; after seven days the claim expires and key reuse may duplicate the original effect.',
     );
   }
 }
@@ -185,6 +191,7 @@ export class CreateRequestClaims {
     )
       throw new Error('Malformed create request claims');
     const now = Date.now();
+    let migrated = value.version === 1;
     for (const claim of Object.values(value.claims)) {
       if (
         !claim ||
@@ -197,6 +204,7 @@ export class CreateRequestClaims {
         !claim.sessionId ||
         !['delegation', 'foreground'].includes(claim.kind) ||
         (claim.starting !== undefined && claim.starting !== true) ||
+        (claim.startedAt !== undefined && !Number.isFinite(claim.startedAt)) ||
         (claim.completedAt !== undefined &&
           !Number.isFinite(claim.completedAt)) ||
         (claim.result !== undefined &&
@@ -208,15 +216,18 @@ export class CreateRequestClaims {
         if (claim.result) claim.completedAt = now;
         else claim.starting = true;
       }
+      if (claim.starting && claim.startedAt === undefined) {
+        claim.startedAt = now;
+        migrated = true;
+      }
     }
     return {
       ledger: { version: 2, claims: value.claims },
-      migrated: value.version === 1,
+      migrated,
     };
   }
-  async #update<T>(
-    change: (ledger: Ledger) => T,
-    publishResult = true,
+  async #withLockedLedger<T>(
+    use: (ledger: Ledger) => T | Promise<T>,
   ): Promise<T> {
     const release = await acquireFileMutationLockAsync(
       `${this.#file}.mutation`,
@@ -230,20 +241,22 @@ export class CreateRequestClaims {
           indent: null,
           trailingNewline: true,
         });
-      const result = change(ledger);
-      if (Buffer.byteLength(JSON.stringify(ledger) + '\n') > MAX_LEDGER_BYTES)
-        throw new CreateRequestCapacityError('bytes');
-      if (publishResult)
-        await publishJsonFileWithOwnedLock(this.#file, ledger, {
-          maxBytes: MAX_LEDGER_BYTES,
-          label: 'Create request claims',
-          indent: null,
-          trailingNewline: true,
-        });
-      return result;
+      return await use(ledger);
     } finally {
       await release();
     }
+  }
+  async #update<T>(change: (ledger: Ledger) => T): Promise<T> {
+    return this.#withLockedLedger(async (ledger) => {
+      const result = change(ledger);
+      await publishJsonFileWithOwnedLock(this.#file, ledger, {
+        maxBytes: MAX_LEDGER_BYTES,
+        label: 'Create request claims',
+        indent: null,
+        trailingNewline: true,
+      });
+      return result;
+    });
   }
   async run<T extends CreateHandle>(
     input: {
@@ -280,19 +293,19 @@ export class CreateRequestClaims {
         ]),
       )
       .digest('hex');
-    const key = callerSessionId
-      ? createHash('sha256')
-          .update(JSON.stringify([input.kind, scope, input.requestKey]))
-          .digest('hex')
-      : legacyKey;
+    const key = createHash('sha256')
+      .update(JSON.stringify([input.kind, scope, input.requestKey]))
+      .digest('hex');
     const digest = chatTurnSubmissionDigest(input.intent);
     // Reject changed input before waiting for the live request's ownership lock.
-    const known = await this.#update((ledger) => ledger.claims[key], false);
+    const known = await this.#withLockedLedger(
+      (ledger) =>
+        ledger.claims[key] ??
+        (!callerSessionId ? ledger.claims[legacyKey] : undefined),
+    );
     if (
       known &&
-      (!known.result ||
-        known.completedAt === undefined ||
-        Date.now() - known.completedAt < COMPLETED_RETENTION_MS) &&
+      !claimExpired(known, Date.now()) &&
       !matchesClaimInput(known, digest)
     )
       throw new CreateRequestConflictError();
@@ -305,14 +318,13 @@ export class CreateRequestClaims {
       const reserved = await this.#update((ledger) => {
         const now = Date.now();
         for (const [id, row] of Object.entries(ledger.claims))
-          if (
-            row.result &&
-            row.completedAt !== undefined &&
-            now - row.completedAt >= COMPLETED_RETENTION_MS
-          )
-            delete ledger.claims[id];
-        if (callerSessionId && ledger.claims[legacyKey])
+          if (claimExpired(row, now)) delete ledger.claims[id];
+        if (callerSessionId && ledger.claims[legacyKey]?.legacyDigest)
           throw new CreateRequestConflictError();
+        if (!callerSessionId && ledger.claims[legacyKey]) {
+          ledger.claims[key] = ledger.claims[legacyKey];
+          delete ledger.claims[legacyKey];
+        }
         const existing = ledger.claims[key];
         if (existing) {
           if (!matchesClaimInput(existing, digest))
@@ -356,6 +368,7 @@ export class CreateRequestClaims {
           refused: async () => {
             await this.#update((ledger) => {
               delete ledger.claims[key].starting;
+              delete ledger.claims[key].startedAt;
             });
             starting = false;
           },
@@ -363,6 +376,7 @@ export class CreateRequestClaims {
             if (starting) return;
             await this.#update((ledger) => {
               ledger.claims[key].starting = true;
+              ledger.claims[key].startedAt = Date.now();
             });
             starting = true;
           },
@@ -384,6 +398,7 @@ export class CreateRequestClaims {
         ) {
           await this.#update((ledger) => {
             ledger.claims[key].starting = true;
+            ledger.claims[key].startedAt ??= Date.now();
           });
           starting = true;
           throw new CreateRequestIndeterminateError(
@@ -397,10 +412,7 @@ export class CreateRequestClaims {
         });
         return receipt as T;
       } catch (error) {
-        if (
-          (!starting || error instanceof SessionStartRefusedError) &&
-          !(await input.sessionExists(claim.sessionId))
-        )
+        if (!starting || error instanceof SessionStartRefusedError)
           await this.#update((ledger) => {
             delete ledger.claims[key];
           });

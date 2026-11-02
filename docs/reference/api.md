@@ -2683,16 +2683,25 @@ Session can be reclaimed under the same key and input. Station durably marks
 `starting` immediately before session start, an initial turn, or a forwarded
 create POST. A marked but
 unconfirmed create is indeterminate: inspect the returned Session reference and
-its turn delivery with the key, or ask the operator to reconcile it. A typed
-rejected start with no Session releases its claim. Unresolved claims never expire.
+its turn delivery with the key. `get_session` and the Session API can inspect an
+existing Session; Station has no automatic reconciliation path for an absent
+Session. A pre-start refusal releases this request's claim even when its target
+Session already exists. A typed rejected start also releases the claim. The
+original typed error is preserved.
 
-Completed receipts expire after seven wall-clock days; a later reuse is a new
-request, so retain the original Session reference and do not blindly retry after
-that window. Forward clock jumps can shorten elapsed retention. Existing legacy
-unresolved records remain indeterminate because they have no starting proof;
-legacy completed records receive a durable seven-day window at migration.
-Legacy unscoped keys fail closed for verified agent callers; reconcile their
-original Session instead of automatically sending under a new key.
+Completed receipts expire seven wall-clock days after completion. Unconfirmed
+starting claims expire seven days after their first starting mark. At expiry,
+the next admission removes them to recover capacity; reusing the key becomes a
+new request and may duplicate an earlier effect. Expiry does not prove failure
+or authorize an automatic retry. Retain the original Session reference and do
+not blindly retry outside the window. A live owner retains its request lock
+even across expiry. Forward clock jumps can shorten elapsed retention. Legacy
+starting claims receive a durable seven-day window at migration; legacy
+completed records receive the same window after their first observation.
+Unmarked reservations remain reclaimable only when no Session exists.
+Legacy unscoped keys fail closed for verified agent callers within their window;
+inspect their original Session instead of automatically using a new key.
+Current operator and verified Session scopes have independent key namespaces.
 Claims retain at most 1,024 records in a 4 MiB ledger, reserving 3 KiB per pending
 receipt before any effect. Capacity refuses with HTTP `429`,
 `create_request_capacity`, and starts nothing. An oversized or invalid receipt
