@@ -4,31 +4,24 @@ import {
   chmodSync,
   existsSync,
   mkdirSync,
-  mkdtempSync,
   readdirSync,
   readFileSync,
-  rmSync,
   watch,
   writeFileSync,
 } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, expect, test } from 'vitest';
+import { expect, test } from 'vitest';
+import { trackTempDirs } from '../../../../__test-utils__/temp-dirs.js';
 import {
   DEVICE_APP_INSTALL_SCRIPT,
   type DeviceAppInstallParams,
 } from '../device-app-install-program.js';
 import { remoteLoaderCommand } from '../ssh-device-target.js';
 
-const homes: string[] = [];
-afterEach(() => {
-  for (const home of homes.splice(0))
-    rmSync(home, { recursive: true, force: true });
-});
+const makeTempDir = trackTempDirs();
 
 function fixture() {
-  const home = mkdtempSync(join(tmpdir(), 'station-device-install-test-'));
-  homes.push(home);
+  const home = makeTempDir('station-device-install-test-');
   const bin = join(home, '.local', 'bin');
   const tools = join(home, 'sdk', 'build-tools', '35.0.0');
   mkdirSync(bin, { recursive: true });

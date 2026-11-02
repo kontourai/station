@@ -1,27 +1,13 @@
-import {
-  mkdir,
-  mkdtemp,
-  realpath,
-  rm,
-  symlink,
-  writeFile,
-} from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { mkdir, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { afterEach, expect, test, vi } from 'vitest';
+import { expect, test, vi } from 'vitest';
 import { ZipFile } from 'yazl';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { DeviceArtifactStaging } from '../device-app-artifacts.js';
 
-const roots: string[] = [];
-afterEach(async () => {
-  for (const root of roots.splice(0))
-    await rm(root, { recursive: true, force: true });
-});
+const makeTempDir = trackTempDirs();
 async function workspace() {
-  const root = await realpath(
-    await mkdtemp(join(tmpdir(), 'station-device-artifact-')),
-  );
-  roots.push(root);
+  const root = await realpath(makeTempDir('station-device-artifact-'));
   await mkdir(join(root, 'Sample.app'));
   await writeFile(join(root, 'Sample.app', 'Info.plist'), 'plist');
   await writeFile(join(root, 'Sample.app', 'Sample'), 'binary', {
@@ -86,10 +72,7 @@ test.skipIf(process.platform === 'win32')(
   'workspace snapshots reject paths and symlink escapes',
   async () => {
     const root = await workspace();
-    const outside = await realpath(
-      await mkdtemp(join(tmpdir(), 'station-device-outside-')),
-    );
-    roots.push(outside);
+    const outside = await realpath(makeTempDir('station-device-outside-'));
     await writeFile(join(outside, 'secret'), 'private');
     await symlink(outside, join(root, 'escape'));
     const store = new DeviceArtifactStaging();

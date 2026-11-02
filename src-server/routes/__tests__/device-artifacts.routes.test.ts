@@ -1,17 +1,15 @@
-import { mkdtemp, realpath, rm, symlink, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { realpath, symlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { afterEach, expect, test } from 'vitest';
 import { ZipFile } from 'yazl';
+import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import { DeviceArtifactStaging } from '../../services/devices/device-app-artifacts.js';
 import { createDeviceArtifactRoutes } from '../device-artifacts.js';
 
-const roots: string[] = [];
+const makeTempDir = trackTempDirs();
 const disposals: Array<() => Promise<void>> = [];
 afterEach(async () => {
   for (const dispose of disposals.splice(0)) await dispose();
-  for (const root of roots.splice(0))
-    await rm(root, { recursive: true, force: true });
 });
 async function apk() {
   const zip = new ZipFile();
@@ -87,13 +85,8 @@ test('upload intake requires a person and current Project authority and scopes i
 test.skipIf(process.platform === 'win32')(
   'workspace intake refuses host paths and symlink escapes',
   async () => {
-    const root = await realpath(
-      await mkdtemp(join(tmpdir(), 'station-device-route-')),
-    );
-    const outside = await realpath(
-      await mkdtemp(join(tmpdir(), 'station-device-outside-')),
-    );
-    roots.push(root, outside);
+    const root = await realpath(makeTempDir('station-device-route-'));
+    const outside = await realpath(makeTempDir('station-device-outside-'));
     await writeFile(join(outside, 'app.apk'), await apk());
     await symlink(outside, join(root, 'escape'));
     const h = fixture(root);
@@ -119,10 +112,7 @@ test.skipIf(process.platform === 'win32')(
 test.skipIf(process.platform === 'win32')(
   'workspace intake stages a Project-relative APK',
   async () => {
-    const root = await realpath(
-      await mkdtemp(join(tmpdir(), 'station-device-route-')),
-    );
-    roots.push(root);
+    const root = await realpath(makeTempDir('station-device-route-'));
     await writeFile(join(root, 'app.apk'), await apk());
     const h = fixture(root);
     const response = await h.app.request(

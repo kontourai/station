@@ -1,11 +1,11 @@
 import { EventEmitter } from 'node:events';
-import { mkdtemp, realpath, rm, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { realpath, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { MobileDeviceInventory } from '@kontourai/station-contracts/mobile-device';
 import { McpServer } from '@modelcontextprotocol/server';
 import { afterEach, expect, test, vi } from 'vitest';
 import { ZipFile } from 'yazl';
+import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import { resolveStationControlCallerFromToken } from '../../runtime/mcp/station-control-caller.js';
 import {
   mintStationControlMcpToken,
@@ -39,6 +39,7 @@ import { createDeviceAgentRoutes } from '../device-agent.js';
 import { createDeviceToolsRoutes } from '../device-tools.js';
 import { createMobileDeviceRoutes } from '../mobile-device.js';
 
+const makeTempDir = trackTempDirs();
 const disposals: (() => Promise<void>)[] = [];
 afterEach(async () => {
   vi.unstubAllGlobals();
@@ -1611,54 +1612,48 @@ test('human takeover cancels installation and reports an unknown effect', async 
 test.skipIf(process.platform === 'win32')(
   'install tool stages only the bound Project workspace while holding the device lease',
   async () => {
-    const root = await realpath(
-      await mkdtemp(join(tmpdir(), 'station-device-agent-app-')),
+    const root = await realpath(makeTempDir('station-device-agent-app-'));
+    await writeFile(join(root, 'sample.apk'), await apkFixture());
+    const h = harness('sdk-in-process', { projectRoot: root });
+    const deviceSessionId = await h.open();
+    const refused = parsed(
+      await h.run('device_install_app', {
+        deviceSessionId,
+        workspacePath: '../sample.apk',
+      }),
     );
-    try {
-      await writeFile(join(root, 'sample.apk'), await apkFixture());
-      const h = harness('sdk-in-process', { projectRoot: root });
-      const deviceSessionId = await h.open();
-      const refused = parsed(
-        await h.run('device_install_app', {
-          deviceSessionId,
-          workspacePath: '../sample.apk',
-        }),
-      );
-      expect(refused).toMatchObject({
-        ok: false,
-        code: 'invalid-source',
-        effect: 'none',
-      });
-      expect(h.installApp).not.toHaveBeenCalled();
-      const installed = parsed(
+    expect(refused).toMatchObject({
+      ok: false,
+      code: 'invalid-source',
+      effect: 'none',
+    });
+    expect(h.installApp).not.toHaveBeenCalled();
+    const installed = parsed(
+      await h.run('device_install_app', {
+        deviceSessionId,
+        workspacePath: 'sample.apk',
+      }),
+    );
+    expect(installed).toMatchObject({
+      ok: true,
+      source: 'workspace',
+      hostId: 'local',
+      metadata: { appId: 'com.example.app', revision: null },
+    });
+    expect(h.sessions.latestInstallation(deviceSessionId)).toMatchObject({
+      source: 'workspace',
+      digest: installed.digest,
+      metadata: { build: '1', revision: null },
+    });
+    await h.take(deviceSessionId);
+    expect(
+      parsed(
         await h.run('device_install_app', {
           deviceSessionId,
           workspacePath: 'sample.apk',
         }),
-      );
-      expect(installed).toMatchObject({
-        ok: true,
-        source: 'workspace',
-        hostId: 'local',
-        metadata: { appId: 'com.example.app', revision: null },
-      });
-      expect(h.sessions.latestInstallation(deviceSessionId)).toMatchObject({
-        source: 'workspace',
-        digest: installed.digest,
-        metadata: { build: '1', revision: null },
-      });
-      await h.take(deviceSessionId);
-      expect(
-        parsed(
-          await h.run('device_install_app', {
-            deviceSessionId,
-            workspacePath: 'sample.apk',
-          }),
-        ),
-      ).toMatchObject({ ok: false });
-      expect(h.installApp).toHaveBeenCalledOnce();
-    } finally {
-      await rm(root, { recursive: true, force: true });
-    }
+      ),
+    ).toMatchObject({ ok: false });
+    expect(h.installApp).toHaveBeenCalledOnce();
   },
 );
