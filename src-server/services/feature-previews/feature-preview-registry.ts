@@ -73,6 +73,7 @@ function stateProblems(value: unknown): string[] {
  */
 export class FeaturePreviewRegistry {
   private readonly consumers = new Map<string, FeaturePreviewDefinition>();
+  private readonly generations = new Map<string, number>();
   private readonly state: GrantsFileStore<FeaturePreviewState>;
 
   constructor(
@@ -161,8 +162,14 @@ export class FeaturePreviewRegistry {
       current[id] = { enabled };
       return current;
     });
+    this.generations.set(id, this.generation(id) + 1);
     this.logger.info('Feature preview updated', { id, enabled });
     return { ...definition, enabled };
+  }
+
+  /** In-process generation fences consumers across a choice change. */
+  generation(id: string): number {
+    return this.generations.get(id) ?? 0;
   }
 
   private rememberConsumer(definition: FeaturePreviewDefinition): void {

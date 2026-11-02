@@ -418,6 +418,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Two bounded, short-lived Node probes prove per-process stdio caller
   // separation while sharing one fixture internal credential; no real services.
   'src-server/tools/__tests__/station-control-caller-binding.process.test.ts',
+  // A same-user Node child replays copied Codex tool headers over loopback.
+  'src-server/runtime/mcp/__tests__/codex-bound-tools.test.ts',
   // #2377: one bounded Node child runs the stdio entry's credential install
   // and the stdio tools' own REST helper against an in-process guard, proving
   // a real pooled child reaches reads only; no real services.
