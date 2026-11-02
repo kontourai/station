@@ -216,7 +216,17 @@
 
     "src-ui/src/views/home/work-status.ts",
 
-    "src-ui/src/__tests__/owned-work-status.test.tsx"
+    "src-ui/src/__tests__/owned-work-status.test.tsx",
+
+    "src-server/runtime/bootstrap/runtime-health.ts",
+
+    "src-ui/src/components/session-detail/OwnedWorkCleanup.tsx",
+
+    "src-ui/src/__tests__/OwnedWorkCleanup.test.tsx",
+
+    "src-ui/src/components/inbox-row/InboxRowStatus.tsx",
+
+    "tests/owned-work-custody.spec.ts"
   ],
 
   "checks": [
