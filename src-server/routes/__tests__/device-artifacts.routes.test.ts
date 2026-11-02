@@ -253,6 +253,7 @@ test('chunked upload stores an exact-sized owned backing buffer', async () => {
   const h = fixture(null);
   const bytes = await apk();
   const staged = vi.spyOn(h.staging, 'stageUpload');
+  const fills = vi.spyOn(Buffer.prototype, 'fill');
   const body = new ReadableStream<Uint8Array>({
     start(controller) {
       controller.enqueue(bytes.subarray(0, 11));
@@ -274,6 +275,15 @@ test('chunked upload stores an exact-sized owned backing buffer', async () => {
   const owned = staged.mock.calls[0]![1];
   expect(owned.byteLength).toBe(bytes.byteLength);
   expect(owned.buffer.byteLength).toBe(bytes.byteLength);
+  const wiped = fills.mock.instances.find(
+    (buffer, index) =>
+      buffer.length === 64 * 1024 &&
+      fills.mock.calls[index]?.length === 1 &&
+      fills.mock.calls[index]?.[0] === 0,
+  );
+  expect(wiped).toBeDefined();
+  expect(wiped!.every((byte: number) => byte === 0)).toBe(true);
+  fills.mockRestore();
   const { data } = (await response.json()) as { data: { handle: string } };
   await h.staging.withArtifact(
     'project-id',

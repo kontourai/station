@@ -35,18 +35,18 @@ test('accepts one bounded simulator app and preserves its executable bytes', asy
   );
 });
 
-test('rejects traversal, symlinks, colliding names and corrupt content before extraction', async () => {
+test('rejects trailing-dot paths, symlinks, colliding names and corrupt content before extraction', async () => {
   const good = await archive([
     { name: 'Sample.app/Info.plist', bytes: 'plist' },
     { name: 'Sample.app/aa/ok', bytes: 'payload' },
   ]);
-  const traversal = Buffer.from(good);
-  let offset = traversal.indexOf('aa/ok');
+  const trailingDot = Buffer.from(good);
+  let offset = trailingDot.indexOf('aa/ok');
   while (offset !== -1) {
-    traversal.write('a./ok', offset);
-    offset = traversal.indexOf('aa/ok', offset + 5);
+    trailingDot.write('a./ok', offset);
+    offset = trailingDot.indexOf('aa/ok', offset + 5);
   }
-  await expect(inspectDeviceArchive(traversal, 'ios')).rejects.toMatchObject({
+  await expect(inspectDeviceArchive(trailingDot, 'ios')).rejects.toMatchObject({
     message: 'invalid-artifact',
     cause: 'entry-path',
   });
@@ -93,6 +93,23 @@ test('rejects traversal, symlinks, colliding names and corrupt content before ex
   await expect(inspectDeviceArchive(corrupt, 'ios')).rejects.toMatchObject({
     message: 'invalid-artifact',
     cause: 'content-mismatch',
+  });
+});
+
+test('rejects a parent traversal before inspecting entries', async () => {
+  const bytes = await archive([
+    { name: 'Sample.app/Info.plist', bytes: 'plist' },
+    { name: 'Sample.app/aa/x', bytes: 'payload' },
+  ]);
+  let offset = bytes.indexOf('aa/x');
+  while (offset !== -1) {
+    bytes.write('../x', offset);
+    offset = bytes.indexOf('aa/x', offset + 4);
+  }
+  // yauzl is the first line of defence for .. and absolute paths.
+  await expect(inspectDeviceArchive(bytes, 'ios')).rejects.toMatchObject({
+    message: 'invalid-artifact',
+    cause: 'zip-error',
   });
 });
 

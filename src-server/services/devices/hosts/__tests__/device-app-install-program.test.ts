@@ -497,3 +497,9 @@ test('registry retains admission up to the scaled deadline and refuses at the de
     await registry.shutdown();
   }
 });
+
+test('host installer embeds the shared phase budget', () => {
+  expect(DEVICE_APP_INSTALL_SCRIPT).toContain(
+    String(DEVICE_INSTALL_HOST_PHASE_BUDGET_MS),
+  );
+});
