@@ -2204,6 +2204,38 @@ button:hover {
   overflow: hidden;
 }
 
+/* #4401 A30: a side region narrower than its default (`is-compact`,
+   `RegionChromeBar`). With the full bar's spacing the identity, which clips,
+   was squeezed past its own contents: the title went to nothing and the ×
+   slid under the status chip. Here the spacing tightens, and the hover-only
+   placement grab and the avatar step aside so the title keeps room; moving
+   the region stays a row of the More menu. */
+.chat-dock__header.is-compact {
+  gap: var(--k-space-1);
+  padding-inline: var(--k-space-2);
+}
+
+.chat-dock__header.is-compact .chat-dock__title {
+  gap: var(--k-space-1);
+}
+
+.chat-dock__header.is-compact .chat-dock__header-actions {
+  gap: var(--k-space-1);
+}
+
+.chat-dock__header.is-compact .chat-dock__header-actions .chat-dock__icon-btn {
+  padding-inline: 6px;
+}
+
+.chat-dock__header.is-compact .chat-dock__placement-grab,
+.chat-dock__header.is-compact .chat-dock__active-identity-avatar {
+  display: none;
+}
+
+.chat-dock__header.is-compact .session-context-chip {
+  margin-left: 0;
+}
+
 /* The row's only growing member: everything to the left of it is one cluster,
    and the actions cluster sits on the far side. Empty by design — put flex
    growth on a spacer, never inside a run of text, or the row grows a gap
@@ -7663,6 +7695,26 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
     gap: 8px;
     margin-top: auto;
     align-items: center;
+  }
+
+  /* #4401 A31: the pane's identity (avatar, title, ×) and its status chip are
+     horizontal rows with their own floors; in the 36px vertical strip they ran
+     out of it, over the main content and past the window edge. The strip is
+     the region's controls alone; Show <surface> names it. Every button keeps
+     inside the strip's width. */
+  .app__main
+    > :is([data-region="left"], [data-region="right"]).is-collapsed
+    :is(.chat-dock__header-identity, .session-context-chip) {
+    display: none;
+  }
+
+  .app__main
+    > :is([data-region="left"], [data-region="right"]).is-collapsed
+    .chat-dock__header
+    button {
+    max-width: 100%;
+    padding-left: 4px;
+    padding-right: 4px;
   }
 
   .app__main
