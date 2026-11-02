@@ -138,12 +138,12 @@ and where to start reading; it is a pointer, not a reviewed interface contract.
 ## Durable Station Agent
 
 The [runtime owner](../../src-server/runtime/agents/durable-agent-owner.ts)
-consumes `@kontourai/agent-runtime` through its root contract and explicit `/internal` host integration entry. Its retained SQLite connection uses immutable effect bodies, indexed control headers and per-turn SQL change cursors. Prefix commits batch at 16 ms, 64 KiB or 1024 parts; owner checks and dispatch grants remain transactional. It is bound during
+consumes `@kontourai/agent-runtime` through its root contract and explicit `/internal` host integration entry. Its retained SQLite connection uses shared immutable history chunks, overwritten partial tails, indexed headers and per-turn change cursors. Model prefixes flush at 16 ms, 64 KiB or 128 parts; foreground projection transactions flush at 16 ms, 64 KiB or 1024 frames. Each frame keeps its identity. Owner checks and dispatch grants remain transactional. It is bound during
 [runtime initialization](../../src-server/runtime/bootstrap/runtime-initialize.ts)
 behind the off-by-default **Crash-durable Station Agent** preview. The private
 SQLite journal owns the conversation fence, tool/model receipts, approval
 revision and deadline, cancellation request, terminal timestamp and transport
-frames. Station retains current Session authorization and native output authority.
+frames. Station retains current Session authorization and native output authority. The frame ceiling is 1,048,576 per turn, above the default 200-step/400-chunk workload. New turns keep provider chunk boundaries; recovery retains the layout recorded by the original turn.
 
 [Recovery composition](../../src-server/runtime/agents/durable-agent-recovery.ts)
 waits for the original agent and Session, claims only a proven-dead owner, then

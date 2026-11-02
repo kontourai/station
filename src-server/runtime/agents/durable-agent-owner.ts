@@ -247,15 +247,19 @@ function createStationOwner(home: string) {
     return work(handle);
   }
   let yieldedAt = performance.now();
+  const yieldBudget = async () => {
+    if (performance.now() - yieldedAt >= 5) {
+      await yieldToHost();
+      yieldedAt = performance.now();
+    }
+  };
   const journal: AgentJournal = {
     async execute(command, context) {
+      if (command.type === 'effectPlan') await yieldBudget();
       const answer = await withJournal((value) =>
         value.journal.execute(command, context),
       );
-      if (performance.now() - yieldedAt >= 5) {
-        await yieldToHost();
-        yieldedAt = performance.now();
-      }
+      await yieldBudget();
       return answer;
     },
     async close() {

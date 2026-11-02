@@ -13,7 +13,7 @@ AI SDK v3 interface, VoltAgent 2.10.0 and Strands 1.19.0 VercelModel. Optional
 framework dependencies are exact peers. The package imports no Station code.
 
 The public root also exports an agent-turn journal and recovery owner. Its
-separate `agent_steps_` namespace declares writer format `agent-steps/9` and
+separate `agent_steps_` namespace declares writer format `agent-steps/10` and
 leaves existing `runtime-model/1` records intact. An active conversation has
 one owner. Recovery requires a proven-dead owner and compares the complete
 observed fence inside the SQLite write transaction. A retained Station turn
@@ -33,7 +33,7 @@ The prior writer refuses the new metadata; future writers refuse here too. Write
 
 Station retains one private SQLite connection per runtime owner. The connection tracks SQLite `data_version`, `total_changes()`, main/TEMP schema versions and a per-turn change cursor. Writer 8 adds an immutable SQL change journal populated by effect and approval triggers; its migration from writer 7 leaves existing payloads and headers unchanged. A peer or out-of-band local write validates only changed records and their approval links. Cursor acknowledgements remain inside the SQLite snapshot and are separate for each turn. Deleted recorded effects refuse; observing another turn cannot acknowledge unchecked changes. A schema change discards derived payload validation; opening and recovery retain full unresolved validation. Participant callbacks discard validation before checking their affected state. Healthy commands read indexed unfinished headers and only new/selected payloads. Cached validation never grants a dispatch, bypasses an ownership fence or changes FULL/WAL policy. The owner answers its own liveness locally; foreign owners still require the exact-process probe. Commands yield to the server between bounded slices.
 
-Stream prefixes commit in batches bounded by 16 ms, 64 KiB or 1024 parts. A batch becomes visible only after its commit. EOF and tool-enabling suffixes flush the pending prefix; the suffix remains held until the complete model tape commits. A crash can lose an uncommitted batch, but cannot obtain another dispatch grant.
+Stream prefixes commit in batches bounded by 16 ms, 64 KiB or 128 parts. A batch becomes visible only after its commit. EOF and tool-enabling suffixes flush the pending prefix; the suffix remains held until the complete model tape commits. A crash can lose an uncommitted batch, but cannot obtain another dispatch grant.
 
 
 `durableLanguageModel` journals calls made inside `AgentTurnLease.run` without
@@ -283,3 +283,14 @@ The `/internal` subpath groups the unstable host/framework ABI: `agentWire` and 
 Native tools that cannot expose the durable execution port are refused before model dispatch. Ordinary engine calls retain their prior tool-return values; only restored durable results use the host decoder. Late transport frames wait for an in-flight terminal receipt so they use its committed owner fence.
 
 Writer 9 groups partial wire values into immutable bodies of at most 128 entries. Its migration preserves logical partial/input/result bytes and existing turn records while rewriting effect control headers to physical version 2. Previous body rows remain retained. The old writer refuses the new metadata.
+
+
+Writer 10 stores only complete 128-entry partial groups as immutable bodies. An in-progress tail of at most 127 wire values is overwritten in its effect header and checked against its digest. The model stream flush limit is **128 parts**, 64 KiB or 16 ms; the storage group size is also 128. The separate foreground frame transaction limit is **1024 frames**, 64 KiB or 16 ms. These are different limits.
+
+Large request/result bodies share immutable fragments of at most 16,384 UTF-16 code units behind a physical `agent-body/2` descriptor. The reconstructed logical wire keeps its original digest and byte length, including Unicode across fragment boundaries. Migration validates the frozen writer-9 schema and records before creating the chunk table and physical version-3 effect headers. Existing bodies and turn records remain retained; migration does not reclaim historical garbage.
+
+Change tracking keeps the newest receipt for every turn/kind/id. A receipt can be deleted only when a newer receipt for that same key exists. Sequence numbers never decrease, and any connection whose cursor predates a change still sees the newer receipt. The final receipt, including a deletion tombstone, remains protected. Pure custom clocks take the incremental path; clock callbacks that write rows are refused and rolled back.
+
+The chat projection commits bounded batches before displaying any frame. Each frame keeps its own ID, wire and position; transaction grouping does not merge identities. Control and terminal events flush pending text first, and cleanup waits for both the publication drain and owner completion. The frame ceiling is 1,048,576 per turn, leaving margin above the default 200-step workload at 400 chunks per answer. Text processing retains provider chunk boundaries. New turns record `input-chunks/1`; recovery of older descriptors retains their original character-frame layout.
+
+The benchmark includes the actual in-process chat/SSE route and `projectFrame`/`projectFrameBatch`, with 0, 5 and 20 ms token pacing. It reports total home bytes divided by emitted text bytes, journal/body/frame bytes, transient WAL peak, elapsed ratio, command and amortized projection costs, and event-loop stall. The fresh-journal workload budget is 128 KiB fixed + 512 KiB per model step + twice emitted text bytes; immutable body storage has a separate 128 KiB per-step + twice-text budget. These allowances include indexed frame/change metadata; they are not a claim that total disk usage is twice text, or that retained raw disk is bounded. TCP and the outer EventStore relay remain outside this benchmark. SDK tracing stays active; fixture traces and garbage are cleared between measurements, never within a measured turn.
