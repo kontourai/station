@@ -18,6 +18,7 @@ import {
   type FileMutationLockOptions,
 } from './lifecycle-events.js';
 import {
+  lookupProcessBirthFingerprintCached,
   type ProcessIdentityDependencies,
   probeExactProcessIdentity,
   resolveOwnProcessIdentity,
@@ -297,9 +298,12 @@ export function acquireStationHomeRuntimeLease(
           'Runtime lease is released',
         );
       const current = readLease(path);
+      // Only this running process's immutable birth is reused; the lease is re-read.
       const probe = probeExactProcessIdentity(
         identity.pid,
-        hooks.processIdentity,
+        hooks.processIdentity ?? {
+          lookup: lookupProcessBirthFingerprintCached,
+        },
       );
       if (
         current.ownerId !== ownerId ||

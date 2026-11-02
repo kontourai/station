@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { flowRunHead, flowTransitionRef, loadRun } from '@kontourai/flow';
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
@@ -35,11 +35,9 @@ import { StationDelegationPersistence } from '../delegation-group-persistence.js
 import { EventBus } from '../event-bus.js';
 import { EventStore } from '../event-store.js';
 import { OrchestrationService } from '../orchestration-service.js';
-import { reportInputRecordSchema } from '../report-input-ledger.js';
 import { createSessionAgentResolver } from '../session-agent-resolution.js';
 import { reportAdmissionSignature } from '../station-report-group-admission.js';
 import { StationReportGroupCustody } from '../station-report-group-custody.js';
-import { StationReportGroupPreparation } from '../station-report-group-preparation.js';
 import { StationReportGroupRuntime } from '../station-report-group-runtime.js';
 import { createReportFlow } from './delegation-source-fixtures/flow.js';
 import {
@@ -146,213 +144,6 @@ function watchCanonicalInput(
       stop();
     }
   };
-}
-
-function observeInputPhases() {
-  const costs: Record<
-    string,
-    { calls: number; milliseconds: number; refused: number }
-  > = {};
-  const recordCost = (kind: string, started: number, refused: boolean) => {
-    costs[kind] ??= { calls: 0, milliseconds: 0, refused: 0 };
-    const entry = costs[kind];
-    entry.calls++;
-    entry.milliseconds += performance.now() - started;
-    if (refused) entry.refused++;
-  };
-  const measure = <Value>(kind: string, work: () => Value): Value => {
-    const started = performance.now();
-    let refused = true;
-    try {
-      const value = work();
-      refused = false;
-      return value;
-    } finally {
-      recordCost(kind, started, refused);
-    }
-  };
-  const entries: Array<{
-    phase: string;
-    at: number;
-    outcome?: 'returned' | 'refused';
-    error?: string;
-    reason?: string;
-    costs: typeof costs;
-  }> = [];
-  const mark = (phase: string) => {
-    if (entries.length < 256)
-      entries.push({
-        phase,
-        at: Date.now() - NOW,
-        costs: structuredClone(costs),
-      });
-  };
-  const observe = <Value>(phase: string, work: () => Promise<Value>) => {
-    mark(phase);
-    const pending = work();
-    void pending.then(
-      () => {
-        if (entries.length < 256)
-          entries.push({
-            phase,
-            at: Date.now() - NOW,
-            outcome: 'returned',
-            costs: structuredClone(costs),
-          });
-      },
-      (error: unknown) => {
-        const reason =
-          error instanceof Error && 'reason' in error
-            ? error.reason
-            : undefined;
-        if (entries.length < 256)
-          entries.push({
-            phase,
-            at: Date.now() - NOW,
-            outcome: 'refused',
-            costs: structuredClone(costs),
-            error: error instanceof Error ? error.name : typeof error,
-            ...(typeof reason === 'string' &&
-            ['busy', 'borrow-unavailable', 'identity-unavailable'].includes(
-              reason,
-            )
-              ? { reason }
-              : {}),
-          });
-      },
-    );
-    return pending;
-  };
-  const prepare = StationReportGroupPreparation.prototype.prepare;
-  const dispatch = StationReportGroupPreparation.prototype.dispatch;
-  const retain = StationReportGroupCustody.prototype.retain;
-  const observation =
-    StationDelegationPersistence.prototype.retainReportObservation;
-  const assertCurrent = StationReportGroupPreparation.prototype.assertCurrent;
-  const authorizes = StationReportGroupPreparation.prototype.authorizes;
-  const acquire = HomeWriterOwner.prototype.acquire;
-  const spies = [
-    vi
-      .spyOn(StationReportGroupPreparation.prototype, 'assertCurrent')
-      .mockImplementation(function (
-        this: StationReportGroupPreparation,
-        ...args
-      ) {
-        return measure('preparation.assertCurrent', () =>
-          assertCurrent.apply(this, args),
-        );
-      }),
-    vi
-      .spyOn(StationReportGroupPreparation.prototype, 'authorizes')
-      .mockImplementation(function (
-        this: StationReportGroupPreparation,
-        ...args
-      ) {
-        return measure('preparation.authorizes', () =>
-          authorizes.apply(this, args),
-        );
-      }),
-    vi.spyOn(HomeWriterOwner.prototype, 'acquire').mockImplementation(function (
-      this: HomeWriterOwner,
-      ...args
-    ) {
-      const started = performance.now();
-      const pending = acquire.apply(this, args);
-      void pending.then(
-        () => recordCost('home.acquire', started, false),
-        () => recordCost('home.acquire', started, true),
-      );
-      return pending;
-    }),
-    vi
-      .spyOn(StationReportGroupPreparation.prototype, 'prepare')
-      .mockImplementation(function (
-        this: StationReportGroupPreparation,
-        ...args
-      ) {
-        return observe('prepare', () => prepare.apply(this, args));
-      }),
-    vi
-      .spyOn(StationReportGroupPreparation.prototype, 'dispatch')
-      .mockImplementation(function (
-        this: StationReportGroupPreparation,
-        ...args
-      ) {
-        return observe(`dispatch:${args[2]}`, () => dispatch.apply(this, args));
-      }),
-    vi
-      .spyOn(StationReportGroupCustody.prototype, 'retain')
-      .mockImplementation(function (this: StationReportGroupCustody, ...args) {
-        return observe('retain', () => retain.apply(this, args));
-      }),
-    vi
-      .spyOn(StationDelegationPersistence.prototype, 'retainReportObservation')
-      .mockImplementation(function (
-        this: StationDelegationPersistence,
-        ...args
-      ) {
-        return observe(`observation:${args[0].observation.kind}`, () =>
-          observation.apply(this, args),
-        );
-      }),
-  ];
-  onTestFinished(() => {
-    for (const spy of spies) spy.mockRestore();
-  });
-  return { entries, mark, observe };
-}
-
-function inputFailureFacts(
-  home: string,
-  store: EventStore,
-  threads: readonly string[],
-  phases: ReturnType<typeof observeInputPhases>,
-) {
-  try {
-    const methods = new Set([
-      'session.started',
-      'turn.started',
-      'request.opened',
-      'request.resolved',
-      'turn.completed',
-      'turn.aborted',
-      'runtime.error',
-    ]);
-    const lifecycle = threads
-      .flatMap((threadId, member) =>
-        store
-          .listEvents(threadId)
-          .filter(({ payload }) => methods.has(payload.method))
-          .map(({ payload }) => ({
-            member,
-            method: payload.method,
-            createdAt: payload.createdAt,
-          })),
-      )
-      .slice(-64);
-    const directory = join(home, 'report-groups', 'station-report-input-v1');
-    const inputs = existsSync(directory)
-      ? readdirSync(directory)
-          .filter((name) => name.endsWith('.json'))
-          .sort()
-          .slice(0, 8)
-          .map((name) => {
-            const record = reportInputRecordSchema.parse(
-              JSON.parse(readFileSync(join(directory, name), 'utf8')),
-            );
-            return {
-              seat: record.binding.seatId,
-              physicalSends: record.physicalSends,
-              question: record.question !== undefined,
-              answer: record.answer !== undefined,
-              result: record.result !== undefined,
-            };
-          })
-      : [];
-    return { lifecycle, inputs, phases: phases.entries };
-  } catch (error) {
-    return { unavailable: error instanceof Error ? error.name : typeof error };
-  }
 }
 
 function publicationFor(h: Awaited<ReturnType<typeof setup>>) {
@@ -480,13 +271,7 @@ test('funded three-seat mixed-model report serves input, member results and acco
     approvalRegistry: new ApprovalRegistry(logger, { eventBus: bus }),
     fetch: relay,
   });
-  const phases = observeInputPhases();
-  const startSession = adapter.startSession;
-  const starts = vi
-    .spyOn(adapter, 'startSession')
-    .mockImplementation((...args) =>
-      phases.observe('startSession', () => startSession.apply(adapter, args)),
-    );
+  const starts = vi.spyOn(adapter, 'startSession');
   const orchestration = new OrchestrationService({
     adapterRegistry: createGateTestRegistry(adapter),
     eventBus: bus,
@@ -503,7 +288,6 @@ test('funded three-seat mixed-model report serves input, member results and acco
     eventStore.close();
   });
   h.rawFetch.mockImplementation(async (url, init) => {
-    phases.mark('rawFetch');
     if (String(url).startsWith('https://generativelanguage.googleapis.com/'))
       return controlledTextStream(
         'google',
@@ -622,12 +406,6 @@ test('funded three-seat mixed-model report serves input, member results and acco
       rawFetch: h.rawFetch.mock.calls.length,
       inputRuntimesConstructed: operation.inputRuntimesConstructed(),
       inputInvocations: operation.inputInvocationCount(),
-      persisted: inputFailureFacts(
-        h.f.home,
-        eventStore,
-        starts.mock.calls.map(([entry]) => entry.threadId),
-        phases,
-      ),
     }),
   );
   const running = createReportGroup(
@@ -636,14 +414,7 @@ test('funded three-seat mixed-model report serves input, member results and acco
     options,
   ).catch((error: unknown) => {
     failure = new Error(
-      `report create failed at runtime boundary (elapsed=${Date.now() - NOW}ms; rawFetch=${h.rawFetch.mock.calls.length}; starts=${starts.mock.calls.length}; inputInvocations=${operation.inputInvocationCount()}; persisted=${JSON.stringify(
-        inputFailureFacts(
-          h.f.home,
-          eventStore,
-          starts.mock.calls.map(([entry]) => entry.threadId),
-          phases,
-        ),
-      )})`,
+      `report create failed at runtime boundary (elapsed=${Date.now() - NOW}ms; rawFetch=${h.rawFetch.mock.calls.length}; starts=${starts.mock.calls.length}; inputInvocations=${operation.inputInvocationCount()})`,
       { cause: runtimeFailure ?? error },
     );
     throw failure;
@@ -745,13 +516,7 @@ test('explicit report input crosses real Flow dispatch, canonical answer and ret
     approvalRegistry: new ApprovalRegistry(logger, { eventBus: bus }),
     fetch: relay,
   });
-  const phases = observeInputPhases();
-  const startSession = adapter.startSession;
-  const starts = vi
-    .spyOn(adapter, 'startSession')
-    .mockImplementation((...args) =>
-      phases.observe('startSession', () => startSession.apply(adapter, args)),
-    );
+  const starts = vi.spyOn(adapter, 'startSession');
   const orchestration = new OrchestrationService({
     adapterRegistry: createGateTestRegistry(adapter),
     eventBus: bus,
@@ -767,17 +532,16 @@ test('explicit report input crosses real Flow dispatch, canonical answer and ret
     await orchestration.shutdown();
     eventStore.close();
   });
-  h.rawFetch.mockImplementation(async (_url, init) => {
-    phases.mark('rawFetch');
-    return JSON.parse(String(init?.body)).tools
+  h.rawFetch.mockImplementation(async (_url, init) =>
+    JSON.parse(String(init?.body)).tools
       ? controlledInputStream('claude-sonnet-4-6', 'Which scope?')
       : controlledTextStream('anthropic', 'claude-sonnet-4-6', 'Plain report', {
           input_tokens: 4,
           output_tokens: 2,
           cache_read_input_tokens: 0,
           cache_creation_input_tokens: 0,
-        });
-  });
+        }),
+  );
   const operation = publicationFor(h);
   const publicationParticipant = operation.participant;
   const runtime = new StationReportGroupRuntime({
@@ -827,12 +591,6 @@ test('explicit report input crosses real Flow dispatch, canonical answer and ret
       rawFetch: h.rawFetch.mock.calls.length,
       inputRuntimesConstructed: operation.inputRuntimesConstructed(),
       inputInvocations: operation.inputInvocationCount(),
-      persisted: inputFailureFacts(
-        h.f.home,
-        eventStore,
-        starts.mock.calls.map(([entry]) => entry.threadId),
-        phases,
-      ),
     }),
   );
   const running = runtime
@@ -855,16 +613,7 @@ test('explicit report input crosses real Flow dispatch, canonical answer and ret
   assert.equal(
     failure,
     undefined,
-    failure === undefined
-      ? ''
-      : `initial group return at ${Date.now() - NOW}ms; persisted=${JSON.stringify(
-          inputFailureFacts(
-            h.f.home,
-            eventStore,
-            starts.mock.calls.map(([entry]) => entry.threadId),
-            phases,
-          ),
-        )}`,
+    `initial group return at ${Date.now() - NOW}ms`,
   );
   assert.ok(result);
   const member = result.group.members.find(
@@ -1165,16 +914,7 @@ test('explicit report input crosses real Flow dispatch, canonical answer and ret
   assert.equal(
     adoptionFaultApplied,
     true,
-    adoptionFaultApplied
-      ? ''
-      : `lost-adoption commit fault must be reached (elapsed=${Date.now() - NOW}ms; originalDeadlineRemaining=${input.deadlineAt - Date.now()}ms; persisted=${JSON.stringify(
-          inputFailureFacts(
-            h.f.home,
-            eventStore,
-            starts.mock.calls.map(([entry]) => entry.threadId),
-            phases,
-          ),
-        )})`,
+    `lost-adoption commit fault must be reached (elapsed=${Date.now() - NOW}ms; originalDeadlineRemaining=${input.deadlineAt - Date.now()}ms)`,
   );
   loseAdoption = false;
   const held = await persistence.readReportExecution(
