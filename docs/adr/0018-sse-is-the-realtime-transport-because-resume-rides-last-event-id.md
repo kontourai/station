@@ -12,8 +12,9 @@ behavior is not doing that work. Durable replay described here belongs to the
 orchestration event stream, not every endpoint that emits SSE. Binary
 [live-surface routes](../../src-server/routes/live-surface.ts) and a
 [viewer](../../src-ui/src/live-surface/useLiveSurface.ts) now exist. The viewer
-opens a stream per visible viewer; this is not proof of the planned single
-multiplexed stream per client or of a saturated-pool input-latency guarantee.
+opens a stream per visible viewer, admitted against a per-origin cap (the
+2026-11-02 amendment below); the planned single multiplexed stream per client
+is not built.
 The original decision, alternatives, and connection-budget constraints remain
 below; no live connection-budget or browser/native qualification was rerun here.
 
@@ -116,7 +117,41 @@ do not use SSE. They travel as a length-prefixed binary `fetch` stream.
   path that does not draw on the main origin's pool, or yield a view-scoped
   stream while a Browser pane has focus.
 
-This is a design constraint. None of it is implemented or measured yet.
+**Amendment (2026-11-02, station#2760): a measured admission cap, not yet
+the multiplexed stream.** Every visible Browser or Device pane still holds its
+own frame stream, but an origin admits at most **two** at once
+([`liveSurfaceStreamAdmission.ts`](../../src-ui/src/live-surface/liveSurfaceStreamAdmission.ts)).
+The browser's pool is per origin across tabs, so the slots are too: each is a
+named Web Lock, and tabs of one browser profile share them.
+With the two always-on event streams that leaves two of the six HTTP/1.1
+connections: one for input and lease requests, and one for a view-scoped event
+stream. A pane past the cap shows that it is waiting (`queued`) and is admitted
+in arrival order when another stream ends: hidden, closed, or between reconnect
+attempts. Input and lease requests are never admitted; they are what the
+spare connection is for. Admission counts streams per origin and shares none,
+so no stream or queued input crosses a credential, Project or origin change.
+
+- **Measured.** A real Chromium against a plain HTTP/1.1 server, with real
+  viewers of four surfaces and two held event streams
+  ([fixture](../../src-ui/src/live-surface/__tests__/liveSurfaceInputHeadroom.browser.test.ts)).
+  Without the cap the pool filled and a tap did not reach the server within
+  2 s. With it, 20 taps arrived at p50 1 ms, p95 2 ms and max 3 ms, and a lease
+  claim from a waiting pane arrived in 1 ms, while every stream stayed open.
+  Two tabs of one profile (one event stream each, two viewers each) shared the
+  two slots, and a tap from the waiting tab arrived in 1 ms. Hiding a pane
+  admitted the waiting one with one request each and no reconnect storm.
+  Revision `bb90331c21`, Apple M5 Pro, macOS 26.7.2, Chromium 156.0.8078.4,
+  host load average about 9.
+- **Still open.** With all three view-scoped event streams open at once, two
+  frame streams fill the pool again. Admission counts frame streams only: each
+  tab opens its own always-on event streams, so three tabs of one Station fill
+  the pool with event streams alone, and a WebView without Web Locks caps
+  frame streams per page, not per profile. The single multiplexed frame stream (one
+  connection for every visible surface, each surface authorized separately)
+  removes that case and the third-pane wait; it is not built. Native-broker
+  and relay transports are capped the same way but were not qualified
+  (station#1973). Neither the HTTP/1.1 result nor the cap says anything about
+  them.
 
 **Host resource pressure is not a reason to revisit this.** Station's admission
 controls act on starting engine processes, never on connections; no SSE route
