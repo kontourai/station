@@ -230,7 +230,7 @@ async function expectRefusedBeforeEffect(
   expect((error as ReceiverExecutionRefusal).code).toBe(code);
   expect(service.startSessionInternal).not.toHaveBeenCalled();
   expect(service.dispatchWithReceipt).not.toHaveBeenCalled();
-  const requests = join(dir, 'delegation-create-claims.json');
+  const requests = join(dir, 'create-request-claims.json');
   if (existsSync(requests))
     expect(
       Object.keys(JSON.parse(readFileSync(requests, 'utf8')).claims),

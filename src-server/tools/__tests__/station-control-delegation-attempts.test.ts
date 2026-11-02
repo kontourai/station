@@ -886,7 +886,7 @@ describe('ordinary local create request claims', () => {
     expect(
       Object.keys(
         JSON.parse(
-          readFileSync(join(dir, 'delegation-create-claims.json'), 'utf8'),
+          readFileSync(join(dir, 'create-request-claims.json'), 'utf8'),
         ).claims,
       ),
     ).toHaveLength(0);
@@ -902,7 +902,7 @@ describe('ordinary local create request claims', () => {
     const service = localService({
       onStart: async () => {
         const rows = JSON.parse(
-          readFileSync(join(dir, 'delegation-create-claims.json'), 'utf8'),
+          readFileSync(join(dir, 'create-request-claims.json'), 'utf8'),
         ).claims;
         expect(Object.values(rows)).toEqual([
           expect.objectContaining({ starting: true }),
@@ -964,7 +964,7 @@ describe('ordinary local create request claims', () => {
     'a malformed durable create ledger refuses without creating a session: %s',
     async (bytes) => {
       const { delegateTask } = await import('../station-control-delegation.js');
-      writeFileSync(join(dir, 'delegation-create-claims.json'), bytes);
+      writeFileSync(join(dir, 'create-request-claims.json'), bytes);
       const service = localService();
       await expect(
         delegateTask(localInput(), service as never),
