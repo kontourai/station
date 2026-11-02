@@ -14,6 +14,7 @@ import {
   type DeviceToolRunner,
   DeviceToolsError,
   DeviceToolsService,
+  deviceAppUrl,
   deviceControlConflict,
   deviceToolArgv,
   encodeDevicePushPayload,
@@ -37,6 +38,86 @@ test('local runner refuses before spawning when admission fails', async () => {
     }),
   ).rejects.toThrow('denied');
   expect(run).not.toHaveBeenCalled();
+});
+
+test('typed iOS app actions require the observed app state', async () => {
+  const app = 'com.example.app';
+  const runner = fakeRunner({
+    [`xcrun simctl launch ${UDID} ${app}`]: `${app}: 42\n`,
+    [`xcrun simctl terminate ${UDID} ${app}`]: '',
+    [`xcrun simctl spawn ${UDID} launchctl list`]:
+      'PID Status Label\n- 0 other\n',
+    [`xcrun simctl openurl ${UDID} example://page`]: '',
+  });
+  const service = new DeviceToolsService({
+    runner,
+    hub: hubAnswering({
+      [`/vendor/serve-sim/helper/${UDID}/foreground`]: { bundleId: app },
+    }),
+  });
+  await expect(
+    service.appAction(IOS, { type: 'launch', appId: app }),
+  ).resolves.toMatchObject({ observed: 'foreground', appId: app });
+  await expect(
+    service.appAction(
+      IOS,
+      {
+        type: 'open-url',
+        appId: app,
+        url: 'example://page',
+      },
+      { declaredSchemes: ['example'] },
+    ),
+  ).resolves.toMatchObject({ observed: 'foreground' });
+  await expect(
+    service.appAction(IOS, { type: 'terminate', appId: app }),
+  ).resolves.toMatchObject({ observed: 'not-running' });
+  const malformed = new DeviceToolsService({
+    runner: fakeRunner({
+      [`xcrun simctl terminate ${UDID} ${app}`]: '',
+      [`xcrun simctl spawn ${UDID} launchctl list`]: '',
+    }),
+    hub: hubAnswering(),
+  });
+  await expect(
+    malformed.appAction(IOS, { type: 'terminate', appId: app }),
+  ).rejects.toMatchObject({ code: 'postcondition-failed' });
+});
+
+test('Android app actions use fixed host vectors and reject unsafe URLs', async () => {
+  const app = 'com.example.app';
+  const url = 'https://example.test/path?a=1&b=2';
+  const runner = fakeRunner({
+    [`adb -s ${SERIAL} shell monkey -p ${app} -c android.intent.category.LAUNCHER 1`]:
+      'Events injected: 1',
+    [`adb -s ${SERIAL} shell am start -W -a android.intent.action.VIEW -d '${url}' -p ${app}`]:
+      'Status: ok',
+    [`adb -s ${SERIAL} shell dumpsys window`]: `mCurrentFocus=Window{1 u0 ${app}/.Main}`,
+    [`adb -s ${SERIAL} shell am force-stop ${app}`]: '',
+    [`adb -s ${SERIAL} shell pidof ${app}`]: new DeviceToolError(
+      'tool-failed',
+      'absent',
+      1,
+      false,
+    ),
+  });
+  const service = new DeviceToolsService({ runner, hub: hubAnswering() });
+  await expect(
+    service.appAction(ANDROID, { type: 'launch', appId: app }),
+  ).resolves.toMatchObject({ observed: 'foreground' });
+  await expect(
+    service.appAction(ANDROID, { type: 'open-url', appId: app, url }),
+  ).resolves.toMatchObject({ observed: 'foreground' });
+  await expect(
+    service.appAction(ANDROID, { type: 'terminate', appId: app }),
+  ).resolves.toMatchObject({ observed: 'not-running' });
+  for (const value of [
+    'file:///tmp/a',
+    'javascript:alert(1)',
+    'https://a.test/\\evil',
+    'https://user:password@example.test/',
+  ])
+    expect(deviceAppUrl(value)).toBeNull();
 });
 
 /**
@@ -879,4 +960,98 @@ describe('a device on another host (#1973)', () => {
     ).rejects.toMatchObject({ code: 'unsupported' });
     expect(runner.calls).toEqual([]);
   });
+});
+
+test('open URL requires an allowed scheme owned by the target app', async () => {
+  const service = new DeviceToolsService({
+    runner: fakeRunner({}),
+    hub: hubAnswering(),
+  });
+  for (const url of [
+    'tel:123',
+    'sms:123',
+    'mailto:x@example.test',
+    'prefs:root',
+    'x-web-search:query',
+    'other://page',
+  ]) {
+    await expect(
+      service.appAction(
+        IOS,
+        { type: 'open-url', appId: 'com.example.app', url },
+        { declaredSchemes: ['example'] },
+      ),
+    ).rejects.toMatchObject({ code: 'invalid-request' });
+  }
+});
+
+test('iOS terminate accepts a failed command only when the app is absent', async () => {
+  const app = 'com.example.app';
+  const service = new DeviceToolsService({
+    runner: fakeRunner({
+      [`xcrun simctl terminate ${UDID} ${app}`]: new DeviceToolError(
+        'tool-failed',
+        'not running',
+      ),
+      [`xcrun simctl spawn ${UDID} launchctl list`]:
+        'PID Status Label\n- 0 other\n',
+    }),
+    hub: hubAnswering(),
+  });
+  await expect(
+    service.appAction(IOS, { type: 'terminate', appId: app }),
+  ).resolves.toMatchObject({ observed: 'not-running' });
+});
+
+test.each([
+  ["https://example.test/'", 'https://example.test/%27'],
+  ["https://example.test/';id;'", 'https://example.test/%27;id;%27'],
+  ['https://example.test/$(id)', 'https://example.test/$(id)'],
+  ['https://example.test/`id`', 'https://example.test/%60id%60'],
+])(
+  'Android quotes the URL %s as one inert shell argument',
+  async (input, expected) => {
+    const app = 'com.example.app';
+    const runner = fakeRunner({
+      [`adb -s ${SERIAL} shell am start -W -a android.intent.action.VIEW -d '${expected}' -p ${app}`]:
+        'Status: ok',
+      [`adb -s ${SERIAL} shell dumpsys window`]: `mCurrentFocus=Window{1 u0 ${app}/.Main}`,
+    });
+    const service = new DeviceToolsService({ runner, hub: hubAnswering() });
+    await expect(
+      service.appAction(ANDROID, { type: 'open-url', appId: app, url: input }),
+    ).resolves.toMatchObject({ observed: 'foreground' });
+    expect(runner.calls[0]?.args).toContain(`'${expected}'`);
+  },
+);
+
+test('Android custom URL schemes require declaration and never permit intent URLs', async () => {
+  const app = 'com.example.app';
+  const runner = fakeRunner({
+    [`adb -s ${SERIAL} shell am start -W -a android.intent.action.VIEW -d 'sample://item' -p ${app}`]:
+      'Status: ok',
+    [`adb -s ${SERIAL} shell dumpsys window`]: `mCurrentFocus=Window{1 u0 ${app}/.Main}`,
+  });
+  const service = new DeviceToolsService({ runner, hub: hubAnswering() });
+  await expect(
+    service.appAction(ANDROID, {
+      type: 'open-url',
+      appId: app,
+      url: 'sample://item',
+    }),
+  ).rejects.toMatchObject({ code: 'invalid-request' });
+  await expect(
+    service.appAction(
+      ANDROID,
+      { type: 'open-url', appId: app, url: 'intent://item' },
+      { declaredSchemes: ['intent'] },
+    ),
+  ).rejects.toMatchObject({ code: 'invalid-request' });
+  await expect(
+    service.appAction(
+      ANDROID,
+      { type: 'open-url', appId: app, url: 'sample://item' },
+      { declaredSchemes: ['sample'] },
+    ),
+  ).resolves.toMatchObject({ observed: 'foreground' });
 });

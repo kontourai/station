@@ -649,77 +649,79 @@ async function harness(
             maxHeight: 1280,
           })
         : undefined;
-      if (watching) {
-        let frame: Awaited<ReturnType<typeof watching.next>>;
-        do {
-          frame = await watching.next();
-        } while (frame && frame.kind !== 'frame');
-        if (!frame) throw new Error('Still fixture closed');
-      }
-      const hub =
-        options.rotation ||
-        options.onFrameConsumed ||
-        options.pngFallback ||
-        options.onAttach ||
-        options.pngBurst
-          ? (Object.assign(Object.create(entry.hub), {
-              attach: (...args: Parameters<typeof entry.hub.attach>) => {
-                options.onAttach?.(args[2]?.codec, args[2]?.freshOnly);
-                const viewer = entry.hub.attach(...args);
-                let burstFrame: Awaited<ReturnType<typeof viewer.next>>;
-                let burstCount = 0;
-                return {
-                  ...viewer,
-                  close: () => viewer.close(),
-                  next: async (...nextArgs: Parameters<typeof viewer.next>) => {
-                    const record =
-                      burstFrame && burstCount < 8
-                        ? burstFrame
-                        : await viewer.next(...nextArgs);
-                    if (
-                      record?.kind === 'frame' &&
-                      options.pngBurst &&
-                      burstCount < 8
-                    ) {
-                      burstFrame = {
-                        ...record,
-                        header: { ...record.header, codec: 'png' },
-                        body: options.pngBurst,
-                      };
-                      burstCount++;
-                      options.onFrameConsumed?.();
-                      return burstFrame;
-                    }
-                    if (record?.kind === 'frame') options.onFrameConsumed?.();
-                    if (
-                      record?.kind === 'frame' &&
-                      options.pngFallback &&
-                      record.header.seq % 2 === 0
-                    )
-                      return {
-                        ...record,
-                        header: {
-                          ...record.header,
-                          codec: 'png' as const,
-                          width: options.pngWidth ?? record.header.width,
-                        },
-                        body: PNG_64,
-                      };
-                    return record?.kind === 'frame' && options.rotation
-                      ? {
+      try {
+        if (watching) {
+          let frame: Awaited<ReturnType<typeof watching.next>>;
+          do {
+            frame = await watching.next();
+          } while (frame && frame.kind !== 'frame');
+          if (!frame) throw new Error('Still fixture closed');
+        }
+        const hub =
+          options.rotation ||
+          options.onFrameConsumed ||
+          options.pngFallback ||
+          options.onAttach ||
+          options.pngBurst
+            ? (Object.assign(Object.create(entry.hub), {
+                attach: (...args: Parameters<typeof entry.hub.attach>) => {
+                  options.onAttach?.(args[2]?.codec, args[2]?.freshOnly);
+                  const viewer = entry.hub.attach(...args);
+                  let burstFrame: Awaited<ReturnType<typeof viewer.next>>;
+                  let burstCount = 0;
+                  return {
+                    ...viewer,
+                    close: () => viewer.close(),
+                    next: async (
+                      ...nextArgs: Parameters<typeof viewer.next>
+                    ) => {
+                      const record =
+                        burstFrame && burstCount < 8
+                          ? burstFrame
+                          : await viewer.next(...nextArgs);
+                      if (
+                        record?.kind === 'frame' &&
+                        options.pngBurst &&
+                        burstCount < 8
+                      ) {
+                        burstFrame = {
+                          ...record,
+                          header: { ...record.header, codec: 'png' },
+                          body: options.pngBurst,
+                        };
+                        burstCount++;
+                        options.onFrameConsumed?.();
+                        return burstFrame;
+                      }
+                      if (record?.kind === 'frame') options.onFrameConsumed?.();
+                      if (
+                        record?.kind === 'frame' &&
+                        options.pngFallback &&
+                        record.header.seq % 2 === 0
+                      )
+                        return {
                           ...record,
                           header: {
                             ...record.header,
-                            rotation: options.rotation,
+                            codec: 'png' as const,
+                            width: options.pngWidth ?? record.header.width,
                           },
-                        }
-                      : record;
-                  },
-                };
-              },
-            }) as typeof entry.hub)
-          : entry.hub;
-      try {
+                          body: PNG_64,
+                        };
+                      return record?.kind === 'frame' && options.rotation
+                        ? {
+                            ...record,
+                            header: {
+                              ...record.header,
+                              rotation: options.rotation,
+                            },
+                          }
+                        : record;
+                    },
+                  };
+                },
+              }) as typeof entry.hub)
+            : entry.hub;
         return await recordings.recordSource(
           access,
           {
@@ -1322,7 +1324,14 @@ test.skipIf(!mediaReady)(
   'records a still surface already watched without waiting for a new frame',
   async () => {
     const h = await harness({ recording: true, stillFrame: true });
-    const clip = await h.recordSyntheticDevice({ holdStill: true });
+    let liveFrames = 0;
+    const clip = await h.recordSyntheticDevice({
+      holdStill: true,
+      onFrameConsumed: () => {
+        liveFrames++;
+      },
+    });
+    expect(liveFrames).toBe(0);
     expect(clip.source.recording?.mediaType).toBe('video/webm');
     expect(clip.events.filter((event) => event.kind === 'frame')).toHaveLength(
       1,

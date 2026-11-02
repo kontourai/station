@@ -1,8 +1,13 @@
 import type { MobileDeviceSession } from '@kontourai/station-contracts/mobile-device';
 import type { TaskReviewCreateCaptureRequest } from '@kontourai/station-contracts/task-review';
+import { redactSecrets } from '@kontourai/station-shared/redaction';
 import type { DeviceAccess } from '../devices/device-access.js';
 import type { DeviceSessionService } from '../devices/device-session-service.js';
-import type { DeviceToolsService } from '../devices/device-tools.js';
+import {
+  DeviceToolsError,
+  type DeviceToolsService,
+  isDeviceAppId,
+} from '../devices/device-tools.js';
 import type { LiveSurfaceRegistry } from '../live-surface/registry.js';
 import type { LocalMobileDeviceHost } from '../mobile-device/mobile-device-host.js';
 import type { TaskReviewAccess } from '../orchestration/project-task-room-runtime.js';
@@ -14,8 +19,10 @@ import type { RecordingSource } from './task-browser-recording.js';
 
 type HostServices = {
   host: Pick<LocalMobileDeviceHost, 'capture'>;
-  sessions: Pick<DeviceSessionService, 'list' | 'get'>;
-  tools?: Pick<DeviceToolsService, 'foreground'>;
+  sessions: Pick<DeviceSessionService, 'list' | 'get'> &
+    Partial<Pick<DeviceSessionService, 'actionHistory' | 'latestInstallation'>>;
+  tools?: Pick<DeviceToolsService, 'foreground'> &
+    Partial<Pick<DeviceToolsService, 'logs'>>;
 };
 
 /** Person Task capture, with host-qualified selection and fresh device access. */
@@ -174,6 +181,108 @@ export class TaskDeviceCapture {
       isFenceCurrent,
     });
   }
+  async reproduction(
+    request: Request,
+    access: TaskReviewAccess,
+    sourceSessionId: string,
+    appId: string,
+  ) {
+    if (!isDeviceAppId(appId))
+      throw new TaskBrowserCaptureError(
+        'invalid-request',
+        'Give a valid app ID.',
+      );
+    const selected = await this.select(request, access, sourceSessionId);
+    const readHistory = selected.services.sessions.actionHistory;
+    const logs = selected.services.tools?.logs;
+    if (!readHistory || !logs)
+      throw new TaskBrowserCaptureError(
+        'capture-unavailable',
+        'Device diagnostics are unavailable.',
+      );
+    const beforeRun = async () => {
+      if (!(await selected.isCurrent()))
+        throw new TaskBrowserCaptureError(
+          'forbidden',
+          'Device access changed.',
+        );
+    };
+    await beforeRun();
+    let sample: Awaited<ReturnType<typeof logs>> | null;
+    try {
+      sample = await logs.call(
+        selected.services.tools,
+        selected.session,
+        appId,
+        beforeRun,
+        request.signal,
+      );
+    } catch (error) {
+      if (
+        !(error instanceof DeviceToolsError) ||
+        error.code !== 'app-not-running'
+      )
+        throw error;
+      sample = null;
+    }
+    await beforeRun();
+    const shot = await selected.services.host.capture(selected.session);
+    await beforeRun();
+    const bytes = Buffer.from(shot.pngBase64, 'base64');
+    if (
+      shot.mimeType !== 'image/png' ||
+      bytes.length < 1 ||
+      bytes.length > 3 * 1024 * 1024
+    )
+      throw new TaskBrowserCaptureError(
+        'capture-unavailable',
+        'Device screenshot is unavailable.',
+      );
+    const history = readHistory.call(
+      selected.services.sessions,
+      selected.session.sessionId,
+    );
+    if (!history || !(await selected.isCurrent()))
+      throw new TaskBrowserCaptureError(
+        'capture-unavailable',
+        'Device session changed.',
+      );
+    return {
+      current: selected.isCurrent,
+      data: {
+        schema: 'station.device-reproduction/v1',
+        capturedAt: new Date().toISOString(),
+        device: {
+          hostId: selected.session.hostId,
+          platform: selected.session.platform,
+          deviceId: selected.session.deviceId,
+          name: selected.session.name,
+          runtime: selected.session.runtime,
+        },
+        app: {
+          appId,
+          installation: (() => {
+            const value = selected.services.sessions.latestInstallation?.(
+              selected.session.sessionId,
+            );
+            return value?.metadata.appId === appId ? value : null;
+          })(),
+          revision: null,
+        },
+        logs: sample
+          ? {
+              state: 'sampled',
+              output: redactSecrets(sample.output),
+              processId: sample.processId,
+              truncated: sample.truncated,
+            }
+          : { state: 'app-not-running' },
+        screenshot: { mimeType: 'image/png', data: bytes.toString('base64') },
+        actions: history,
+      },
+    };
+  }
+
   async recordingSource(
     request: Request,
     access: TaskReviewAccess,

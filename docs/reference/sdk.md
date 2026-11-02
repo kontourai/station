@@ -12,6 +12,10 @@ entry point. Exports select TypeScript/TSX source and host components may also
 need CSS, React and a Query Client. See the [package README](../../packages/sdk/README.md)
 for source distribution and a checked authoring example.
 
+The React-free client exports `mutateBinary(url, method, options, blob)` for
+binary requests. Pass a captured `requestScope` to bind dispatch and response
+reads to that Station authority; the helper sends `application/octet-stream`.
+
 ## Terminal sessions
 
 `TerminalSessionStore` (from `@kontourai/station-sdk` and
