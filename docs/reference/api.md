@@ -6773,7 +6773,9 @@ feature preview and Browser view authority:
   are at most two retained jobs per Station. Capture stops at 30 seconds and
   finishes at 300 frames or 64 MiB of raw input, retaining earlier frames; encoded output is limited to 16 MiB and a
   completed result is retained for one minute. This path offers a local save;
-  it does not publish a Task clip.
+  it does not publish a Task clip. `GET .../recordings/:recordingId/frames`
+  returns four sampled JPEGs and provenance while retained, or `409` when the
+  bounded sample is unavailable. The same person, session and preview checks apply.
 
 Browser capture routes on personal hosts:
 

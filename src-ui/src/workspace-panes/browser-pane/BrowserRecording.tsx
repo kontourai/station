@@ -3,7 +3,10 @@ import { useEffect, useRef, useState } from 'react';
 import { Button } from '../../components/Button';
 import { IconButton } from '../../components/IconButton';
 import { RecordGlyph } from '../../components/icons/Glyph';
-import type { BrowserPaneApi } from './browserPaneApi';
+import { navigationStore } from '../../contexts/navigation-store';
+import { BROWSER_PAGE_CONTENT_NOTICE } from './browserArtifactContent';
+import { BrowserApiError, type BrowserPaneApi } from './browserPaneApi';
+import { useBrowserArtifactIntake } from './useBrowserArtifactIntake';
 
 export function useBrowserRecording(
   api: BrowserPaneApi,
@@ -46,7 +49,11 @@ export function useBrowserRecording(
     mutationFn: () => {
       if (generation === undefined)
         throw new Error('Browser generation is unavailable.');
-      return api.startRecording(sessionId, generation);
+      return api.startRecording(
+        sessionId,
+        generation,
+        navigationStore.getSnapshot().activeChat ?? undefined,
+      );
     },
     onSuccess: ({ recordingId: id }) => {
       if (
@@ -118,6 +125,11 @@ export function useBrowserRecording(
     setError(null);
   };
   return {
+    api,
+    sessionId,
+    generation,
+    recordingId,
+    task: status.data?.task,
     phase,
     active,
     stopping,
@@ -165,6 +177,106 @@ export function BrowserRecordingStatus({
   recording: Recording;
 }) {
   const [url, setUrl] = useState<string | null>(null);
+  const [attaching, setAttaching] = useState(false);
+  const [attachError, setAttachError] = useState<string | null>(null);
+  const [taskResult, setTaskResult] = useState<{
+    id: string;
+    message: string;
+  } | null>(null);
+  const taskMessage =
+    taskResult?.id === recording.recordingId ? taskResult.message : null;
+  const [publishing, setPublishing] = useState(false);
+  const alive = useRef(true);
+  const beginIntake = useBrowserArtifactIntake();
+  useEffect(() => {
+    alive.current = true;
+    return () => {
+      alive.current = false;
+    };
+  }, []);
+  const attach = async () => {
+    if (
+      !recording.recordingId ||
+      recording.generation === undefined ||
+      attaching
+    )
+      return;
+    setAttaching(true);
+    setAttachError(null);
+    try {
+      const intake = beginIntake(() => alive.current);
+      const result = await recording.api.recordingFrames(
+        recording.sessionId,
+        recording.recordingId,
+      );
+      if (result.frames.length !== 4)
+        throw new Error('Recording frames are unavailable.');
+      const files: File[] = [];
+      for (const [index, frame] of result.frames.entries()) {
+        let data = Uint8Array.from(atob(frame.data), (c) => c.charCodeAt(0));
+        if (data.byteLength > 1024 * 1024) {
+          const { downscaleImageToFit } = await import(
+            '../../utils/downscaleImage'
+          );
+          const resized = await downscaleImageToFit(
+            new Blob([data], { type: 'image/jpeg' }),
+            'image/jpeg',
+            1024 * 1024,
+          );
+          if (
+            resized.status !== 'resized' ||
+            resized.image.mimeType !== 'image/jpeg'
+          )
+            throw new Error(
+              'Recording frames could not be prepared for chat. Save the clip instead.',
+            );
+          data = Uint8Array.from(
+            atob(resized.image.dataUrl.split(',')[1]!),
+            (c) => c.charCodeAt(0),
+          );
+        }
+        files.push(
+          new File([data], `Recording frames (4) - ${index + 1}.jpg`, {
+            type: 'image/jpeg',
+          }),
+        );
+      }
+      const metadata = {
+        kind: 'browser-recording-frames',
+        label: 'Recording frames (4)',
+        browserSessionId: recording.sessionId,
+        tab: recording.sessionId,
+        generation: recording.generation,
+        frames: result.frames.map(({ data: _data, ...frame }, index) => ({
+          file: files[index]!.name,
+          ...frame,
+          notice: BROWSER_PAGE_CONTENT_NOTICE,
+        })),
+      };
+      files.push(
+        new File([JSON.stringify(metadata, null, 2)], 'recording-frames.json', {
+          type: 'application/json',
+        }),
+      );
+      if (files.reduce((sum, file) => sum + file.size, 0) > 5 * 1024 * 1024)
+        throw new Error(
+          'Recording frames exceed the chat attachment limit. Save the clip instead.',
+        );
+      await intake(files);
+    } catch (error) {
+      if (alive.current)
+        setAttachError(
+          error instanceof BrowserApiError &&
+            error.code === 'contact-unavailable'
+            ? 'Recording frames are unavailable or too large. Save the clip instead.'
+            : error instanceof Error
+              ? error.message
+              : 'Could not attach recording frames.',
+        );
+    } finally {
+      if (alive.current) setAttaching(false);
+    }
+  };
   useEffect(() => {
     if (!recording.video) {
       setUrl(null);
@@ -196,6 +308,51 @@ export function BrowserRecordingStatus({
           Save clip
         </a>
       ) : null}
+      {recording.phase === 'ready' && recording.video ? (
+        <Button size="sm" disabled={attaching} onClick={() => void attach()}>
+          Attach recording frames to chat
+        </Button>
+      ) : null}
+      {attachError ? <p>{attachError}</p> : null}
+      {recording.task?.kind === 'unavailable' ? (
+        <p>{recording.task.reason}</p>
+      ) : null}
+      {recording.phase === 'ready' &&
+      recording.task?.kind === 'ready' &&
+      recording.recordingId ? (
+        <Button
+          size="sm"
+          disabled={publishing || !!taskMessage}
+          onClick={() => {
+            const id = recording.recordingId;
+            if (!id) return;
+            setPublishing(true);
+            void recording.api
+              .publishRecordingToTask(recording.sessionId, id)
+              .then(
+                () => {
+                  if (alive.current)
+                    setTaskResult({
+                      id,
+                      message: 'Recording added to Task clips.',
+                    });
+                },
+                () => {
+                  if (alive.current)
+                    setTaskMessage(
+                      'Could not add this recording to Task clips.',
+                    );
+                },
+              )
+              .finally(() => {
+                if (alive.current) setPublishing(false);
+              });
+          }}
+        >
+          Add to Task clips
+        </Button>
+      ) : null}
+      {taskMessage ? <p>{taskMessage}</p> : null}
       {recording.phase === 'ready' ||
       recording.phase === 'failed' ||
       recording.error ? (

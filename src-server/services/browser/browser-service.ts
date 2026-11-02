@@ -7,6 +7,7 @@ import { findRunning } from '@kontourai/station-shared/instance-registry';
 import { createLogger } from '../../utils/logger.js';
 import type { LiveSurfaceRegistry } from '../live-surface/registry.js';
 import type { MediaToolsResolver } from '../media-tools/media-tools-resolver.js';
+import type { RecordingLimiter } from '../projects/recording-limiter.js';
 import { encodeBrowserRecording } from '../projects/task-browser-recording.js';
 import type { BrowserProjectAuthorizer } from './browser-access.js';
 import type { BrowserConsoleSnapshot } from './browser-console-log.js';
@@ -56,6 +57,7 @@ export interface BrowserServiceOptions {
   configuredOrigins: readonly string[];
   networkPreviewEnabled?: () => boolean;
   recordingResolver?: Pick<MediaToolsResolver, 'resolveFfmpeg'>;
+  recordingLimiter?: RecordingLimiter;
   experienceEnabled?: () => boolean;
   /**
    * More Station-owned listener ports, read LIVE on every check and never
@@ -227,6 +229,7 @@ export function createBrowserService(
           surfaceIdFor: (id) => surfaces.surfaceIdFor(id),
           resolver: options.recordingResolver,
           encode: encodeBrowserRecording,
+          limiter: options.recordingLimiter,
         })
       : undefined;
   return {

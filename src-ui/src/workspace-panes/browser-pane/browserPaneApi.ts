@@ -260,17 +260,23 @@ export function browserPaneApi(apiBase: string, fetcher: BrowserFetch) {
           signal,
         },
       ),
-    startRecording: (id: string, generation: number) =>
+    startRecording: (id: string, generation: number, conversationId?: string) =>
       call<{ recordingId: string }>(
         fetcher,
         `${root}/sessions/${enc(id)}/recordings`,
-        { method: 'POST', body: { generation } },
+        {
+          method: 'POST',
+          body: { generation, ...(conversationId ? { conversationId } : {}) },
+        },
       ),
     recordingStatus: (id: string, recordingId: string, signal?: AbortSignal) =>
       call<{
         id: string;
         state: 'starting' | 'recording' | 'encoding' | 'ready' | 'failed';
         error?: string;
+        task?:
+          | { kind: 'ready'; taskId: string }
+          | { kind: 'unavailable'; reason: string };
       }>(
         fetcher,
         `${root}/sessions/${enc(id)}/recordings/${enc(recordingId)}`,
@@ -287,6 +293,25 @@ export function browserPaneApi(apiBase: string, fetcher: BrowserFetch) {
         fetcher,
         `${root}/sessions/${enc(id)}/recordings/${enc(recordingId)}`,
         { method: 'DELETE' },
+      ),
+    publishRecordingToTask: (id: string, recordingId: string) =>
+      call<{ walkthroughId: string }>(
+        fetcher,
+        `${root}/sessions/${enc(id)}/recordings/${enc(recordingId)}/task`,
+        { method: 'POST', body: {} },
+      ),
+    recordingFrames: (id: string, recordingId: string) =>
+      call<{
+        frames: Array<{
+          data: string;
+          atMs: number;
+          capturedAt: string;
+          url: string;
+          viewport: { width: number; height: number };
+        }>;
+      }>(
+        fetcher,
+        `${root}/sessions/${enc(id)}/recordings/${enc(recordingId)}/frames`,
       ),
     recordingVideo: async (
       id: string,

@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { performance } from 'node:perf_hooks';
@@ -9,11 +9,14 @@ import {
 } from '../../tools/station-browser-policy.js';
 import type { LiveSurfaceRegistry } from '../live-surface/registry.js';
 import type { MediaToolsResolver } from '../media-tools/media-tools-resolver.js';
+import { RecordingLimiter } from '../projects/recording-limiter.js';
 import {
   encodeBrowserRecording,
   TaskBrowserRecordingError,
   waitForRecordingCleanup,
 } from '../projects/task-browser-recording.js';
+import type { HumanTaskPreparation } from './browser-human-task-clip.js';
+import { redactNetworkUrl } from './browser-network-log.js';
 import type {
   BrowserSessionRecord,
   BrowserSessionRegistry,
@@ -22,6 +25,7 @@ import type {
 const MAX_FRAMES = 300;
 const MAX_RAW_BYTES = 64 * 1024 * 1024;
 const RETAIN_MS = 60_000;
+const MAX_RETAINED = 4;
 type State = 'starting' | 'recording' | 'encoding' | 'ready' | 'failed';
 type Job = {
   id: string;
@@ -31,6 +35,18 @@ type Job = {
   state: State;
   error?: string;
   bytes?: Buffer;
+  contact?: Array<{
+    data: string;
+    atMs: number;
+    capturedAt: string;
+    url: string;
+    viewport: { width: number; height: number };
+  }>;
+  task: HumanTaskPreparation;
+  prepareTask?: () => Promise<HumanTaskPreparation>;
+  clip?: { durationMs: number; width: number; height: number };
+  publication?: Promise<{ walkthroughId: string }>;
+  current?: (force?: boolean) => Promise<void>;
   stop: AbortController;
   cancel: AbortController;
   done: Promise<void>;
@@ -42,6 +58,7 @@ export class BrowserHumanRecording {
   private readonly jobs = new Map<string, Job>();
   private readonly cleanupFailures: unknown[] = [];
   private disposed = false;
+  private readonly limiter: RecordingLimiter;
   constructor(
     private readonly deps: {
       registry: Pick<BrowserSessionRegistry, 'getSession'>;
@@ -49,25 +66,33 @@ export class BrowserHumanRecording {
       surfaceIdFor(id: string): string | undefined;
       resolver: Pick<MediaToolsResolver, 'resolveFfmpeg'>;
       encode: typeof encodeBrowserRecording;
+      limiter?: RecordingLimiter;
     },
-  ) {}
+  ) {
+    this.limiter = deps.limiter ?? new RecordingLimiter();
+  }
 
   start(input: {
     session: BrowserSessionRecord;
     owner: string;
+    admissionKey?: string;
     authorize(): Promise<boolean>;
+    prepareTask?: () => Promise<HumanTaskPreparation>;
   }): string {
-    if (this.disposed || this.jobs.size >= 2)
-      throw new Error('Recording capacity is exhausted.');
+    if (this.disposed) throw new Error('Recording capacity is exhausted.');
     const surfaceId = this.deps.surfaceIdFor(input.session.browserSessionId);
     const entry = surfaceId ? this.deps.surfaces.get(surfaceId) : undefined;
     if (!entry) throw new Error('Browser surface is unavailable.');
+    const release = this.limiter.acquire(input.admissionKey ?? input.owner);
+    if (!release) throw new Error('Recording capacity is exhausted.');
     const job: Job = {
       id: randomUUID(),
       owner: input.owner,
       sessionId: input.session.browserSessionId,
       generation: input.session.generation,
       state: 'starting',
+      task: { kind: 'none' },
+      ...(input.prepareTask ? { prepareTask: input.prepareTask } : {}),
       stop: new AbortController(),
       cancel: new AbortController(),
       done: Promise.resolve(),
@@ -94,10 +119,18 @@ export class BrowserHumanRecording {
         fence();
       }
     };
-    const off = entry.onDispose(async () => {
-      job.cancel.abort();
-      await waitForRecordingCleanup(job.done);
-    });
+    job.current = current;
+    let off: () => void;
+    try {
+      off = entry.onDispose(async () => {
+        job.cancel.abort();
+        await waitForRecordingCleanup(job.done);
+      });
+    } catch (error) {
+      this.jobs.delete(job.id);
+      release();
+      throw error;
+    }
     if (entry.signal.aborted) job.cancel.abort();
     job.done = this.capture(job, entry, current)
       .catch((error: unknown) => {
@@ -125,6 +158,17 @@ export class BrowserHumanRecording {
       })
       .finally(() => {
         off();
+        release();
+        const retained = [...this.jobs.values()].filter(
+          (entry) =>
+            entry !== job &&
+            (entry.state === 'ready' || entry.state === 'failed'),
+        );
+        for (const stale of retained.slice(
+          0,
+          Math.max(0, retained.length + 1 - MAX_RETAINED),
+        ))
+          this.remove(stale.id);
         job.timer = setTimeout(() => this.remove(job.id), RETAIN_MS);
         job.timer.unref?.();
       });
@@ -144,6 +188,11 @@ export class BrowserHumanRecording {
       id: job.id,
       state: job.state,
       ...(job.error ? { error: job.error } : {}),
+      ...(job.task.kind === 'ready'
+        ? { task: { kind: 'ready' as const, taskId: job.task.clip.taskId } }
+        : job.task.kind === 'unavailable'
+          ? { task: job.task }
+          : {}),
     };
   }
 
@@ -206,6 +255,56 @@ export class BrowserHumanRecording {
     return job.bytes;
   }
 
+  publishTask(
+    id: string,
+    owner: string,
+    sessionId: string,
+    generation: number,
+    request: Request,
+  ) {
+    const job = this.jobs.get(id);
+    if (
+      !job ||
+      job.owner !== owner ||
+      job.sessionId !== sessionId ||
+      job.generation !== generation ||
+      job.state !== 'ready' ||
+      job.task.kind !== 'ready' ||
+      !job.bytes ||
+      !job.clip
+    )
+      return undefined;
+    if (!job.publication)
+      job.publication = job.task.clip.publish({
+        ...job.clip,
+        bytes: job.bytes,
+        request,
+        signal: AbortSignal.any([job.cancel.signal, request.signal]),
+        browserCurrent: async () => {
+          try {
+            await job.current?.(true);
+            return !job.cancel.signal.aborted && !!job.current;
+          } catch {
+            return false;
+          }
+        },
+      });
+    return job.publication;
+  }
+
+  contact(id: string, owner: string, sessionId: string, generation: number) {
+    const job = this.jobs.get(id);
+    if (
+      !job ||
+      job.owner !== owner ||
+      job.sessionId !== sessionId ||
+      job.generation !== generation ||
+      job.state !== 'ready'
+    )
+      return undefined;
+    return job.contact;
+  }
+
   async dispose(): Promise<void> {
     this.disposed = true;
     for (const job of this.jobs.values()) {
@@ -237,6 +336,8 @@ export class BrowserHumanRecording {
     current: (force?: boolean) => Promise<void>,
   ) {
     await current(true);
+    if (job.prepareTask) job.task = await job.prepareTask();
+    await current(true);
     const resolution = await this.deps.resolver.resolveFfmpeg();
     if (resolution.status !== 'ready')
       throw new Error('media-tools-unavailable');
@@ -260,7 +361,14 @@ export class BrowserHumanRecording {
         BROWSER_RECORD_MAX_DURATION_MS,
       );
       const started = performance.now();
-      const frames: { file: string; tMs: number }[] = [];
+      const frames: {
+        file: string;
+        tMs: number;
+        size: number;
+        capturedAt: string;
+        url: string;
+        viewport: { width: number; height: number };
+      }[] = [];
       let rawBytes = 0;
       job.state = 'recording';
       try {
@@ -284,9 +392,18 @@ export class BrowserHumanRecording {
             flag: 'wx',
             mode: 0o600,
           });
+          const session = this.deps.registry.getSession(job.sessionId);
+          if (!session) throw new Error('session-changed');
           frames.push({
             file,
             tMs: frames.length ? Math.floor(performance.now() - started) : 0,
+            size: frame.body.byteLength,
+            capturedAt: new Date(frame.header.capturedAt).toISOString(),
+            url: redactNetworkUrl(session.url),
+            viewport: {
+              width: frame.header.width / frame.header.deviceScaleFactor,
+              height: frame.header.height / frame.header.deviceScaleFactor,
+            },
           });
         }
       } finally {
@@ -326,6 +443,35 @@ export class BrowserHumanRecording {
         job.cancel.signal,
       );
       await current(true);
+      const selected = Array.from({ length: 4 }, (_, i) => {
+        const target = (i * duration) / 3;
+        return frames.reduce((best, frame) =>
+          Math.abs(frame.tMs - target) < Math.abs(best.tMs - target)
+            ? frame
+            : best,
+        );
+      });
+      if (
+        selected.reduce((sum, frame) => sum + frame.size, 0) <=
+        16 * 1024 * 1024
+      ) {
+        const contact = await Promise.all(
+          selected.map(async (frame) => ({
+            data: (await readFile(join(stage, frame.file))).toString('base64'),
+            atMs: frame.tMs,
+            capturedAt: frame.capturedAt,
+            url: frame.url,
+            viewport: frame.viewport,
+          })),
+        );
+        await current(true);
+        job.contact = contact;
+      }
+      job.clip = {
+        durationMs: duration,
+        width: Math.round(frames[0]!.viewport.width),
+        height: Math.round(frames[0]!.viewport.height),
+      };
       job.bytes = bytes;
       job.state = 'ready';
     } finally {

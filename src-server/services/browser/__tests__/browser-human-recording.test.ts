@@ -4,11 +4,19 @@ import { performance } from 'node:perf_hooks';
 import { describe, expect, it, vi } from 'vitest';
 import { locateExecutable } from '../../devices/device-host-tools.js';
 import type { LiveSurfaceRegistry } from '../../live-surface/registry.js';
-import { encodeBrowserRecording } from '../../projects/task-browser-recording.js';
+import { RecordingLimiter } from '../../projects/recording-limiter.js';
+import {
+  encodeBrowserRecording,
+  TaskBrowserRecording,
+} from '../../projects/task-browser-recording.js';
 import { BrowserHumanRecording } from '../browser-human-recording.js';
 import type { BrowserSessionRecord } from '../browser-session-registry.js';
 
-function fixture(real?: { ffmpeg: string; jpeg: Buffer }, frameLimit = 1) {
+function fixture(
+  real?: { ffmpeg: string; jpeg: Buffer },
+  frameLimit = 1,
+  limiter?: RecordingLimiter,
+) {
   const session = {
     browserSessionId: 'bs_test',
     generation: 3,
@@ -21,7 +29,13 @@ function fixture(real?: { ffmpeg: string; jpeg: Buffer }, frameLimit = 1) {
     | ((
         value: {
           kind: 'frame';
-          header: { codec: 'jpeg' };
+          header: {
+            codec: 'jpeg';
+            width: number;
+            height: number;
+            deviceScaleFactor: number;
+            capturedAt: number;
+          };
           body: Uint8Array;
         } | null,
       ) => void)
@@ -43,13 +57,25 @@ function fixture(real?: { ffmpeg: string; jpeg: Buffer }, frameLimit = 1) {
             delivered++;
             return {
               kind: 'frame',
-              header: { codec: 'jpeg' },
+              header: {
+                codec: 'jpeg',
+                width: 640,
+                height: 480,
+                deviceScaleFactor: 1,
+                capturedAt: 1_700_000_000_000,
+              },
               body: real?.jpeg ?? new Uint8Array([1, 2, 3]),
             };
           }
           return new Promise<{
             kind: 'frame';
-            header: { codec: 'jpeg' };
+            header: {
+              codec: 'jpeg';
+              width: number;
+              height: number;
+              deviceScaleFactor: number;
+              capturedAt: number;
+            };
             body: Uint8Array;
           } | null>((resolve) => {
             waiting = resolve;
@@ -93,6 +119,7 @@ function fixture(real?: { ffmpeg: string; jpeg: Buffer }, frameLimit = 1) {
       }),
     },
     encode,
+    limiter,
   });
   return {
     recorder,
@@ -106,7 +133,13 @@ function fixture(real?: { ffmpeg: string; jpeg: Buffer }, frameLimit = 1) {
       waiting = undefined;
       resolve?.({
         kind: 'frame',
-        header: { codec: 'jpeg' },
+        header: {
+          codec: 'jpeg',
+          width: 640,
+          height: 480,
+          deviceScaleFactor: 1,
+          capturedAt: 1_700_000_000_000,
+        },
         body,
       });
     },
@@ -125,6 +158,47 @@ describe('human Browser recording', () => {
     h.recorder.start(input);
     h.recorder.start(input);
     expect(() => h.recorder.start(input)).toThrow('capacity');
+    await h.recorder.dispose();
+  });
+
+  it('shares active capacity with the Task Browser recorder and releases finished jobs', async () => {
+    const limiter = new RecordingLimiter();
+    const h = fixture(undefined, 1, limiter);
+    const input = {
+      session: h.session,
+      owner: 'alice',
+      authorize: async () => true,
+    };
+    const first = h.recorder.start(input);
+    await vi.waitFor(() => expect(h.canDeliver()).toBe(true));
+    h.recorder.start(input);
+    const task = new TaskBrowserRecording({
+      limiter,
+      preview: {
+        select: ({ enabled }: { enabled: () => boolean }) => enabled(),
+      },
+      captures: {
+        selectSession: () => {
+          throw new Error('Task source reached');
+        },
+      },
+    } as never);
+    const access = {} as never;
+    const authority = { principalId: 'alice', profileKey: 'operator' } as never;
+    const options = { durationMs: 1000, authorize: async () => true };
+    await expect(task.record(access, authority, options)).rejects.toThrow(
+      'capacity',
+    );
+    expect(h.recorder.stop(first, 'alice', 'bs_test', 3)).toBe(true);
+    await vi.waitFor(() =>
+      expect(h.recorder.status(first, 'alice', 'bs_test', 3)?.state).toBe(
+        'ready',
+      ),
+    );
+    await expect(task.record(access, authority, options)).rejects.toThrow(
+      'Task source reached',
+    );
+    await task.dispose();
     await h.recorder.dispose();
   });
 
@@ -163,6 +237,14 @@ describe('human Browser recording', () => {
     expect(existsSync(h.stage())).toBe(false);
     expect(h.recorder.video(id, 'bob', 'bs_test', 3)).toBeUndefined();
     expect(h.recorder.video(id, 'alice', 'bs_test', 4)).toBeUndefined();
+    const contact = h.recorder.contact(id, 'alice', 'bs_test', 3);
+    expect(contact).toHaveLength(4);
+    expect(contact?.[0]).toMatchObject({
+      atMs: 0,
+      url: 'https://example.test/',
+      viewport: { width: 640, height: 480 },
+    });
+    expect(h.recorder.contact(id, 'bob', 'bs_test', 3)).toBeUndefined();
     expect(h.recorder.video(id, 'alice', 'bs_test', 3)?.toString()).toBe(
       'webm',
     );
@@ -171,6 +253,29 @@ describe('human Browser recording', () => {
     );
     await h.recorder.dispose();
   });
+  it('bounds retained contact frames without discarding the encoded clip', async () => {
+    const h = fixture({
+      ffmpeg: '/fake',
+      jpeg: Buffer.alloc(4 * 1024 * 1024 + 1, 1),
+    });
+    h.encode.mockResolvedValue(Buffer.from('webm'));
+    const id = h.recorder.start({
+      session: h.session,
+      owner: 'alice',
+      authorize: async () => true,
+    });
+    await vi.waitFor(() => expect(h.canDeliver()).toBe(true));
+    h.recorder.stop(id, 'alice', 'bs_test', 3);
+    await vi.waitFor(() =>
+      expect(h.recorder.status(id, 'alice', 'bs_test', 3)?.state).toBe('ready'),
+    );
+    expect(h.recorder.contact(id, 'alice', 'bs_test', 3)).toBeUndefined();
+    expect(h.recorder.video(id, 'alice', 'bs_test', 3)?.toString()).toBe(
+      'webm',
+    );
+    await h.recorder.dispose();
+  });
+
   it('fails before encoding when authority is revoked and a new frame arrives', async () => {
     const h = fixture();
     let allowed = true;

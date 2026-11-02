@@ -148,6 +148,14 @@ export interface BrowserRoutesDeps {
   >;
   networkPreviewEnabled?: () => boolean;
   humanRecordings?: BrowserHumanRecording;
+  recordingAdmissionKey?(context: Context): string | undefined;
+  prepareHumanTaskClip?(
+    request: Request,
+    conversationId: string,
+    browser: BrowserSessionRecord,
+  ): Promise<
+    import('../services/browser/browser-human-task-clip.js').HumanTaskPreparation
+  >;
   acquisition: Pick<ChromiumAcquisition, 'status' | 'startDownload'>;
   localTargets: Pick<LocalTargetStore, 'list' | 'add' | 'remove'>;
   /** Per-Project browser permissions (D4). Absent: the routes are not served. */
@@ -561,8 +569,18 @@ export function createBrowserRoutes(deps: BrowserRoutesDeps) {
     const id = c.req.param('browserSessionId');
     const found = await recordingAccess(c.req.raw, id);
     if (found.status !== 200) return c.json(refuse(found.status), found.status);
-    const body = await readJsonObject(c.req.raw, ['generation']);
-    if (!body || !Number.isSafeInteger(body.generation))
+    const body = await readJsonObject(c.req.raw, [
+      'generation',
+      'conversationId',
+    ]);
+    if (
+      !body ||
+      !Number.isSafeInteger(body.generation) ||
+      (body.conversationId !== undefined &&
+        (typeof body.conversationId !== 'string' ||
+          body.conversationId.length < 1 ||
+          body.conversationId.length > 256))
+    )
       return c.json(invalid, 400);
     if (
       found.session.state !== 'live' ||
@@ -572,9 +590,21 @@ export function createBrowserRoutes(deps: BrowserRoutesDeps) {
     if (!deps.humanRecordings)
       return c.json({ success: false, code: 'recording-unavailable' }, 503);
     try {
+      const conversationId = body.conversationId;
       const recordingId = deps.humanRecordings.start({
         session: found.session,
         owner: found.owner,
+        admissionKey: deps.recordingAdmissionKey?.(c) ?? found.owner,
+        ...(typeof conversationId === 'string' && deps.prepareHumanTaskClip
+          ? {
+              prepareTask: () =>
+                deps.prepareHumanTaskClip!(
+                  c.req.raw,
+                  conversationId,
+                  found.session,
+                ),
+            }
+          : {}),
         authorize: async () => {
           const again = await recordingAccess(c.req.raw, id);
           return (
@@ -639,6 +669,50 @@ export function createBrowserRoutes(deps: BrowserRoutesDeps) {
       )
         ? c.json({ success: true })
         : c.json({ success: false, code: 'not-found' }, 404);
+    },
+  );
+
+  app.post(
+    '/sessions/:browserSessionId/recordings/:recordingId/task',
+    async (c) => {
+      const id = c.req.param('browserSessionId');
+      const found = await recordingAccess(c.req.raw, id);
+      if (found.status !== 200)
+        return c.json(refuse(found.status), found.status);
+      if (!(await readJsonObject(c.req.raw, []))) return c.json(invalid, 400);
+      const publication = deps.humanRecordings?.publishTask(
+        c.req.param('recordingId'),
+        found.owner,
+        id,
+        found.session.generation,
+        c.req.raw,
+      );
+      if (!publication)
+        return c.json({ success: false, code: 'task-unavailable' }, 409);
+      try {
+        return c.json({ success: true, data: await publication });
+      } catch {
+        return c.json({ success: false, code: 'task-unavailable' }, 409);
+      }
+    },
+  );
+
+  app.get(
+    '/sessions/:browserSessionId/recordings/:recordingId/frames',
+    async (c) => {
+      const id = c.req.param('browserSessionId');
+      const found = await recordingAccess(c.req.raw, id);
+      if (found.status !== 200)
+        return c.json(refuse(found.status), found.status);
+      const frames = deps.humanRecordings?.contact(
+        c.req.param('recordingId'),
+        found.owner,
+        id,
+        found.session.generation,
+      );
+      return frames
+        ? c.json({ success: true, data: { frames } })
+        : c.json({ success: false, code: 'contact-unavailable' }, 409);
     },
   );
 

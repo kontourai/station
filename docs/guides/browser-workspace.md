@@ -374,7 +374,7 @@ at 30 seconds, 300 frames or 64 MiB of raw JPEGs and encodes the frames captured
 clip is limited to 16 MiB. FFmpeg must already be available through Station's
 media-tools resolver. A missing tool refuses the recording; downloading one
 requires the operator's separate consent. The clip may contain sensitive page
-content. It is not automatically attached to a Task or chat.
+content. **Attach recording frames to chat** stages four time-sampled JPEGs and a provenance JSON file in the active conversation. The files are bounded to 5 MiB combined; if sampled frames cannot be prepared, save the full clip instead. It is not automatically attached to a Task.
 
 The server rechecks Browser view authority, preview state and session generation
 periodically while capturing, on stop and before returning a clip. Navigation can continue while the Browser generation remains the same. Closing the Browser surface or

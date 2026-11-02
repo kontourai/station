@@ -28,7 +28,7 @@ import {
   STATION_CONTROL_ORIGIN_AGENT_TOOL,
   STATION_CONTROL_ORIGIN_HEADER,
 } from '../../tools/station-control-shared.js';
-import { createBrowserRoutes } from '../browser.js';
+import { type BrowserRoutesDeps, createBrowserRoutes } from '../browser.js';
 import { createLiveSurfaceRoutes } from '../live-surface.js';
 
 const PAGE = 'S1';
@@ -157,6 +157,7 @@ function harness(
     browserEvaluate?: boolean;
     networkPreview?: boolean;
     humanRecordings?: BrowserHumanRecording;
+    prepareHumanTaskClip?: BrowserRoutesDeps['prepareHumanTaskClip'];
     /** The live-surface lease's clock and holds (test seam). */
     lease?: { now: () => number; humanHoldMs?: number };
   } = {},
@@ -230,6 +231,9 @@ function harness(
     networkPreviewEnabled: () => networkPreview,
     ...(options.humanRecordings
       ? { humanRecordings: options.humanRecordings }
+      : {}),
+    ...(options.prepareHumanTaskClip
+      ? { prepareHumanTaskClip: options.prepareHumanTaskClip }
       : {}),
     ...(options.browserEvaluate !== undefined
       ? {
@@ -350,6 +354,15 @@ describe('Browser pane: network diagnostics', () => {
       status: vi.fn(() => ({ id: 'recording-id', state: 'recording' })),
       stop: vi.fn(() => true),
       video: vi.fn(() => Buffer.from('webm')),
+      contact: vi.fn(() => [
+        {
+          data: 'AQID',
+          atMs: 0,
+          capturedAt: '2026-01-01T00:00:00Z',
+          url: 'https://example.test/',
+          viewport: { width: 640, height: 480 },
+        },
+      ]),
       cancel: vi.fn(() => true),
     };
     const h = harness({
@@ -381,6 +394,16 @@ describe('Browser pane: network diagnostics', () => {
       ).toBe(409);
       expect((await h.browser('POST', path, { body })).status).toBe(201);
       expect((await h.browser('GET', `${path}/recording-id`)).status).toBe(200);
+      const frames = await h.browser('GET', `${path}/recording-id/frames`);
+      expect(frames.status).toBe(200);
+      expect(await frames.json()).toMatchObject({
+        success: true,
+        data: { frames: [{ url: 'https://example.test/', atMs: 0 }] },
+      });
+      expect(
+        (await h.browser('GET', `${path}/recording-id/frames`, { agent: true }))
+          .status,
+      ).toBe(403);
       expect(
         (await h.browser('POST', `${path}/recording-id/stop`, { body: {} }))
           .status,
@@ -460,6 +483,56 @@ describe('Browser pane: network diagnostics', () => {
       await h.sessions.shutdown();
     }
   });
+  test('Task preparation is bound to the recording start and publication rechecks the owner', async () => {
+    let prepareTask: (() => Promise<unknown>) | undefined;
+    const recorder = {
+      start: vi.fn((input: { prepareTask?: () => Promise<unknown> }) => {
+        prepareTask = input.prepareTask;
+        return 'r1';
+      }),
+      publishTask: vi.fn(async () => ({ walkthroughId: 'clip-a' })),
+    };
+    const prepare = vi.fn(async () => ({
+      kind: 'unavailable' as const,
+      reason: 'Commit or stash changes to add recordings to the Task.',
+    }));
+    const h = harness({
+      networkPreview: true,
+      humanRecordings: recorder as unknown as BrowserHumanRecording,
+      prepareHumanTaskClip: prepare,
+    });
+    try {
+      const session = await h.open();
+      const path = `/sessions/${session.browserSessionId}/recordings`;
+      expect(
+        (
+          await h.browser('POST', path, {
+            body: { generation: session.generation, conversationId: 'chat-a' },
+          })
+        ).status,
+      ).toBe(201);
+      expect(prepare).not.toHaveBeenCalled();
+      expect(await prepareTask?.()).toMatchObject({ kind: 'unavailable' });
+      expect(prepare).toHaveBeenCalledWith(
+        expect.any(Request),
+        'chat-a',
+        expect.objectContaining({ browserSessionId: session.browserSessionId }),
+      );
+      const result = await h.browser('POST', `${path}/r1/task`, { body: {} });
+      expect(await result.json()).toMatchObject({
+        success: true,
+        data: { walkthroughId: 'clip-a' },
+      });
+      expect(
+        (await h.browser('POST', `${path}/r1/task`, { body: {}, agent: true }))
+          .status,
+      ).toBe(403);
+    } finally {
+      await h.binder.dispose();
+      await h.sessions.shutdown();
+    }
+  });
+
   test('an operator device may view artifacts while its drive standing remains refused', async () => {
     const h = harness({ networkPreview: true });
     try {

@@ -20,6 +20,7 @@ import type { LiveSurfaceRegistry } from '../live-surface/registry.js';
 import type { MediaToolsResolver } from '../media-tools/media-tools-resolver.js';
 import type { TaskReviewAccess } from '../orchestration/project-task-room-runtime.js';
 import { TaskWalkthroughStore } from '../walkthroughs/task-walkthrough-store.js';
+import { RecordingLimiter } from './recording-limiter.js';
 import {
   TaskBrowserCapture,
   TaskBrowserCaptureError,
@@ -194,6 +195,7 @@ export class TaskBrowserRecording {
   }>();
   private readonly cleanupFailures: unknown[] = [];
   private disposed = false;
+  private readonly limiter: RecordingLimiter;
   constructor(
     private readonly deps: {
       captures: TaskBrowserCapture;
@@ -203,8 +205,11 @@ export class TaskBrowserRecording {
       resolver: MediaToolsResolver;
       preview: FeaturePreviewSelector;
       store: TaskWalkthroughStore;
+      limiter?: RecordingLimiter;
     },
-  ) {}
+  ) {
+    this.limiter = deps.limiter ?? new RecordingLimiter();
+  }
 
   async dispose(): Promise<void> {
     this.disposed = true;
@@ -258,7 +263,13 @@ export class TaskBrowserRecording {
         'feature_preview_disabled',
         'Enable Walkthroughs in feature previews.',
       );
-    if (this.disposed || this.jobs.size >= 2)
+    if (this.disposed)
+      throw new TaskBrowserRecordingError(
+        'recording-unavailable',
+        'Recording capacity is exhausted.',
+      );
+    const release = this.limiter.acquire(authority.principalId);
+    if (!release)
       throw new TaskBrowserRecordingError(
         'recording-unavailable',
         'Recording capacity is exhausted.',
@@ -594,6 +605,7 @@ export class TaskBrowserRecording {
       input.signal?.removeEventListener('abort', onCancel);
       offSurface?.();
       this.jobs.delete(job);
+      release();
       finish(cleanupFailure);
     }
   }
