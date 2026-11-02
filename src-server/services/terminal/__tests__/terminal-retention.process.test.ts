@@ -458,6 +458,79 @@ describe.skipIf(process.platform === 'win32')(
       expect(after.some((r) => r.terminalId === shell.terminalId)).toBe(false);
     });
 
+    test('real agent command sessions (#4453 openInternal) land in the command pool and never expire a user shell', async () => {
+      const shell = await sessions.open(request(), scope, dimensions);
+      await sessions.close(request(), scope, shell.terminalId);
+      await exited(shell.terminalId);
+      const ids: string[] = [];
+      for (let n = 1; n <= 20; n++) {
+        // As AcpSessionTerminals.create opens an agent's ACP terminal.
+        const opened = await sessions.openInternal(scope, {
+          cwd: root,
+          ...dimensions,
+          launch: { file: '/bin/sh', args: ['-c', `echo command-${n}`] },
+          kind: 'command',
+        });
+        await expect(opened.exited).resolves.toMatchObject({ exitCode: 0 });
+        ids.push(opened.terminalId);
+      }
+      const listed = await sessions.list(request(), scope);
+      const commands = listed.filter((r) => r.kind === 'command');
+      // Twenty ended commands: the pool of 16 expired only its own oldest.
+      expect(commands.map((r) => r.terminalId)).toEqual(ids.slice(4));
+      expect(commands.every((r) => r.ordinal === undefined)).toBe(true);
+      expect(
+        listed.find((r) => r.terminalId === shell.terminalId),
+      ).toMatchObject({ ordinal: 1, status: 'exited' });
+      // A command is never reopened after its host restarts.
+      await sessions.dispose();
+      spawned = 0;
+      create();
+      const after = await sessions.list(request(), scope);
+      expect(spawned).toBe(0);
+      expect(after.filter((r) => r.kind === 'command')).toHaveLength(16);
+      expect(after.some((r) => r.terminalId === shell.terminalId)).toBe(true);
+      // The next shell is still numbered after the user's, not the commands.
+      const next = await sessions.open(request(), scope, dimensions);
+      expect(next.ordinal).toBe(2);
+    });
+
+    test('a restarted shell drops its previous run\'s end markers, so a later exit by itself is not restored', async () => {
+      const shell = await sessions.open(request(), scope, dimensions);
+      await sessions.dispose();
+      // The in-process host stopped with its core: ended, marked hostStopped.
+      const file = join(home, 'terminal-sessions.json');
+      const stored = () =>
+        readFile(file, 'utf8').then(
+          (raw) =>
+            (JSON.parse(raw) as Record<string, unknown>[]).find(
+              (r) => r.terminalId === shell.terminalId,
+            )!,
+        );
+      expect(await stored()).toMatchObject({ hostStopped: true });
+      create({ restorable: false });
+      await sessions.restart(request(), scope, shell.terminalId);
+      const restarted = await stored();
+      expect(restarted.status).toBe('running');
+      expect(restarted.hostStopped).toBeUndefined();
+      expect(restarted.endedAt).toBeUndefined();
+      // It now ends by itself while its host keeps running.
+      await sessions.close(request(), scope, shell.terminalId);
+      await exited(shell.terminalId);
+      await sessions.dispose();
+      spawned = 0;
+      create();
+      await expect
+        .poll(
+          async () =>
+            (await sessions.list(request(), scope)).find(
+              (r) => r.terminalId === shell.terminalId,
+            )?.status,
+        )
+        .toBe('exited');
+      expect(spawned).toBe(0);
+    });
+
     test('two clients opening an empty binding at the same moment get one shell', async () => {
       const app = new Hono();
       app.route(

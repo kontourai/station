@@ -591,6 +591,10 @@ export class TerminalSessions<Principal> {
       record.cwd = cwd;
       delete record.exitCode;
       delete record.exitSignal;
+      // A new run: its exit, not the previous one's, dates expiry and decides
+      // whether it ended with its host.
+      delete record.endedAt;
+      delete record.hostStopped;
       record.restart = {
         count: (record.restart?.count ?? 0) + 1,
         afterSeq: lastSeq,
