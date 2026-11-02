@@ -1074,9 +1074,7 @@ export class TerminalSessions<Principal> {
     // The host no longer knows a shell it was running: the host itself
     // restarted (a reboot, or an in-process host with its core). One that
     // ended while the host kept running (`'ended'`) stays ended.
-    return (
-      wasRunning && reattached !== 'ended' && !reattached && isShell(record)
-    );
+    return wasRunning && !reattached && isShell(record);
   }
 
   /** Startup: an ended journal larger than the per-terminal size is expired. */
