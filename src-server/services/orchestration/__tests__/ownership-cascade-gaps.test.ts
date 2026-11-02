@@ -90,6 +90,7 @@ async function fixture(
     });
   return {
     path,
+    adapter,
     store,
     service,
     running,
@@ -405,6 +406,71 @@ test('an observation from an older recheck cannot acknowledge a newer release re
       f.store.deleteThread('parent', { releaseUnknownOwnedWork: true }),
     ).not.toThrow();
   } finally {
+    await f.close();
+  }
+});
+
+test('a probe spanning a new recheck cannot clear that request before a fresh probe completes', async () => {
+  const f = await fixture('unknown');
+  let releaseFirst!: () => void;
+  let releaseFresh!: () => void;
+  let entered!: () => void;
+  let observed!: () => void;
+  const first = new Promise<void>((resolve) => {
+    releaseFirst = resolve;
+  });
+  const fresh = new Promise<void>((resolve) => {
+    releaseFresh = resolve;
+  });
+  const probing = new Promise<void>((resolve) => {
+    entered = resolve;
+  });
+  const recorded = new Promise<void>((resolve) => {
+    observed = resolve;
+  });
+  let maintenance: Promise<void> | undefined;
+  try {
+    await f.service.dispatch({ type: 'stopSession', threadId: 'parent' });
+    f.store.requestCascadeRecheck('parent');
+    let probes = 0;
+    vi.mocked(f.adapter.hasSession).mockImplementation(async (id) => {
+      if (id !== 'child') return f.running.has(id);
+      probes += 1;
+      if (probes === 1) {
+        entered();
+        await first;
+      } else await fresh;
+      return false;
+    });
+    const record = f.store.recordCascadeStopCustody.bind(f.store);
+    let firstRecord = true;
+    vi.spyOn(f.store, 'recordCascadeStopCustody').mockImplementation(
+      (...args) => {
+        const result = record(...args);
+        if (args[0] === 'child' && firstRecord) {
+          firstRecord = false;
+          observed();
+        }
+        return result;
+      },
+    );
+    maintenance = f.service.maintainOwnedWork();
+    await probing;
+    f.store.requestCascadeRecheck('parent');
+    releaseFirst();
+    await recorded;
+    expect(() =>
+      f.store.deleteThread('parent', { releaseUnknownOwnedWork: true }),
+    ).toThrow('still checking');
+    releaseFresh();
+    await maintenance;
+    expect(() =>
+      f.store.deleteThread('parent', { releaseUnknownOwnedWork: true }),
+    ).not.toThrow();
+  } finally {
+    releaseFirst();
+    releaseFresh();
+    await maintenance;
     await f.close();
   }
 });
