@@ -30,7 +30,10 @@ export class TaskDeviceRecording {
   private readonly jobs = new Map<string, Job>();
   private closed = false;
   constructor(
-    private readonly recorder: Pick<TaskBrowserRecording, 'recordSource'>,
+    private readonly recorder: Pick<
+      TaskBrowserRecording,
+      'admit' | 'recordSource'
+    >,
   ) {}
   private key(access: TaskReviewAccess): string {
     if (access.write.author.kind !== 'person' || !access.write.beforeCommit())
@@ -87,51 +90,60 @@ export class TaskDeviceRecording {
       status: { state: 'starting' },
       done: Promise.resolve(),
     };
+    const releaseAdmission = this.recorder.admit(access);
     this.jobs.set(id, job);
-    job.done = this.recorder
-      .recordSource(
-        access,
-        {
-          ...input,
-          signal: cancel.signal,
-          stopSignal: stop.signal,
-          onStarted: () => {
-            if (!stop.signal.aborted && !cancel.signal.aborted)
-              job.status = { state: 'recording' };
+    try {
+      job.done = this.recorder
+        .recordSource(
+          access,
+          {
+            ...input,
+            releaseAdmission,
+            signal: cancel.signal,
+            stopSignal: stop.signal,
+            onStarted: () => {
+              if (!stop.signal.aborted && !cancel.signal.aborted)
+                job.status = { state: 'recording' };
+            },
           },
-        },
-        resolveSource,
-      )
-      .then(
-        (manifest) => {
-          job.status = cancel.signal.aborted
-            ? { state: 'cancelled' }
-            : manifest.source.commit && manifest.source.recording
-              ? {
-                  state: 'completed',
-                  result: {
-                    walkthroughId: manifest.id,
-                    commit: manifest.source.commit,
-                  },
-                }
-              : { state: 'failed', code: 'recording-unavailable' };
-        },
-        (error: unknown) => {
-          job.status = cancel.signal.aborted
-            ? { state: 'cancelled' }
-            : {
-                state: 'failed',
-                code:
-                  error instanceof TaskBrowserRecordingError ||
-                  error instanceof TaskBrowserCaptureError
-                    ? error.code
-                    : 'recording-unavailable',
-              };
-        },
-      )
-      .finally(() => {
-        job.finishedAt = Date.now();
-      });
+          resolveSource,
+        )
+        .then(
+          (manifest) => {
+            job.status = cancel.signal.aborted
+              ? { state: 'cancelled' }
+              : manifest.source.commit && manifest.source.recording
+                ? {
+                    state: 'completed',
+                    result: {
+                      walkthroughId: manifest.id,
+                      commit: manifest.source.commit,
+                    },
+                  }
+                : { state: 'failed', code: 'recording-unavailable' };
+          },
+          (error: unknown) => {
+            job.status = cancel.signal.aborted
+              ? { state: 'cancelled' }
+              : {
+                  state: 'failed',
+                  code:
+                    error instanceof TaskBrowserRecordingError ||
+                    error instanceof TaskBrowserCaptureError
+                      ? error.code
+                      : 'recording-unavailable',
+                };
+          },
+        )
+        .finally(() => {
+          releaseAdmission();
+          job.finishedAt = Date.now();
+        });
+    } catch (error) {
+      this.jobs.delete(id);
+      releaseAdmission();
+      throw error;
+    }
     return { id, ...job.status };
   }
   status(access: TaskReviewAccess, id: string) {

@@ -6772,7 +6772,8 @@ feature preview and Browser view authority:
   cancels or discards it. `GET .../recordings/:recordingId/video` returns a
   bounded WebM while it is retained. Each operation rechecks person and Browser
   authority, preview state, session generation and recording ownership. There
-  are at most four active Browser recordings per Station and two per owner;
+  are at most four active Browser and Device recordings per Station and two per person;
+  an Agent shares the slots of the person it acts for.
   finished recordings no longer consume active slots. Capture stops at 30 seconds and
   finishes at 300 frames or 64 MiB of raw input, retaining earlier frames; encoded output is limited to 16 MiB and a
   completed result is retained for at most one minute; at most four completed

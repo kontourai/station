@@ -218,17 +218,9 @@ describe('human Browser recording', () => {
     const deviceSource = vi.fn(async (): Promise<never> => {
       throw new Error('Device source reached');
     });
-    const refused = device.start(
-      deviceAccess,
-      { durationMs: 1000 },
-      deviceSource,
-    );
-    await vi.waitFor(() =>
-      expect(device.status(deviceAccess, refused.id)).toMatchObject({
-        state: 'failed',
-        code: 'recording-unavailable',
-      }),
-    );
+    expect(() =>
+      device.start(deviceAccess, { durationMs: 1000 }, deviceSource),
+    ).toThrow('Recording capacity is exhausted.');
     expect(deviceSource).not.toHaveBeenCalled();
     expect(h.recorder.stop(first, 'alice', 'bs_test', 3)).toBe(true);
     await vi.waitFor(() =>

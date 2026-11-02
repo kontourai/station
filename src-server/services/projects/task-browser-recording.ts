@@ -36,7 +36,6 @@ export { TaskBrowserRecordingError } from './task-recording-errors.js';
 
 const MAX_RAW_FRAME_BYTES = 64 * 1024 * 1024;
 const MAX_FRAMES = 300;
-export const TASK_RECORDING_MAX_ACTIVE = 4;
 const ENCODE_TIMEOUT_MS = 60_000;
 const CLEANUP_TIMEOUT_MS = 10_000;
 
@@ -270,12 +269,12 @@ type RecordingInput = {
   stopSignal?: AbortSignal;
   onStarted?: () => void;
   admissionKey?: string;
+  releaseAdmission?: () => void;
 };
 
 /** Records through a shared live surface, leaving other viewers attached. */
 export class TaskBrowserRecording {
   private readonly jobs = new Set<{
-    key: string;
     controller: AbortController;
     done: Promise<void>;
   }>();
@@ -394,7 +393,36 @@ export class TaskBrowserRecording {
     );
   }
 
+  admit(access: TaskReviewAccess, admissionKey?: string): () => void {
+    const key =
+      admissionKey ??
+      (access.write.author.kind === 'person'
+        ? access.write.author.principalId
+        : access.write.author.sessionId);
+    const release = this.disposed ? undefined : this.limiter.acquire(key);
+    if (!release)
+      throw new TaskBrowserRecordingError(
+        'recording-unavailable',
+        'Recording capacity is exhausted.',
+      );
+    return release;
+  }
+
   async recordSource(
+    access: TaskReviewAccess,
+    input: RecordingInput,
+    resolveSource: () => Promise<RecordingSource>,
+  ) {
+    const release =
+      input.releaseAdmission ?? this.admit(access, input.admissionKey);
+    try {
+      return await this.recordAdmitted(access, input, resolveSource);
+    } finally {
+      release();
+    }
+  }
+
+  private async recordAdmitted(
     access: TaskReviewAccess,
     input: RecordingInput,
     resolveSource: () => Promise<RecordingSource>,
@@ -419,17 +447,6 @@ export class TaskBrowserRecording {
         'feature_preview_disabled',
         'Enable Walkthroughs in feature previews.',
       );
-    const key =
-      input.admissionKey ??
-      (access.write.author.kind === 'person'
-        ? access.write.author.principalId
-        : access.write.author.sessionId);
-    const release = this.disposed ? undefined : this.limiter.acquire(key);
-    if (!release)
-      throw new TaskBrowserRecordingError(
-        'recording-unavailable',
-        'Recording capacity is exhausted.',
-      );
     const controller = new AbortController();
     const signal = controller.signal;
     const onCancel = () => controller.abort();
@@ -440,7 +457,7 @@ export class TaskBrowserRecording {
       finish = (error) => (error === undefined ? resolve() : reject(error));
     });
     void done.catch(() => {});
-    const job = { key, controller, done };
+    const job = { controller, done };
     this.jobs.add(job);
     let offSurface: (() => void) | undefined;
     let cleanupFailure: unknown;
@@ -756,7 +773,6 @@ export class TaskBrowserRecording {
         offSurface?.();
       } finally {
         this.jobs.delete(job);
-        release();
         finish(cleanupFailure);
       }
     }

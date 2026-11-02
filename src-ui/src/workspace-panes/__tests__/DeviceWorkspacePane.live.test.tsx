@@ -249,6 +249,54 @@ describe('opening a device', () => {
     await click(screen.getByRole('button', { name: 'Stop recording' }));
     await screen.findByText('Recording saved to Task.');
   });
+  test('the recording picker shows a capacity refusal', async () => {
+    activeProject.slug = 'project-one';
+    stubDeviceFetch({
+      inventory: readyInventory([ANDROID_DEVICE]),
+      deviceLoopPreview: true,
+    });
+    const originalFetch = globalThis.fetch;
+    vi.stubGlobal(
+      'fetch',
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = new URL(String(input));
+        if (url.pathname === '/api/tasks')
+          return Response.json({
+            success: true,
+            data: [{ id: 'task-a', title: 'Test Task', status: 'ready' }],
+          });
+        if (url.pathname.includes('/review/device-recordings'))
+          return Response.json(
+            {
+              success: false,
+              code: 'recording-unavailable',
+              error: 'Recording capacity is exhausted.',
+            },
+            { status: 503 },
+          );
+        return originalFetch(input, init);
+      },
+    );
+    renderInQueryClient(<DeviceWorkspacePane />);
+    await openFirst('Open Pixel 10 Pro XL');
+    await click(await screen.findByRole('button', { name: 'Record to Task' }));
+    const dialog = await screen.findByRole('dialog', {
+      name: 'Record to Task',
+    });
+    await click(
+      await within(dialog).findByRole('button', { name: /Test Task/ }),
+    );
+    await click(
+      within(dialog).getByRole('button', { name: 'Start recording' }),
+    );
+    expect(
+      await within(dialog).findByText(
+        'Could not start recording. Update Station or try again.',
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByText('Recording to Task…')).toBeNull();
+  });
+
   test('captures a reproduction bundle into a selected Task', async () => {
     activeProject.slug = 'project-one';
     stubDeviceFetch({

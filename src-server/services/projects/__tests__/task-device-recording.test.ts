@@ -75,7 +75,10 @@ test('a human recording can be stopped only by the same Task author and publishe
       };
     },
   );
-  const owner = new TaskDeviceRecording({ recordSource });
+  const owner = new TaskDeviceRecording({
+    admit: () => () => {},
+    recordSource,
+  });
   const job = owner.start(access('alice'), { durationMs: 1000 }, async () => {
     throw new Error('not used by fixture');
   });
@@ -118,7 +121,10 @@ test('disposing the recording owner cancels in-flight work', async () => {
       throw new Error('unexpected completion');
     },
   );
-  const owner = new TaskDeviceRecording({ recordSource });
+  const owner = new TaskDeviceRecording({
+    admit: () => () => {},
+    recordSource,
+  });
   owner.start(access('alice'), { durationMs: 1000 }, async () => {
     throw new Error('not used by fixture');
   });
@@ -143,7 +149,10 @@ test('starting jobs are cancellable', async () => {
       throw new Error('unexpected');
     },
   );
-  const owner = new TaskDeviceRecording({ recordSource });
+  const owner = new TaskDeviceRecording({
+    admit: () => () => {},
+    recordSource,
+  });
   const source = async (): Promise<never> => {
     throw new Error('unused');
   };
@@ -164,6 +173,7 @@ test('starting jobs are cancellable', async () => {
 
 test('finished jobs do not consume recording capacity', async () => {
   const owner = new TaskDeviceRecording({
+    admit: () => () => {},
     recordSource: async () => {
       throw new Error('failure');
     },
@@ -198,17 +208,9 @@ test('device jobs report the shared recorder capacity refusal', async () => {
     { durationMs: 1000 },
     source,
   );
-  const refused = owner.start(
-    access('alice', 'c'),
-    { durationMs: 1000 },
-    source,
-  );
-  await vi.waitFor(() =>
-    expect(owner.status(access('alice', 'c'), refused.id)).toMatchObject({
-      state: 'failed',
-      code: 'recording-unavailable',
-    }),
-  );
+  expect(() =>
+    owner.start(access('alice', 'c'), { durationMs: 1000 }, source),
+  ).toThrow('Recording capacity is exhausted.');
   expect(source).toHaveBeenCalledTimes(2);
   release();
   await vi.waitFor(() =>
@@ -218,6 +220,45 @@ test('device jobs report the shared recorder capacity refusal', async () => {
     expect(owner.status(access('alice', 'b'), second.id).state).toBe('failed'),
   );
   await owner.dispose();
+  await recorder.dispose();
+});
+
+test('pre-admitted slots release after cancellation and source failure', async () => {
+  const recorder = new TaskBrowserRecording({
+    preview: { select: ({ enabled }: { enabled: () => boolean }) => enabled() },
+  } as never);
+  const task = access('alice');
+  const hold = recorder.admit(task);
+  const cancelled = recorder.admit(task);
+  expect(() => recorder.admit(task)).toThrow('capacity');
+  const controller = new AbortController();
+  controller.abort();
+  await expect(
+    recorder.recordSource(
+      task,
+      {
+        durationMs: 1000,
+        signal: controller.signal,
+        releaseAdmission: cancelled,
+      },
+      async () => {
+        throw new Error('unused');
+      },
+    ),
+  ).rejects.toMatchObject({ code: 'cancelled' });
+  const failed = recorder.admit(task);
+  await expect(
+    recorder.recordSource(
+      task,
+      { durationMs: 1000, releaseAdmission: failed },
+      async () => {
+        throw new Error('source failed');
+      },
+    ),
+  ).rejects.toThrow('source failed');
+  const recovered = recorder.admit(task);
+  recovered();
+  hold();
   await recorder.dispose();
 });
 
@@ -233,15 +274,11 @@ test('shared recorder bounds active recordings across different Task keys', asyn
     await waiting;
     throw new Error('fixture released');
   };
-  const active = ['a', 'b', 'c', 'd'].map((taskId) =>
-    recorder.recordSource(
-      access('alice', taskId),
-      { durationMs: 1000 },
-      source,
-    ),
+  const active = ['alice', 'bob', 'carol', 'dave'].map((owner) =>
+    recorder.recordSource(access(owner), { durationMs: 1000 }, source),
   );
   const extra = recorder.recordSource(
-    access('alice', 'e'),
+    access('erin'),
     { durationMs: 1000 },
     source,
   );

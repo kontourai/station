@@ -1,3 +1,6 @@
+export const TASK_RECORDING_MAX_ACTIVE = 4;
+export const TASK_RECORDING_MAX_PER_OWNER = 2;
+
 /** One runtime's active recording budget, shared by every recording source. */
 export class RecordingLimiter {
   private readonly counts = new Map<string, number>();
@@ -5,7 +8,12 @@ export class RecordingLimiter {
 
   acquire(owner: string): (() => void) | undefined {
     const count = this.counts.get(owner) ?? 0;
-    if (!owner || this.active >= 4 || count >= 2) return undefined;
+    if (
+      !owner ||
+      this.active >= TASK_RECORDING_MAX_ACTIVE ||
+      count >= TASK_RECORDING_MAX_PER_OWNER
+    )
+      return undefined;
     this.active++;
     this.counts.set(owner, count + 1);
     let released = false;
