@@ -588,10 +588,22 @@ function write(
     wire,
     effect,
   );
+  const compactRow =
+    effect.state === 'completed' &&
+    ['model', 'provider'].includes(effect.intent.kind);
+  const indexed =
+    agentStatement(
+      database,
+      'SELECT writer_format FROM agent_steps_meta WHERE id=1',
+    ).get()?.writer_format === 'agent-steps/12';
+  if (compactRow && indexed)
+    agentStatement(
+      database,
+      'DELETE FROM agent_steps_effects WHERE turn_id=? AND id=?',
+    ).run(turnId, effect.intent.id);
   agentStatement(
     database,
-    effect.state === 'completed' &&
-      ['model', 'provider'].includes(effect.intent.kind)
+    compactRow && !indexed
       ? 'INSERT OR REPLACE INTO agent_steps_effects VALUES(?,?,?)'
       : 'INSERT INTO agent_steps_effects VALUES(?,?,?) ON CONFLICT(turn_id,id) DO UPDATE SET record=excluded.record',
   ).run(turnId, effect.intent.id, wire);
