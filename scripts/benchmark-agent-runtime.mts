@@ -461,7 +461,7 @@ const environment = {
   sqlite: 'WAL synchronous=FULL',
   measuredAt: new Date().toISOString(),
   fixture:
-    'one live SDK tracer provider; trace storage cleared and GC requested between isolated phase fixtures; no GC within a measured phase',
+    'one live SDK tracer provider; trace storage cleared and GC requested between isolated phase fixtures; automatic GC remains included inside each measured phase',
 };
 const observability = createVoltAgentObservability({
   serviceName: 'agent-runtime-benchmark',

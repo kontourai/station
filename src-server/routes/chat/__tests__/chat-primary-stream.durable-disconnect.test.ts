@@ -357,12 +357,14 @@ it('a detached durable turn retains its approval requester, workspace and native
   expect(workspace.workspaceRoot).toBe(home);
   expect(authority.bindNativeCall(grant, 'still-open')).not.toBeNull();
   continueWork.resolve();
-  await Promise.race([
-    asked.promise,
-    consuming.then(() => {
-      throw Error('Turn finished without asking');
-    }),
-  ]);
+  await expect(
+    Promise.race([
+      asked.promise,
+      consuming.then(() => {
+        throw Error('Turn finished without asking');
+      }),
+    ]),
+  ).resolves.toBeUndefined();
   expect(requests).toBe(1);
   expect(cleanupCount).toBe(0);
   await vi.waitFor(() => {
