@@ -3,7 +3,8 @@ import type {
   LanguageModelV3StreamPart,
 } from '@ai-sdk/provider';
 import { afterEach, expect, it } from 'vitest';
-import { agentWire, durableLanguageModel, runWithAgentTurn } from '../index.js';
+import { durableLanguageModel, runWithAgentTurn } from '../index.js';
+import { agentWire } from '../internal.js';
 import { finish, parts } from './fixture.js';
 import { gate, turnFixture } from './turn-fixture.js';
 

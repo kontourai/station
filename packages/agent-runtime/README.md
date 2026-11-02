@@ -13,7 +13,7 @@ AI SDK v3 interface, VoltAgent 2.10.0 and Strands 1.19.0 VercelModel. Optional
 framework dependencies are exact peers. The package imports no Station code.
 
 The public root also exports an agent-turn journal and recovery owner. Its
-separate `agent_steps_` namespace declares writer format `agent-steps/6` and
+separate `agent_steps_` namespace declares writer format `agent-steps/8` and
 leaves existing `runtime-model/1` records intact. An active conversation has
 one owner. Recovery requires a proven-dead owner and compares the complete
 observed fence inside the SQLite write transaction. A retained Station turn
@@ -29,7 +29,12 @@ frames. Writer 6 pins canonical Conversation affinity separately from the
 execution Session coordinate. It validates exact schemas from writers 1–5, preserves existing record
 bytes and adds new tables atomically. Legacy settled rows receive a migration
 observation timestamp rather than a reconstructed historical completion time.
-The prior writer refuses the new metadata; future writers refuse here too.
+The prior writer refuses the new metadata; future writers refuse here too. Writer 7 moves effect inputs, partials and results into immutable content-addressed bodies; effect rows retain control headers and body references. Migration from writer 6 preserves each logical payload byte while changing its physical representation. Earlier turn records remain unchanged.
+
+Station retains one private SQLite connection per runtime owner. The connection tracks SQLite `data_version`, `total_changes()`, main/TEMP schema versions and a per-turn change cursor. Writer 8 adds an immutable SQL change journal populated by effect and approval triggers; its migration from writer 7 leaves existing payloads and headers unchanged. A peer or out-of-band local write validates only changed records and their approval links. Cursor acknowledgements remain inside the SQLite snapshot and are separate for each turn. Deleted recorded effects refuse; observing another turn cannot acknowledge unchecked changes. A schema change discards derived payload validation; opening and recovery retain full unresolved validation. Participant callbacks discard validation before checking their affected state. Healthy commands read indexed unfinished headers and only new/selected payloads. Cached validation never grants a dispatch, bypasses an ownership fence or changes FULL/WAL policy. The owner answers its own liveness locally; foreign owners still require the exact-process probe. Commands yield to the server between bounded slices.
+
+Stream prefixes commit in batches bounded by 16 ms, 64 KiB or 128 parts. A batch becomes visible only after its commit. EOF and tool-enabling suffixes flush the pending prefix; the suffix remains held until the complete model tape commits. A crash can lose an uncommitted batch, but cannot obtain another dispatch grant.
+
 
 `durableLanguageModel` journals calls made inside `AgentTurnLease.run` without
 replacing the framework loop. Its completed tapes replay; its committed partials
@@ -58,7 +63,8 @@ and approval revision, commits once, and cannot grant permission after the
 deadline. Pending, denied and expired approvals block the tool execution grant.
 Duplicate local waits join one request. A failed decision commit leaves the
 request pending, and a dead owner's late answer cannot resolve its successor's
-request. Writer 3 adds this table through an explicit atomic migration from
+request. Station defaults new durable approval waits to ten minutes. Set `STATION_DURABLE_APPROVAL_TIMEOUT_MS` to an integer from 1000 through 86400000 to change new waits. Restart retains the recorded deadline, including when the setting changes; it neither renews nor grants an approval. Ordinary non-durable callers retain their existing timeout.
+ Writer 3 adds this table through an explicit atomic migration from
 writers 1 and 2 without rewriting their turn or effect records.
 
 Writer 4 adds immutable provider-session identities, one per scope and
@@ -265,9 +271,13 @@ remain valid across later ownership/revision changes, while settled full answers
 expire at the replay cutoff even when unacknowledged projections prevent
 compaction. Authorized projection draining remains available after that cutoff.
 
-Station consumes only the package root; `scripts/agent-runtime-import-boundary-gate.mjs`
+Station consumes the package root and the explicit `/internal` host integration subpath; `scripts/agent-runtime-import-boundary-gate.mjs`
 checks both directions. Scripted native conformance runs at the real Station
 adapters, including tool effect counts, approval recovery and conservative
 model dispatch. These tests establish local SQLite and framework behavior;
 they do not establish live provider idempotency, cache benefit, operating-system
 crash durability or a published runtime release.
+
+The `/internal` subpath groups the unstable host/framework ABI: `agentWire` and `readAgentWire` retain native DTO bytes; `runWithProviderParent` and `nextProviderCallId` correlate nested provider calls; `journalAgentStreamPrefix` applies the commit-before-show batch barrier; `listSqliteAgentTurns` and the `readSqliteAgent*` views bind recovery and Station publication to the journal. These are no longer root exports. The import gate permits this one declared integration entry and rejects filesystem/deep-module imports.
+
+Native tools that cannot expose the durable execution port are refused before model dispatch. Ordinary engine calls retain their prior tool-return values; only restored durable results use the host decoder. Late transport frames wait for an in-flight terminal receipt so they use its committed owner fence.

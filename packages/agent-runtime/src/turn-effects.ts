@@ -105,20 +105,61 @@ export const effectsDefinition =
   'CREATE TABLE agent_steps_effects(turn_id TEXT NOT NULL REFERENCES agent_steps_turns(id), id TEXT NOT NULL, record TEXT NOT NULL, PRIMARY KEY(turn_id,id)) STRICT';
 export const effectIndexDefinition =
   "CREATE INDEX agent_steps_effect_states ON agent_steps_effects(turn_id,json_extract(record,'$.intent.kind')) WHERE json_extract(record,'$.state') <> 'completed'";
+type CachedEffect = { wire: string; value: EffectRecord; size: number };
 const records = new WeakMap<
   DatabaseSync,
-  Map<string, { wire: string; value: EffectRecord }>
+  { values: Map<string, CachedEffect>; size: number }
 >();
 export function clearAgentEffects(database: DatabaseSync) {
   records.delete(database);
 }
 function recordCache(database: DatabaseSync) {
-  let cache = records.get(database);
-  if (!cache) {
-    cache = new Map();
-    records.set(database, cache);
+  let state = records.get(database);
+  if (!state) {
+    state = { values: new Map(), size: 0 };
+    records.set(database, state);
   }
-  return cache;
+  return state;
+}
+function rememberEffect(
+  database: DatabaseSync,
+  key: string,
+  wire: string,
+  value: EffectRecord,
+) {
+  const state = recordCache(database);
+  const prior = state.values.get(key);
+  if (prior) {
+    state.size -= prior.size;
+    state.values.delete(key);
+  }
+  const size =
+    512 +
+    2 *
+      (wire.length +
+        value.intent.input.length +
+        value.attempts.reduce(
+          (n, attempt) =>
+            n +
+            (attempt.output?.length ?? 0) +
+            attempt.partials.reduce(
+              (total, part) => total + part.length + 8,
+              0,
+            ),
+          0,
+        ));
+  const limit = 16 * 1024 * 1024;
+  if (size > limit) return;
+  while (
+    state.values.size &&
+    (state.size + size > limit || state.values.size >= 256)
+  ) {
+    const oldest = state.values.keys().next().value!;
+    state.size -= state.values.get(oldest)!.size;
+    state.values.delete(oldest);
+  }
+  state.values.set(key, { wire, value: structuredClone(value), size });
+  state.size += size;
 }
 export function unfinishedAgentEffects(
   database: DatabaseSync,
@@ -193,16 +234,24 @@ export function readAgentEffect(
     .get(turnId, id);
   if (!row) return undefined;
   const wire = String(row.record);
-  const cache = recordCache(database);
+  const cache = recordCache(database).values;
   const key = JSON.stringify([turnId, id]);
   const prior = cache.get(key);
-  if (prior?.wire === wire) return structuredClone(prior.value);
+  if (prior?.wire === wire) {
+    cache.delete(key);
+    cache.set(key, prior);
+    return structuredClone(prior.value);
+  }
   const header = effectSchema.parse(JSON.parse(wire));
   if (!header.intent.input.startsWith('sha256:')) {
     if (
-      database
-        .prepare('SELECT writer_format FROM agent_steps_meta WHERE id=1')
-        .get()?.writer_format === 'agent-steps/7'
+      ['agent-steps/7', 'agent-steps/8'].includes(
+        String(
+          database
+            .prepare('SELECT writer_format FROM agent_steps_meta WHERE id=1')
+            .get()?.writer_format,
+        ),
+      )
     )
       throw new Error('DURABLE_AGENT_EFFECT_DAMAGED');
     return validate(header);
@@ -222,8 +271,7 @@ export function readAgentEffect(
           : readAgentBody(database, attempt.output),
     })),
   });
-  if (cache.size >= 256) cache.delete(cache.keys().next().value!);
-  cache.set(key, { wire, value: effect });
+  rememberEffect(database, key, wire, effect);
   if (effect.intent.id !== id)
     throw new Error('DURABLE_AGENT_EFFECT_ID_DAMAGED');
   return effect;
@@ -244,12 +292,12 @@ function write(database: DatabaseSync, turnId: string, effect: EffectRecord) {
     })),
   };
   const wire = canonical(header);
-  const cache = recordCache(database);
-  if (cache.size >= 256) cache.delete(cache.keys().next().value!);
-  cache.set(JSON.stringify([turnId, effect.intent.id]), {
+  rememberEffect(
+    database,
+    JSON.stringify([turnId, effect.intent.id]),
     wire,
-    value: structuredClone(effect),
-  });
+    effect,
+  );
   database
     .prepare(
       'INSERT INTO agent_steps_effects VALUES(?,?,?) ON CONFLICT(turn_id,id) DO UPDATE SET record=excluded.record',

@@ -1,11 +1,11 @@
+import { currentAgentTurn } from '@kontourai/agent-runtime';
 import {
   agentWire,
-  currentAgentTurn,
   journalAgentStreamPrefix,
   nextProviderCallId,
   readAgentWire,
   runWithProviderParent,
-} from '@kontourai/agent-runtime';
+} from '@kontourai/agent-runtime/internal';
 import {
   isModelStreamEvent,
   type Model,

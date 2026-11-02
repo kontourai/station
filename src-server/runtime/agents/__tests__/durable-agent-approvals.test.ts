@@ -3,8 +3,8 @@ import { DatabaseSync } from 'node:sqlite';
 import {
   createAgentRuntime,
   openSqliteAgentJournal,
-  readSqliteAgentApproval,
 } from '@kontourai/agent-runtime';
+import { readSqliteAgentApproval } from '@kontourai/agent-runtime/internal';
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
 import { afterEach, expect, it, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';

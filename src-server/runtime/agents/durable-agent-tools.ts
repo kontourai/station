@@ -2,10 +2,13 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 import {
   type AgentToolIntent,
   type AgentTurnLease,
-  agentWire,
   currentAgentTurn,
-  runWithProviderParent,
 } from '@kontourai/agent-runtime';
+import {
+  agentWire,
+  runWithProviderParent,
+} from '@kontourai/agent-runtime/internal';
+import { MS_PER_MINUTE } from '@kontourai/station-contracts/time';
 import { raceWithSignal } from '../../utils/bounded-async.js';
 import type { IAgentHooks, ToolCallContext } from '../types.js';
 
@@ -91,27 +94,39 @@ async function durableToolGate(
     return true;
   return callingTool.run(intent, gate);
 }
+interface DurableToolCall {
+  name: string;
+  id: unknown;
+  args: unknown;
+  replay?: 'safe' | 'unsafe';
+}
+export function executeDurableTool<T>(
+  input: DurableToolCall,
+  execute: () => T | Promise<T>,
+  decode: (value: unknown) => T,
+): Promise<T>;
 export function executeDurableTool(
-  input: {
-    name: string;
-    id: unknown;
-    args: unknown;
-    replay?: 'safe' | 'unsafe';
-  },
-  execute: () => Promise<unknown>,
+  input: DurableToolCall,
+  execute: () => unknown | Promise<unknown>,
+): Promise<unknown>;
+export async function executeDurableTool(
+  input: DurableToolCall,
+  execute: () => unknown | Promise<unknown>,
+  decode?: (value: unknown) => unknown,
 ): Promise<unknown> {
   const lease = currentAgentTurn();
   if (!lease) return execute();
   if (typeof input.id !== 'string' || !input.id)
     throw new Error('A durable tool call requires a native call identity.');
-  return lease.tool(
+  const output = await lease.tool(
     {
       id: `tool:${input.id}`,
       input: { name: input.name, args: input.args },
       replay: input.replay ?? 'unsafe',
     },
-    () => runWithProviderParent(`tool:${input.id}`, execute),
+    async () => runWithProviderParent(`tool:${input.id}`, execute),
   );
+  return decode ? decode(output) : output;
 }
 
 /** Reinstalls the same pending request and never substitutes a policy grant. */
@@ -123,7 +138,18 @@ export function waitDurableToolApproval(
   const lease = currentAgentTurn();
   const tool = callingTool.getStore();
   if (!lease || !tool) return wait(fallbackId, timeoutMs);
-  return lease.approval(tool, timeoutMs, (pending) =>
+  const configured = process.env.STATION_DURABLE_APPROVAL_TIMEOUT_MS;
+  const durableTimeoutMs =
+    configured === undefined ? 10 * MS_PER_MINUTE : Number(configured);
+  if (
+    !Number.isSafeInteger(durableTimeoutMs) ||
+    durableTimeoutMs < 1_000 ||
+    durableTimeoutMs > 24 * 60 * MS_PER_MINUTE
+  )
+    throw new Error(
+      'STATION_DURABLE_APPROVAL_TIMEOUT_MS must be between 1000 and 86400000',
+    );
+  return lease.approval(tool, durableTimeoutMs, (pending) =>
     raceWithSignal(wait(pending.id, pending.remainingMs), lease.signal),
   );
 }

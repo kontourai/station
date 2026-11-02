@@ -7,10 +7,12 @@ import type {
   LanguageModelV3,
   LanguageModelV3StreamPart,
 } from '@ai-sdk/provider';
+import { AgentRegistry, createVoltAgentObservability } from '@voltagent/core';
 import { z } from 'zod';
 import { FileMemoryAdapter } from '../src-server/adapters/file/memory-adapter.js';
 import { stationAgentRuntimeOwner } from '../src-server/runtime/agents/durable-agent-owner.js';
 import { VoltAgentFramework } from '../src-server/runtime/frameworks/voltagent-adapter.js';
+import { execFileSyncBounded } from './lib/bounded-capture.mjs';
 
 const args = process.argv.slice(2);
 const revision = args[0];
@@ -19,6 +21,17 @@ if (!revision || !output)
   throw new Error(
     'usage: npm run bench:agent-runtime -- <revision> <output.json>',
   );
+if (
+  execFileSyncBounded('git', ['rev-parse', 'HEAD'], {
+    encoding: 'utf8',
+    windowsHide: true,
+  }).trim() !== revision ||
+  execFileSyncBounded('git', ['status', '--porcelain'], {
+    encoding: 'utf8',
+    windowsHide: true,
+  }).trim()
+)
+  throw new Error('Benchmark requires the named committed clean revision');
 const watchdog = setTimeout(() => {
   throw new Error('Agent runtime benchmark exceeded fifteen minutes');
 }, 900_000);
@@ -82,7 +95,10 @@ async function run(
         ...Array.from({ length: chunks }, (_, index) => ({
           type: 'text-delta' as const,
           id: 'answer',
-          delta: !tool && index === chunks - 1 ? 'DONE' : 'word ',
+          delta:
+            !tool && index === chunks - 1
+              ? 'DONE'
+              : `step${calls}.chunk${index} `,
         })),
         { type: 'text-end', id: 'answer' },
         ...(tool
@@ -229,33 +245,41 @@ const environment = {
   sqlite: 'WAL synchronous=FULL',
   measuredAt: new Date().toISOString(),
 };
+const observability = createVoltAgentObservability({
+  serviceName: 'agent-runtime-benchmark',
+});
+AgentRegistry.getInstance().setGlobalObservability(observability);
 const results = [];
-for (const steps of sizes)
-  for (const chunks of chunkCounts) {
-    const baseline = await run(false, steps, chunks);
-    const durable = await run(true, steps, chunks);
-    results.push({
-      steps,
-      chunks,
-      baseline,
-      durable,
-      ratio: durable.milliseconds / baseline.milliseconds,
-    });
-    writeFileSync(
-      output,
-      JSON.stringify(
-        {
-          revision,
-          environment,
-          scope:
-            'actual Station VoltAgent adapter; scripted zero-network provider; FileMemory; fresh conversation; excludes HTTP/event projection',
-          results,
-        },
-        null,
-        2,
-      ),
-    );
-  }
-if (args.includes('--profile'))
-  await run(true, sizes.at(-1)!, chunkCounts.at(-1)!, true);
-clearTimeout(watchdog);
+try {
+  for (const steps of sizes)
+    for (const chunks of chunkCounts) {
+      const baseline = await run(false, steps, chunks);
+      const durable = await run(true, steps, chunks);
+      results.push({
+        steps,
+        chunks,
+        baseline,
+        durable,
+        ratio: durable.milliseconds / baseline.milliseconds,
+      });
+      writeFileSync(
+        output,
+        JSON.stringify(
+          {
+            revision,
+            environment,
+            scope:
+              'actual Station VoltAgent adapter; scripted zero-network provider; FileMemory; fresh conversation; excludes HTTP/event projection',
+            results,
+          },
+          null,
+          2,
+        ),
+      );
+    }
+  if (args.includes('--profile'))
+    await run(true, sizes.at(-1)!, chunkCounts.at(-1)!, true);
+} finally {
+  await observability.shutdown();
+  clearTimeout(watchdog);
+}

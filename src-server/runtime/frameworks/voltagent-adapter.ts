@@ -642,6 +642,8 @@ class VoltAgentWrapper implements IAgent {
   }
 
   async streamText(input: string, options?: any): Promise<IStreamResult> {
+    if (currentAgentTurn())
+      for (const tool of this.inner.getTools()) assertDurableVoltExecutor(tool);
     // archive#3179: one sink per call, reachable from the lifecycle hooks
     // (which are per-AGENT and shared by concurrent turns) only through
     // this call's own operation context.
@@ -704,6 +706,23 @@ const nativeVoltExecuteWrappers = new WeakMap<
   { original: unknown; wrapped: unknown }
 >();
 const purposeEnabledVoltTools = new WeakSet<object>();
+const durableVoltExecutors = new WeakSet<object>();
+function assertDurableVoltExecutor(tool: {
+  name: string;
+  execute?: unknown;
+}): void {
+  if (
+    currentAgentTurn() &&
+    typeof tool.execute === 'function' &&
+    !durableVoltExecutors.has(tool.execute)
+  )
+    throw new ToolDeniedError({
+      toolName: tool.name,
+      message: 'This tool has no durable execution port.',
+      code: 'TOOL_FORBIDDEN',
+      httpStatus: 403,
+    });
+}
 
 /**
  * VoltAgent-specific framework adapter.
@@ -777,6 +796,7 @@ export function toVoltAgentTool(tool: ITool): Tool<any> {
             value: wrapped,
           });
           nativeVoltExecuteWrappers.set(t, { original, wrapped });
+          durableVoltExecutors.add(wrapped);
         } catch {
           // An immutable third-party Tool remains usable, but cannot become a
           // provenance source. No alternate id source may compensate.
@@ -850,6 +870,8 @@ export function toVoltAgentTool(tool: ITool): Tool<any> {
       ...(execute ? { execute: execute as never } : {}),
     }) as unknown as Tool<any>,
   );
+  if (typeof adapted.execute === 'function' && execute)
+    durableVoltExecutors.add(adapted.execute);
   rememberDurableToolReplay(adapted, tool.replay ?? 'unsafe');
   copyBuiltinVendedToolIdentity(tool, adapted);
   if (purposeEnabled) purposeEnabledVoltTools.add(adapted);
@@ -940,6 +962,7 @@ export function createVoltAgentLifecycleHooks(
       });
     },
     onToolStart: async ({ tool, context, args, options }) => {
+      assertDurableVoltExecutor(tool);
       const currentCount =
         (context.context.get('toolCallCount') as number) || 0;
       context.context.set('toolCallCount', currentCount + 1);

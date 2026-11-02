@@ -1,5 +1,5 @@
 import { afterEach, expect, it } from 'vitest';
-import { agentWire } from '../index.js';
+import { agentWire } from '../internal.js';
 import { gate, turnFixture } from './turn-fixture.js';
 
 const cleanup: (() => Promise<void>)[] = [];

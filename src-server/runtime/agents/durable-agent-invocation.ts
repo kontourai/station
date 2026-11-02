@@ -1,9 +1,6 @@
 import { createHash } from 'node:crypto';
-import {
-  agentWire,
-  currentAgentTurn,
-  readAgentWire,
-} from '@kontourai/agent-runtime';
+import { currentAgentTurn } from '@kontourai/agent-runtime';
+import { agentWire, readAgentWire } from '@kontourai/agent-runtime/internal';
 import type { IStreamResult } from '../types.js';
 import { stationAgentRuntimeOwner } from './durable-agent-owner.js';
 

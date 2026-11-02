@@ -120,7 +120,7 @@ intent and replay safety and consume completed model/tool tapes. Uncertain
 model dispatch blocks automatic resend. Disconnect hands delivery and cleanup
 to the owner; explicit Stop cancels. Terminal publication uses the recorded
 invocation and event identity, including a crash between settlement and
-publication. Approval deadlines remain absolute. New approval IDs include durable-turn
+publication. Approval deadlines remain absolute. New durable waits default to ten minutes; `STATION_DURABLE_APPROVAL_TIMEOUT_MS` configures new waits without renewing existing ones. New approval IDs include durable-turn
 scope; legacy IDs remain attached to their recorded tool. Registry replies and
 cancellations must match that pending Session. Publication consumes the actual
 committed decision identity, including when an older ID is restored.

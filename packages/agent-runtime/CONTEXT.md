@@ -120,10 +120,14 @@ checks at their source pins; independent delta review and workload admission
 remain separate. Strict new admission parses all selected active payloads;
 these checks establish no active-set cost or physical table-page I/O proof.
 
-The agent-turn writer is `agent-steps/6`. It adds cancellation requests,
+The agent-turn writer is `agent-steps/8`. It adds cancellation requests,
 terminal timestamps and journaled transport frames without replacing the older
-model journal. Station's off-by-default durable preview consumes the public root
+model journal. Station's off-by-default durable preview consumes the root contract and explicit `/internal` integration entry
 at its real framework/model/tool/approval boundaries. Its native adapter suite
 is `src-server/runtime/agents/__tests__/durable-agent-conformance.test.ts`;
 `chat-primary-stream.durable-disconnect.test.ts` owns the route handoff control.
 These local scripted boundaries do not establish provider or release qualification.
+
+Writer 7 retains immutable payload bodies behind indexed effect headers. The owner retains a connection with peer/local/schema change detection; prefix commits batch at 16 ms, 64 KiB or 128 parts. New durable approval waits default to ten minutes and accept `STATION_DURABLE_APPROVAL_TIMEOUT_MS`; recorded deadlines do not change on restart.
+
+Writer 8 adds immutable effect/approval change tracking and per-turn validation cursors. It validates changed records and cross-links without decoding unchanged history, while schema changes and recovery keep full validation. A cursor for one turn never acknowledges another turn’s unchecked writes.

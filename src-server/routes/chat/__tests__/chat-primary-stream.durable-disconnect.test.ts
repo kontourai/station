@@ -1,13 +1,42 @@
-import { EventEmitter } from 'node:events';
+import { humanPrincipal } from '@kontourai/station-contracts/principal';
 import { Hono } from 'hono';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+import { createChatRuntimeFixture } from '../../../__test-utils__/chat-runtime-fixture.js';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { FileMemoryAdapter } from '../../../adapters/file/memory-adapter.js';
-import { MonitoringEmitter } from '../../../monitoring/emitter.js';
+import {
+  emit,
+  startedAdapter,
+  THREAD,
+  waitFor,
+} from '../../../providers/__tests__/codex-adapter-wire-harness.js';
+import { createAgentHooks } from '../../../runtime/agents/agent-hooks.js';
 import { bindDurableAgent } from '../../../runtime/agents/durable-agent-invocation.js';
+import {
+  prepareDurableForegroundHandoff,
+  releaseDurableForeground,
+} from '../../../runtime/agents/durable-agent-lifecycle.js';
 import { stationAgentRuntimeOwner } from '../../../runtime/agents/durable-agent-owner.js';
+import {
+  durableAgentHooks,
+  executeDurableTool,
+} from '../../../runtime/agents/durable-agent-tools.js';
+import {
+  createNativeExecutionWorkspace,
+  currentNativeExecutionWorkspace,
+  runWithNativeExecutionWorkspace,
+} from '../../../runtime/conversation/native-execution-workspace.js';
+import { createElicitationCallback } from '../../../runtime/conversation/stream-orchestrator.js';
+import {
+  closeNativeOutputTurnContext,
+  createNativeOutputGrantAuthority,
+  currentNativeOutputCallScope,
+  runWithCurrentNativeOutputCall,
+  runWithNativeOutputTurnContext,
+} from '../../../runtime/native-output-turn-grant.js';
 import { captureRuntimeConfigurationLease } from '../../../runtime/plugins/runtime-configuration-lease.js';
-import type { IAgent, RuntimeContext } from '../../../runtime/types.js';
+import { InjectableStream } from '../../../runtime/streaming/InjectableStream.js';
+import type { IAgent } from '../../../runtime/types.js';
 import { resetFixtureSqliteSynchronousForTest } from '../../../utils/sqlite-fixture-durability.js';
 import { streamPrimaryAgentChat } from '../chat-primary-stream.js';
 
@@ -24,7 +53,7 @@ function gate() {
   });
   return { promise, resolve };
 }
-for (const durable of [true, false]) {
+for (const durable of [true]) {
   it(`disconnect ${durable ? 'hands the running Station turn to its durable owner and finishes once' : 'still aborts an engine without durable ownership'}`, async () => {
     const home = temp('chat-durable-disconnect-');
     const memory = new FileMemoryAdapter({ projectHomeDir: home });
@@ -91,37 +120,7 @@ for (const durable of [true, false]) {
         definition: 'scripted/1',
         memory,
       });
-    const ctx = {
-      agentSpecs: new Map(),
-      toolNameMapping: new Map(),
-      approvalRegistry: {},
-      logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
-      agentHooksMap: new Map(),
-      memoryAdapters: new Map([['assistant', memory]]),
-      feedbackService: { getRatings: () => [] },
-      agentStatus: new Map(),
-      agentStats: new Map(),
-      agentTools: new Map(),
-      monitoringEvents: undefined,
-      monitoringEmitter: new MonitoringEmitter(
-        new EventEmitter(),
-        async () => {},
-      ),
-      modelCatalog: undefined,
-      metricsLog: [],
-      providerService: {
-        listProviderConnections: () => [],
-        getLaunchabilityRevision: () => 0,
-      },
-      getAgentConfigurationRevision: () => 0,
-      configLoader: { getLaunchabilityRevision: () => 0 },
-      commitAgentConfigurationRead: async (
-        _revision: number,
-        work: () => Promise<unknown>,
-      ) => work(),
-    };
-    // The route consumes this bounded fixture; unrelated RuntimeContext services are absent.
-    const runtime = ctx as unknown as RuntimeContext;
+    const runtime = createChatRuntimeFixture(home, memory);
     const client = new AbortController();
     const app = new Hono();
     app.post('/chat', (c) =>
@@ -188,3 +187,237 @@ for (const durable of [true, false]) {
     }
   });
 }
+
+it('a detached durable turn retains its approval requester, workspace and native issuance until its owner finishes', async () => {
+  const home = temp('durable-release-');
+  const memory = new FileMemoryAdapter({ projectHomeDir: home });
+  await memory.createConversation({
+    id: 'conversation',
+    resourceId: 'assistant',
+    userId: 'owner',
+    title: 'Lifetime',
+    metadata: {},
+  });
+  const ctx = createChatRuntimeFixture(home, memory);
+  const spec = {
+    name: 'Assistant',
+    prompt: 'Answer',
+    tools: { mcpServers: [], askBeforeUse: ['probe'] },
+  };
+  const hooks = createAgentHooks({
+    spec,
+    appConfig: ctx.appConfig,
+    configLoader: ctx.configLoader,
+    agentFixedTokens: new Map(),
+    memoryAdapters: ctx.memoryAdapters,
+    toolNameMapping: new Map(),
+    logger: ctx.logger,
+  });
+  const owner = stationAgentRuntimeOwner(home);
+  const failures: unknown[] = [];
+  owner.configure({
+    preview: { select: (branches) => branches.enabled() },
+    failed: (error) => failures.push(error),
+  });
+  cleanup.push(() => owner.pause());
+  const workspace = createNativeExecutionWorkspace(home);
+  const authority = createNativeOutputGrantAuthority();
+  const grant = authority.issue(
+    {
+      threadId: 'conversation',
+      turnId: 'turn',
+      adapterId: 'station',
+      principal: humanPrincipal('test', 'owner', 'Owner'),
+      configurationLease: {},
+      workspaceRoot: home,
+    },
+    { isCurrent: () => true },
+  );
+  if (!grant) throw Error('Real native authority prerequisite');
+  const native = { authority, grant };
+  const entered = gate();
+  const continueWork = gate();
+  const asked = gate();
+  const released = gate();
+  let requests = 0;
+  let cleanupCount = 0;
+  const ownedHooks = durableAgentHooks(hooks)!;
+  const elicitation = createElicitationCallback(
+    spec,
+    ctx.toolNameMapping,
+    ctx.approvalRegistry,
+    new InjectableStream(),
+    ctx.logger,
+    () => 'conversation',
+    'conversation',
+  );
+  const releaseRequester = hooks.registerApprovalRequester(
+    'conversation',
+    async (tool) => {
+      requests++;
+      const pending = elicitation({ type: 'tool-approval', ...tool });
+      asked.resolve();
+      return !!(await pending);
+    },
+  );
+  const agent: IAgent = {
+    id: 'assistant',
+    name: 'Assistant',
+    model: { modelId: 'scripted' },
+    getMemory: () => null,
+    generateText: async () => ({ text: 'unused' }),
+    streamText: async () => ({
+      fullStream: (async function* () {
+        yield { type: 'text-start', id: 'answer' };
+        entered.resolve();
+        await continueWork.promise;
+        const approved = await ownedHooks.beforeToolCall!(
+          { toolCallId: 'late-tool', toolName: 'probe', toolArgs: {} },
+          { agentSlug: 'assistant', conversationId: 'conversation' },
+        );
+        if (approved !== true)
+          throw Error('Detached approval requester was released early');
+        await executeDurableTool(
+          { name: 'probe', id: 'late-tool', args: {} },
+          () =>
+            runWithCurrentNativeOutputCall('late-tool', async () => {
+              const call = currentNativeOutputCallScope();
+              expect(call && authority.admit(call)?.turnId).toBe('turn');
+              expect(currentNativeExecutionWorkspace()?.workspaceRoot).toBe(
+                home,
+              );
+              return 'scoped result';
+            }),
+        );
+        yield { type: 'text-delta', id: 'answer', text: 'DONE' };
+        yield { type: 'text-end', id: 'answer' };
+        yield { type: 'finish', finishReason: 'stop' };
+      })(),
+      text: Promise.resolve('DONE'),
+      usage: Promise.resolve({
+        promptTokens: 0,
+        completionTokens: 0,
+        totalTokens: 0,
+      }),
+      finishReason: Promise.resolve('stop'),
+    }),
+  };
+  bindDurableAgent(agent, {
+    home,
+    slug: 'assistant',
+    definition: 'lifetime/1',
+    memory,
+  });
+  const client = new AbortController();
+  const writer = { write: async (_wire: string | Uint8Array) => {} };
+  const disconnect = prepareDurableForegroundHandoff({
+    agent,
+    conversationId: () => 'conversation',
+    invocationId: () => 'turn',
+    writer,
+    signal: client.signal,
+    abort: () => {
+      throw Error('Durable operation was aborted');
+    },
+  });
+  client.signal.addEventListener('abort', disconnect, { once: true });
+  const response = await runWithNativeExecutionWorkspace(workspace, () =>
+    runWithNativeOutputTurnContext(native, () =>
+      agent.streamText('hello', {
+        conversationId: 'conversation',
+        clientTurnId: 'turn',
+        userId: 'owner',
+      }),
+    ),
+  );
+  const consuming = (async () => {
+    for await (const chunk of response.fullStream)
+      await writer.write(`data: ${JSON.stringify(chunk)}\n\n`);
+    await writer.write('data: [DONE]\n\n');
+  })();
+  cleanup.push(async () => {
+    continueWork.resolve();
+    await Promise.race([asked.promise, consuming.catch(() => {})]);
+    ctx.approvalRegistry.cancelAll();
+    await consuming.catch(() => {});
+    authority.dispose();
+  });
+  await entered.promise;
+  client.abort();
+  releaseDurableForeground(writer, releaseRequester);
+  releaseDurableForeground(writer, () => {
+    cleanupCount++;
+    workspace.close();
+    closeNativeOutputTurnContext(native);
+    released.resolve();
+  });
+  expect(cleanupCount).toBe(0);
+  expect(workspace.workspaceRoot).toBe(home);
+  expect(authority.bindNativeCall(grant, 'still-open')).not.toBeNull();
+  continueWork.resolve();
+  await Promise.race([
+    asked.promise,
+    consuming.then(() => {
+      throw Error('Turn finished without asking');
+    }),
+  ]);
+  expect(requests).toBe(1);
+  expect(cleanupCount).toBe(0);
+  await vi.waitFor(() => {
+    const approval = owner.approvals('conversation', 'turn')[0];
+    expect(approval?.state).toBe('pending');
+    expect(approval?.id).toMatch(/^approval:sha256:/);
+    expect(ctx.approvalRegistry.has(approval!.id)).toBe(true);
+  });
+  ctx.approvalRegistry.resolve(
+    owner.approvals('conversation', 'turn')[0]!.id,
+    true,
+  );
+  await consuming;
+  await released.promise;
+  expect(cleanupCount).toBe(1);
+  expect(() => workspace.workspaceRoot).toThrow();
+  expect(authority.bindNativeCall(grant, 'after-finish')).toBeNull();
+  expect(owner.read('conversation', 'turn')?.turn.state).toBe('completed');
+  expect(failures).toEqual([]);
+});
+
+it('disconnect still interrupts a real external Codex adapter through its app-server transport', async () => {
+  const { adapter, process } = await startedAdapter();
+  cleanup.push(async () => {
+    await adapter.stopSession(THREAD);
+  });
+  const operation = new AbortController();
+  const client = new AbortController();
+  let interruption: ReturnType<typeof adapter.interruptTurn> | undefined;
+  operation.signal.addEventListener(
+    'abort',
+    () => {
+      interruption = adapter.interruptTurn(THREAD);
+    },
+    { once: true },
+  );
+  const writer = { write: async (_wire: string | Uint8Array) => {} };
+  const disconnect = prepareDurableForegroundHandoff({
+    agent: adapter,
+    conversationId: () => THREAD,
+    invocationId: () => 'turn-1',
+    writer,
+    signal: client.signal,
+    abort: () => operation.abort('Client disconnected'),
+  });
+  client.signal.addEventListener('abort', disconnect, { once: true });
+  client.abort();
+  expect(operation.signal.aborted).toBe(true);
+  const request = await waitFor(
+    () =>
+      process.stdin.lines
+        .map((line) => JSON.parse(line))
+        .find((value) => value.method === 'turn/interrupt'),
+    'real Codex interrupt request',
+  );
+  expect(request.params.turnId).toBe('turn-1');
+  await emit(process, { id: request.id, result: {} });
+  await interruption;
+  releaseDurableForeground(writer, () => {});
+});

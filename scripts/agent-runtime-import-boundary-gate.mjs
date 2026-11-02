@@ -1,5 +1,6 @@
 import { lstatSync, readFileSync } from 'node:fs';
 import { isBuiltin } from 'node:module';
+import ts from 'typescript-api';
 import { execFileSyncBounded } from './lib/bounded-capture.mjs';
 import { invokedDirectly } from './lib/module-entry.mjs';
 import {
@@ -77,11 +78,90 @@ export function stationRuntimeImportFindings(files, readText) {
       const name = ref.specifier;
       if (typeof name !== 'string') return [];
       const internal =
-        name.startsWith('@kontourai/agent-runtime/') ||
+        (name.startsWith('@kontourai/agent-runtime/') &&
+          name !== '@kontourai/agent-runtime/internal') ||
         (name.startsWith('.') &&
           resolveRelative(file, name).startsWith(`${root}/`));
       return internal ? [`${file}:${ref.line} ${name}`] : [];
     });
+  });
+}
+/** Raw native tool bodies must remain inside the journal execution port. */
+export function durableToolBoundaryFindings(files, readText) {
+  return files.flatMap((file) => {
+    if (
+      !/src-server\/runtime\/frameworks\/(voltagent-adapter|strands-tool-loader)\.ts$/.test(
+        file,
+      )
+    )
+      return [];
+    const source = ts.createSourceFile(
+      file,
+      readText(file),
+      ts.ScriptTarget.Latest,
+      true,
+    );
+    const findings = [];
+    const unwrap = (node) =>
+      ts.isNonNullExpression(node) || ts.isParenthesizedExpression(node)
+        ? unwrap(node.expression)
+        : node;
+    const bindings = [];
+    const collect = (node) => {
+      if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name))
+        bindings.push({
+          name: node.name.text,
+          scope: node.parent.parent.parent,
+          initializer: node.initializer,
+        });
+      ts.forEachChild(node, collect);
+    };
+    collect(source);
+    const toolAlias = (name, at) => {
+      for (let scope = at.parent; scope; scope = scope.parent) {
+        const binding = bindings.find(
+          (value) => value.scope === scope && value.name === name,
+        );
+        if (!binding) continue;
+        const initializer = binding.initializer && unwrap(binding.initializer);
+        return (
+          !!initializer &&
+          ts.isPropertyAccessExpression(initializer) &&
+          initializer.name.text === 'execute'
+        );
+      }
+      return false;
+    };
+    const visit = (node) => {
+      if (ts.isCallExpression(node)) {
+        const target = unwrap(node.expression);
+        const raw =
+          (ts.isPropertyAccessExpression(target) &&
+            target.name.text === 'execute') ||
+          (ts.isIdentifier(target) && toolAlias(target.text, node)) ||
+          (target.getText(source) === 'Reflect.apply' &&
+            node.arguments[0] &&
+            toolAlias(node.arguments[0].getText(source), node));
+        if (raw) {
+          let parent = node.parent;
+          while (
+            parent &&
+            !(
+              ts.isCallExpression(parent) &&
+              parent.expression.getText(source) === 'executeDurableTool'
+            )
+          )
+            parent = parent.parent;
+          if (!parent)
+            findings.push(
+              `${file}:${source.getLineAndCharacterOfPosition(node.getStart(source)).line + 1} unjournaled native tool body`,
+            );
+        }
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(source);
+    return findings;
   });
 }
 export function checkRuntimeImports() {
@@ -108,6 +188,9 @@ export function checkRuntimeImports() {
   const findings = [
     ...links,
     ...runtimeImportFindings(runtimeFiles, (f) => readFileSync(f, 'utf8')),
+    ...durableToolBoundaryFindings(stationFiles, (f) =>
+      readFileSync(f, 'utf8'),
+    ),
     ...stationRuntimeImportFindings(stationFiles, (f) =>
       readFileSync(f, 'utf8'),
     ),

@@ -127,3 +127,41 @@ it('claim rollback grants no recovery authority and keeps the original committed
   );
   expect(read.kind === 'owned' ? read.turn.fence.owner : read).toEqual(owner);
 });
+
+it('late publication waits for an in-flight settlement receipt instead of using its old fence', async () => {
+  const f = await setup();
+  let entered!: () => void;
+  let release!: () => void;
+  const committed = new Promise<void>((resolve) => {
+    entered = resolve;
+  });
+  const acknowledged = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const execute = f.crash.storage.execute.bind(f.crash.storage);
+  f.crash.storage.execute = async (command, context) => {
+    const answer = await execute(command, context);
+    if (command.type === 'settle') {
+      entered();
+      await acknowledged;
+    }
+    return answer;
+  };
+  const ending = f.lease.run(async () => {});
+  cleanup.push(async () => {
+    release();
+    await ending.catch(() => {});
+  });
+  await committed;
+  const projected = f.lease
+    .frame('late-frame', 'data: {"type":"finish"}\n\n')
+    .then(
+      (value) => ({ value }),
+      (error) => ({ error }),
+    );
+  release();
+  await ending;
+  expect(await projected).toMatchObject({
+    value: { id: 'late-frame', wire: 'data: {"type":"finish"}\n\n' },
+  });
+});

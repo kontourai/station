@@ -145,9 +145,13 @@ export function durableLanguageModel(
       const stream = new ReadableStream<LanguageModelV3StreamPart>({
         async start(controller) {
           try {
-            const source = {
-              [Symbol.asyncIterator]: () => ({ next: () => reader.read() }),
-            };
+            const source = (async function* () {
+              for (;;) {
+                const next = await reader.read();
+                if (next.done) return;
+                yield next.value;
+              }
+            })();
             for await (const part of journalAgentStreamPrefix(
               turn,
               id,

@@ -220,7 +220,8 @@ export function createStrandsFunctionTools(
                 replay: tool.replay,
               },
               () => tool.execute(purposeful.input, toolContext),
-            ).then((value) => z.json().parse(value)),
+              (value) => z.json().parse(value),
+            ),
         );
       },
     });

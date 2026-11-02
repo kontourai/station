@@ -18,12 +18,14 @@ import {
 } from '@kontourai/agent-runtime';
 import { openAtomicCrashPointStore } from '@kontourai/monument/testing';
 import { VercelModel } from '@strands-agents/sdk/models/vercel';
-import { afterEach, expect, it } from 'vitest';
+import { createTool } from '@voltagent/core';
+import { afterEach, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import { FileMemoryAdapter } from '../../../adapters/file/memory-adapter.js';
 import { StrandsFramework } from '../../frameworks/strands-adapter.js';
 import { durableStrandsModel } from '../../frameworks/strands-durable-model.js';
 import { VoltAgentFramework } from '../../frameworks/voltagent-adapter.js';
+import type { ITool } from '../../types.js';
 import {
   flushDurableAgentMemory,
   persistDurableAuthoredMessage,
@@ -34,6 +36,7 @@ import { waitDurableToolApproval } from '../durable-agent-tools.js';
 const cleanup: Array<() => void | Promise<void>> = [];
 afterEach(async () => {
   for (const close of cleanup.splice(0).reverse()) await close();
+  vi.unstubAllEnvs();
 });
 function gate() {
   let resolve!: () => void;
@@ -60,6 +63,8 @@ async function fixture(
   controls: {
     beforeTool?: () => Promise<boolean>;
     partial?: ReturnType<typeof gate>;
+    now?: () => number;
+    tools?: ITool[];
   } = {},
 ) {
   const dir = mkdtempDisposableSync(
@@ -117,6 +122,7 @@ async function fixture(
     owner,
     liveness,
     implementation: 'native-conformance/1',
+    now: controls.now,
   });
   const key = {
     scopeId: 'native',
@@ -209,7 +215,7 @@ async function fixture(
       instructions: 'Use probe once.',
       model,
       memoryAdapter: storage,
-      tools: [
+      tools: controls.tools ?? [
         {
           name: 'probe',
           description: 'Probe',
@@ -277,6 +283,7 @@ async function fixture(
         owner: successor,
         liveness,
         implementation: 'native-conformance/1',
+        now: controls.now,
       });
       const recovered = await next.recover(key);
       if (typeof recovered === 'string')
@@ -353,7 +360,7 @@ for (const framework of ['voltagent', 'strands'] as const) {
       f.intentEntered,
       old.then((value) => {
         throw new Error(
-          'Native loop returned before the held tool intent: ' + String(value),
+          `Native loop returned before the held tool intent: ${String(value)}`,
         );
       }),
     ]);
@@ -390,51 +397,89 @@ for (const framework of ['voltagent', 'strands'] as const) {
     release.resolve();
     await old;
   });
-  it(`${framework}: pending approval survives takeover and needs one explicit answer`, async () => {
-    const asked = gate();
-    const askedAgain = gate();
-    const answer = gate();
-    let effects = 0;
-    const requests: Array<{ id: string; remaining: number }> = [];
-    const f = await fixture(framework, 'unsafe', async () => ++effects, {
-      beforeTool: () =>
-        waitDurableToolApproval('volatile', 60_000, async (id, remaining) => {
-          requests.push({ id, remaining });
-          if (requests.length === 1) asked.resolve();
-          else askedAgain.resolve();
-          await answer.promise;
-          return true;
+  for (const approvalTimeout of [undefined, 900_000])
+    it(`${framework}: ${approvalTimeout ?? 'default'} approval timeout survives a two-minute restart and needs one explicit answer`, async () => {
+      vi.stubEnv(
+        'STATION_DURABLE_APPROVAL_TIMEOUT_MS',
+        approvalTimeout === undefined ? undefined : String(approvalTimeout),
+      );
+      let now = 1_000;
+      const asked = gate();
+      const askedAgain = gate();
+      const answer = gate();
+      let effects = 0;
+      const requests: Array<{ id: string; remaining: number }> = [];
+      const f = await fixture(framework, 'unsafe', async () => ++effects, {
+        now: () => now,
+        beforeTool: () =>
+          waitDurableToolApproval('volatile', 60_000, async (id, remaining) => {
+            requests.push({ id, remaining });
+            if (requests.length === 1) asked.resolve();
+            else askedAgain.resolve();
+            await answer.promise;
+            return true;
+          }),
+      });
+      const old = f.consume(f.lease).catch((error) => error);
+      cleanup.push(async () => {
+        answer.resolve();
+        await old;
+      });
+      await Promise.race([
+        asked.promise,
+        old.then((value) => {
+          throw new Error(
+            'Native loop completed without requesting approval: ' +
+              String(value),
+          );
         }),
-    });
-    const old = f.consume(f.lease).catch((error) => error);
-    cleanup.push(async () => {
+      ]);
+      expect(requests[0]?.remaining).toBe(approvalTimeout ?? 600_000);
+      vi.stubEnv('STATION_DURABLE_APPROVAL_TIMEOUT_MS', '60000');
+      now += 120_000;
+      const recovered = await f.recover();
+      const next = f.consume(recovered);
+      await Promise.race([
+        askedAgain.promise,
+        next.then(() => {
+          throw new Error(
+            'Recovery completed without an explicit approval answer',
+          );
+        }),
+      ]);
+      expect(effects).toBe(0);
+      expect(requests[1]?.id).toBe(requests[0]?.id);
+      expect(requests[1]?.remaining).toBe(
+        (approvalTimeout ?? 600_000) - 120_000,
+      );
       answer.resolve();
+      expect((await next).text).toBe('DONE');
       await old;
+      expect(effects).toBe(1);
     });
-    await Promise.race([
-      asked.promise,
-      old.then((value) => {
-        throw new Error(
-          'Native loop completed without requesting approval: ' + String(value),
-        );
-      }),
-    ]);
-    const recovered = await f.recover();
-    const next = f.consume(recovered);
-    await Promise.race([
-      askedAgain.promise,
-      next.then(() => {
-        throw new Error(
-          'Recovery completed without an explicit approval answer',
-        );
-      }),
-    ]);
-    expect(effects).toBe(0);
-    expect(requests[1]?.id).toBe(requests[0]?.id);
-    expect(requests[1]?.remaining).toBeLessThanOrEqual(requests[0]!.remaining);
-    answer.resolve();
-    expect((await next).text).toBe('DONE');
-    await old;
-    expect(effects).toBe(1);
-  });
 }
+
+it('VoltAgent refuses an immutable native tool whose body cannot be decorated with the durable port', async () => {
+  let executions = 0;
+  const execute = async () => {
+    executions++;
+    return 'EFFECT';
+  };
+  const tool = Object.freeze(
+    Object.assign(
+      createTool({
+        name: 'probe',
+        description: 'Probe',
+        parameters: z.object({}),
+        execute,
+      }),
+      { execute },
+    ),
+  );
+  const f = await fixture('voltagent', 'unsafe', async () => 'unused', {
+    tools: [tool],
+  });
+  await expect(f.consume(f.lease)).rejects.toThrow('no durable execution port');
+  expect(f.calls).toHaveLength(0);
+  expect(executions).toBe(0);
+});

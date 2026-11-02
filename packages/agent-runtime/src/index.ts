@@ -22,16 +22,9 @@ export {
   type AgentTurnRecord,
   type AgentTurnSpec,
   auditSqliteAgentJournal,
-  listSqliteAgentTurns,
   openSqliteAgentJournal,
-  readSqliteAgentApproval,
-  readSqliteAgentApprovals,
-  readSqliteAgentFrame,
-  readSqliteAgentFrames,
-  readSqliteAgentTurn,
 } from './turn-journal.js';
 export { durableLanguageModel } from './turn-model.js';
-export { journalAgentStreamPrefix } from './turn-partials.js';
 export type { AgentFrame } from './turn-projection.js';
 export {
   type AgentToolIntent,
@@ -39,9 +32,6 @@ export {
   createAgentRuntime,
   currentAgentTurn,
   type InterruptedToolResult,
-  nextProviderCallId,
   runWithAgentTurn,
-  runWithProviderParent,
 } from './turn-runtime.js';
-export { agentWire, readAgentWire } from './turn-wire.js';
 export type * from './types.js';

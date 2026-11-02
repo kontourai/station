@@ -6,18 +6,20 @@ import { setImmediate as yieldToHost } from 'node:timers/promises';
 import {
   type AgentJournal,
   type AgentTurnLease,
-  agentWire,
   createAgentRuntime,
   type DurableApproval,
-  listSqliteAgentTurns,
   openSqliteAgentJournal,
   type RunKey,
+} from '@kontourai/agent-runtime';
+import {
+  agentWire,
+  listSqliteAgentTurns,
   readAgentWire,
   readSqliteAgentApprovals,
   readSqliteAgentFrame,
   readSqliteAgentFrames,
   readSqliteAgentTurn,
-} from '@kontourai/agent-runtime';
+} from '@kontourai/agent-runtime/internal';
 import {
   type OwnerIdentity,
   ownerLivenessFromProbe,
@@ -166,6 +168,7 @@ function createStationOwner(home: string) {
       }
     : { id: randomUUID(), pid: process.pid, identityKind: 'unverified' };
   let released = false;
+  let retiredTurns: ReturnType<typeof listSqliteAgentTurns> = [];
   const liveness = ownerLivenessFromProbe(probeExactProcessIdentity, {
     isReleased: (id) => releasedOwners.has(id),
     isLocallyLive: (id) => !released && id === owner.id,
@@ -243,11 +246,14 @@ function createStationOwner(home: string) {
   let yieldedAt = performance.now();
   const journal: AgentJournal = {
     async execute(command, context) {
+      const answer = await withJournal((value) =>
+        value.journal.execute(command, context),
+      );
       if (performance.now() - yieldedAt >= 5) {
         await yieldToHost();
         yieldedAt = performance.now();
       }
-      return withJournal((value) => value.journal.execute(command, context));
+      return answer;
     },
     async close() {
       if (handle) {
@@ -676,12 +682,16 @@ function createStationOwner(home: string) {
       await Promise.all(
         [...jobs.values()].map((job) => job.completion.catch(() => {})),
       );
+      retiredTurns = existsSync(path)
+        ? withJournal(({ database }) => listSqliteAgentTurns({ database }))
+        : [];
       await journal.close();
       released = true;
       releasedOwners.add(owner.id);
       owners.delete(home);
     },
     list() {
+      if (released) return structuredClone(retiredTurns);
       if (!existsSync(path)) return [];
       return withJournal(({ database }) => listSqliteAgentTurns({ database }));
     },

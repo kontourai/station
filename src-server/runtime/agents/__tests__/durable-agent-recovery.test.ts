@@ -1,6 +1,6 @@
 import { join } from 'node:path';
 import type { LanguageModelV3 } from '@ai-sdk/provider';
-import { agentWire } from '@kontourai/agent-runtime';
+import { agentWire } from '@kontourai/agent-runtime/internal';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { createGateTestRegistry } from '../../../__test-utils__/orchestration-gate-test-harness.js';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
@@ -12,6 +12,7 @@ import { EventStore } from '../../../services/orchestration/event-store.js';
 import { OrchestrationService } from '../../../services/orchestration/orchestration-service.js';
 import { captureTurnIntent } from '../../../services/orchestration/prepared-turn-intent.js';
 import type { Logger } from '../../../utils/logger.js';
+import { openPrivateSqlite } from '../../../utils/private-sqlite.js';
 import { resetFixtureSqliteSynchronousForTest } from '../../../utils/sqlite-fixture-durability.js';
 import { VoltAgentFramework } from '../../frameworks/voltagent-adapter.js';
 import {
@@ -26,10 +27,16 @@ beforeEach(() => resetFixtureSqliteSynchronousForTest());
 afterEach(async () => {
   for (const close of cleanup.splice(0).reverse()) await close();
 });
-for (const mode of ['complete', 'lost-terminal', 'cancel'] as const) {
+for (const mode of [
+  'complete',
+  'lost-terminal',
+  'cancel',
+  'live-owner',
+] as const) {
+  const liveOwner = mode === 'live-owner';
   const lostTerminal = mode === 'lost-terminal';
   const cancelled = mode === 'cancel';
-  it(`boot recovery ${cancelled ? 'persists Stop before the original agent is registered' : lostTerminal ? 'repairs a lost terminal publication without another model call' : 'waits for the agent and finishes one fenced native invocation'}`, async () => {
+  it(`boot recovery ${liveOwner ? 'refuses a live foreign owner before native dispatch' : cancelled ? 'persists Stop before the original agent is registered' : lostTerminal ? 'repairs a lost terminal publication without another model call' : 'waits for the agent and finishes one fenced native invocation'}`, async () => {
     const home = temp('durable-host-recovery-');
     const file = join(home, 'events.sqlite');
     const first = new EventStore(file);
@@ -103,6 +110,22 @@ for (const mode of ['complete', 'lost-terminal', 'cancel'] as const) {
     });
     const oldFence = original.read('conversation', 'turn')!.turn.fence;
     await original.pause();
+    if (liveOwner) {
+      const database = openPrivateSqlite(
+        join(home, 'data', 'agent-runtime', 'steps.sqlite'),
+        'Live owner fixture',
+      );
+      const row = database
+        .prepare('SELECT record FROM agent_steps_turns')
+        .get();
+      const retained = JSON.parse(String(row?.record));
+      retained.fence.owner.id = 'foreign-live-owner';
+      oldFence.owner.id = retained.fence.owner.id;
+      database
+        .prepare('UPDATE agent_steps_turns SET record=?')
+        .run(JSON.stringify(retained));
+      database.close();
+    }
     first.close();
     const store = new EventStore(file);
     cleanup.push(() => {
@@ -266,6 +289,17 @@ for (const mode of ['complete', 'lost-terminal', 'cancel'] as const) {
       owner.recover(handoff),
       owner.recover(handoff),
     ]);
+    if (liveOwner) {
+      expect(race).toEqual(['retry', 'retry']);
+      expect(owner.read('conversation', 'turn')?.turn.fence).toEqual(oldFence);
+      expect(calls).toBe(0);
+      expect(
+        store
+          .listEvents('conversation')
+          .filter((event) => event.payload.method === 'turn.completed'),
+      ).toHaveLength(0);
+      return;
+    }
     expect(race).toContain('claimed');
     await vi.waitFor(
       () =>

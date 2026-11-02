@@ -238,7 +238,7 @@ Station's VoltAgent and Strands adapters record text turns in the private
 Client disconnect transfers delivery and cleanup to the durable owner; explicit
 Stop records cancellation. Restart requires the original agent definition,
 current Session access and a proven-dead prior owner. A pending approval keeps
-its identity and absolute deadline and needs an explicit answer. Interrupted
+its identity and absolute deadline and needs an explicit answer. New durable waits default to ten minutes. Operators can set `STATION_DURABLE_APPROVAL_TIMEOUT_MS` (1000–86400000 ms) for new waits; restarting or changing the setting preserves the deadline already recorded. Interrupted
 unsafe tools return an indeterminate result; only declared safe tools retry.
 A model request that might have been dispatched is never automatically resent.
 The preview refuses unsupported non-text inputs. External engines keep their

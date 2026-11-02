@@ -1,3 +1,5 @@
+import { arrayData } from './encoding.js';
+
 type Wire = null | boolean | number | string | Wire[];
 /** Tagged data prevents a tool's JSON keys from impersonating a Date or BLOB. */
 export function agentWire(value: unknown): string {
@@ -18,7 +20,10 @@ export function agentWire(value: unknown): string {
     seen.add(item);
     try {
       if (Array.isArray(item))
-        return ['array', ...item.map((child) => visit(child, depth + 1))];
+        return [
+          'array',
+          ...arrayData(item).map((child) => visit(child, depth + 1)),
+        ];
       if (![Object.prototype, null].includes(Object.getPrototypeOf(item)))
         throw new Error('DURABLE_AGENT_VALUE_UNSUPPORTED');
       const descriptors = Object.getOwnPropertyDescriptors(item);

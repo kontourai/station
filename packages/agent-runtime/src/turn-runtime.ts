@@ -124,6 +124,7 @@ export function createAgentRuntime(options: {
     let cancellationRequested = record.cancelRequested === true;
     let quiesced = false;
     let settlement: AgentTurnLease['settlement'] = null;
+    let settling: Promise<void> | undefined;
     let turn = record;
     const toolCalls = new Map<
       string,
@@ -138,6 +139,7 @@ export function createAgentRuntime(options: {
       input: record.spec.input,
       providerSessionId,
       async frame(id, wire) {
+        if (settling) await settling;
         const answer = await options.journal.execute(
           {
             type: 'projectFrame',
@@ -350,21 +352,24 @@ export function createAgentRuntime(options: {
           if (failure) throw failure.error;
           return;
         }
-        const result = await options.journal.execute(
-          { type: 'settle', key: turn.spec.key, expected: turn.fence, state },
-          context,
-        );
-        if (result.kind !== 'owned')
-          throw new Error('DURABLE_AGENT_SETTLEMENT_REFUSED', {
-            cause: failure?.error,
-          });
-        turn = result.turn;
-        if (result.settledAt === null)
-          throw new Error('DURABLE_AGENT_TERMINAL_MISSING');
-        if (result.turn.state === 'running')
-          throw new Error('DURABLE_AGENT_TERMINAL_MISSING');
-        settlement = { state: result.turn.state, at: result.settledAt };
-        leases.delete(canonical(turn.spec.key));
+        settling = (async () => {
+          const result = await options.journal.execute(
+            { type: 'settle', key: turn.spec.key, expected: turn.fence, state },
+            context,
+          );
+          if (result.kind !== 'owned')
+            throw new Error('DURABLE_AGENT_SETTLEMENT_REFUSED', {
+              cause: failure?.error,
+            });
+          turn = result.turn;
+          if (result.settledAt === null)
+            throw new Error('DURABLE_AGENT_TERMINAL_MISSING');
+          if (result.turn.state === 'running')
+            throw new Error('DURABLE_AGENT_TERMINAL_MISSING');
+          settlement = { state: result.turn.state, at: result.settledAt };
+          leases.delete(canonical(turn.spec.key));
+        })();
+        await settling;
         if (failure) throw failure.error;
       },
       async cancel() {
