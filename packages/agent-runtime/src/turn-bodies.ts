@@ -112,6 +112,27 @@ export function clearAgentBodies(database: DatabaseSync) {
   knownChunks.delete(database);
   knownNodes.delete(database);
 }
+export function forgetAgentBody(
+  database: DatabaseSync,
+  digest: string,
+  kind: 0 | 1 | 2,
+) {
+  if (kind === 1) {
+    knownNodes.get(database)?.delete(digest);
+    return;
+  }
+  if (kind === 2) {
+    knownChunks.get(database)?.delete(digest);
+    return;
+  }
+  const state = caches.get(database);
+  const value = state?.values.get(digest);
+  if (state && value) {
+    state.values.delete(digest);
+    state.wires.delete(value.wire);
+    state.size -= value.size;
+  }
+}
 function cache(database: DatabaseSync) {
   let state = caches.get(database);
   if (!state) {

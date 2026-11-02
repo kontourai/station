@@ -23,7 +23,7 @@ export function withAgentReferences<T>(
 }
 const refs = (kind: string, row: string) => {
   if (kind === 'effects')
-    return `SELECT DISTINCT 0 AS kind,unhex(substr(j.value,8)) AS digest FROM json_tree(${row}.record) j WHERE j.type='text' AND length(j.value)=71 AND j.value GLOB 'sha256:*' AND unhex(substr(j.value,8)) IS NOT NULL`;
+    return `SELECT DISTINCT 0 AS kind,unhex(substr(j.value,8)) AS digest FROM json_tree(${row}.record) j WHERE j.type='text' AND length(j.value)=71 AND j.value GLOB 'sha256:*' AND (j.fullkey='$.intent.input' OR j.fullkey GLOB '$.attempts[[]*[]].output' OR j.fullkey GLOB '$.attempts[[]*[]].partials[[]*[]]') AND unhex(substr(j.value,8)) IS NOT NULL`;
   const digest =
     kind === 'body_nodes' ? 'unhex(j.value)' : 'unhex(substr(j.value,8))';
   const source =

@@ -47,6 +47,9 @@ export const SHARED_OUTPUT_VITEST_FILES = Object.freeze([
 // changes the system under test or turns their correctness bound into a
 // scheduler-contention measurement.
 export const PROCESS_EXCLUSIVE_VITEST_FILES = Object.freeze([
+  // The 4,800-effect WAL/FULL fixture asserts a 50 ms main-thread maintenance bound.
+  'packages/agent-runtime/src/__tests__/turn-retention.test.ts',
+
   // Checks prompt closure and the room's real 15-second idle recheck bound.
   'src-server/runtime/routes/__tests__/runtime-routes-task-room-members.test.ts',
   // #4204 measures main-thread approval latency while a real room worker

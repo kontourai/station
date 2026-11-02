@@ -79,6 +79,7 @@ import {
   withAgentReferences,
 } from './turn-references.js';
 import {
+  compactAgentBodies,
   incrementalRetentionDefinitions,
   retainAgentTurns,
   retainedBodyDefinitions,
@@ -1421,6 +1422,8 @@ export function openSqliteAgentJournal(options: {
         };
         const answer = withAgentReferences(database, () => {
           const answer = decide();
+          if (command.type === 'effectComplete' && answer.kind === 'effect')
+            compactAgentBodies(database, performance.now() + 2);
           if (
             (command.type === 'open' || command.type === 'settle') &&
             answer.kind === 'owned'

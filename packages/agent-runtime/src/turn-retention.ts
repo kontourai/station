@@ -1,5 +1,6 @@
 import type { DatabaseSync } from 'node:sqlite';
 import { canonical } from './encoding.js';
+import { forgetAgentBody } from './turn-bodies.js';
 import { agentStatement } from './turn-statements.js';
 
 const liveBodies =
@@ -18,14 +19,19 @@ export const incrementalRetentionDefinitions = [
   'CREATE TABLE agent_steps_retained_cleanup(turn_id TEXT PRIMARY KEY REFERENCES agent_steps_turns(id)) STRICT, WITHOUT ROWID',
   'CREATE TRIGGER agent_steps_reclaimable_insert AFTER INSERT ON agent_steps_terminal BEGIN INSERT INTO agent_steps_reclaimable VALUES(NEW.turn_id,NEW.settled_at); END',
 ];
-function compactAgentBodies(database: DatabaseSync, deadline: number) {
+export function compactAgentBodies(database: DatabaseSync, deadline: number) {
   let removed = 0;
   for (let i = 0; i < 32 && performance.now() < deadline; i++) {
     const row = agentStatement(
       database,
       'SELECT kind,digest FROM agent_steps_body_counts WHERE n=0 LIMIT 1',
     ).get();
-    if (!row || !(row.digest instanceof Uint8Array)) break;
+    if (!row) break;
+    if (
+      !(row.digest instanceof Uint8Array) ||
+      (row.kind !== 0 && row.kind !== 1 && row.kind !== 2)
+    )
+      throw new Error('DURABLE_AGENT_REFERENCE_DAMAGED');
     const digest = Buffer.from(row.digest);
     const text = `sha256:${digest.toString('hex')}`;
     const table =
@@ -42,6 +48,7 @@ function compactAgentBodies(database: DatabaseSync, deadline: number) {
       database,
       'DELETE FROM agent_steps_body_counts WHERE kind=? AND digest=? AND n=0',
     ).run(Number(row.kind), digest);
+    forgetAgentBody(database, text, row.kind);
     removed++;
   }
   return removed;
