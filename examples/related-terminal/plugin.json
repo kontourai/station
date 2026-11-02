@@ -1,0 +1,32 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "related-terminal",
+  "version": "1.0.0",
+  "description": "A pane that opens a terminal with the Tools through related panes.",
+  "extensions": {
+    "io.kontourai.station": {
+      "schemaVersion": "1.0",
+      "title": "Related Terminal",
+      "entrypoint": "./src/index.tsx",
+      "workspacePanes": [
+        {
+          "version": "1.0",
+          "id": "pane:plugin%3Arelated-terminal:launcher",
+          "name": "Terminal launcher",
+          "description": "Opens a shell for this Project in the bottom panel.",
+          "rendererId": "renderer:plugin%3Arelated-terminal:plugin-component:launcher",
+          "renderer": { "kind": "plugin-component", "name": "launcher" },
+          "placement": {
+            "supportedRegions": ["primary"],
+            "preferredRegion": "primary"
+          },
+          "modes": [
+            { "id": "project", "contextRequirement": { "project": true } }
+          ],
+          "provenance": { "origin": "plugin", "pluginId": "related-terminal" },
+          "lifecycle": { "stage": "preview" }
+        }
+      ]
+    }
+  }
+}

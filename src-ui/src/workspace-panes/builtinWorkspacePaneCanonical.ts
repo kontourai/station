@@ -48,6 +48,11 @@ import {
   WORKSPACE_TASK_ROOM_CHAT_DESCRIPTOR,
   WORKSPACE_TASK_ROOM_EDITOR_DESCRIPTOR,
 } from '@kontourai/station-contracts/workspace-task-room';
+import {
+  isCanonicalWorkspaceTerminalPaneInstance,
+  WORKSPACE_TERMINAL_PANE_DESCRIPTOR,
+  WORKSPACE_TERMINAL_PANE_RENDERER_NAME,
+} from '@kontourai/station-contracts/workspace-terminal-pane';
 
 /**
  * Which built-in renderers this host build admits, and whether a given
@@ -471,6 +476,12 @@ export function isCanonicalBuiltinWorkspacePaneDescriptor(
       (instance === undefined ||
         isCanonicalWorkspaceActivityReviewPaneInstance(instance))
     );
+  if (name === WORKSPACE_TERMINAL_PANE_RENDERER_NAME)
+    return (
+      sameBuiltinDescriptor(descriptor, WORKSPACE_TERMINAL_PANE_DESCRIPTOR) &&
+      (instance === undefined ||
+        isCanonicalWorkspaceTerminalPaneInstance(instance))
+    );
   if (name === 'flow-run-console') {
     return isCanonicalBuiltinFlowRunConsoleDescriptor(descriptor);
   }
@@ -625,6 +636,7 @@ const BUILTIN_WORKSPACE_PANE_DESCRIPTORS: readonly WorkspacePaneDescriptor[] = [
   WORKSPACE_SPATIAL_BOARD_PANE_DESCRIPTOR,
   WORKSPACE_TASK_ROOM_CHAT_DESCRIPTOR,
   WORKSPACE_TASK_ROOM_EDITOR_DESCRIPTOR,
+  WORKSPACE_TERMINAL_PANE_DESCRIPTOR,
   WORKSPACE_TRUST_PANE_DESCRIPTOR,
 ];
 

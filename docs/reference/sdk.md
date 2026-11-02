@@ -3678,6 +3678,43 @@ Station retains its readable legacy return rather than writing an unreadable
 relation. Up already on its exact route does not add a history entry: on a
 phone it leaves through the guarded layer close; on desktop it is a no-op.
 
+### Opening a terminal
+
+A plugin can also open a terminal through the same capability. It names the
+closed built-in terminal target (`RelatedTerminalOpenRequest`, see the
+[terminal design](../design/terminal.md#plugins)) instead of one of its own
+descriptors. Station renders the session in its own pane, on its own socket,
+as the person viewing. The plugin never receives the terminal.
+
+```tsx
+const outcome = await related.open({
+  kind: 'terminal',
+  binding: 'project', // or `thread:<id>`, a session of the same Project
+  new: {},            // or `terminalId`: an existing session to show
+});
+```
+
+- Exactly one of `terminalId` (a session's UUID) and `new` is present.
+  `binding` is `project` or `thread:<id>`. The request carries no working
+  directory or program, and any field the contract does not define is
+  `invalid-request`. `new.profile` may name only `shell`, which the server
+  resolves; any other profile is `unsupported`.
+- The binding, and the session a `terminalId` names, must fall inside the
+  caller's captured Project. A thread whose session belongs to another
+  Project, or a session that does not run in that Project and binding, is
+  `context-mismatch`.
+- A plugin holds no terminal grant, so the viewer's own grant decides. A new
+  shell needs `terminal:operate`; showing an existing session needs
+  `terminal:observe`. Without either, the answer is `not-authorized`. A
+  session shown without `terminal:operate` is read-only: no input, paste or
+  resize.
+- The pane opens with the Tools (`presentation: 'tool'`). Opening the same
+  session again `focused` it. `reveal` and `close` take the handle as for any
+  related pane. Closing the pane leaves the shell running.
+
+[Related Terminal](../../examples/related-terminal/README.md) is the sample
+plugin.
+
 From a frame, each member is a request carrying an `id`, answered by one
 `pane-host/related-result` `{ id, data }`:
 `pane-host/related-open` `{ id, request }`, `pane-host/related-reveal`

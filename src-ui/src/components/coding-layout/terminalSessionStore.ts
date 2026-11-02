@@ -19,23 +19,49 @@ function storeFor(key: string, apiBase: string): Entry {
   return current;
 }
 
+function storeKey(apiBase: string, connectionId: string | null | undefined) {
+  return `${apiBase}\n${connectionId ?? ''}`;
+}
+
+function release(entry: Entry) {
+  if (--entry.users > 0) return;
+  // Keep the store a moment past its last user, so a remount (a tab move, a
+  // layout change) reattaches on the same socket.
+  setTimeout(() => {
+    if (current === entry && entry.users === 0) {
+      entry.store.dispose();
+      current = undefined;
+    }
+  }, 5000);
+}
+
+/**
+ * The connection's store for a caller outside React (a related-pane open),
+ * held until `release`.
+ */
+export function borrowTerminalSessionStore(
+  apiBase: string,
+  connectionId: string | null | undefined,
+): { store: TerminalSessionStore; release(): void } {
+  const entry = storeFor(storeKey(apiBase, connectionId), apiBase);
+  ++entry.users;
+  let held = true;
+  return {
+    store: entry.store,
+    release() {
+      if (!held) return;
+      held = false;
+      release(entry);
+    },
+  };
+}
+
 export function useTerminalSessionStore(): TerminalSessionStore {
   const { apiBase, connectionId } = useApiBase();
-  const key = `${apiBase}\n${connectionId ?? ''}`;
-  const entry = storeFor(key, apiBase);
+  const entry = storeFor(storeKey(apiBase, connectionId), apiBase);
   useEffect(() => {
     ++entry.users;
-    return () => {
-      if (--entry.users > 0) return;
-      // Keep the store a moment past its last view, so a remount (a tab
-      // move, a layout change) reattaches on the same socket.
-      setTimeout(() => {
-        if (current === entry && entry.users === 0) {
-          entry.store.dispose();
-          current = undefined;
-        }
-      }, 5000);
-    };
+    return () => release(entry);
   }, [entry]);
   return entry.store;
 }

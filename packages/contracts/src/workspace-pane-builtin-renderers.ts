@@ -58,6 +58,9 @@ export const BUILTIN_WORKSPACE_PANE_RENDERER_NAMES = [
   // Simulator/emulator inventory, capture, and live-session workspace pane.
   // Its descriptor lives in `workspace-device-pane.ts`.
   'workspace-device',
+  // One terminal session opened as a related pane (docs/design/terminal.md,
+  // "Plugins"). Its descriptor lives in `workspace-terminal-pane.ts`.
+  'workspace-terminal',
   'workspace-spatial-board',
   // The Console Board (epic station#4142 M4a). Its descriptor lives in
   // `@kontourai/station-board-pane`, not here — the name alone joins this

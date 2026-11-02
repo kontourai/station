@@ -102,6 +102,10 @@ import {
   WORKSPACE_PULL_REQUEST_PANE_DESCRIPTOR,
 } from '@kontourai/station-contracts/workspace-pull-request-pane';
 import {
+  isCanonicalWorkspaceTerminalPaneInstance,
+  WORKSPACE_TERMINAL_PANE_DESCRIPTOR_ID,
+} from '@kontourai/station-contracts/workspace-terminal-pane';
+import {
   ACTIVITY_REVIEW_DESCRIPTOR_ID,
   ACTIVITY_REVIEW_PANE_ID,
   activityReviewInstance,
@@ -131,6 +135,12 @@ import {
   readPluginPaneState,
   removePluginPaneState,
 } from '../workspace-panes/pluginPaneOccurrence';
+import {
+  readTerminalPaneState,
+  removeTerminalPaneState,
+  TERMINAL_PANE_ID,
+  terminalPaneInstance,
+} from '../workspace-panes/terminalPaneOccurrence';
 
 /** What a region host knows when it builds its panes: the dock's project. */
 export interface RegionPaneContext {
@@ -351,6 +361,7 @@ export const INSTANCE_SURFACE_SOURCE_FILES: Readonly<Record<string, string>> = {
   'board:': 'src-ui/src/workspace-panes/LayoutWorkspacePane.tsx',
   'layout:': 'src-ui/src/workspace-panes/LayoutWorkspacePane.tsx',
   'plugin-pane:': 'src-ui/src/workspace-panes/RegionPluginPane.tsx',
+  'terminal-pane:': 'src-ui/src/workspace-panes/TerminalSessionPane.tsx',
 };
 
 /** The exact shape `createFilePreviewPaneInstance` mints its identity in. */
@@ -534,6 +545,36 @@ function pluginSurfacePane(surfaceId: string): RegionSurfacePane {
 }
 
 /**
+ * One terminal session a related open placed (`terminal-pane:`), resolved
+ * from its id and stored record (`terminalPaneOccurrence.ts`). An occurrence
+ * exists only while that record does and only under the dock's own Project.
+ */
+function terminalSurfacePane(surfaceId: string): RegionSurfacePane {
+  const storage = filePreviewStorage();
+  const state = storage ? readTerminalPaneState(storage, surfaceId) : null;
+  const canonical = state ? terminalPaneInstance(surfaceId, state) : null;
+  return {
+    surfaceId,
+    descriptorId: WORKSPACE_TERMINAL_PANE_DESCRIPTOR_ID,
+    instanceId: toWorkspacePaneInstanceId(surfaceId),
+    title: state?.binding.startsWith('thread:')
+      ? 'Terminal · session'
+      : 'Terminal',
+    instance: ({ projectId, projectSlug }) =>
+      state &&
+      state.projectId === projectId &&
+      state.projectSlug === projectSlug
+        ? canonical
+        : null,
+    isCanonical: (instance) =>
+      canonical !== null &&
+      String(instance.instanceId) === surfaceId &&
+      isCanonicalWorkspaceTerminalPaneInstance(instance) &&
+      instance.boundContext?.projectId === canonical.boundContext?.projectId,
+  };
+}
+
+/**
  * The pane a surface renders as in a region host, if it has one: a registered
  * surface's map entry, else the one occurrence an instance-keyed id names
  * (#2049). The prefixes here are the same ones `INSTANCE_SURFACE_PREFIXES`
@@ -560,6 +601,7 @@ export function regionSurfacePane(
   if (surfaceId.startsWith('board:') || surfaceId.startsWith('layout:'))
     return layoutSurfacePane(surfaceId);
   if (PLUGIN_PANE_ID.test(surfaceId)) return pluginSurfacePane(surfaceId);
+  if (TERMINAL_PANE_ID.test(surfaceId)) return terminalSurfacePane(surfaceId);
   if (ACTIVITY_REVIEW_PANE_ID.test(surfaceId)) {
     const state = filePreviewStorage();
     const saved = state ? readActivityReviewPane(state, surfaceId) : null;
@@ -594,6 +636,8 @@ export function forgetRegionPaneState(surfaceId: string): void {
       removeBrowserPreviewPaneState(storage, surfaceId);
     else if (PLUGIN_PANE_ID.test(surfaceId))
       removePluginPaneState(storage, surfaceId);
+    else if (TERMINAL_PANE_ID.test(surfaceId))
+      removeTerminalPaneState(storage, surfaceId);
     else if (ACTIVITY_REVIEW_PANE_ID.test(surfaceId))
       removeActivityReviewPane(storage, surfaceId);
   } catch {

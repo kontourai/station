@@ -149,6 +149,17 @@ const FAMILIES: readonly {
       `plugin-pane:${'a'.repeat(33)}`,
     ],
   },
+  {
+    prefix: 'terminal-pane:',
+    descriptorId: 'pane:builtin:workspace-terminal',
+    admitted: [`terminal-pane:${NONCE}`],
+    refused: [
+      'terminal-pane:',
+      'terminal-pane:abc',
+      `terminal-pane:${'z'.repeat(32)}`,
+      `terminal-pane:${'a'.repeat(33)}`,
+    ],
+  },
 ];
 
 function writePreview(path: string, projectSlug = 'station', id = PREVIEW_ID) {

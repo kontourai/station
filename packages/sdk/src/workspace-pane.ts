@@ -110,11 +110,13 @@ export type {
   RelatedPaneCloseOutcome,
   RelatedPaneOpenOutcome,
   RelatedPaneOpenRequest,
+  RelatedPaneOpenTarget,
   RelatedPanePresentation,
   RelatedPaneRevealOutcome,
   RelatedPaneTarget,
   RelatedPaneUnavailable,
   RelatedPaneUnavailableReason,
+  RelatedTerminalOpenRequest,
 } from '@kontourai/station-contracts/workspace-pane-host-contract';
 export type {
   WorkspacePaneHostActionCatalog,

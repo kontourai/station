@@ -52,6 +52,7 @@ export function TerminalPanel({
   onOpened,
   isActive = false,
   attachOnly = false,
+  readOnly = false,
 }: {
   projectSlug: string;
   workingDir: string;
@@ -69,6 +70,8 @@ export function TerminalPanel({
   onOpened?: (terminalId: string) => void;
   /** Join a session the server started; never start a shell in its place. */
   attachOnly?: boolean;
+  /** Watch without typing, pasting or resizing, whatever the session allows. */
+  readOnly?: boolean;
   /** True when this is the visible terminal tab; only then does it accept
    * externally-injected input (e.g. "Send to terminal" from the file tree). */
   isActive?: boolean;
@@ -140,8 +143,14 @@ export function TerminalPanel({
                   legacyTerminalId: intent.legacyTerminalId,
                 }),
             });
-      sessionRef.current = session;
-      setViewSession(session ? toTerminalViewSession(session) : null);
+      sessionRef.current = readOnly ? null : session;
+      setViewSession(
+        session
+          ? readOnly
+            ? watchOnly(toTerminalViewSession(session))
+            : toTerminalViewSession(session)
+          : null,
+      );
       unsubscribe = session?.subscribe({ change: render });
       if (session) render(session);
       else setWsError('This terminal session is unavailable.');
@@ -189,7 +198,15 @@ export function TerminalPanel({
       sessionRef.current = null;
       setViewSession(null);
     };
-  }, [store, projectId, bindingKey, key, attachOnly, connectionAttempt]);
+  }, [
+    store,
+    projectId,
+    bindingKey,
+    key,
+    attachOnly,
+    readOnly,
+    connectionAttempt,
+  ]);
 
   // Mirror of the composer's unmount guard: blur never fires for an
   // unmounted terminal, and a stuck terminalFocused would suppress every
@@ -348,6 +365,19 @@ export function TerminalPanel({
       </div>
     </div>
   );
+}
+
+/** `view` as an observer sees it: no input and no resize reach the session. */
+function watchOnly(view: TerminalViewSession): TerminalViewSession {
+  return {
+    get state() {
+      return view.state;
+    },
+    readOnly: true,
+    subscribe: (listener) => view.subscribe(listener),
+    write: () => false,
+    resize: () => {},
+  };
 }
 
 // ─── Alternative command executor ────────────────────────────────────────────

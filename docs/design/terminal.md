@@ -1,6 +1,6 @@
 # Integrated terminal
 
-Status: In progress under #3994. The scoped in-process foundation, the same-origin gateway, operator-device ticket admission, the SDK session store, the Ghostty `TerminalView` and the Coding cutover onto it are implemented. Supervisor workloads, the layout and removal of the legacy stack remain proposed.
+Status: In progress under #3994. The scoped in-process foundation, the same-origin gateway, operator-device ticket admission, the SDK session store, the Ghostty `TerminalView`, the Coding cutover onto it and the plugin terminal target are implemented. Supervisor workloads, the layout and removal of the legacy stack remain proposed.
 
 > **Reading status: proposal (2026-10-17).** Replaces the current terminal
 > stack end to end. The bounded implementation below precedes that replacement; the current Coding UI behavior is
@@ -650,9 +650,9 @@ regression. The emulator phase does not ship until this exists:
 ### Plugins
 
 A plugin opens a terminal through the pane workspace's open, reveal, and
-close capability. The pane relationships contract (#3875) specifies it; it is
-not yet implemented. The terminal is a closed built-in target rather than a
-plugin-supplied key:
+close capability ([related panes](../reference/sdk.md#opening-a-terminal)),
+specified by the pane relationships contract (#3875). The terminal is a
+closed built-in target rather than a plugin-supplied key:
 
 - The target shape is plain data declared in the pane host contract,
   `{ kind: 'terminal'; binding; terminalId?; new?: { profile? } }`, where
@@ -664,13 +664,33 @@ plugin-supplied key:
   fall inside that captured Project on that Station. Otherwise the open is
   reported as the contract's context mismatch, so a plugin cannot name a
   thread in another project even where it holds a grant.
-- Station's terminal host binding then checks the caller's own grants for
-  that project. Creating a terminal (`new`) needs `terminal:operate`. Opening
-  an existing `terminalId` needs `terminal:observe` and is read-only unless
-  the caller also holds `terminal:operate`. Holding a pane or plugin grant
-  never implies terminal access.
+- Station's terminal host binding then checks the terminal grants for
+  that project. The server keeps refusing plugin principals, so a plugin
+  holds none: the pane is Station's own UI and its socket authenticates as
+  the person viewing, whose grant decides. Creating a terminal (`new`) needs
+  `terminal:operate` and starts only the server-resolved `shell` profile.
+  Opening an existing `terminalId` needs `terminal:observe` and is read-only
+  unless the viewer also holds `terminal:operate`. Holding a pane or plugin
+  grant never implies terminal access.
 - The pane host reports the outcome (opened, focused, replaced, unavailable,
   or context mismatch) in the same form it uses for its other targets.
+
+Implementation: [`relatedPanesHost`](../../src-ui/src/workspace-panes/relatedPanesHost.ts)
+decodes the target for both the direct and the frame transport, then admits
+it against the caller and the viewer's grant
+([`relatedTerminalSessions`](../../src-ui/src/workspace-panes/relatedTerminalSessions.ts)).
+For a thread binding it checks that the thread's session records the
+caller's Project. For a `terminalId` it checks that the session runs in that
+Project and binding. A `new` shell is started before the pane is placed and
+is ended if the placement is refused. The session shows in its own
+`terminal-pane:` dock pane
+([`TerminalSessionPane`](../../src-ui/src/workspace-panes/TerminalSessionPane.tsx),
+descriptor `pane:builtin:workspace-terminal`), with the Tools by default and
+keyed to that one session and binding. Its stored record, Station fence and
+relation follow every other related occurrence; no group or split record is
+added. The Coding lower panel keeps serving the `project` binding through its
+server-derived tab list. [Related Terminal](../../examples/related-terminal/README.md)
+is the sample plugin.
 
 ### Agent integration
 
@@ -722,8 +742,8 @@ verification.
    splits on the pane workspace's presentation seams, server-side content
    state, shortcuts, the SDK view export with its boundary test, the terminal
    pane target, and the sample plugin. The pane target and the sample plugin
-   depend on the pane workspace capability specified in #3875, which is not
-   yet implemented.
+   ride the related-pane capability (#3875) and are implemented
+   ([Plugins](#plugins)).
 5. **Agent integration:** add to chat, script runner, agent tools.
 6. **Removal:** old listener, endpoints, client components, and the dead
    `.coding-terminal-fallback` end-to-end check; documentation and the

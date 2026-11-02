@@ -122,3 +122,4 @@ export * from './workspace-pull-request-pane.js';
 export * from './workspace-spatial-board.js';
 export * from './workspace-task-room.js';
 export * from './workspace-task-room-composition.js';
+export * from './workspace-terminal-pane.js';

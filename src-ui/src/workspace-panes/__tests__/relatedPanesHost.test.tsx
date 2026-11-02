@@ -24,6 +24,11 @@ import type {
 import { act, cleanup, render, waitFor } from '@testing-library/react';
 import { useEffect, useState } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import {
+  type FramePaneHost,
+  type FramePaneHostOutboundMessage,
+  useFramePaneHost,
+} from '../../components/plugins/framePaneHost';
 import { pluginRelatedPaneBudget } from '../../components/plugins/plugin-frame-budget';
 import {
   type Authority,
@@ -60,6 +65,7 @@ import {
 } from '../relatedPanesHost';
 import { scopeRelatedPanes } from '../relatedPanesScope';
 import type { ResolvedWorkspacePaneCatalogEntry } from '../resolvedWorkspacePaneCatalog';
+import { readTerminalPaneState } from '../terminalPaneOccurrence';
 
 const PROJECT = { projectId: 'project-uuid', projectSlug: 'station' };
 
@@ -167,6 +173,44 @@ vi.mock('../resolvedWorkspacePaneCatalog', () => ({
   }),
 }));
 
+/**
+ * The viewer's terminal grant and the server's terminal reads a terminal
+ * target is admitted against; each test sets what it needs.
+ */
+const terminalFacts = vi.hoisted(() => ({
+  authority: 'operate' as 'operate' | 'observe' | null,
+  /** Thread id -> the Project slug its session recorded. */
+  threads: {} as Record<string, string>,
+  /** `${projectId}|${bindingKey}|${terminalId}` of each running session. */
+  running: new Set<string>(),
+  started: [] as unknown[],
+  ended: [] as string[],
+  nextId: '0f8fad5b-d9cb-469f-a165-70867728950e' as string | null,
+}));
+
+vi.mock('../relatedTerminalSessions', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../relatedTerminalSessions')>()),
+  useRelatedTerminalSessions: () => ({
+    authority: terminalFacts.authority,
+    threadProjectSlug: async (threadId: string) =>
+      terminalFacts.threads[threadId] ?? null,
+    running: async (
+      scope: { projectId: string; bindingKey: string },
+      terminalId: string,
+    ) =>
+      terminalFacts.running.has(
+        `${scope.projectId}|${scope.bindingKey}|${terminalId}`,
+      ),
+    start: async (scope: unknown, launch: unknown) => {
+      terminalFacts.started.push({ scope, launch });
+      return terminalFacts.nextId;
+    },
+    end: async (_projectSlug: string, terminalId: string) => {
+      terminalFacts.ended.push(terminalId);
+    },
+  }),
+}));
+
 vi.mock('../useDockProject', () => ({
   useDockProject: () => ({ ...facts.dock, pending: false }),
 }));
@@ -198,6 +242,9 @@ vi.mock('../../core/PluginRegistry', async (importOriginal) => {
 
 const probe = {
   host: undefined as PaneRelatedPanesHost | undefined,
+  /** The first caller's frame transport, over the same capability. */
+  frame: null as FramePaneHost | null,
+  framePosted: [] as FramePaneHostOutboundMessage[],
   other: undefined as PaneRelatedPanesHost | undefined,
   model: null as ReturnType<typeof useRegionModel> | null,
   relations: null as PaneRelationsValue | null,
@@ -256,9 +303,20 @@ const callers = {
 
 function FirstCaller() {
   const host = useRelatedPanesHost(callers.first);
+  const frame = useFramePaneHost({
+    pluginName: 'reports',
+    granted: [],
+    active: true,
+    relatedPanes: host,
+    navigate: null,
+    post: (message) => {
+      probe.framePosted.push(message);
+    },
+  });
   useEffect(() => {
     probe.host = host;
-  }, [host]);
+    probe.frame = frame;
+  }, [host, frame]);
   return null;
 }
 
@@ -331,6 +389,14 @@ function relationOf(id: string) {
 }
 
 beforeEach(() => {
+  probe.frame = null;
+  probe.framePosted = [];
+  terminalFacts.authority = 'operate';
+  terminalFacts.threads = {};
+  terminalFacts.running = new Set();
+  terminalFacts.started = [];
+  terminalFacts.ended = [];
+  terminalFacts.nextId = '0f8fad5b-d9cb-469f-a165-70867728950e';
   probe.host = undefined;
   probe.other = undefined;
   probe.model = null;
@@ -1617,5 +1683,222 @@ describe('a plugin whose lifecycle history the Station cannot vouch for', () => 
       reason: 'not-authorized',
     });
     expect(await settledStorageSnapshot()).toEqual(before);
+  });
+});
+
+describe('a plugin opens a terminal through the closed built-in target', () => {
+  const RUNNING = '3b241101-e2bb-4255-8caf-4136c566a962';
+  const openTerminal = (request: Record<string, unknown>) =>
+    run(() =>
+      host().open({ kind: 'terminal', ...request } as Parameters<
+        PaneRelatedPanesHost['open']
+      >[0]),
+    );
+  /** The same request through the frame transport, answered by the same host. */
+  let frameRequests = 0;
+  async function openTerminalInFrame(request: Record<string, unknown>) {
+    const id = `terminal-${++frameRequests}`;
+    await act(async () => {
+      probe.frame?.receive({
+        method: 'pane-host/related-open',
+        params: { id, request: { kind: 'terminal', ...request } },
+      });
+    });
+    let answer: unknown;
+    await waitFor(() => {
+      answer = probe.framePosted.find(
+        (message) =>
+          message.method === 'pane-host/related-result' &&
+          (message.params as { id?: string }).id === id,
+      );
+      expect(answer).toBeDefined();
+    });
+    return (answer as { params: { data: unknown } }).params.data;
+  }
+  function terminalPanes() {
+    return [...regions().right.panes, ...regions().bottom.panes].filter((id) =>
+      id.startsWith('terminal-pane:'),
+    );
+  }
+
+  test('a new shell on the Project binding opens with the Tools, as a server-resolved shell', async () => {
+    await mount();
+    const outcome = await openTerminal({ binding: 'project', new: {} });
+    expect(outcome).toMatchObject({ status: 'opened', presentation: 'tool' });
+    if (outcome.status !== 'opened') throw new Error('terminal not opened');
+    expect(regions().bottom.panes).toContain(outcome.handle);
+    expect(terminalFacts.started).toEqual([
+      {
+        scope: { projectId: PROJECT.projectId, bindingKey: 'project' },
+        launch: { kind: 'shell' },
+      },
+    ]);
+    expect(readTerminalPaneState(localStorage, outcome.handle)).toEqual({
+      version: 1,
+      ...PROJECT,
+      binding: 'project',
+      terminalId: terminalFacts.nextId,
+    });
+    expect(relationOf(outcome.handle)?.target).toEqual({
+      kind: 'terminal',
+      projectId: PROJECT.projectId,
+      binding: 'project',
+      terminalId: terminalFacts.nextId,
+    });
+    expect(readPaneFence(localStorage, outcome.handle)).toEqual({
+      status: 'fenced',
+      stationId: 'station-a',
+    });
+  });
+
+  test('an existing session in the captured Project opens, and opening it again focuses it', async () => {
+    terminalFacts.running.add(`${PROJECT.projectId}|project|${RUNNING}`);
+    await mount();
+    const first = await openTerminal({
+      binding: 'project',
+      terminalId: RUNNING,
+    });
+    if (first.status !== 'opened') throw new Error('terminal not opened');
+    expect(
+      await openTerminal({ binding: 'project', terminalId: RUNNING }),
+    ).toEqual({
+      status: 'focused',
+      handle: first.handle,
+      presentation: 'tool',
+    });
+    expect(terminalFacts.started).toEqual([]);
+    expect(terminalPanes()).toEqual([first.handle]);
+  });
+
+  test('without terminal:operate an existing session still opens, to watch', async () => {
+    terminalFacts.authority = 'observe';
+    terminalFacts.running.add(`${PROJECT.projectId}|project|${RUNNING}`);
+    await mount();
+    expect(
+      await openTerminal({ binding: 'project', terminalId: RUNNING }),
+    ).toMatchObject({ status: 'opened' });
+  });
+
+  test('without terminal:operate a new shell is refused and nothing starts', async () => {
+    terminalFacts.authority = 'observe';
+    await mount();
+    expect(await openTerminal({ binding: 'project', new: {} })).toEqual({
+      status: 'unavailable',
+      reason: 'not-authorized',
+    });
+    expect(terminalFacts.started).toEqual([]);
+    expect(terminalPanes()).toEqual([]);
+  });
+
+  test('with no terminal grant at all even watching is refused', async () => {
+    terminalFacts.authority = null;
+    terminalFacts.running.add(`${PROJECT.projectId}|project|${RUNNING}`);
+    await mount();
+    expect(
+      await openTerminal({ binding: 'project', terminalId: RUNNING }),
+    ).toEqual({ status: 'unavailable', reason: 'not-authorized' });
+    expect(terminalPanes()).toEqual([]);
+  });
+
+  test('a thread of another Project is a context mismatch, and starts nothing', async () => {
+    terminalFacts.threads = { 'thread-elsewhere': 'other-project' };
+    await mount();
+    expect(
+      await openTerminal({ binding: 'thread:thread-elsewhere', new: {} }),
+    ).toEqual({ status: 'unavailable', reason: 'context-mismatch' });
+    expect(terminalFacts.started).toEqual([]);
+    expect(terminalPanes()).toEqual([]);
+  });
+
+  test('a thread of the captured Project opens a shell bound to that thread', async () => {
+    terminalFacts.threads = { 'thread-here': PROJECT.projectSlug };
+    await mount();
+    const outcome = await openTerminal({
+      binding: 'thread:thread-here',
+      new: {},
+    });
+    if (outcome.status !== 'opened') throw new Error('terminal not opened');
+    expect(readTerminalPaneState(localStorage, outcome.handle)?.binding).toBe(
+      'thread:thread-here',
+    );
+  });
+
+  test('a session that is not running in the captured Project and binding is a context mismatch', async () => {
+    terminalFacts.running.add(`other-project-uuid|project|${RUNNING}`);
+    terminalFacts.running.add(`${PROJECT.projectId}|thread:t1|${RUNNING}`);
+    await mount();
+    expect(
+      await openTerminal({ binding: 'project', terminalId: RUNNING }),
+    ).toEqual({ status: 'unavailable', reason: 'context-mismatch' });
+    expect(terminalPanes()).toEqual([]);
+  });
+
+  test('with another Project on screen a terminal open is a context mismatch', async () => {
+    facts.dock = { projectId: 'other-uuid', projectSlug: 'other' };
+    await mount();
+    expect(await openTerminal({ binding: 'project', new: {} })).toEqual({
+      status: 'unavailable',
+      reason: 'context-mismatch',
+    });
+    expect(terminalFacts.started).toEqual([]);
+  });
+
+  test('a profile the server does not resolve for related opens is unsupported', async () => {
+    await mount();
+    expect(
+      await openTerminal({ binding: 'project', new: { profile: 'zsh' } }),
+    ).toEqual({ status: 'unavailable', reason: 'unsupported' });
+    expect(terminalFacts.started).toEqual([]);
+  });
+
+  test.each([
+    { binding: 'project', new: {}, cwd: '/' },
+    { binding: 'project', new: { cwd: '/etc' } },
+    { binding: 'project', new: { profile: 'shell', file: '/bin/sh' } },
+    { binding: '/tmp', new: {} },
+  ])('a request carrying a path or program is invalid: %j', async (request) => {
+    await mount();
+    expect(await openTerminal(request)).toEqual({
+      status: 'unavailable',
+      reason: 'invalid-request',
+    });
+    expect(terminalFacts.started).toEqual([]);
+  });
+
+  test('the frame transport decodes through the same host', async () => {
+    await mount();
+    expect(
+      await openTerminalInFrame({ binding: 'project', new: {}, cwd: '/' }),
+    ).toEqual({ status: 'unavailable', reason: 'invalid-request' });
+    expect(terminalFacts.started).toEqual([]);
+    const opened = (await openTerminalInFrame({
+      binding: 'project',
+      new: {},
+    })) as { status: string; handle: string };
+    expect(opened).toMatchObject({ status: 'opened', presentation: 'tool' });
+    expect(readTerminalPaneState(localStorage, opened.handle)?.terminalId).toBe(
+      terminalFacts.nextId,
+    );
+  });
+
+  test('reveal and close act on the terminal handle this caller opened, and on no other', async () => {
+    await mount();
+    const outcome = await openTerminal({ binding: 'project', new: {} });
+    if (outcome.status !== 'opened') throw new Error('terminal not opened');
+    const other = probe.other;
+    if (!other) throw new Error('no second caller');
+    expect(await run(() => other.reveal(outcome.handle))).toEqual({
+      status: 'unavailable',
+      reason: 'unknown-handle',
+    });
+    expect(await run(() => host().reveal(outcome.handle))).toEqual({
+      status: 'focused',
+      presentation: 'tool',
+    });
+    expect(await run(() => host().close(outcome.handle))).toEqual({
+      status: 'closed',
+    });
+    expect(terminalPanes()).toEqual([]);
+    expect(readTerminalPaneState(localStorage, outcome.handle)).toBeNull();
   });
 });

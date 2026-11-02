@@ -18,6 +18,7 @@ prove.
 | [Coding Starter](coding-starter/README.md) | Coding-oriented starter layout |
 | [Minimal Workspace](minimal-layout/README.md) | Small Workspace Pane and SDK basics |
 | [Related Reports](related-reports/README.md) | A Pane that opens related panes beside it, direct and framed |
+| [Related Terminal](related-terminal/README.md) | A Pane that opens a terminal with the Tools through the closed built-in target |
 | [Demo Layout](demo-layout/README.md) | Local layout installation and registry fixture |
 | [Documentation Snippets](docs-snippets/README.md) | Compile-checked copies of guide code blocks; not a plugin |
 
