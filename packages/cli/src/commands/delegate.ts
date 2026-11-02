@@ -90,6 +90,7 @@ import {
   observeDelegatedTask,
   observeDelegatedTaskEvents,
   respondToDelegatedTaskRequest,
+  sentTurnKey,
 } from '@kontourai/station-sdk/client';
 import { listPendingForThread } from './approvals.js';
 import {
@@ -628,15 +629,35 @@ function formatTargetsSummary(options: DelegationOptions): string {
 function handleDelegateFailure(
   error: unknown,
   resolvedApiBase: ResolvedApiBase | undefined,
+  options?: {
+    jsonMode: boolean;
+    clientTurnId?: string;
+    conversationId?: string;
+  },
 ): never {
   const message = error instanceof Error ? error.message : String(error);
   const transportMessage = explainRequestFailure(error, resolvedApiBase);
-  console.error(
-    'Error:',
+  const outward =
     transportMessage ??
-      explainFullAccessRefusal(error, resolvedApiBase) ??
-      message,
-  );
+    explainFullAccessRefusal(error, resolvedApiBase) ??
+    message;
+  const clientTurnId = sentTurnKey(error) ?? options?.clientTurnId;
+  if (options?.jsonMode && clientTurnId)
+    console.error(
+      JSON.stringify({
+        success: false,
+        error: outward,
+        clientTurnId,
+        ...(options.conversationId
+          ? { conversationId: options.conversationId }
+          : {}),
+      }),
+    );
+  else {
+    console.error('Error:', outward);
+    if (clientTurnId)
+      console.error('Request key:', JSON.stringify(clientTurnId));
+  }
   process.exit(transportMessage ? 2 : 3);
 }
 
@@ -821,6 +842,9 @@ async function runDelegateCreate(
   parsed: ParsedCoreArgs,
   jsonMode: boolean,
 ): Promise<void> {
+  const clientTurnId = optionalValueFlag(parsed, 'client-turn-id');
+  if (clientTurnId !== undefined && clientTurnId.length > 200)
+    throw new Error('--client-turn-id must be at most 200 characters.');
   const agent = optionalValueFlag(parsed, 'agent');
   if (!agent) {
     throw new Error('An Agent selector is required.');
@@ -864,6 +888,7 @@ async function runDelegateCreate(
       : undefined;
     data = await delegateTask(apiBase, {
       prompt,
+      ...(clientTurnId ? { clientTurnId } : {}),
       ...(attachmentRefs ? { attachmentRefs } : {}),
       target: {
         environment,
@@ -899,7 +924,10 @@ async function runDelegateCreate(
     // probe below from ever running with an unassigned `data` — relying on
     // `process.exit`'s real-world termination alone is fragile whenever a
     // caller (e.g. a test) mocks `process.exit` as a no-op.
-    return handleDelegateFailure(error, getResolvedApiBase());
+    return handleDelegateFailure(error, getResolvedApiBase(), {
+      jsonMode,
+      clientTurnId,
+    });
   }
 
   // station#979 review r1 HIGH fix: the dispatch above already succeeded
@@ -983,6 +1011,9 @@ async function runDelegateContinuation(
     deprecatedAlias?: boolean;
   },
 ): Promise<void> {
+  const clientTurnId = optionalValueFlag(parsed, 'client-turn-id');
+  if (clientTurnId !== undefined && clientTurnId.length > 200)
+    throw new Error('--client-turn-id must be at most 200 characters.');
   const message = await loadTextInput(parsed, options.messageIndex);
   const environment = executionEnvironment(parsed);
   const environmentId =
@@ -1012,6 +1043,7 @@ async function runDelegateContinuation(
       {
         environment,
         message,
+        ...(clientTurnId ? { clientTurnId } : {}),
         ...(model || modelOptions
           ? {
               model: {
@@ -1034,13 +1066,18 @@ async function runDelegateContinuation(
   try {
     data = await continueDelegatedTask(apiBase, options.conversationId, {
       message,
+      ...(clientTurnId ? { clientTurnId } : {}),
       ...(environmentId ? { environmentId } : {}),
       ...(model ? { model } : {}),
       ...(modelOptions ? { modelOptions } : {}),
     });
   } catch (error) {
     // Same guard as `runDelegateCreate` above.
-    return handleDelegateFailure(error, getResolvedApiBase());
+    return handleDelegateFailure(error, getResolvedApiBase(), {
+      jsonMode,
+      clientTurnId,
+      conversationId: options.conversationId,
+    });
   }
 
   // station#979 review r1 HIGH fix: same best-effort probe as create above —
@@ -1079,7 +1116,11 @@ async function runConversationContinuation(
   try {
     receipt = await continueExecutionMessage(apiBase, conversationId, input);
   } catch (error) {
-    return handleDelegateFailure(error, getResolvedApiBase());
+    return handleDelegateFailure(error, getResolvedApiBase(), {
+      jsonMode,
+      clientTurnId: input.clientTurnId,
+      conversationId,
+    });
   }
   const data = {
     ...receipt,

@@ -1,3 +1,4 @@
+import { FileDelegationAttemptClaimStore } from '../../../services/orchestration/delegation-attempt-claim-store.js';
 /**
  * #3429: after Continue in Station, the dock opens the continuation and a
  * follow-up sent from it reaches the continuation's engine in its folder.
@@ -101,6 +102,7 @@ function dockFollowUp(
       ...(projectSlug ? { workspace: { kind: 'project', projectSlug } } : {}),
     },
     message,
+    clientTurnId: randomUUID(),
     conversationId,
   };
 }
@@ -505,6 +507,7 @@ async function fixture(options: {
   app.route(
     '/api/orchestration',
     createOrchestrationRoutes(service, {
+      delegationAttemptClaimStore: new FileDelegationAttemptClaimStore(root),
       eventBus,
       logger: { debug: vi.fn() },
       getUserId: () => 'operator',
@@ -540,6 +543,12 @@ async function fixture(options: {
     Authorization: `Bearer ${operator.credential}`,
   };
   const request = async (path: string, body?: unknown) => {
+    if (
+      body &&
+      typeof body === 'object' &&
+      path.startsWith('/api/orchestration/chat')
+    )
+      body = { clientTurnId: randomUUID(), ...body };
     const res = await app.request(path, {
       method: body === undefined ? 'GET' : 'POST',
       headers,
@@ -641,6 +650,30 @@ async function fixture(options: {
 }
 
 describe('#3429: a continued attached conversation opens in the dock', () => {
+  test('#3567: an implicit conversation create replays its original handle and conflicts on changed input', async () => {
+    const f = await fixture({ engineAgent: true });
+    const input = {
+      ...dockFollowUp('claude', undefined, 'station', 'first input'),
+      clientTurnId: 'implicit-create-key',
+    };
+    const first = await f.request('/api/orchestration/chat', input);
+    expect(first.status, first.text).toBe(200);
+    const replay = await f.request('/api/orchestration/chat', input);
+    expect(replay.status, replay.text).toBe(200);
+    expect(replay.body).toEqual(first.body);
+    const conflict = await f.request('/api/orchestration/chat', {
+      ...input,
+      message: 'different input',
+    });
+    expect(conflict.status).toBe(409);
+    expect(conflict.body).toMatchObject({
+      success: false,
+      code: 'client_turn_input_conflict',
+    });
+    expect(f.engines.claude.starts).toHaveLength(1);
+    expect(f.engines.claude.turns).toHaveLength(1);
+  });
+
   type Kind =
     | 'project folder'
     | 'folder inside the project'

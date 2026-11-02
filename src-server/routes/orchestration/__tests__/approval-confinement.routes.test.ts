@@ -36,6 +36,7 @@ import { Hono } from 'hono';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { confinementProvidersForTests } from '../../../__test-utils__/confinement-providers.js';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
+import { keyedTurnRequest } from '../../../__test-utils__/turn-admission-fixture.js';
 import type {
   ProviderAdapterMetadata,
   ProviderAdapterShape,
@@ -49,6 +50,7 @@ import { configureDevicePairingHostRoutes } from '../../../runtime/routes/runtim
 import { fullAccessGrantForTesting } from '../../../security/coding-authority.js';
 import { isRuntimeRequestPrincipalCurrent } from '../../../security/runtime-request-security.js';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../../services/identity/principal-resolver.js';
+import { FileDelegationAttemptClaimStore } from '../../../services/orchestration/delegation-attempt-claim-store.js';
 import { EventBus } from '../../../services/orchestration/event-bus.js';
 import { EventStore } from '../../../services/orchestration/event-store.js';
 import { OrchestrationService } from '../../../services/orchestration/orchestration-service.js';
@@ -430,6 +432,7 @@ async function fixture(
   app.route(
     '/api/orchestration',
     createOrchestrationRoutes(service, {
+      delegationAttemptClaimStore: new FileDelegationAttemptClaimStore(root),
       eventBus,
       logger: { debug: vi.fn() },
       getUserId: () => 'operator',
@@ -481,7 +484,15 @@ async function fixture(
       {
         method,
         headers: { 'Content-Type': 'application/json', ...headers },
-        ...(method === 'DELETE' ? {} : { body: JSON.stringify(body) }),
+        ...(method === 'DELETE'
+          ? {}
+          : {
+              body: JSON.stringify(
+                path.includes('/chat') || path.includes('/delegations')
+                  ? keyedTurnRequest(body)
+                  : body,
+              ),
+            }),
       },
       env as never,
     );
@@ -530,6 +541,7 @@ async function fixture(
   };
 
   return {
+    root,
     chatDefaults,
     operator,
     pair,
@@ -688,6 +700,9 @@ describe('#2493: who may start a session unconfined', () => {
     await f.delegateTask(
       {
         prompt: 'go',
+        delegationAttemptClaimStore: new FileDelegationAttemptClaimStore(
+          f.root,
+        ),
         target: {
           environment: { kind: 'current' },
           agent: agentId('codex-agent'),

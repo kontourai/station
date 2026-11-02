@@ -330,11 +330,7 @@ describe('ChatTurnDedupStore (station#1224 offline slice 2)', () => {
     });
   });
 
-  test('capacity evicts an oldest resolved claim to an expired tombstone but never unresolved claims', async () => {
-    // Eviction is a property of "more rows than the cap", not of the number
-    // 2000. Inserting 2000 real SQLite rows made this test exceed its 5s
-    // budget under host load and fail intermittently — a test that reds at
-    // random trains people to rerun rather than read.
+  test('expiry tombstones a resolved claim outside its window but never unresolved claims', async () => {
     const CHAT_TURN_DEDUP_MAX_ENTRIES = 6;
     const ownerStore = new ChatTurnDedupStore(
       filePath,
@@ -383,9 +379,15 @@ describe('ChatTurnDedupStore (station#1224 offline slice 2)', () => {
       ),
     ]);
 
-    // Resolved pressure exceeds Station's replay floor by one. Unresolved
-    // rows no longer erode that floor; they must survive the real eviction.
-    // Reopening with the default cap would not exercise the overflow.
+    const aging = new DatabaseSync(filePath);
+    aging
+      .prepare(
+        'UPDATE orchestration_turn_dedup SET resolved_at = ? WHERE dedup_key = ?',
+      )
+      .run(Date.now() - 8 * 24 * 60 * 60 * 1000, 'chat:12:old-resolved');
+    aging.close();
+    // Other resolved rows have unknown age and begin a fresh window; the
+    // unresolved rows survive regardless of age or count.
     const store = new ChatTurnDedupStore(filePath, CHAT_TURN_DEDUP_MAX_ENTRIES);
     expect(store.claim('new-turn')).toEqual({ claimed: true });
 
@@ -403,7 +405,7 @@ describe('ChatTurnDedupStore (station#1224 offline slice 2)', () => {
       for (let index = 0; index < CHAT_TURN_DEDUP_MAX_ENTRIES; index += 1) {
         expect(keys).toContain(`chat:10:resolved-${index}`);
       }
-      // #3559: the evicted row leaves a tombstone outside the capped table.
+      // #3559: expiry leaves a tombstone.
       expect(
         after
           .prepare(
@@ -527,10 +529,8 @@ describe('ChatTurnDedupStore (station#1224 offline slice 2)', () => {
     }
   });
 
-  // Writes CHAT_TURN_DEDUP_MAX_ENTRIES+1 claim/resolve pairs through the
-  // real store — priced explicitly so full-corpus contention cannot red it
-  // at the default budget (archive#2654).
-  test('bounds a full persisted file with one representative persistence transition', {
+  // Writes CHAT_TURN_DEDUP_MAX_ENTRIES+1 claim/resolve pairs through the real store.
+  test('retains a full retry window and expires a resolved key after it', {
     timeout: 30_000,
   }, async () => {
     const { CHAT_TURN_DEDUP_MAX_ENTRIES } = await import(
@@ -547,8 +547,18 @@ describe('ChatTurnDedupStore (station#1224 offline slice 2)', () => {
       claimed: false,
       conversationId: `conversation-${CHAT_TURN_DEDUP_MAX_ENTRIES}`,
     });
-    // #3559: inverted. The oldest entry was evicted, and an evicted key
-    // answers expired: a late retry of it must never run the agent again.
+    expect(store.claim('turn-0')).toEqual({
+      claimed: false,
+      conversationId: 'conversation-0',
+    });
+    const database = new DatabaseSync(filePath);
+    database
+      .prepare(
+        'UPDATE orchestration_turn_dedup SET resolved_at = ? WHERE dedup_key = ?',
+      )
+      .run(Date.now() - 8 * 24 * 60 * 60 * 1000, 'chat:6:turn-0');
+    database.close();
+    expect(store.claim('trigger-expiry')).toEqual({ claimed: true });
     expect(store.claim('turn-0')).toEqual({
       claimed: false,
       outcome: 'expired',
