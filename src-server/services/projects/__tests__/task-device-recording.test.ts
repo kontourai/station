@@ -190,8 +190,8 @@ test('device job capacity is bounded across distinct Tasks and releases finished
   const source = async (): Promise<never> => {
     throw new Error('unused');
   };
-  const jobs = ['a', 'b', 'c', 'd'].map((person) =>
-    owner.start(access('alice', person), { durationMs: 1000 }, source),
+  const jobs = ['a', 'b', 'c', 'd'].map((taskId) =>
+    owner.start(access('alice', taskId), { durationMs: 1000 }, source),
   );
   expect(() =>
     owner.start(access('alice', 'e'), { durationMs: 1000 }, source),
@@ -220,9 +220,9 @@ test('shared recorder bounds active recordings across different Task keys', asyn
     await waiting;
     throw new Error('fixture released');
   };
-  const active = ['a', 'b', 'c', 'd'].map((person) =>
+  const active = ['a', 'b', 'c', 'd'].map((taskId) =>
     recorder.recordSource(
-      access('alice', person),
+      access('alice', taskId),
       { durationMs: 1000 },
       source,
     ),
@@ -238,6 +238,9 @@ test('shared recorder bounds active recordings across different Task keys', asyn
   await recorder.dispose();
   expect(results[4]).toMatchObject({
     status: 'rejected',
-    reason: { code: 'recording-unavailable' },
+    reason: {
+      code: 'recording-unavailable',
+      message: 'Recording capacity is exhausted.',
+    },
   });
 });
