@@ -41,7 +41,6 @@ import { z } from 'zod/v3';
 import { awaitSessionAttachmentSettled } from '../../../__test-utils__/session-runtime-barriers.js';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { FileMemoryAdapter } from '../../../adapters/file/memory-adapter.js';
-import { FileTerminalHistoryStore } from '../../../adapters/file-terminal-history-store.js';
 import { NodePtyAdapter } from '../../../adapters/node-pty-adapter.js';
 import { FileStorageAdapter } from '../../../domain/file-storage-adapter.js';
 import { KnowledgeStoreProvider } from '../../../knowledge-store/knowledge-store-provider.js';
@@ -58,7 +57,6 @@ import { createProjectMembershipRuntime } from '../../../services/projects/proje
 import { ProjectService } from '../../../services/projects/project-service.js';
 import { TaskGraphService } from '../../../services/projects/task-graph-service.js';
 import { terminalGatewayFor } from '../../../services/terminal/terminal-gateway.js';
-import { TerminalService } from '../../../services/terminal/terminal-service.js';
 import {
   __resetStationControlStdioEntryForTests,
   api,
@@ -411,17 +409,13 @@ describe('configureRuntimeRoutes: station-control reads act for the calling sess
     const eventBus = new EventBus();
     const monitoringEvents = new EventEmitter();
     const app = new Hono();
-    const terminalService = terminalProof
-      ? new TerminalService(
-          new NodePtyAdapter(),
-          new FileTerminalHistoryStore(join(home, 'terminal-history')),
-          () => '/bin/sh',
-          (slug) => storage.getProject(slug).id,
-        )
-      : undefined;
-    if (terminalService) closers.push(() => terminalService.dispose());
+    const scopedTerminals: Parameters<
+      typeof configureRuntimeRoutes
+    >[0]['scopedTerminals'] = {};
+    closers.push(() => scopedTerminals.sessions?.dispose());
     const context = deepStub({
-      ...(terminalService && { terminalService }),
+      ptyAdapter: new NodePtyAdapter(),
+      scopedTerminals,
       projectMembership: membership.service,
       projectSharedTasks: membership.sharedTasks,
       deploymentAuthentication: undefined,
