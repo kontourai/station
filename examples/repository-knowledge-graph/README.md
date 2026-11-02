@@ -95,7 +95,7 @@ record creation and link requests. Store reads can still refresh derived caches:
 ```sh
 node --import tsx examples/repository-knowledge-graph/ingest.mjs --input=/tmp/station-knowledge-graph.json --api-base=http://127.0.0.1:43521 --root=root:project-repository-graph
 node --import tsx examples/repository-knowledge-graph/ingest.mjs --input=/tmp/station-knowledge-graph.json --api-base=http://127.0.0.1:43521 --root=root:project-repository-graph --apply
-node --import tsx examples/repository-knowledge-graph/ingest.mjs --input=/tmp/station-knowledge-graph.json --api-base=http://127.0.0.1:43521 --root=root:project-repository-graph --query=KnowledgeStoreProvider
+node --import tsx examples/repository-knowledge-graph/ingest.mjs --input=/tmp/station-knowledge-graph.json --api-base=http://127.0.0.1:43521 --root=root:project-repository-graph --query=ChildWork
 ```
 
 The importer refuses default ports, non-loopback origins, personal roots and
