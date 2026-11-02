@@ -5186,7 +5186,8 @@ adaptive delivery. Those rules are for images. An `h264` viewer (#4418) takes
 access units in order from a bounded queue (32 units or 4 MiB), starts at a
 keyframe, and on overflow drops the queue and waits for the next one. It never
 receives a delta before a keyframe. The hub asks the producer for a keyframe
-(at most every 500 ms) and tells it which encodings its viewers take. Capture starts with the first viewer and stops at zero;
+(at most every 500 ms; a request inside that window is deferred, not dropped)
+and tells it which encodings its viewers take. Capture starts with the first viewer and stops at zero;
 session lifetime remains with its Browser/Device owner. `control-lease.ts`
 allows one controller: current-epoch human input can preempt an Agent, while
 an Agent cannot preempt a live human. A person's `keep-alive` lease request
@@ -5213,10 +5214,12 @@ browser generation to `ChromiumScreencastProducer` and its profile authorizer.
 `DeviceSessionService` binds `DeviceLiveSurfaceProducer` to host-qualified
 simulator/emulator sessions and device-share authorization. Device video and
 input have separate liveness: iOS uses MJPEG. Android passes H.264 access
-units to viewers that decode them (parameter sets prepended to each IDR, the
-header sized like the JPEG path so input maps the same), and runs server-side
-ffmpeg decoding only while an image viewer is attached, or a labelled PNG-poll
-fallback. A successful Device dispatch means
+units to viewers that decode them (parameter sets prepended to each IDR,
+forgotten on a new encoder session). While ffmpeg runs for an image viewer,
+H.264 frames carry its JPEGs' size, otherwise the same fitted box, so input
+maps against one size whichever path a viewer takes. Server-side ffmpeg
+decoding runs only while an image viewer is attached; otherwise image viewers
+get a labelled PNG-poll fallback. A successful Device dispatch means
 the hub socket accepted bytes, not that the application applied them. The
 shared live-surface Agent grant path admits both Browser and Device tools through
 independently minted, in-process grants. Device grants recheck the bound caller,
@@ -5234,7 +5237,8 @@ requests keep a connection; a viewer past the cap reads `queued`. A viewer
 asks for H.264 only in a secure context with WebCodecs, and falls back to
 images when the browser refuses the profile or the host answers the query
 400. `liveSurfaceVideoDecoder.ts` configures from the keyframe's SPS, decodes
-in order, and resets on error; the canvas then reconnects for a keyframe.
+in order, and resets on error; the canvas then reconnects for a keyframe (at
+most every 2 s, deferring rather than dropping a request).
 `LiveSurfaceCanvas.tsx` is used by the Browser pane, Device pane and
 float-over-chat, and shows the codec it draws. When the origin, surface ID or
 Project context changes, the viewer discards queued input and ignores
