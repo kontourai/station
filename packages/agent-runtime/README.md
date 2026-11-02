@@ -305,7 +305,7 @@ the fixed output-limit message and the owner settles the turn blocked.
 Body format `agent-body/3` packs adjacent text deltas without changing replay
 boundaries, compresses control data and overwritten tails, and shares content-addressed native text
 fragments with later model prompts. Repeated control subtrees and small history pages
-share immutable content-addressed nodes in a recursive tree, so later prompts retain references to
+share immutable content-addressed nodes with binary compressed payloads in a recursive tree, so later prompts retain references to
 earlier history rather than another complete reference list. Node deletion is
 refused while any body or parent node references it. Complete model attempts store a checked prefix
 length and digest into their immutable output instead of retaining a second partial

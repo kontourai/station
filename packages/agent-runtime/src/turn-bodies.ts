@@ -21,7 +21,7 @@ export const bodyChunkDefinitions = [
   "CREATE TRIGGER agent_steps_body_chunks_no_delete BEFORE DELETE ON agent_steps_body_chunks BEGIN SELECT RAISE(ABORT,'immutable agent chunk'); END",
 ] as const;
 export const bodyNodeDefinitions = [
-  'CREATE TABLE agent_steps_body_nodes(digest BLOB PRIMARY KEY CHECK(length(digest)=32), wire TEXT NOT NULL, refs TEXT NOT NULL, byte_length INTEGER NOT NULL CHECK(byte_length>=0)) STRICT',
+  'CREATE TABLE agent_steps_body_nodes(digest BLOB PRIMARY KEY CHECK(length(digest)=32), wire BLOB NOT NULL, refs TEXT NOT NULL, byte_length INTEGER NOT NULL CHECK(byte_length>=0)) STRICT',
   "CREATE TRIGGER agent_steps_body_nodes_no_update BEFORE UPDATE ON agent_steps_body_nodes BEGIN SELECT RAISE(ABORT,'immutable agent node'); END",
   "CREATE TRIGGER agent_steps_body_nodes_no_delete BEFORE DELETE ON agent_steps_body_nodes WHEN EXISTS(SELECT 1 FROM agent_steps_bodies b,json_each(b.wire,'$.chunks') c WHERE c.value='sha256:'||lower(hex(OLD.digest))) OR EXISTS(SELECT 1 FROM agent_steps_body_nodes n,json_each(n.refs) r WHERE r.value=lower(hex(OLD.digest))) BEGIN SELECT RAISE(ABORT,'immutable agent node'); END",
 ];
@@ -40,17 +40,11 @@ export function readAgentBodyNode(
     database,
     'SELECT wire,refs,byte_length FROM agent_steps_body_nodes WHERE digest=?',
   ).get(Buffer.from(ref.slice(7), 'hex'));
-  if (!row || typeof row.wire !== 'string' || typeof row.refs !== 'string')
+  if (!row || !(row.wire instanceof Uint8Array) || typeof row.refs !== 'string')
     throw new Error('DURABLE_AGENT_BODY_DAMAGED');
-  let wire = row.wire;
-  if (wire.startsWith('~'))
-    wire = inflateSync(Buffer.from(wire.slice(1), 'base64'), {
-      maxOutputLength: 128 * 1024,
-    }).toString('utf8');
-  else if (wire.startsWith('{"version":"agent-node/1"'))
-    wire = inflateSync(Buffer.from(JSON.parse(wire).payload, 'base64'), {
-      maxOutputLength: 128 * 1024,
-    }).toString('utf8');
+  const wire = inflateSync(row.wire, { maxOutputLength: 128 * 1024 }).toString(
+    'utf8',
+  );
   if (Buffer.byteLength(wire) !== row.byte_length || hash(wire) !== ref)
     throw new Error('DURABLE_AGENT_BODY_DAMAGED');
   const refs = agentBodyRefs(JSON.parse(wire));
@@ -69,8 +63,7 @@ function putNode(database: DatabaseSync, wire: string, refs: string[]) {
     knownNodes.set(database, known);
   }
   if (known.has(digest)) return digest;
-  const compressed = `~${deflateSync(wire).toString('base64')}`;
-  const stored = compressed.length < wire.length ? compressed : wire;
+  const stored = deflateSync(wire);
   const inserted = agentStatement(
     database,
     'INSERT INTO agent_steps_body_nodes VALUES(?,?,?,?) ON CONFLICT(digest) DO NOTHING',
