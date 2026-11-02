@@ -5137,8 +5137,11 @@ Human claims clear existing snapshot refs, including after hand-back; snapshots
 overlapping any human hold or lacking a bound lease produce no usable refs.
 Media requests are audited when sent, including interrupted requests. The
 live-surface binder resets target-local color emulation on human claims. The current [Browser Agent decision](../decisions/browser-agent-actions-and-bound-channel.md)
-records the authority constraints and proposed cross-engine binding. Control
-operations capture a lease fence and check it around asynchronous steps. JavaScript evaluation additionally needs the
+records the authority constraints and Codex's default-off bound-channel preview.
+`codex-bound-tool-channel.ts` fences calls to the Session's current stream and
+turn; `codex-bound-request.ts` carries in-process proof through the HTTP
+bounded-body replacement. ACP remains unavailable without independent binding.
+Control operations capture a lease fence and check it around asynchronous steps. JavaScript evaluation additionally needs the
 Project's default-off permission; timeout/preemption does not undo an effect
 already sent to Chromium. Closing a viewer only stops its capture subscription.
 Host exit/restart produces `needs-reopen`, and old-generation live surfaces are

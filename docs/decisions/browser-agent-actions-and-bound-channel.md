@@ -20,12 +20,9 @@ This record holds two things with different status:
 - **Current and shipped:** the authority constraints for Browser Agent actions
   below, and the leased hover, pointer, select and color-scheme actions
   (#3779).
-- **Decided, not implemented:** the cross-engine bound channel. Its decision
-  is that Codex and ACP header-token passthrough stay
-  `caller-not-bound` until a provider can supply independent proof, and the
-  four-step design below is the required shape. No engine supplies that proof
-  today, so no external-engine Session receives browser authority. #122 owns
-  the implementation; the remaining slices are listed at the end.
+- **Preview:** Codex dynamic tools use its Session's Station-owned app-server
+  stream. The `codex-bound-browser-device-tools` Feature Preview is off by
+  default. ACP passthrough remains `caller-not-bound`.
 
 It builds on frozen
 [ADR 0019](../adr/0019-host-the-browser-pane-server-side-behind-a-host-adapter.md),
@@ -87,42 +84,50 @@ MCP transport session ID, nonce or second bearer obtained with the first token
 adds no independent evidence. Neither does moving the same capability from a
 URL to a header. Preserve `caller-not-bound` for both channels.
 
-A safe implementation must use the existing passthrough token only to locate
-and authenticate a pending binding; it must obtain independent, non-replayable
-proof from a Station-owned provider connection before issuing browser authority:
+## Bound channel and feasibility
 
-1. Station creates a single-use pending binding containing Session, provider
-   instance and execution generation, owner, canonical Project, tool audience,
-   expiry and a fresh challenge. No identity comes from request arguments.
-2. A provider transport that can prove an individual Session's tool invocation
-   answers the challenge on a private Station-owned channel, bound to the exact
-   pending MCP connection. The proof binds the challenge, connection, audience,
-   generation and invocation. It must not be a secret distributed in argv or an
-   ACP payload. Reject a provider unable to supply this independent proof.
-3. Only that connection receives an opaque server-side binding handle. Every
-   call rechecks live Session/generation, current owner/Project standing, binding
-   currency and tool audience, then mints the ordinary BrowserAgentAuthority.
-   The handle alone cannot reconnect or resurrect a binding. Disconnect, stop,
-   failed start, restart, provider change, membership revocation and token
-   expiry revoke it. Resumption needs a new proof.
-4. The built-in server's authenticity and sensitive-tool approval must be
-   established independently of its name. Keep #3422's approval scope and
-   authenticity checks; do not extend an in-process Session grant to an external
-   connection merely because it uses the same server name.
+| Engine | Channel | Qualification |
+| --- | --- | --- |
+| Claude | In-process SDK MCP | Existing bound path; its approval and lease policies remain in force. |
+| Codex CLI 0.164.0 on macOS | Dynamic tools on the Session's app-server pipe | Preview. Station registers its own browser and device catalog, checks the emitting Session, native thread, active turn, name and call ID, and executes the existing registrations in process. On 2026-11-02 an isolated Station Session returned `ok: true` from `browser_status`, opened a local page in a live browser session, and returned `ok: true` from `device_list` (one host, no devices); the turn completed. This is one provider/host journey, not a physical-device qualification. |
+| OpenCode 2.1.1 over ACP on macOS | Provider-launched stdio MCP | Unavailable. An extra pipe did not deliver its marker to the MCP child. A socket in a 0700 directory accepted a connection and `LOCAL_PEERPID` identified that shim, but OpenCode spawned it; Station had no independently established identity for the exact child. A path, same-user ACL and self-reported PID do not supply that identity. Node's socket API here exposes no peer-PID method. |
+| Other ACP agents | Agent-dependent MCP | NOT_VERIFIED; unavailable without equivalent independent binding. |
 
-Current Codex/ACP HTTP MCP passthrough does not supply step 2. This PR therefore
-does not claim a safe implemented bound channel. A future transport capability
-or a separately reviewed delegated-authority policy is required. The latter
-would change the security model and must not silently relabel `delegated-custody`
-as `bound`.
+Codex's private provider stream supplies the Session connection identity; a
+tool name or request argument alone does not. Station uses a separate
+in-process credential purpose and attaches proof to the exact Request object
+dispatched to its own app. The bounded-body middleware transfers that proof to
+its own replacement Request and consumes the original. A socket request or
+independently cloned Request carrying copied headers has no proof. Only browser and device agent routes are in that
+audience. The existing caller, owner, recorded Project, operator/admin,
+per-tool approval, device shares, browser evaluation and lease checks remain
+in force. A consumed call ID cannot be replayed within its turn; older turns are rejected.
+Coordinator-derived station-control entries do not grant Codex device tools.
+An expired in-process credential requires restarting the Session. If an effect
+has run but its result cannot be safely returned, the response says it executed
+and its result was withheld. Cancellation, process exit,
+stop and replacement close the binding and pending approvals. Preview
+withdrawal invalidates authority, including while an approval is pending; a
+later re-enable requires a fresh Session. An
+effect already dispatched cannot be undone by cancellation.
+
+Codex 0.164.0 exposes dynamic registration on `thread/start`, but its
+`thread/resume` schema has no registration update. On resume Station rebuilds
+the current catalog as an allowlist and refuses persisted names outside it.
+Tools added since the thread started become available on a new thread. A
+persisted name is never authority by itself. Earlier Windows probes of Codex
+0.166.0 observed calls after resume even with experimental API disabled, so
+omitting registration or disabling the preview alone cannot be the guard.
+
+The same-user copied-header test protects this narrow invocation boundary; it
+does not claim isolation from arbitrary code that can compromise the Station
+process or its operator. ACP remains unavailable until both the provider-facing
+connection and the Station-owned child identity can be independently proved.
 
 ## Remaining slices and acceptance
 
-- **Bound connection:** qualify actual Codex and ACP protocol support for step 2;
-  implement pending-binding ownership, challenge/proof admission, replay and
-  audience rejection, revocation and reconnect lifecycle. Exercise swapped
-  Sessions, stolen passthrough tokens, forged identities, stale generations,
-  disconnect, concurrent calls and revoked memberships through the real route.
+- **Bound connection:** complete real-provider and adversarial qualification;
+  keep ACP unavailable until a private, independently identified path exists.
 - **Upload (#3530):** deny Agent file upload today. Future inputs must be
   authorized workspace/artifact handles from the Agent's recorded environment,
   never arbitrary host absolute paths. Resolve authority and canonical file

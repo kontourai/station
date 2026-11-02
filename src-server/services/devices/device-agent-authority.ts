@@ -31,6 +31,17 @@ export async function authorizeDeviceAgentCaller(deps: DeviceAgentAccessDeps) {
   const projectId = caller.localProjectId!;
   const actor = await deps.authorizePrincipal(principalId, projectId);
   if (!actor) return { ok: false as const, code: 'not-authorized' };
+  const fresh = deps.resolveCaller();
+  if (
+    browserAgentCallerRefusal(fresh) ||
+    !fresh ||
+    fresh.sessionId !== caller.sessionId ||
+    fresh.principal?.id !== principalId ||
+    fresh.localProjectId !== projectId ||
+    fresh.conversationId !== caller.conversationId ||
+    !deps.agentAccessEnabled()
+  )
+    return { ok: false as const, code: 'not-authorized' };
   return {
     ok: true as const,
     authority: Object.freeze({

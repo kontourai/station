@@ -29,12 +29,17 @@ import {
   type TenantExecutionContext,
   tenantExecutionContextFromSession,
 } from '@kontourai/station-contracts/tenancy';
+import { McpServer, type Transport } from '@modelcontextprotocol/server';
 import { createStationBrowserMcpServer } from '../../tools/station-browser-mcp-server.js';
+import { registerBrowserTools } from '../../tools/station-control-browser-tools.js';
+import { registerDeviceTools } from '../../tools/station-control-device-tools.js';
 import {
   createSelectedStationControlMcpServer,
   createStationControlMcpServer,
+  StationControlToolRegistry,
 } from '../../tools/station-control-mcp-server.js';
 import {
+  withCodexDirectToolRequests,
   withStationControlCallerBinding,
   withStationControlCallerContext,
   withStationControlExecutionContext,
@@ -47,6 +52,7 @@ import {
   coordinatorGeneration,
   mintStationControlMcpToken,
   revokeStationControlMcpToken,
+  revokeStationControlMcpTokenIfCurrent,
   type StationMcpCredentialPurpose,
   verifyStationControlMcpToken,
   verifyStationControlMcpTokenEntry,
@@ -57,6 +63,156 @@ interface InProcessTransport {
   onmessage?: (message: unknown, extra?: unknown) => void;
   [key: string]: unknown;
 }
+
+/** The browser and device registrations, reached only from one Codex pipe. */
+export async function createCodexBoundToolServer(input: {
+  sessionId: string;
+  tenantExecutionContext?: TenantExecutionContext;
+  resolveRecord?: StationControlCallerRecordResolver;
+  includeBrowser: boolean;
+  includeDevices: boolean;
+  dispatch: (request: Request) => Promise<Response>;
+  isCurrent: () => boolean;
+}) {
+  const token = mintStationControlMcpToken(
+    input.sessionId,
+    'sdk-in-process',
+    undefined,
+    input.tenantExecutionContext,
+    undefined,
+    'codex-tools',
+    undefined,
+    input.isCurrent,
+  ).token;
+  const server = new McpServer({
+    name: 'station-bound-tools',
+    version: '1.0.0',
+  });
+  const registry = new StationControlToolRegistry(server);
+  if (input.includeBrowser) registerBrowserTools(registry);
+  if (input.includeDevices) registerDeviceTools(registry);
+  let nextId = 0;
+  let closed = false;
+  const pending = new Map<
+    number,
+    { resolve: (result: unknown) => void; reject: (error: Error) => void }
+  >();
+  const transport: Transport = {
+    start: async () => {},
+    close: async () => {},
+    send: async (message) => {
+      if (!message || typeof message !== 'object' || !('id' in message)) return;
+      const response = message as {
+        id: number;
+        result?: unknown;
+        error?: { message?: string };
+      };
+      const waiting = pending.get(response.id);
+      if (!waiting) return;
+      pending.delete(response.id);
+      if (response.error)
+        waiting.reject(
+          new Error(response.error.message ?? 'MCP request failed'),
+        );
+      else waiting.resolve(response.result);
+    },
+  };
+  await server.connect(transport);
+  const request = (
+    method: string,
+    params: Record<string, unknown>,
+    current: () => boolean,
+  ) => {
+    if (!verifyStationControlMcpToken(token) && !closed && input.isCurrent())
+      return Promise.reject(new Error('bound-tool-session-restart-required'));
+    if (closed || pending.size >= 16 || !current())
+      return Promise.reject(new Error('bound-tool-refused'));
+    const id = ++nextId;
+    return new Promise<unknown>((resolve, reject) => {
+      pending.set(id, { resolve, reject });
+      try {
+        withStationControlExecutionContext(
+          input.tenantExecutionContext
+            ? tenantExecutionContextFromSession(input.tenantExecutionContext)
+            : undefined,
+          () =>
+            withStationControlCallerBinding(
+              createHash('sha256').update(token).digest('base64url'),
+              () =>
+                withStationControlCallerContext(
+                  {
+                    token,
+                    resolve: () =>
+                      resolveStationControlCallerFromToken(
+                        token,
+                        input.resolveRecord,
+                      ),
+                  },
+                  () =>
+                    withCodexDirectToolRequests(
+                      { token, current, dispatch: input.dispatch },
+                      () =>
+                        transport.onmessage?.({
+                          jsonrpc: '2.0',
+                          id,
+                          method,
+                          params,
+                        }),
+                    ),
+                ),
+              current,
+            ),
+        );
+      } catch (error) {
+        pending.delete(id);
+        reject(error);
+      }
+    });
+  };
+  const current = () =>
+    !closed && input.isCurrent() && !!verifyStationControlMcpToken(token);
+  await request(
+    'initialize',
+    {
+      protocolVersion: '2025-06-18',
+      capabilities: {},
+      clientInfo: { name: 'station', version: '1' },
+    },
+    current,
+  );
+  transport.onmessage?.({
+    jsonrpc: '2.0',
+    method: 'notifications/initialized',
+  });
+  const listing = (await request('tools/list', {}, current)) as {
+    tools: { name: string; description?: string; inputSchema: unknown }[];
+  };
+  return {
+    tools: listing.tools,
+    call: (name: string, args: unknown, invocationCurrent: () => boolean) =>
+      request(
+        'tools/call',
+        { name, arguments: args },
+        () => current() && invocationCurrent(),
+      ),
+    close: async () => {
+      closed = true;
+      revokeStationControlMcpTokenIfCurrent(
+        token,
+        input.sessionId,
+        'codex-tools',
+      );
+      for (const item of pending.values())
+        item.reject(new Error('bound-tool-refused'));
+      pending.clear();
+      await server.close();
+    },
+  };
+}
+
+export type CodexBoundToolServer = Awaited<
+  ReturnType<typeof createCodexBoundToolServer>
+>;
 
 export interface InProcessStationControlServer {
   /** Structurally the SDK's `McpSdkServerConfigWithInstance['instance']`. */

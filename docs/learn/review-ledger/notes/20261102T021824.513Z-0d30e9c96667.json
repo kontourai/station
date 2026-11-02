@@ -1,0 +1,23 @@
+{
+  "revision": "8636521b24dfbfcf5b3712df640ee625f8fe6452",
+
+  "notes": [
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"Rechecked the adapter delta since the bound-channel review: Biome only wrapped the inputText type guard; refusal-result detection and the previously reviewed policy, lifecycle and resume behavior are unchanged. No additional provider or release qualification is implied.","inputs":["docs/conformance/tool-policy-delivery.md","src-server/providers/adapters/codex-adapter.ts"]},
+
+    {"path":"docs/design/connections-onboarding.md","note":"Rechecked the adapter delta since the bound-channel review: Biome only wrapped the inputText type guard; refusal-result detection and the previously reviewed policy, lifecycle and resume behavior are unchanged. No additional provider or release qualification is implied.","inputs":["docs/design/connections-onboarding.md","src-server/providers/adapters/codex-adapter.ts"]},
+
+    {"path":"docs/design/session-tape-replay.md","note":"Rechecked the adapter delta since the bound-channel review: Biome only wrapped the inputText type guard; refusal-result detection and the previously reviewed policy, lifecycle and resume behavior are unchanged. No additional provider or release qualification is implied.","inputs":["docs/design/session-tape-replay.md","src-server/providers/adapters/codex-adapter.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Rechecked the adapter delta since the bound-channel review: Biome only wrapped the inputText type guard; refusal-result detection and the previously reviewed policy, lifecycle and resume behavior are unchanged. No additional provider or release qualification is implied.","inputs":["docs/guides/agent-configuration.md","src-server/providers/adapters/codex-adapter.ts"]},
+
+    {"path":"docs/guides/connections.md","note":"Rechecked the adapter delta since the bound-channel review: Biome only wrapped the inputText type guard; refusal-result detection and the previously reviewed policy, lifecycle and resume behavior are unchanged. No additional provider or release qualification is implied.","inputs":["docs/guides/connections.md","src-server/providers/adapters/codex-adapter.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Rechecked the adapter delta since the bound-channel review: Biome only wrapped the inputText type guard; refusal-result detection and the previously reviewed policy, lifecycle and resume behavior are unchanged. No additional provider or release qualification is implied.","inputs":["docs/guides/self-configuring-agent.md","src-server/providers/adapters/codex-adapter.ts"]},
+
+    {"path":"docs/guides/starter-work.md","note":"Rechecked the adapter delta since the bound-channel review: Biome only wrapped the inputText type guard; refusal-result detection and the previously reviewed policy, lifecycle and resume behavior are unchanged. No additional provider or release qualification is implied.","inputs":["docs/guides/starter-work.md","src-server/providers/adapters/codex-adapter.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Rechecked the adapter delta since the bound-channel review: Biome only wrapped the inputText type guard; refusal-result detection and the previously reviewed policy, lifecycle and resume behavior are unchanged. No additional provider or release qualification is implied.","inputs":["docs/reference/session-api.md","src-server/providers/adapters/codex-adapter.ts"]},
+
+    {"path":"examples/self-configuring-agent/README.md","note":"Rechecked the adapter delta since the bound-channel review: Biome only wrapped the inputText type guard; refusal-result detection and the previously reviewed policy, lifecycle and resume behavior are unchanged. No additional provider or release qualification is implied.","inputs":["examples/self-configuring-agent/README.md","src-server/providers/adapters/codex-adapter.ts"]}
+  ]
+}
