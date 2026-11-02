@@ -11,6 +11,8 @@
  * emits.
  */
 
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import {
   encodeLiveSurfaceRecord,
   type LiveSurfaceControlLease,
@@ -33,9 +35,10 @@ import {
   LiveSurfaceCanvas,
   type LiveSurfaceControlState,
 } from '../LiveSurfaceCanvas';
+import { liveSurfaceH264Declines } from '../useLiveSurface';
 
 const SURFACE = 'browser:session-1';
-const API = 'http://station.test';
+const API = 'http://127.0.0.1:3999';
 const FRAMES_URL = `${API}/api/live-surfaces/${encodeURIComponent(SURFACE)}/frames`;
 const INPUT_URL = `${API}/api/live-surfaces/${encodeURIComponent(SURFACE)}/input`;
 
@@ -92,6 +95,7 @@ interface OpenStream {
   pushBytes(bytes: Uint8Array): Promise<void>;
   close(): Promise<void>;
   signal: AbortSignal | undefined;
+  url: string;
 }
 
 type InputReply = (body: {
@@ -100,7 +104,11 @@ type InputReply = (body: {
 }) => unknown | Promise<unknown>;
 
 function harness(
-  options: { inputReply?: InputReply; framesStatus?: number } = {},
+  options: {
+    inputReply?: InputReply;
+    framesStatus?: number | ((url: string) => number | undefined);
+    framesBody?: unknown;
+  } = {},
 ) {
   const streams: OpenStream[] = [];
   const inputs: { epoch: number; events: unknown[] }[] = [];
@@ -118,17 +126,21 @@ function harness(
     async (input: Parameters<typeof fetch>[0], init?: RequestInit) => {
       const url = String(input);
       if (url.startsWith(FRAMES_URL)) {
-        if (options.framesStatus) {
+        const framesStatus =
+          typeof options.framesStatus === 'function'
+            ? options.framesStatus(url)
+            : options.framesStatus;
+        if (framesStatus) {
           streams.push({
+            url,
             signal: init?.signal ?? undefined,
             push: async () => {},
             pushBytes: async () => {},
             close: async () => {},
           });
-          return Response.json(
-            { success: false },
-            { status: options.framesStatus },
-          );
+          return Response.json(options.framesBody ?? { success: false }, {
+            status: framesStatus,
+          });
         }
         let controller!: ReadableStreamDefaultController<Uint8Array>;
         const stream = new ReadableStream<Uint8Array>({
@@ -142,6 +154,7 @@ function harness(
           } catch {}
         });
         streams.push({
+          url,
           signal: init?.signal ?? undefined,
           push: async (record) => {
             await act(async () => {
@@ -222,6 +235,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  liveSurfaceH264Declines.clear();
   cleanup();
   vi.useRealTimers();
   vi.restoreAllMocks();
@@ -405,6 +419,52 @@ describe('LiveSurfaceCanvas', () => {
     expect(canvas.width).toBe(1280);
     expect(canvas.height).toBe(800);
     expect(drawImage).toHaveBeenCalledTimes(1);
+  });
+
+  test('a frame whose picture cannot be decoded here still sets the frame geometry', async () => {
+    // Overlays (the Device accessibility outline) and input wait on the
+    // frame size, which must not hang on this browser decoding the picture.
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue(
+      new DOMRect(0, 0, 640, 400),
+    );
+    for (const decode of [
+      undefined,
+      vi.fn(async () => Promise.reject(new Error('no'))),
+    ]) {
+      vi.stubGlobal('createImageBitmap', decode);
+      const h = harness();
+      const overlay = vi.fn(
+        (geometry: { shown: { width: number; height: number } }) => (
+          <span data-testid="overlay-shown">
+            {`${geometry.shown.width}x${geometry.shown.height}`}
+          </span>
+        ),
+      );
+      const view = render(
+        <LiveSurfaceCanvas
+          apiBase={API}
+          surfaceId={SURFACE}
+          label="Browser: example.com"
+          transport={h.transport as never}
+          fit={{ aspect: 1 }}
+          renderOverlay={overlay}
+        />,
+      );
+      await flush();
+      await h.streams.at(-1)!.push(stateRecord(lease(0)));
+      await h.streams.at(-1)!.push(frameRecord(1, 0));
+      const canvas = screen.getByTestId(
+        'live-surface-canvas',
+      ) as HTMLCanvasElement;
+      expect([canvas.width, canvas.height]).toEqual([1280, 800]);
+      expect(screen.getByTestId('live-surface-overlay')).toBeTruthy();
+      expect(overlay).toHaveBeenLastCalledWith(
+        expect.objectContaining({ shown: { width: 1280, height: 800 } }),
+      );
+      expect(screen.getByTestId('overlay-shown').textContent).toBe('1280x800');
+      expect(drawImage).not.toHaveBeenCalled();
+      view.unmount();
+    }
   });
 
   test('a click maps through letterboxing and the frame DPR, and is forwarded as input', async () => {
@@ -1529,5 +1589,408 @@ describe('LiveSurfaceCanvas: which input may take control', () => {
     click();
     await flush();
     expect(h.inputs.map((batch) => batch.epoch)).toEqual([8]);
+  });
+});
+
+describe('LiveSurfaceCanvas: client H.264 (#4418)', () => {
+  const sample = new Uint8Array(
+    readFileSync(
+      resolve(
+        import.meta.dirname,
+        '../../../../tests/fixtures/live-surface/android-emulator-1080x2400-baseline.h264',
+      ),
+    ),
+  );
+  function videoRecord(seq: number, keyframe: boolean): LiveSurfaceRecord {
+    return {
+      kind: 'frame',
+      header: {
+        surfaceId: SURFACE,
+        seq,
+        epoch: 0,
+        codec: 'h264',
+        keyframe,
+        width: 576,
+        height: 1280,
+        deviceScaleFactor: 1,
+        capturedAt: 1,
+      },
+      body: keyframe ? sample : Uint8Array.from([0, 0, 0, 1, 0x41, 0x9a]),
+    };
+  }
+
+  /** WebCodecs in a secure context; `supported` decides the profile check. */
+  function webCodecs(supported: boolean) {
+    const decoded: { type: string; timestamp: number }[] = [];
+    const decoders: { init: VideoDecoderInit }[] = [];
+    const control = { withholdOutput: false };
+    /** Every picture any decoder produced, with its close spy. */
+    const pictures: { timestamp: number; close: ReturnType<typeof vi.fn> }[] =
+      [];
+    const withheld: {
+      decoder: { init: VideoDecoderInit };
+      timestamp: number;
+    }[] = [];
+    const output = (decoder: { init: VideoDecoderInit }, timestamp: number) => {
+      const picture = { timestamp, close: vi.fn() };
+      pictures.push(picture);
+      decoder.init.output(picture as unknown as VideoFrame);
+    };
+    vi.stubGlobal('isSecureContext', true);
+    vi.stubGlobal(
+      'EncodedVideoChunk',
+      class {
+        constructor(init: object) {
+          Object.assign(this, init);
+        }
+      },
+    );
+    vi.stubGlobal(
+      'VideoDecoder',
+      class {
+        static async isConfigSupported(config: VideoDecoderConfig) {
+          return { supported, config };
+        }
+        state = 'unconfigured';
+        constructor(readonly init: VideoDecoderInit) {
+          decoders.push(this);
+        }
+        configure() {
+          this.state = 'configured';
+        }
+        decode(chunk: { type: string; timestamp: number }) {
+          decoded.push({ type: chunk.type, timestamp: chunk.timestamp });
+          if (control.withholdOutput) {
+            withheld.push({ decoder: this, timestamp: chunk.timestamp });
+            return;
+          }
+          // Emit a picture for it, as a real decoder would.
+          output(this, chunk.timestamp);
+        }
+        close() {
+          this.state = 'closed';
+        }
+      },
+    );
+    return {
+      decoded,
+      decoders,
+      pictures,
+      /** Emit what was withheld, as a decoder whose output lags would. */
+      releaseWithheld() {
+        for (const { decoder, timestamp } of withheld.splice(0))
+          output(decoder, timestamp);
+      },
+      set withholdOutput(value: boolean) {
+        control.withholdOutput = value;
+      },
+    };
+  }
+
+  async function mount(h: ReturnType<typeof harness>) {
+    render(
+      <LiveSurfaceCanvas
+        apiBase={API}
+        surfaceId={SURFACE}
+        label="Device: emulator"
+        transport={h.transport as never}
+      />,
+    );
+    await flush();
+  }
+
+  test('a capable page asks for H.264, decodes from the keyframe and says so', async () => {
+    const codecs = webCodecs(true);
+    const h = harness();
+    await mount(h);
+    const stream = h.streams.at(-1)!;
+    expect(new URL(stream.url).searchParams.get('codec')).toBe('h264');
+    await stream.push(stateRecord(lease(0)));
+    await stream.push(videoRecord(1, true));
+    await stream.push(videoRecord(2, false));
+    await flush();
+    expect(codecs.decoded).toEqual([
+      { type: 'key', timestamp: 1 },
+      { type: 'delta', timestamp: 2 },
+    ]);
+    // Each picture is drawn at the header's size, the box input maps to.
+    expect(drawImage).toHaveBeenLastCalledWith(
+      expect.anything(),
+      0,
+      0,
+      576,
+      1280,
+    );
+    expect(screen.getByTestId('live-surface-codec').dataset.codec).toBe('h264');
+    expect(screen.getByTestId('live-surface-codec').textContent).toBe(
+      'H.264, decoded in this browser',
+    );
+  });
+
+  test('a decode error reconnects for a keyframe; a second inside the window waits for its end', async () => {
+    const codecs = webCodecs(true);
+    const h = harness();
+    await mount(h);
+    const first = h.streams.at(-1)!;
+    await first.push(stateRecord(lease(0)));
+    await first.push(videoRecord(1, true));
+    await act(async () => {
+      codecs.decoders
+        .at(-1)!
+        .init.error(new DOMException('bad', 'EncodingError'));
+    });
+    await flush();
+    expect(h.streams).toHaveLength(2);
+    expect(first.signal?.aborted).toBe(true);
+    const second = h.streams[1]!;
+    expect(new URL(second.url).searchParams.get('codec')).toBe('h264');
+    await second.push(stateRecord(lease(0)));
+    await second.push(videoRecord(2, true));
+    await act(async () => {
+      codecs.decoders
+        .at(-1)!
+        .init.error(new DOMException('bad', 'EncodingError'));
+    });
+    await flush();
+    expect(h.streams).toHaveLength(2);
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 2_100));
+    });
+    expect(h.streams).toHaveLength(3);
+  }, 10_000);
+
+  test('every decoded picture is closed: painted, after unmount, and from a decoder a reconnect retired', async () => {
+    const codecs = webCodecs(true);
+    const h = harness();
+    const view = render(
+      <LiveSurfaceCanvas
+        apiBase={API}
+        surfaceId={SURFACE}
+        label="Device: emulator"
+        transport={h.transport as never}
+      />,
+    );
+    await flush();
+    let stream = h.streams.at(-1)!;
+    await stream.push(stateRecord(lease(0)));
+    await stream.push(videoRecord(1, true));
+    // Painted, then closed.
+    expect(codecs.pictures).toHaveLength(1);
+    expect(codecs.pictures[0]!.close).toHaveBeenCalledTimes(1);
+    expect(drawImage).toHaveBeenCalledTimes(1);
+    // A reconnect retires the decoder; its late output is closed unpainted.
+    codecs.withholdOutput = true;
+    await stream.push(videoRecord(2, false));
+    await stream.close();
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 600));
+    });
+    codecs.releaseWithheld();
+    expect(codecs.pictures[1]!.close).toHaveBeenCalledTimes(1);
+    expect(drawImage).toHaveBeenCalledTimes(1);
+    // Unmount closes the decoder; output arriving after that is closed too.
+    stream = h.streams.at(-1)!;
+    await stream.push(stateRecord(lease(0)));
+    await stream.push(videoRecord(3, true));
+    view.unmount();
+    codecs.releaseWithheld();
+    expect(codecs.pictures[2]!.close).toHaveBeenCalledTimes(1);
+    expect(drawImage).toHaveBeenCalledTimes(1);
+  });
+
+  test('an H.264 frame gives the overlay and input its geometry before any picture is decoded', async () => {
+    const codecs = webCodecs(true);
+    codecs.withholdOutput = true;
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue(
+      new DOMRect(0, 0, 576, 1280),
+    );
+    const h = harness();
+    const overlay = vi.fn(
+      (geometry: { shown: { width: number; height: number } }) => (
+        <span data-testid="overlay-shown">
+          {`${geometry.shown.width}x${geometry.shown.height}`}
+        </span>
+      ),
+    );
+    render(
+      <LiveSurfaceCanvas
+        apiBase={API}
+        surfaceId={SURFACE}
+        label="Device: emulator"
+        transport={h.transport as never}
+        fit={{ aspect: 1 }}
+        renderOverlay={overlay}
+      />,
+    );
+    await flush();
+    const stream = h.streams.at(-1)!;
+    await stream.push(stateRecord(lease(0)));
+    await stream.push(videoRecord(1, true));
+    // The decoder holds the unit: no picture has come out.
+    expect(codecs.pictures).toHaveLength(0);
+    expect(drawImage).not.toHaveBeenCalled();
+    const canvas = screen.getByTestId(
+      'live-surface-canvas',
+    ) as HTMLCanvasElement;
+    expect([canvas.width, canvas.height]).toEqual([576, 1280]);
+    expect(screen.getByTestId('overlay-shown').textContent).toBe('576x1280');
+    // Input maps against that geometry already.
+    layoutCanvas({ left: 0, top: 0, width: 576, height: 1280 });
+    fireEvent.pointerDown(canvas, {
+      clientX: 288,
+      clientY: 320,
+      button: 0,
+      pointerId: 1,
+    });
+    fireEvent.pointerUp(canvas, {
+      clientX: 288,
+      clientY: 320,
+      button: 0,
+      pointerId: 1,
+    });
+    await flush();
+    expect(h.inputs.flatMap((batch) => batch.events)).toEqual([
+      expect.objectContaining({ type: 'down', x: 288, y: 320 }),
+      expect.objectContaining({ type: 'up', x: 288, y: 320 }),
+    ]);
+  });
+
+  test('a profile the browser refuses reconnects for images', async () => {
+    const codecs = webCodecs(false);
+    const h = harness();
+    await mount(h);
+    const first = h.streams.at(-1)!;
+    await first.push(stateRecord(lease(0)));
+    await first.push(videoRecord(1, true));
+    await flush();
+    await flush();
+    expect(codecs.decoded).toEqual([]);
+    expect(first.signal?.aborted).toBe(true);
+    expect(h.streams).toHaveLength(2);
+    const second = h.streams[1]!;
+    expect(new URL(second.url).searchParams.has('codec')).toBe(false);
+    await second.push(stateRecord(lease(0)));
+    await second.push(frameRecord(2, 0));
+    expect(screen.getByTestId('live-surface-codec').textContent).toBe('PNG');
+  });
+
+  test('a host too old for ?codec= (400 invalid-request) is asked once more, for images, and no more', async () => {
+    webCodecs(true);
+    const h = harness({
+      framesStatus: (url) =>
+        new URL(url).searchParams.has('codec') ? 400 : undefined,
+      framesBody: { success: false, code: 'invalid-request' },
+    });
+    await mount(h);
+    await flush();
+    await flush();
+    expect(
+      h.streams.map((s) => new URL(s.url).searchParams.has('codec')),
+    ).toEqual([true, false]);
+    await h.streams[1]!.push(stateRecord(lease(0)));
+    await h.streams[1]!.push(frameRecord(1, 0));
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
+    expect(h.streams).toHaveLength(2);
+  });
+
+  test('a 400 naming the codec declines H.264; one naming another key does not', async () => {
+    webCodecs(true);
+    for (const [field, declined] of [
+      ['codec', true],
+      ['stream-params', false],
+    ] as const) {
+      const h = harness({
+        framesStatus: (url) =>
+          new URL(url).searchParams.has('codec') ? 400 : undefined,
+        framesBody: { success: false, code: 'invalid-request', field },
+      });
+      const view = render(
+        <LiveSurfaceCanvas
+          apiBase={API}
+          surfaceId={SURFACE}
+          label="Device: emulator"
+          transport={h.transport as never}
+        />,
+      );
+      await flush();
+      await flush();
+      expect(
+        h.streams.map((s) => new URL(s.url).searchParams.has('codec')),
+        field,
+      ).toEqual(declined ? [true, false] : [true]);
+      view.unmount();
+      liveSurfaceH264Declines.clear();
+    }
+  });
+
+  test('a 400 that is not the unknown-key refusal does not switch to images', async () => {
+    webCodecs(true);
+    const h = harness({
+      framesStatus: (url) =>
+        new URL(url).searchParams.has('codec') ? 400 : undefined,
+      framesBody: { success: false, code: 'invalid-surface-id' },
+    });
+    await mount(h);
+    await flush();
+    await flush();
+    expect(
+      h.streams.map((s) => new URL(s.url).searchParams.has('codec')),
+    ).toEqual([true]);
+  });
+
+  test('three decoder failures with no picture between them stop asking for H.264', async () => {
+    const codecs = webCodecs(true);
+    const h = harness();
+    await mount(h);
+    const fail = async () => {
+      const stream = h.streams.at(-1)!;
+      await stream.push(stateRecord(lease(0)));
+      await stream.push(videoRecord(h.streams.length * 10, true));
+      // Fail before the picture comes out (outputs are synchronous here).
+      codecs.decoders
+        .at(-1)!
+        .init.error(new DOMException('bad', 'EncodingError'));
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 2_100));
+      });
+    };
+    codecs.withholdOutput = true;
+    await fail();
+    await fail();
+    expect(
+      h.streams.map((s) => new URL(s.url).searchParams.get('codec')),
+    ).toEqual(['h264', 'h264', 'h264']);
+    await fail();
+    expect(new URL(h.streams.at(-1)!.url).searchParams.has('codec')).toBe(
+      false,
+    );
+  }, 15_000);
+
+  test('a Station that is not on loopback is never asked for H.264', async () => {
+    webCodecs(true);
+    const transport = vi.fn(async () => new Response(new ReadableStream()));
+    render(
+      <LiveSurfaceCanvas
+        apiBase="https://station.example.com"
+        surfaceId={SURFACE}
+        label="Device: emulator"
+        transport={transport as never}
+      />,
+    );
+    await flush();
+    const url = new URL(String((transport.mock.calls[0] as unknown[])[0]));
+    expect(url.searchParams.has('codec')).toBe(false);
+  });
+
+  test('a page without a secure context never asks for H.264', async () => {
+    vi.stubGlobal('isSecureContext', false);
+    vi.stubGlobal('VideoDecoder', class {});
+    const h = harness();
+    await mount(h);
+    expect(new URL(h.streams.at(-1)!.url).searchParams.has('codec')).toBe(
+      false,
+    );
   });
 });
