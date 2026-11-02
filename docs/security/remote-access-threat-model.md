@@ -661,6 +661,10 @@ Station-internal requests and use `no-store`; video reads verify the retained
 length and digest. The sensitive Browser recording tool requires a bound lead
 Session and publishes only after authority and clean-workspace rechecks. A clip
 can expose page contents and is served through that Task's authorized reads.
+Device session enumeration, capture and recording require `terminal:operate`
+in addition to current Task, Project and device authority. A Device recording
+or agent log sample holds the device input lease and refuses a human-held lease;
+log output is bounded and can contain private application data.
 
 The default-off Browser artifacts preview admits element picking only from a
 current person with Browser view authority. Requests that may originate from
