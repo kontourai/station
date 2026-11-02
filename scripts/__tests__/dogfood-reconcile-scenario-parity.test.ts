@@ -35,7 +35,7 @@ describe('dogfood reconcile scenario parity', () => {
         name.includes('station-dogfood-reconcile.cutover-matrix-') ||
         name.includes('executes the installer rollback transaction for '),
     );
-    expect(expected).toHaveLength(156);
+    expect(expected).toHaveLength(155);
     expect(macosOnly).toHaveLength(40);
     const expectedForHost =
       process.platform === 'darwin'
@@ -72,6 +72,6 @@ describe('dogfood reconcile scenario parity', () => {
       .filter((line) => !line.startsWith('[vitest]'))
       .sort();
     expect(actual).toEqual(expectedForHost);
-    expect(actual).toHaveLength(process.platform === 'darwin' ? 156 : 116);
+    expect(actual).toHaveLength(process.platform === 'darwin' ? 155 : 115);
   });
 });

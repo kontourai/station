@@ -126,7 +126,6 @@ export async function createLearningSourceFixture(
       toolNameMapping: new Map(),
       resetAllRuntimeProjections: async (reset) => reset(),
       usageAggregatorRef: { get: noop },
-      getTerminalShell: () => undefined,
       persistEvent: async () => {},
       bootstrapVoiceAgent: async () => {},
       resolveVectorDbProvider: noop,
@@ -145,9 +144,6 @@ export async function createLearningSourceFixture(
       // Deliberately no KnowledgeStoreProvider factory: execute production policy construction.
       createFileTreeService: noop,
       createPtyAdapter: noop,
-      createHistoryStore: noop,
-      createTerminalService: noop,
-      createTerminalWsServer: noop,
       createVoiceService: noop,
       createMonitoringEmitter: noop,
       createACPManager: () => ({ getStatus: noop }),

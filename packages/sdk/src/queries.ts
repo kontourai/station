@@ -252,7 +252,6 @@ export {
   fetchProjectSessionBoard,
   fetchProviderCommands,
   fetchSessionSummary,
-  fetchTerminalPort,
   fetchTerminalProcess,
   fetchTerminalProcesses,
   fetchVapidPublicKey,
