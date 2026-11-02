@@ -8,9 +8,9 @@
  * its working directory the way `acp-adapter.ts` does, and publishes the
  * start metadata it was handed.
  *
- * The caller's own session (`op-caller-global`, `op-caller-a`) is answered
- * from fixed records, as in the slice C2a composition test; every other
- * session is read from the real service and store.
+ * Caller authentication (`op-caller-global`, `op-caller-a`) uses fixed
+ * records backed by persisted start events; every other session is read
+ * from the real service and store.
  *
  * The filesystem is changed between the route's check and the spawn from two
  * seams the dispatch itself crosses: the Agent read the executor makes after
@@ -159,7 +159,7 @@ function overReal<T extends object>(real: () => object, overrides: T): T {
   }) as T;
 }
 
-/** The caller's own session: fixed records, never a real session. */
+/** Fixed caller authentication and scope, backed by seeded start events. */
 const isCallerSession = (threadId: string) => threadId.startsWith('op-caller-');
 const callerProject = (threadId: string) =>
   threadId.endsWith('-a') ? 'project-a' : undefined;
@@ -387,6 +387,24 @@ describe('configureRuntimeRoutes: a station-control dispatch folder is decided a
     closers.push(() => {
       eventStore.close();
     });
+    for (const threadId of ['op-caller-global', 'op-caller-a']) {
+      const project = callerProject(threadId);
+      eventStore.appendEvent({
+        eventId: `${threadId}:start`,
+        threadId,
+        sessionId: threadId,
+        provider: 'claude',
+        method: 'session.started',
+        createdAt: '2026-10-01T00:00:00.000Z',
+        metadata: {
+          userId: LOCAL_OPERATOR_PRINCIPAL_ID,
+          adoptedFromThreadId: 'attached',
+          ...(project
+            ? { [SESSION_LOCAL_PROJECT_ID_METADATA_KEY]: project }
+            : {}),
+        },
+      });
+    }
     const first = createService(eventStore);
     support.service = first.service;
 

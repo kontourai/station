@@ -1,0 +1,11 @@
+{
+  "revision": "48895b806631db78fbf335c9cb699668f9b4ba17",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Follow-up round-1 source review at 48895b80663: the only delta after the recorded fault campaign removes export from isCancellationFenced, whose only caller is now isCancellationAdmissionBlocked in the same module. Reviewed all fence call sites; create, begin and resume still execute through the transactional participant. No behavioral or prose claim changed. Focused prepared/fence-WAL controls passed 6/6; the twelve prior mutations retain their explicitly recorded source revision.","inputs":["docs/architecture/module-map.md","src-server/services/orchestration/cancellation-fence.ts"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"Follow-up round-1 source review at 48895b80663: the only delta after the recorded fault campaign removes export from isCancellationFenced, whose only caller is now isCancellationAdmissionBlocked in the same module. Reviewed all fence call sites; create, begin and resume still execute through the transactional participant. No behavioral or prose claim changed. Focused prepared/fence-WAL controls passed 6/6; the twelve prior mutations retain their explicitly recorded source revision.","inputs":["docs/guides/self-configuring-agent.md","src-server/services/orchestration/cancellation-fence.ts"]},
+
+    {"path":"docs/reference/contracts.md","note":"Follow-up round-1 source review at 48895b80663: the only delta after the recorded fault campaign removes export from isCancellationFenced, whose only caller is now isCancellationAdmissionBlocked in the same module. Reviewed all fence call sites; create, begin and resume still execute through the transactional participant. No behavioral or prose claim changed. Focused prepared/fence-WAL controls passed 6/6; the twelve prior mutations retain their explicitly recorded source revision.","inputs":["docs/reference/contracts.md","src-server/services/orchestration/cancellation-fence.ts"]}
+  ]
+}

@@ -82,6 +82,7 @@ import { createWalkthroughRoutes } from '../../routes/walkthroughs.js';
 import { readBoundedRequestBody } from '../../security/bounded-request-body.js';
 import {
   isOperatorInPersonNotAgent,
+  isOperatorsOwnDevice,
   isTerminalOperator,
   mayRunCommandsOnHostCurrently,
   requestMayBeAnAgent,
@@ -111,6 +112,7 @@ import {
 } from '../../services/browser/browser-access.js';
 import { createBrowserPrincipalAuthorizer } from '../../services/browser/browser-agent-authority.js';
 import { BrowserAutomation } from '../../services/browser/browser-automation.js';
+import { withBrowserHumanControl } from '../../services/browser/browser-human-control.js';
 import { loadLocatorEngineInstallExpression } from '../../services/browser/browser-locator-engine.js';
 import {
   isStationInternalRequest,
@@ -121,6 +123,7 @@ import {
   configuredConsentPort,
   createBrowserService,
 } from '../../services/browser/browser-service.js';
+import { BrowserSessionError } from '../../services/browser/browser-session-registry.js';
 import { suggestLocalTargets } from '../../services/browser/local-port-scanner.js';
 import type { NativeSurfaceRegistry } from '../../services/connections/native-surface-registry.js';
 import type { RelayInvitationOwner } from '../../services/connections/relay-invitation-owner.js';
@@ -4603,11 +4606,23 @@ export function configureRuntimeRoutes(
   // Keep this Request-only check at the runtime seam. It reuses the ingress
   // principal cached by authentication and replays ingress's current scope
   // classification for every protected publication route.
-  const isRequestPrincipalCurrent = (request: Request) => {
-    return isRuntimeRequestPrincipalCurrent(
+  const operatorDeviceViewRequests = new WeakSet<Request>();
+  const isOwnedOperatorDevice = (request: Request) =>
+    isOperatorsOwnDevice(request, (credential) =>
+      context.environmentSecurityService.identifyDevice(credential),
+    );
+  const isRequestPrincipalCurrent = (request: Request) =>
+    isRuntimeRequestPrincipalCurrent(
       request,
       context.environmentSecurityService,
-    );
+    ) &&
+    (!operatorDeviceViewRequests.has(request) ||
+      isOwnedOperatorDevice(request));
+  const admitOperatorDeviceView = (request: Request) => {
+    if (!isRequestPrincipalCurrent(request) || !isOwnedOperatorDevice(request))
+      return false;
+    operatorDeviceViewRequests.add(request);
+    return true;
   };
   const integrationStatus = createIntegrationStatusReader(
     createIntegrationStatusProbes({
@@ -4635,6 +4650,19 @@ export function configureRuntimeRoutes(
   // never a shared tenant: neither is mounted on a hosted deployment.
   const isPersonalHost =
     !hostedTenantRegistry && !isHostedTenantExecutionRequired();
+  const browserExperiencePreview = isPersonalHost
+    ? context.featurePreviews.bind({
+        id: 'browser-experience',
+        label: 'Browser experience',
+        description:
+          'Try Browser zoom, appearance and agent action visualization.',
+      })
+    : undefined;
+  const browserExperienceEnabled = () =>
+    browserExperiencePreview?.select({
+      enabled: () => true,
+      disabled: () => false,
+    }) === true;
   const mediaTools = context.mediaTools;
   const localMediaPreviews = isPersonalHost
     ? bindLocalMediaPreviews(context.featurePreviews)
@@ -4735,6 +4763,7 @@ export function configureRuntimeRoutes(
       createLiveSurfaceRoutes(liveSurfaceRegistry, {
         isRequestPrincipalCurrent,
         resolveHumanCaller,
+        agentActionsEnabled: browserExperienceEnabled,
       }),
     );
   }
@@ -4966,7 +4995,14 @@ export function configureRuntimeRoutes(
         ...(revealAutomation && deviceShareAccess
           ? {
               agentReveals: {
-                projectAccess: deviceShareAccess,
+                projectAccess: {
+                  ...deviceShareAccess,
+                  authorizeProject: createBrowserProjectAuthorizer({
+                    ...deviceMembershipAccess,
+                    operatorDeviceMayView: admitOperatorDeviceView,
+                  }),
+                },
+                operatorDeviceMayView: admitOperatorDeviceView,
                 list: (projectId, conversationId, principalId) =>
                   revealAutomation.revealRequests(
                     projectId,
@@ -8321,6 +8357,7 @@ export function configureRuntimeRoutes(
     const browserAccess = {
       operator: (request: Request) =>
         projectMembershipAuthority(request).operator(),
+      operatorDeviceMayView: admitOperatorDeviceView,
       authority: projectMembershipAuthority,
       ...(browserMembership ? { membership: browserMembership } : {}),
     };
@@ -8329,6 +8366,7 @@ export function configureRuntimeRoutes(
     browserProjectAuthorizer = authorizeBrowserProject;
     browserService = createBrowserService({
       stationHome: context.configLoader.getProjectHomeDir(),
+      experienceEnabled: browserExperienceEnabled,
       serverPort: context.port,
       consentPort: configuredConsentPort(),
       configuredOrigins: allowedOrigins,
@@ -8358,6 +8396,38 @@ export function configureRuntimeRoutes(
       '/api/browser',
       createBrowserRoutes({
         registry: browserService.registry,
+        browserExperienceEnabled,
+        withHumanControl: async (c, browserSessionId, operation) => {
+          const caller = resolveLiveSurfaceHumanCaller?.(c);
+          const surfaceId = browserService?.surfaceIdFor(browserSessionId);
+          const entry = surfaceId
+            ? liveSurfaceRegistry?.get(surfaceId)
+            : undefined;
+          if (
+            !caller ||
+            !entry ||
+            !surfaceId ||
+            mayBeAgentRequest(c.req.raw, (credential) =>
+              context.environmentSecurityService.identifyDevice(credential),
+            )
+          )
+            throw new BrowserSessionError(
+              'control-refused',
+              'Browser control is unavailable.',
+            );
+          return withBrowserHumanControl(
+            {
+              entry,
+              human: { kind: 'human', ...caller },
+              request: c.req.raw,
+              current: () =>
+                browserExperienceEnabled() &&
+                isRequestPrincipalCurrent(c.req.raw) &&
+                browserService?.surfaceIdFor(browserSessionId) === surfaceId,
+            },
+            operation,
+          );
+        },
         acquisition: browserService.acquisition,
         surfaceIdFor: browserService.surfaceIdFor,
         pendingDialogFor: browserService.pendingDialogFor,
@@ -8403,6 +8473,15 @@ export function configureRuntimeRoutes(
               : {}),
           };
         },
+        mayDriveBrowser: (request) =>
+          runtimeRequestPrincipalMayAccessHttpRoute(
+            request,
+            context.environmentSecurityService,
+            {
+              method: 'POST',
+              path: '/api/browser/sessions',
+            },
+          ),
         isRequestPrincipalCurrent,
       }),
     );
@@ -8415,6 +8494,7 @@ export function configureRuntimeRoutes(
       sessions: browserService.registry,
       surfaces: liveSurfaceRegistry ?? { get: () => undefined },
       surfaceIdFor: browserService.surfaceIdFor,
+      agentActionsEnabled: browserExperienceEnabled,
       dialogWaitingForPerson: (browserSessionId) =>
         browserService?.pendingDialogFor(browserSessionId) !== undefined,
       settings: browserService.projectSettings,

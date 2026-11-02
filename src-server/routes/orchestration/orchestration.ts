@@ -631,6 +631,12 @@ const discardDraftCommandSchema = z.object({
   threadId: z.string().min(1).max(ATTENTION_REQUEST_ID_MAX_CHARS),
 });
 
+const releaseUnknownOwnedWorkSchema = z.object({
+  type: z.literal('releaseUnknownOwnedWork'),
+  threadId: z.string().min(1).max(ATTENTION_REQUEST_ID_MAX_CHARS),
+  confirmation: z.literal('child-process-may-still-be-running'),
+});
+
 const sessionTransitionSchema = z.object({
   state: z.enum(SESSION_LIFECYCLE_STATES),
   reason: z
@@ -660,6 +666,7 @@ export const orchestrationCommandSchema = z.discriminatedUnion('type', [
   stopSessionCommandSchema,
   setApprovalModeCommandSchema,
   discardDraftCommandSchema,
+  releaseUnknownOwnedWorkSchema,
 ]);
 
 const environmentRefSchema = z.discriminatedUnion('kind', [

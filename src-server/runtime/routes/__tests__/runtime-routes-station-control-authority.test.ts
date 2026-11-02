@@ -102,6 +102,7 @@ const SCOPED_COMMANDS = [
   'interruptTurn',
   'stopSession',
   'discardDraft',
+  'releaseUnknownOwnedWork',
 ] as const;
 type ScopedCommand = (typeof SCOPED_COMMANDS)[number];
 const OPERATOR_CREDENTIAL = 'test-only-operator-credential-authority-guard';
@@ -458,9 +459,15 @@ describe('configureRuntimeRoutes: the station-control authority guard', () => {
               input: 'also check the tests',
               clientInputId: 'i',
             }
-          : type === 'adoptSession'
-            ? { type, sourceThreadId: threadId }
-            : { type, threadId };
+          : type === 'releaseUnknownOwnedWork'
+            ? {
+                type,
+                threadId,
+                confirmation: 'child-process-may-still-be-running',
+              }
+            : type === 'adoptSession'
+              ? { type, sourceThreadId: threadId }
+              : { type, threadId };
     const bearer = () => callerFor('op-codex', 'url-token');
     const delegated = () =>
       internal({

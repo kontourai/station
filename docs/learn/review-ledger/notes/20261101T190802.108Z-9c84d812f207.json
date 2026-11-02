@@ -1,0 +1,13 @@
+{
+  "revision": "8965d81fddc18f7b0ba133631d729e56db7cfe3d",
+
+  "notes": [
+    {"path":"docs/guides/testing.md","note":"Refs #3569 scoped review: classified the two real cascade/admission child-process suites in the existing process-heavy two-worker group. The documented resource groups, bounded child cleanup and full versus provisional selection rules remain accurate; no timeout, worker count or completion rule was weakened.","inputs":["docs/guides/testing.md","scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"docs/reference/station-docs.md","note":"Refs #3569 generated-output review: regenerated the 101-topic MCP content from canonical inputs and inspected the SessionLifecycleModule body and aggregate content digest delta. It carries the owned-delegation contract and scripted-evidence limits; topic IDs, discovery, authorization and read-only API remain unchanged.","inputs":["docs/reference/station-docs.md","src-server/tools/station-docs-content.ts"]},
+
+    {"path":"packages/agent-runtime/CONTEXT.md","note":"Refs #3569 scoped resource-manifest review: only the two Station orchestration child-process suites join the existing process-heavy group. No agent-runtime body/outbox implementation, test classification, worker budget or package authority changes.","inputs":["packages/agent-runtime/CONTEXT.md","scripts/vitest-resource-manifest.mjs"]},
+
+    {"path":"scripts/AGENTS.md","note":"Refs #3569 scoped review: the two new direct node:child_process importers now have explicit process-heavy classifications, as this file requires. Both use owned-process cleanup and windowsHide. No verification policy, allowlist exception or gate budget was changed.","inputs":["scripts/AGENTS.md","scripts/vitest-resource-manifest.mjs"]}
+  ]
+}

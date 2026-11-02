@@ -51,6 +51,7 @@ import {
 } from '../../security/confinement/confinement-provider.js';
 import type { engineProxyLaunch } from '../../services/connections/engine-proxy-routing.js';
 import { engineSpawnTmpDirPath } from '../../services/infra/engine-spawn-tmpdir.js';
+import { prepareManagedEngineWorkspace } from '../../services/infra/managed-engine-workspace.js';
 import {
   commitEngineLaunch,
   engineSessionTmpDir,
@@ -304,6 +305,8 @@ interface CodexAdapterOptions {
   logger?: CodexAdapterLogger;
   /** Test-only override; production reads are always bounded to five seconds. */
   quotaTimeoutMs?: number;
+  /** Station home for private workspaces of otherwise-unbound sessions. */
+  managedWorkspaceHomeDir?: string;
   /** Test-only cache controls; production cache is 30 seconds and 64 entries. */
   quotaCacheTtlMs?: number;
   quotaCacheMaxEntries?: number;
@@ -2092,6 +2095,25 @@ export class CodexAdapter implements ProviderAdapterShape {
     adoption?: CodexNativeAdoption,
   ): Promise<ProviderSession> {
     this.options.nativeSessionOwnership?.assertMutable(input.threadId);
+    // A default HOME is not a project binding. Windows sandbox preparation
+    // recursively applies ACLs to its writable root; using HOME can spend
+    // minutes changing unrelated files and granting sandbox access to launchers.
+    // Keep the workspace deterministic across restarts, as ACP does, and fail
+    // before spawning if it cannot be prepared. Explicit/adopted folders win.
+    if (input.cwdDefaulted && input.confinement !== 'host' && !adoption) {
+      input = {
+        ...input,
+        cwd: await prepareManagedEngineWorkspace(
+          'codex',
+          {
+            kind: 'session',
+            connectionId: string(input.metadata?.connectionId) ?? 'codex',
+            threadId: input.threadId,
+          },
+          this.options.managedWorkspaceHomeDir,
+        ),
+      };
+    }
     // #3800: refused before Codex is spawned, since a project `mcp_servers`
     // command runs outside the sandbox at thread start (start, resume, fork
     // and respawn all come through here).

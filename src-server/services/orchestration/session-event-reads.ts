@@ -7,6 +7,7 @@ import type {
   OrchestrationSessionEventPage,
   OrchestrationSessionEventWindow,
   OrchestrationSessionSummary,
+  OwnedSessionActivity,
 } from '@kontourai/station-contracts/orchestration';
 import {
   INTERNAL_SESSION_READ_SCOPE,
@@ -83,6 +84,7 @@ interface SessionEventReadsDeps {
     threadId: string,
     provider: string | undefined,
   ) => ChildWorkSessionView | undefined;
+  readOwnedWork?: (threadId: string) => OwnedSessionActivity | undefined;
   /** #2309: the conversation activity projection's read for a thread. */
   readConversationActivity?: (
     threadId: string,
@@ -226,6 +228,7 @@ export class SessionEventReads {
           ...conversationDraftFactsOption(this.deps.eventStore, threadId),
           turnProgress: this.deps.readTurnProgress(threadId),
           readChildWork: this.deps.readChildWork,
+          readOwnedWork: this.deps.readOwnedWork,
           ...this.conversationActivityOption(threadId),
           answerability: this.deps.observeAnswerability(
             threadId,
@@ -415,6 +418,7 @@ export class SessionEventReads {
       ...conversationDraftFactsOption(this.deps.eventStore, threadId),
       turnProgress: this.deps.readTurnProgress(threadId),
       readChildWork: this.deps.readChildWork,
+      readOwnedWork: this.deps.readOwnedWork,
       ...this.conversationActivityOption(threadId),
       answerability: this.deps.observeAnswerability(
         threadId,

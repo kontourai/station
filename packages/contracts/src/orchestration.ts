@@ -191,6 +191,11 @@ export type OrchestrationCommand =
     }
   | { type: 'stopSession'; threadId: string }
   | {
+      type: 'releaseUnknownOwnedWork';
+      threadId: string;
+      confirmation: 'child-process-may-still-be-running';
+    }
+  | {
       /**
        * #2436: record the conversation's approval posture. Ordered by server
        * receipt; applied at the next session start or turn start, whatever
@@ -1155,7 +1160,22 @@ export interface TerminalAttribution {
   detail?: string;
 }
 
+export interface OwnedSessionActivity {
+  runningChildCount: number;
+  pendingStopCount: number;
+  pendingStops: Array<{
+    custody: 'local' | 'peer' | 'unknown';
+    reason: string;
+    count: number;
+  }>;
+}
+
 export interface OrchestrationSessionSummary extends ProviderSession {
+  /** Aggregate owned execution activity; the parent's own event fold is retained. */
+  ownedWork?: OwnedSessionActivity & {
+    state: 'running' | 'stopping' | 'waiting-on-peer' | 'unknown';
+    ownLifecycleState: SessionLifecycleState;
+  };
   /** Current adapter declaration, projected at read time. */
   durability?: ProviderDurabilityProfile;
   controlMode: SessionControlMode;
@@ -1172,9 +1192,9 @@ export interface OrchestrationSessionSummary extends ProviderSession {
   attachedSource?: AttachedSessionSourceMetadata;
   /**
    * Present when `cwd` is a folder Station created for this chat rather than
-   * one the user chose: an ACP engine started with no project or connection
-   * directory runs in `<stationHome>/runtime/acp-workspaces/session/<digest>`.
-   * The server decides (`isManagedAcpWorkspace`), so clients name the folder
+   * one the user chose: an otherwise-unbound ACP or confined Codex session
+   * runs under `<stationHome>/runtime/<engine>-workspaces/session/<digest>`.
+   * The server decides (`isManagedEngineWorkspace`), so clients name the folder
    * ("Chat workspace") instead of printing a hash path, and never match the
    * path themselves.
    */

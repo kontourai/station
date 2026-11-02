@@ -1612,6 +1612,10 @@ export class StationRuntime {
       this.orchestrationEventStore = openedEventStore = new EventStore(
         orchestrationDatabasePath,
       );
+      this.orchestrationEventStore.bindSessionActivity(
+        (threadId) =>
+          this.orchestrationService?.hasLocalSessionBinding(threadId) ?? false,
+      );
       this.orchestrationEventStore.bindUsageExportActivation(
         analyticsHomeExportActivation(projectHomeDir),
       );
@@ -5416,6 +5420,8 @@ export class StationRuntime {
     await startRuntimeHealthChecks({
       timers: this.timers,
       logger: this.logger,
+      maintainOwnedWork: () =>
+        this.orchestrationService?.maintainOwnedWork() ?? Promise.resolve(),
       runHealthChecks: async () => {
         if (!this.shutdownPromise) {
           try {
