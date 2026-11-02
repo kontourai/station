@@ -15,12 +15,13 @@
  *   connection the relay can least afford (see ADR 0018's connection budget).
  */
 
-export type LiveSurfaceCodec = 'jpeg' | 'png' | 'webp';
+export type LiveSurfaceCodec = 'jpeg' | 'png' | 'webp' | 'h264';
 
 export const LIVE_SURFACE_CODECS: readonly LiveSurfaceCodec[] = [
   'jpeg',
   'png',
   'webp',
+  'h264',
 ];
 
 export interface LiveSurfaceFrameHeader {
@@ -30,7 +31,15 @@ export interface LiveSurfaceFrameHeader {
   /** Control-lease epoch in force when the frame was published by the hub. */
   epoch: number;
   codec: LiveSurfaceCodec;
-  /** Encoded image size in image pixels. */
+  /** H.264 access units identify decoder recovery points. */
+  keyframe?: boolean;
+  /**
+   * The frame's size in surface pixels: the coordinate space a viewer draws
+   * it in and aims input at. Usually the encoded image's own size; a body may
+   * be encoded at another resolution (an Android H.264 unit or polled
+   * screenshot at the device's size), and viewers then draw it scaled to
+   * this box, so every path of one surface shares one coordinate space.
+   */
   width: number;
   height: number;
   /**
@@ -690,6 +699,7 @@ export function parseLiveSurfaceFrameHeader(
       'seq',
       'epoch',
       'codec',
+      'keyframe',
       'width',
       'height',
       'deviceScaleFactor',
@@ -704,6 +714,9 @@ export function parseLiveSurfaceFrameHeader(
     !intInRange(record.seq, 0, Number.MAX_SAFE_INTEGER) ||
     !isLiveSurfaceEpoch(record.epoch) ||
     !LIVE_SURFACE_CODECS.includes(record.codec as LiveSurfaceCodec) ||
+    (record.codec === 'h264'
+      ? typeof record.keyframe !== 'boolean'
+      : record.keyframe !== undefined) ||
     !intInRange(record.width, 1, LIVE_SURFACE_COORDINATE_MAX) ||
     !intInRange(record.height, 1, LIVE_SURFACE_COORDINATE_MAX) ||
     !finiteInRange(
@@ -719,6 +732,9 @@ export function parseLiveSurfaceFrameHeader(
     seq: record.seq as number,
     epoch: record.epoch as number,
     codec: record.codec as LiveSurfaceCodec,
+    ...(record.codec === 'h264'
+      ? { keyframe: record.keyframe as boolean }
+      : {}),
     width: record.width as number,
     height: record.height as number,
     deviceScaleFactor: record.deviceScaleFactor as number,
@@ -1205,5 +1221,170 @@ export class LiveSurfaceRecordDecoder {
     }
     this.buffered -= length;
     return out;
+  }
+}
+
+/**
+ * What a viewer needs from an H.264 sequence parameter set (#4418): the
+ * WebCodecs codec string (`avc1.PPCCLL`) and the displayed picture size
+ * after cropping.
+ */
+export interface LiveSurfaceH264Sequence {
+  codec: string;
+  profileIdc: number;
+  width: number;
+  height: number;
+}
+
+/** The SPS bound: a real SPS is tens of bytes; refuse anything absurd. */
+const H264_SPS_MAX_BYTES = 1024;
+const H264_HIGH_PROFILES = new Set([
+  100, 110, 122, 244, 44, 83, 86, 118, 128, 138, 139, 134, 135,
+]);
+
+class H264BitReader {
+  private bit = 0;
+  constructor(private readonly bytes: Uint8Array) {}
+  u(count: number): number {
+    let value = 0;
+    for (let i = 0; i < count; i += 1) {
+      const byte = this.bytes[this.bit >> 3];
+      if (byte === undefined) throw new RangeError('SPS truncated');
+      value = value * 2 + ((byte >> (7 - (this.bit & 7))) & 1);
+      this.bit += 1;
+    }
+    return value;
+  }
+  ue(): number {
+    let zeros = 0;
+    while (this.u(1) === 0) {
+      zeros += 1;
+      if (zeros > 31) throw new RangeError('SPS exp-Golomb overflow');
+    }
+    return 2 ** zeros - 1 + this.u(zeros);
+  }
+  se(): number {
+    const value = this.ue();
+    return value % 2 === 1 ? (value + 1) / 2 : -(value / 2);
+  }
+}
+
+/** Read past `seq_scaling_list_present` lists; their values are not needed. */
+function skipScalingLists(bits: H264BitReader, lists: number): void {
+  for (let list = 0; list < lists; list += 1) {
+    if (!bits.u(1)) continue;
+    const size = list < 6 ? 16 : 64;
+    let last = 8;
+    let next = 8;
+    for (let j = 0; j < size && next !== 0; j += 1) {
+      next = (last + bits.se() + 256) % 256;
+      if (next !== 0) last = next;
+    }
+  }
+}
+
+/** The NAL units of an Annex-B access unit, start codes removed. */
+export function splitAnnexB(accessUnit: Uint8Array): Uint8Array[] {
+  const starts: number[] = [];
+  const ends: number[] = [];
+  for (let i = 0; i + 2 < accessUnit.length; i += 1) {
+    if (
+      accessUnit[i] === 0 &&
+      accessUnit[i + 1] === 0 &&
+      accessUnit[i + 2] === 1
+    ) {
+      ends.push(i > 0 && accessUnit[i - 1] === 0 ? i - 1 : i);
+      starts.push(i + 3);
+      i += 2;
+    }
+  }
+  return starts.map((start, index) =>
+    accessUnit.subarray(start, ends[index + 1] ?? accessUnit.length),
+  );
+}
+
+/**
+ * Parse the first SPS in an Annex-B access unit, or null when it holds
+ * none or it is malformed. Pure; bounded by `H264_SPS_MAX_BYTES`.
+ */
+export function parseLiveSurfaceH264Sequence(
+  accessUnit: Uint8Array,
+): LiveSurfaceH264Sequence | null {
+  const nal = splitAnnexB(accessUnit).find(
+    (unit) => unit.length >= 4 && (unit[0]! & 0x1f) === 7,
+  );
+  if (!nal || nal.length > H264_SPS_MAX_BYTES) return null;
+  // Remove emulation-prevention bytes (00 00 03 -> 00 00).
+  const rbsp: number[] = [];
+  let zeros = 0;
+  for (let i = 1; i < nal.length; i += 1) {
+    const byte = nal[i]!;
+    if (zeros >= 2 && byte === 3) {
+      zeros = 0;
+      continue;
+    }
+    zeros = byte === 0 ? zeros + 1 : 0;
+    rbsp.push(byte);
+  }
+  const hex = (value: number) => value.toString(16).padStart(2, '0');
+  try {
+    const bits = new H264BitReader(Uint8Array.from(rbsp));
+    const profileIdc = bits.u(8);
+    const constraints = bits.u(8);
+    const levelIdc = bits.u(8);
+    bits.ue(); // seq_parameter_set_id
+    let chromaFormatIdc = 1;
+    let separateColourPlane = 0;
+    if (H264_HIGH_PROFILES.has(profileIdc)) {
+      chromaFormatIdc = bits.ue();
+      if (chromaFormatIdc === 3) separateColourPlane = bits.u(1);
+      bits.ue(); // bit_depth_luma_minus8
+      bits.ue(); // bit_depth_chroma_minus8
+      bits.u(1); // qpprime_y_zero_transform_bypass_flag
+      if (bits.u(1)) skipScalingLists(bits, chromaFormatIdc === 3 ? 12 : 8);
+    }
+    bits.ue(); // log2_max_frame_num_minus4
+    const pocType = bits.ue();
+    if (pocType === 0) bits.ue();
+    else if (pocType === 1) {
+      bits.u(1);
+      bits.se();
+      bits.se();
+      const cycle = bits.ue();
+      if (cycle > 255) return null;
+      for (let i = 0; i < cycle; i += 1) bits.se();
+    }
+    bits.ue(); // max_num_ref_frames
+    bits.u(1); // gaps_in_frame_num_value_allowed_flag
+    const widthInMbs = bits.ue() + 1;
+    const heightInMapUnits = bits.ue() + 1;
+    const frameMbsOnly = bits.u(1);
+    if (!frameMbsOnly) bits.u(1);
+    bits.u(1); // direct_8x8_inference_flag
+    let crop = [0, 0, 0, 0];
+    if (bits.u(1)) crop = [bits.ue(), bits.ue(), bits.ue(), bits.ue()];
+    const chroma = separateColourPlane ? 0 : chromaFormatIdc;
+    const cropUnitX = chroma === 0 ? 1 : chroma === 3 ? 1 : 2;
+    const cropUnitY =
+      (chroma === 0 ? 1 : chroma === 1 ? 2 : 1) * (2 - frameMbsOnly);
+    const width = widthInMbs * 16 - cropUnitX * (crop[0]! + crop[1]!);
+    const height =
+      heightInMapUnits * 16 * (2 - frameMbsOnly) -
+      cropUnitY * (crop[2]! + crop[3]!);
+    if (
+      width < 1 ||
+      height < 1 ||
+      width > LIVE_SURFACE_COORDINATE_MAX ||
+      height > LIVE_SURFACE_COORDINATE_MAX
+    )
+      return null;
+    return {
+      codec: `avc1.${hex(profileIdc)}${hex(constraints)}${hex(levelIdc)}`,
+      profileIdc,
+      width,
+      height,
+    };
+  } catch {
+    return null;
   }
 }
