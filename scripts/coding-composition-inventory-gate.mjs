@@ -262,8 +262,7 @@ const expectedDependencies = new Map(
     // the shared session store. Like engine sign-in, the server chooses the
     // program and the working directory; neither file names one.
     'src-ui/src/workspace-panes/TerminalSessionPane.tsx': 'terminal-process',
-    'src-ui/src/workspace-panes/relatedTerminalSessions.ts':
-      'terminal-process',
+    'src-ui/src/workspace-panes/relatedTerminalSessions.ts': 'terminal-process',
   }),
 );
 const semantic =
