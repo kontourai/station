@@ -401,6 +401,11 @@
   .session-model-picker__selected-heading {
     margin-bottom: var(--k-space-2);
   }
+  .session-model-picker__footer {
+    position: sticky;
+    bottom: 0;
+    z-index: 1;
+  }
 }
 .session-model-picker__footer {
   flex: none;
@@ -411,11 +416,4 @@
 .session-model-picker__footer .session-model-picker__reset {
   width: 100%;
   margin: 0;
-}
-@media (max-width: 768px), (max-height: 540px) and (pointer: coarse) {
-  .session-model-picker__footer {
-    position: sticky;
-    bottom: 0;
-    z-index: 1;
-  }
 }

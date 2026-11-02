@@ -945,15 +945,6 @@ button:hover {
   stroke-linecap: round;
 }
 
-@media (max-width: 768px), (max-height: 540px) and (pointer: coarse) {
-  .session-model-picker > .responsive-dialog-header {
-    position: sticky;
-    top: 0;
-    z-index: 1;
-    background: var(--k-bg);
-  }
-}
-
 /* Canonical title-row header for every ResponsiveDialogSurface sheet/popover
    (station#1825, rendered via the `ResponsiveDialogHeader` component).
    Deliberately global/eager rather than colocated with any one feature's
@@ -6325,6 +6316,13 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
     overflow-y: auto;
     overscroll-behavior: contain;
     -webkit-overflow-scrolling: touch;
+  }
+
+  .session-model-picker > .responsive-dialog-header {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background: var(--k-bg);
   }
 
   .responsive-dialog-header strong,
