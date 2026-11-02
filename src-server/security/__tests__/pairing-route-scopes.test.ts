@@ -19,6 +19,7 @@ import {
   matchPairingScopeRule,
   PAIRING_SCOPE_CATCH_ALL_MOUNT_EXCEPTIONS,
   PAIRING_SCOPE_FAMILY_INHERITED_LEAVES,
+  PAIRING_SCOPE_ROUTE_TABLE,
   PAIRING_WS_SCOPES,
   pairingScopeSatisfiesHttpRoute,
   requiredExternalSurfaceCapability,
@@ -975,6 +976,28 @@ describe('pairing-route-scopes: table-driven lookups', () => {
     'bounds actual-path parsing per %s lookup',
     (kind) => {
       const path = '/api/orchestration/report-groups/cost-case/input/narrow';
+      const pairingPatterns = PAIRING_SCOPE_ROUTE_TABLE.filter(
+        (rule) =>
+          (rule.method === '*' || rule.method === 'POST') &&
+          rule.prefix.includes('/:'),
+      );
+      expect(pairingPatterns.some((rule) => rule.exact)).toBe(true);
+      expect(pairingPatterns.some((rule) => !rule.exact)).toBe(true);
+      expect(
+        EXTERNAL_SURFACE_CAPABILITY_TABLE.some(
+          (rule) =>
+            rule.transport === 'http' &&
+            (rule.method === '*' || rule.method === 'POST') &&
+            rule.match === 'exact' &&
+            rule.prefix.includes(':'),
+        ),
+      ).toBe(true);
+      const patterns = new Set(
+        [...PAIRING_SCOPE_ROUTE_TABLE, ...EXTERNAL_SURFACE_CAPABILITY_TABLE]
+          .map((rule) => rule.prefix)
+          .filter((pattern) => pattern.includes(':')),
+      );
+      expect(patterns.has(path)).toBe(false);
       const split = vi.spyOn(String.prototype, 'split');
       try {
         path.split('/');
@@ -989,10 +1012,17 @@ describe('pairing-route-scopes: table-driven lookups', () => {
         const parsed = split.mock.contexts.filter(
           (receiver) => String(receiver) === path,
         ).length;
+        const patternsParsed = split.mock.contexts.filter((receiver) =>
+          patterns.has(String(receiver)),
+        ).length;
         split.mockRestore();
         expect(observed).toBe(1);
         expect(matched).toMatchObject({ scope: 'orchestration:operate' });
         expect(parsed).toBeLessThanOrEqual(1);
+        expect(
+          patternsParsed,
+          'canonical route patterns must be tokenized before request lookup',
+        ).toBe(0);
         const readPath = '/api/orchestration/report-groups/another-group';
         expect(
           kind === 'pairing'
@@ -1004,6 +1034,54 @@ describe('pairing-route-scopes: table-driven lookups', () => {
       }
     },
   );
+  test('keeps filtered pairing exact matches separate from raw external exact matches', () => {
+    const path =
+      '/api/operator/telemetry-companion/private-usage-preparations/probe';
+    const exactId =
+      '/api/operator/telemetry-companion/private-usage-preparations:GET';
+    expect(matchPairingScopeRule('GET', path)?.id).toBe(exactId);
+    expect(requiredExternalSurfaceCapability('http', 'GET', path)?.id).toBe(
+      exactId,
+    );
+    expect(matchPairingScopeRule('GET', `${path}/`)?.id).toBe(exactId);
+    expect(
+      requiredExternalSurfaceCapability('http', 'GET', `${path}/`),
+    ).toMatchObject({
+      id: '/api/operator/telemetry-companion:prerequisites',
+      scope: 'orchestration:read',
+    });
+  });
+
+  test('parses unseen patterns without retaining them and observes live rule changes', () => {
+    const rule = PAIRING_SCOPE_ROUTE_TABLE.find(
+      (entry) => entry.id === '/api/access/tokens/:tokenId:revoke',
+    );
+    if (!rule) throw new Error('Missing parameterized exact-rule prerequisite');
+    const original = { prefix: rule.prefix, scope: rule.scope };
+    const prefix = '/__static_pattern_probe/:id/record';
+    const path = '/__static_pattern_probe/value/record';
+    expect(
+      PAIRING_SCOPE_ROUTE_TABLE.some((entry) => entry.prefix === prefix),
+    ).toBe(false);
+    const split = vi.spyOn(String.prototype, 'split');
+    try {
+      Object.assign(rule, { prefix });
+      const first = matchPairingScopeRule('DELETE', path);
+      expect(first).toBe(rule);
+      expect(first?.scope).toBe('orchestration:read');
+      Object.assign(rule, { scope: 'orchestration:operate' });
+      const second = matchPairingScopeRule('DELETE', path);
+      expect(second).toBe(rule);
+      expect(second?.scope).toBe('orchestration:operate');
+      expect(
+        split.mock.contexts.filter((receiver) => String(receiver) === prefix),
+      ).toHaveLength(2);
+    } finally {
+      Object.assign(rule, original);
+      split.mockRestore();
+    }
+    expect(matchPairingScopeRule('DELETE', path)).toBeUndefined();
+  });
   test.each([
     ['GET', '/api/projects', 'orchestration:read'],
     ['GET', '/api/skills/experiences', 'orchestration:read'],

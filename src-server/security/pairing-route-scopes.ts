@@ -2553,7 +2553,7 @@ function pathMatchesPrefix(
 ): boolean {
   if (prefix === '') return false;
   if (prefix.includes('/:')) {
-    const prefixSegments = prefix.split('/').filter(Boolean);
+    const prefixSegments = filteredPatternTokens(prefix);
     return (
       pathSegments.length >= prefixSegments.length &&
       prefixSegments.every(
@@ -2571,7 +2571,7 @@ function pathMatchesExact(
   pathSegments: readonly string[],
 ): boolean {
   if (prefix.includes('/:')) {
-    const prefixSegments = prefix.split('/').filter(Boolean);
+    const prefixSegments = filteredPatternTokens(prefix);
     return (
       pathSegments.length === prefixSegments.length &&
       prefixSegments.every(
@@ -3258,6 +3258,42 @@ export const EXTERNAL_SURFACE_CAPABILITY_TABLE: readonly ExternalSurfaceCapabili
     },
   ];
 
+interface RoutePatternTokens {
+  readonly raw: readonly string[];
+  readonly filtered: readonly string[];
+}
+
+// Static grammar only; policy and winning rules are evaluated on every lookup.
+const ROUTE_PATTERN_TOKENS: ReadonlyMap<string, RoutePatternTokens> = (() => {
+  const tokens = new Map<string, RoutePatternTokens>();
+  for (const { prefix } of [
+    ...PAIRING_SCOPE_ROUTE_TABLE,
+    ...EXTERNAL_SURFACE_CAPABILITY_TABLE,
+  ]) {
+    if (!prefix.includes(':') || tokens.has(prefix)) continue;
+    const raw = Object.freeze(prefix.split('/'));
+    tokens.set(
+      prefix,
+      Object.freeze({
+        raw,
+        filtered: Object.freeze(raw.filter(Boolean)),
+      }),
+    );
+  }
+  return tokens;
+})();
+
+function rawPatternTokens(pattern: string): readonly string[] {
+  return ROUTE_PATTERN_TOKENS.get(pattern)?.raw ?? pattern.split('/');
+}
+
+function filteredPatternTokens(pattern: string): readonly string[] {
+  return (
+    ROUTE_PATTERN_TOKENS.get(pattern)?.filtered ??
+    pattern.split('/').filter(Boolean)
+  );
+}
+
 /** Hono's route inventory uses `:param`; live requests contain its value. */
 function exactRoutePathMatches(
   pattern: string,
@@ -3266,7 +3302,7 @@ function exactRoutePathMatches(
 ): boolean {
   if (pattern === path) return true;
   if (!pattern.includes(':')) return false;
-  const expected = pattern.split('/');
+  const expected = rawPatternTokens(pattern);
   return (
     expected.length === actual.length &&
     expected.every(
