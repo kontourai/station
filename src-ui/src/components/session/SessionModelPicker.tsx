@@ -438,7 +438,7 @@ export function SessionModelPicker({
                     }}
                   >
                     {choice.icon}
-                    <span>{choice.name}</span>
+                    <span>{choice.name}</span>{' '}
                     {!choice.available && (
                       <small>{choice.detail ?? 'Unavailable'}</small>
                     )}
