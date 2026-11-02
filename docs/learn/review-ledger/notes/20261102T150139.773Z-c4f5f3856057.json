@@ -1,0 +1,7 @@
+{
+  "revision": "6593d07eebcf73212d19d867055bae94350cf825",
+
+  "notes": [
+    {"path":"docs/adr/0009-treat-knowledge-stores-as-canonical-and-index-as-derived.md","note":"At 6593d07eebc, read the full frozen ADR including historical matrix/probe transcripts and its current-owner status; inspected Knowledge guide store/index, explicit rebuild, generation/migration and open-database limits. Store/index providers and guide have no branch delta from db857573504. Traced the entire 371-line runtime-routes delta and current Knowledge mounts: new ensemble inspection reads bounded registered-root metadata through observeKnowledgeStoreRoots, labels content/adapter/retrieval/write authority unverified, and rechecks the registry digest; it does not create roots, mutate records, rebuild indexes or replace existing Knowledge routes. Current provider allocates suffixed personal roots, bootstrap retains the read-only conversation projection, and sqlite-vec rebuild derives rows from adapter records; current status remains accurate. Existing explicit migration/index/CRUD/Neo4j route composition is unchanged. No prose change required. Source inspection only: no knowledge tests, historical embedding probes, license/ecosystem survey, migration equivalence, live model, Neo4j, browser or device qualification rerun. Preserved original evidence limits; this note covers these named ADR dependencies and branch changes only.","inputs":["docs/adr/0009-treat-knowledge-stores-as-canonical-and-index-as-derived.md","src-server/runtime/routes/runtime-routes.ts"]}
+  ]
+}

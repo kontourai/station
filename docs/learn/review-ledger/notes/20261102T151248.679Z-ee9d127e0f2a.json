@@ -1,0 +1,7 @@
+{
+  "revision": "6593d07eebcf73212d19d867055bae94350cf825",
+
+  "notes": [
+    {"path":"docs/reference/settings-deep-links.md","note":"At6593d07eebc, read the full199-line reference. Compared its cited owner paths against branch merge-base db857573504: only module-map.md changes; generator, generated catalog, SettingsView, URL builder, section-navigation and developer-feature hook have no branch delta. Inspected changed module-map hunk locations/topics: Home/registry ownership, child-work/groups/source preparation, installed-engine startup and publication, not Settings catalog/reveal semantics. Traced current route serving committed JSON verbatim, stable view/highlight builder, catalog-controlled current section healing, unavailable/opted-out/platform refusals, five-second mount timeout,1.4-second pulse, focus-owner preservation and modal section-focus exclusion. Sample artifact account-preference and max-turn ids/routes match the reference. No deep-link/schema/config-value behavior added by these module-map changes; no prose change required. Source-only review of this affected contract, not new browser/mobile/accessibility/answer-display timing evidence or approval of every module-map section. Existing runtime/capture limits remain.","inputs":["docs/reference/settings-deep-links.md","docs/architecture/module-map.md"]}
+  ]
+}
