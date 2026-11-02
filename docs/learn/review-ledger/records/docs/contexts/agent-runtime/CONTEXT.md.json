@@ -72,7 +72,13 @@
 
     "src-server/routes/chat/__tests__/chat-primary-stream.durable-disconnect.test.ts",
 
-    "src-server/runtime/agents/__tests__/durable-agent-recovery.test.ts"
+    "src-server/runtime/agents/__tests__/durable-agent-recovery.test.ts",
+
+    "src-server/runtime/agents/__tests__/durable-agent-reconnect.test.ts",
+
+    "src-server/runtime/agents/__tests__/durable-agent-liveness.test.ts",
+
+    "src-server/__test-utils__/chat-runtime-fixture.ts"
   ],
 
   "checks": [
