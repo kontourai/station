@@ -141,12 +141,15 @@ export class StationReportGroupExecution {
           signal.throwIfAborted();
           return undefined;
         });
+      const assertPreparedSource = (): undefined => {
+        preparation.assertCurrent(handle, context.req.raw);
+        return undefined;
+      };
       const sourceCurrent = (): undefined =>
         this.owners.environment.withCurrentAuthority(() => {
           requestCurrent();
           signal.throwIfAborted();
-          preparation.assertCurrent(handle, context.req.raw);
-          return undefined;
+          return assertPreparedSource();
         });
       const executionCurrent = (): undefined => {
         publication?.assertCurrent();
@@ -154,7 +157,7 @@ export class StationReportGroupExecution {
       };
       const assertReturnedPreparation = (scope: ReportRoundsScope): void => {
         try {
-          scope.check(executionCurrent);
+          scope.check(assertPreparedSource);
         } catch (error) {
           throw new DelegationRoundsTransactionUncertainError(
             'returned-cleanup-unknown',
@@ -183,7 +186,7 @@ export class StationReportGroupExecution {
       await requestWriter.runRequest(signal, current);
       const build = (scope?: ReportRoundsScope) => {
         const current = scope
-          ? () => scope.check(executionCurrent)
+          ? () => scope.check(assertPreparedSource)
           : () => {
               requestCurrent();
               publication?.assertCurrent();
@@ -191,6 +194,7 @@ export class StationReportGroupExecution {
             };
         const transactionCurrent = scope?.current ?? current;
         const preparationCurrent = scope ? current : executionCurrent;
+        const dispatchCurrent = scope?.current ?? metadataCurrent;
         const check = <Value>(body: () => Value): Value =>
           scope
             ? scope.check(body)
@@ -297,7 +301,7 @@ export class StationReportGroupExecution {
                     publication.withHome(
                       { owner: requestWriter, current: metadataCurrent },
                       async (scope): Promise<Value> => {
-                        scope.check(executionCurrent);
+                        scope.check(assertPreparedSource);
                         const scoped: PreparedReservedFinalFetchOwners =
                           build(scope).launch;
                         const value = await body(scope, {
@@ -404,7 +408,7 @@ export class StationReportGroupExecution {
                     {
                       persistence,
                       transport: {
-                        launch,
+                        launch: { ...launch, finalizeCurrent: dispatchCurrent },
                         reservation: {
                           groupId,
                           controller: prepared.spec.controller,
@@ -888,7 +892,7 @@ export class StationReportGroupExecution {
           ? publication.withHome(
               { owner: requestWriter, current: metadataCurrent },
               async (scope) => {
-                scope.check(executionCurrent);
+                scope.check(assertPreparedSource);
                 const value = await work(build(scope));
                 assertReturnedPreparation(scope);
                 return value;
@@ -986,7 +990,7 @@ export class StationReportGroupExecution {
                 groupId,
                 owner: requestWriter,
                 current: metadataCurrent,
-                assertPreparationCurrent: () => executionCurrent(),
+                assertPreparationCurrent: assertPreparedSource,
                 build: (scope) => {
                   const scoped = build(scope);
                   return {

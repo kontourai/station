@@ -27,6 +27,7 @@ import { createReportGroupRoutes } from '../../../routes/orchestration/report-gr
 import { isRuntimePublicationParticipant } from '../../../runtime/bootstrap/runtime-publication-participant.js';
 import { StationRuntime } from '../../../runtime/bootstrap/station-runtime.js';
 import { AnthropicSealedPreparation } from '../../../runtime/conversation/anthropic-sealed-preparation.js';
+import * as observedCredentials from '../../../runtime/conversation/provider-credential-observation.js';
 import * as reservedTurns from '../../../runtime/conversation/reserved-station-turn.js';
 import {
   bindRuntimeLocalOperator,
@@ -43,6 +44,7 @@ import { EventBus } from '../event-bus.js';
 import { EventStore } from '../event-store.js';
 import { OrchestrationService } from '../orchestration-service.js';
 import { createSessionAgentResolver } from '../session-agent-resolution.js';
+import { StationReportGroupPreparation } from '../station-report-group-preparation.js';
 import { StationReportGroupRuntime } from '../station-report-group-runtime.js';
 import {
   reportTerminalWitnessSchema,
@@ -609,6 +611,62 @@ test.each([
           ...(body === undefined ? {} : { body: JSON.stringify(body) }),
         },
       );
+    let sourceReads = 0;
+    let upstreamSourceReads = 0;
+    let upstreamCalls = 0;
+    let inUpstream = false;
+    if (scenario === 'independent') {
+      const read = observedCredentials.readObservedSdkProviderCredential;
+      vi.spyOn(
+        observedCredentials,
+        'readObservedSdkProviderCredential',
+      ).mockImplementation((...args) => {
+        sourceReads++;
+        if (inUpstream) upstreamSourceReads++;
+        return read(...args);
+      });
+      const dispatch = StationReportGroupPreparation.prototype.dispatch;
+      vi.spyOn(
+        StationReportGroupPreparation.prototype,
+        'dispatch',
+      ).mockImplementation(function (
+        this: StationReportGroupPreparation,
+        handle,
+        context,
+        seatId,
+        attempt,
+        service,
+      ) {
+        const current = attempt.transport.launch.finalizeCurrent;
+        // Production snapshots this unbranded launch record; owned handles and leases retain their identity.
+        return dispatch.call(
+          this,
+          handle,
+          context,
+          seatId,
+          {
+            ...attempt,
+            transport: {
+              ...attempt.transport,
+              launch: {
+                ...attempt.transport.launch,
+                finalizeCurrent: () => {
+                  upstreamCalls++;
+                  const prior = inUpstream;
+                  inUpstream = true;
+                  try {
+                    return current();
+                  } finally {
+                    inUpstream = prior;
+                  }
+                },
+              },
+            },
+          },
+          service,
+        );
+      });
+    }
     let watchdog: ReturnType<typeof setTimeout> | undefined;
     try {
       const disabled = await send(
@@ -752,6 +810,21 @@ test.each([
         assert.equal(h.rawFetch.mock.calls.length, 0);
         assert.deepEqual(protectedPublications, []);
         return;
+      }
+      if (scenario === 'independent') {
+        assert.ok(
+          sourceReads > 0,
+          'the real preparation source-read observer must be wired',
+        );
+        assert.ok(
+          upstreamCalls > 0,
+          'the actual dispatch must invoke its captured metadata finalizer',
+        );
+        assert.equal(
+          upstreamSourceReads,
+          0,
+          `dispatch metadata must delegate source checks to preparation (upstream=${upstreamSourceReads}, total=${sourceReads}, upstream calls=${upstreamCalls})`,
+        );
       }
       assert.equal(body.success, true, `${mode}: report execution succeeded`);
       assert.equal(

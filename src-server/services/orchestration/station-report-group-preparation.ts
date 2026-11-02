@@ -671,41 +671,52 @@ export class StationReportGroupPreparation {
     )
       refuse();
   }
+  #boundState(
+    handle: PreparedStationReportGroup,
+    request: Request,
+    expected?: State,
+  ): State {
+    const state = this.#states.get(handle);
+    if (
+      !state ||
+      (expected !== undefined && state !== expected) ||
+      state.closed ||
+      state.request !== request ||
+      request.signal.aborted ||
+      Date.now() >= state.deadlineAt
+    )
+      refuse();
+    return state;
+  }
   #state(handle: PreparedStationReportGroup, request: Request): State {
-    return this.owners.runtime.environmentSecurityService.withCurrentAuthority(
-      () => {
-        const state = this.#states.get(handle);
-        if (
-          !state ||
-          state.closed ||
-          state.request !== request ||
-          request.signal.aborted ||
-          Date.now() >= state.deadlineAt
-        )
-          refuse();
-        this.#assertRequest(request);
-        for (const qualification of new Set(
-          state.members.map((m) => m.qualification),
-        ))
-          qualification.assertCurrent();
-        const credentials = new Set<ObservedSdkProviderCredential>();
-        for (const member of state.members) {
-          member.flow?.assertCurrent();
-        }
-        for (const member of state.members) {
-          if (!credentials.has(member.credential)) {
-            readObservedSdkProviderCredential(
-              member.credential,
-              member.provider,
-              request,
-            );
-            credentials.add(member.credential);
+    const state =
+      this.owners.runtime.environmentSecurityService.withCurrentAuthority(
+        () => {
+          const state = this.#boundState(handle, request);
+          this.#assertRequest(request);
+          for (const qualification of new Set(
+            state.members.map((m) => m.qualification),
+          ))
+            qualification.assertCurrent();
+          const credentials = new Set<ObservedSdkProviderCredential>();
+          for (const member of state.members) {
+            member.flow?.assertCurrent();
           }
-        }
-        this.#assertRequest(request);
-        return state;
-      },
-    );
+          for (const member of state.members) {
+            if (!credentials.has(member.credential)) {
+              readObservedSdkProviderCredential(
+                member.credential,
+                member.provider,
+                request,
+              );
+              credentials.add(member.credential);
+            }
+          }
+          this.#assertRequest(request);
+          return state;
+        },
+      );
+    return this.#boundState(handle, request, state);
   }
   authorizes(
     handle: PreparedStationReportGroup,

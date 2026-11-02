@@ -12,6 +12,7 @@ import {
   captureEnvironmentLocalGrantObservationOwner,
   captureEnvironmentLocalGrantReadOwner,
 } from '../../../runtime/conversation/local-grant-observation-owner.js';
+import * as observedCredentials from '../../../runtime/conversation/provider-credential-observation.js';
 import { RuntimeFencedCredentialObservationOwner } from '../../../runtime/conversation/runtime-fenced-credential-observation.js';
 import { StationDelegationPersistence } from '../delegation-group-persistence.js';
 import {
@@ -195,6 +196,66 @@ test('current operator revocation invalidates the prepared root and reserved mem
     if (handle) h.owner.close(handle);
   }
 });
+
+test.each(['abort', 'deadline', 'close'] as const)(
+  'prepared reads refuse %s reached during their final credential check',
+  async (fault) => {
+    const h = await setup();
+    const abort = new AbortController();
+    const request = h.f.request('/api/orchestration/chat', {
+      signal: abort.signal,
+    });
+    const input = {
+      ...h.input,
+      maxConcurrent: 1,
+      members: h.input.members.slice(0, 1),
+    };
+    const handle = await h.owner.prepare(h.f.context(request), input);
+    const clock = Date.now();
+    const read = observedCredentials.readObservedSdkProviderCredential;
+    let faultApplied = false;
+    let reads = 0;
+    try {
+      assert.equal(h.owner.read(handle, request).members.length, 1);
+      const observed = vi
+        .spyOn(observedCredentials, 'readObservedSdkProviderCredential')
+        .mockImplementation((...args) => {
+          const value = read(...args);
+          reads++;
+          if (!faultApplied) {
+            faultApplied = true;
+            if (fault === 'abort')
+              abort.abort(new Error('controlled report read abort'));
+            else if (fault === 'deadline')
+              vi.mocked(Date.now).mockReturnValue(input.deadlineAt);
+            else h.owner.close(handle);
+          }
+          return value;
+        });
+      try {
+        assert.throws(() => h.owner.read(handle, request), {
+          code: 'group_preparation_unavailable',
+        });
+        assert.equal(
+          faultApplied,
+          true,
+          'the real credential check must reach its controlled bound-state change',
+        );
+        assert.equal(
+          reads,
+          1,
+          'one participating credential is read before the closing bound-state check',
+        );
+        assert.equal(h.rawFetch.mock.calls.length, 0);
+      } finally {
+        observed.mockRestore();
+      }
+    } finally {
+      vi.mocked(Date.now).mockReturnValue(clock);
+      h.owner.close(handle);
+    }
+  },
+);
 
 test('issued preparation reaches canonical delegated-task dispatch and retained accounting without synthetic root grants', async () => {
   const h = await setup();
