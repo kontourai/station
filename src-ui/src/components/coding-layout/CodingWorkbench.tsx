@@ -21,6 +21,7 @@ import {
   type CSSProperties,
   type KeyboardEvent,
   memo,
+  type FocusEvent as ReactFocusEvent,
   type ReactNode,
   type PointerEvent as ReactPointerEvent,
   useCallback,
@@ -1990,13 +1991,23 @@ function RailTip({ label, children }: { label: string; children: ReactNode }) {
     });
   };
   const hide = () => setPlace(null);
+  // #4401: keyboard focus only. A closed panel hands focus back to its rail
+  // item; on a pointer that focus is not visible, and a tip shown for it
+  // stayed over the rail after the pointer had left.
+  const showForVisibleFocus = (event: ReactFocusEvent<HTMLElement>) => {
+    if (
+      event.target instanceof HTMLElement &&
+      event.target.matches(':focus-visible')
+    )
+      show(event);
+  };
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: hover and focus listeners for the tooltip of the button inside; the span itself is not a control.
     <span
       className="coding-workbench__rail-tip-anchor"
       onPointerEnter={show}
       onPointerLeave={hide}
-      onFocus={show}
+      onFocus={showForVisibleFocus}
       onBlur={hide}
     >
       {children}
