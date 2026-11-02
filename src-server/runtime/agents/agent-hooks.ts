@@ -1,4 +1,5 @@
 import { mcpToolApprovalKey } from '@kontourai/station-shared/mcp-tool-selection';
+
 /**
  * Framework-agnostic agent lifecycle hooks.
  *
@@ -10,6 +11,7 @@ import { mcpToolApprovalKey } from '@kontourai/station-shared/mcp-tool-selection
  * tool-executor.ts createToolApprovalHooks().
  */
 
+import { currentAgentTurn } from '@kontourai/agent-runtime';
 import type { AgentSpec } from '@kontourai/station-contracts/agent';
 import type { AppConfig } from '@kontourai/station-contracts/config';
 import type { ProviderConnectionConfig } from '@kontourai/station-contracts/tool';
@@ -375,6 +377,12 @@ export function createAgentHooks(deps: AgentHooksDeps): IAgentHooks & {
           invocation.conversationId,
         );
         if (!conversation) return;
+        const durableReceipt = currentAgentTurn()?.key.invocationId;
+        if (
+          durableReceipt &&
+          conversation.metadata?.durableRuntimeStatsReceipt === durableReceipt
+        )
+          return;
 
         const agentSpec = await deps.configLoader.loadAgent(
           invocation.agentSlug,
@@ -439,6 +447,9 @@ export function createAgentHooks(deps: AgentHooksDeps): IAgentHooks & {
         await adapter.updateConversation(invocation.conversationId, {
           metadata: {
             ...conversation.metadata,
+            ...(durableReceipt
+              ? { durableRuntimeStatsReceipt: durableReceipt }
+              : {}),
             stats: updatedStats,
             modelStats,
           },

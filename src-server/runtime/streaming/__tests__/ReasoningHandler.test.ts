@@ -80,13 +80,17 @@ describe('ReasoningHandler', () => {
   });
 
   test('passes regular text through unchanged, including a prefix that was not a tag', async () => {
-    const { reasoning, text } = await runTextBlock([
+    const { result, reasoning, text } = await runTextBlock([
       'regular <thin',
       'x> text',
     ]);
 
     expect(reasoning).toBe('');
     expect(text).toBe('regular <thinx> text');
+    // Stable input-chunk grouping avoids one durable projection per character.
+    expect(result.filter((chunk) => chunk.type === 'text-delta')).toHaveLength(
+      2,
+    );
   });
 
   test('passes through non-text-delta chunks', async () => {

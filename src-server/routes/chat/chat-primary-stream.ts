@@ -6,6 +6,10 @@ import type { Context } from 'hono';
 import { stream } from 'hono/streaming';
 import { STATION_ENGINE_PROVIDER } from '../../../src-shared/monitoring-keys.js';
 import {
+  prepareDurableForegroundHandoff,
+  releaseDurableForeground,
+} from '../../runtime/agents/durable-agent-lifecycle.js';
+import {
   type AuthorizedTurnCorrelation,
   runWithAuthorizedTurnCorrelation,
 } from '../../runtime/conversation/authorized-turn-correlation.js';
@@ -408,12 +412,20 @@ export function streamPrimaryAgentChat({
       const abortController = new AbortController();
       conversationId = operationContext.conversationId;
 
-      const abortFromClient = () => {
-        ctx.logger.debug('Client disconnected, aborting operation', {
-          conversationId,
-        });
-        abortController.abort('Client disconnected');
-      };
+      const abortFromClient = prepareDurableForegroundHandoff({
+        agent,
+        conversationId: () => conversationId,
+        invocationId: () =>
+          turnCorrelation?.turnId ?? clientTurnId ?? requestTraceId,
+        writer: streamWriter,
+        signal: c.req.raw.signal,
+        abort: () => {
+          ctx.logger.debug('Client disconnected, aborting operation', {
+            conversationId,
+          });
+          abortController.abort('Client disconnected');
+        },
+      });
       if (c.req.raw.signal.aborted) abortFromClient();
       else
         c.req.raw.signal.addEventListener('abort', abortFromClient, {
@@ -421,6 +433,7 @@ export function streamPrimaryAgentChat({
         });
 
       operationContext.abortSignal = abortController.signal;
+      streamWriter.onAbort(abortFromClient);
       ctx.logger.debug('Abort signal configured', { conversationId });
 
       memory = agent.getMemory();
@@ -786,7 +799,7 @@ export function streamPrimaryAgentChat({
       await StreamOrchestrator.writeSSEDone(streamWriter);
     } finally {
       stopKeepalive();
-      releaseApprovalRequester();
+      releaseDurableForeground(streamWriter, releaseApprovalRequester);
       // archive#1224 (offline): the dedup short-circuit above
       // already wrote its own terminal SSE frames and `return`ed — none of
       // this turn's own bookkeeping (stats, cost, and critically
@@ -849,7 +862,9 @@ export function streamPrimaryAgentChat({
       try {
         return await writeStream(streamWriter);
       } finally {
-        releaseForegroundScopes(nativeForeground, nativeWorkspace);
+        releaseDurableForeground(streamWriter, () =>
+          releaseForegroundScopes(nativeForeground, nativeWorkspace),
+        );
       }
     };
     const withForeground = () =>
@@ -877,7 +892,9 @@ export function streamPrimaryAgentChat({
           } finally {
             // Completion ends issuance only. A bound native scope drains until
             // the orchestration event-store commits its terminal event.
-            closeNativeOutputTurnContext(nativeOutputGrant);
+            releaseDurableForeground(streamWriter, () =>
+              closeNativeOutputTurnContext(nativeOutputGrant),
+            );
           }
         })
       : correlated();

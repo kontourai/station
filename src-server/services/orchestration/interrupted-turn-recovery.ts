@@ -33,6 +33,13 @@ type InterruptedTurnRecoveryLogger = {
   warn(message: string, meta?: Record<string, unknown>): void;
 };
 
+/** The receiver must fence ownership and make retries idempotent before claiming. */
+export type DurableTurnHandoff = (input: {
+  record: SessionTurnBoundaryRecord;
+  turnId: string;
+  signal: AbortSignal;
+}) => Promise<'not-owned' | 'claimed' | 'retry'>;
+
 interface InterruptedTurnRecoveryDeps {
   /**
    * Called, not captured: the store is optional on the service options and a
@@ -63,6 +70,7 @@ interface InterruptedTurnRecoveryDeps {
    * `void`. Narrowing it would silently convert "declined" into "done".
    */
   publishEvent: (event: CanonicalRuntimeEvent) => boolean;
+  recoverDurableTurn?: DurableTurnHandoff;
   logger: InterruptedTurnRecoveryLogger;
 }
 
@@ -661,6 +669,29 @@ export class InterruptedTurnRecovery {
             });
           }
           continue;
+        }
+        if (
+          ownEnding === undefined &&
+          ownTurnId &&
+          this.deps.recoverDurableTurn
+        ) {
+          const handoff = await this.deps.recoverDurableTurn({
+            record: structuredClone(record),
+            turnId: ownTurnId,
+            signal: this.stopSignal.signal,
+          });
+          if (
+            this.stopSignal.signal.aborted ||
+            this.deps.eventStore() !== eventStore ||
+            handoff === 'retry'
+          ) {
+            failed.push(record);
+            continue;
+          }
+          if (handoff === 'claimed') continue;
+          if (handoff !== 'not-owned')
+            throw new Error('Invalid durable turn handoff result');
+          if (movedOn()) continue;
         }
         const providerTurn = isProviderTurnBoundary(record);
         const startEvent = eventStore.latestEventByMethod(
