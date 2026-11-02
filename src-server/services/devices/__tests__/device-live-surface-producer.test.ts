@@ -939,13 +939,13 @@ describe('Android', () => {
           () => h.frames.some((frame) => frame.header.codec !== 'h264'),
           'an image frame',
         );
-        const imageHeader = h.frames.findLast(
-          (frame) => frame.header.codec !== 'h264',
-        )!.header;
+        const lastOf = (video: boolean) =>
+          [...h.frames]
+            .reverse()
+            .find((frame) => (frame.header.codec === 'h264') === video)!.header;
+        const imageHeader = lastOf(false);
         video.emit('message', semuUnit(false, delta1), true);
-        const videoHeader = h.frames.findLast(
-          (frame) => frame.header.codec === 'h264',
-        )!.header;
+        const videoHeader = lastOf(true);
         const tap = async (header: LiveSurfaceFrameHeader) => {
           const at = { x: header.width * 0.75, y: header.height * 0.25 };
           await h.producer.dispatch({
