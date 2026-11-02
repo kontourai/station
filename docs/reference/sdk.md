@@ -5842,6 +5842,19 @@ enable a global browser deadline for uploads or installs. See the
 [fetcher](../../packages/sdk/src/query-domains/chatRuntimeOrchestration.ts) and
 [deadline transport](../../packages/sdk/src/client/http.ts).
 
+## Unknown owned-work cleanup
+
+Session summaries expose pending custody and its reason through `ownedWork`.
+The shared status vocabulary distinguishes stopping, waiting on another Station
+process and unknown custody. `dispatchOrchestrationCommand` accepts
+`releaseUnknownOwnedWork` with `threadId` and the literal confirmation
+`child-process-may-still-be-running`. Present an explicit confirmation that child
+processes may still be running and will no longer be tracked by this Session
+before sending it. It removes an at-rest parent's checked unknown cleanup and
+the parent record while preserving child history; it does not confirm a stop.
+Known owners or changed custody refuse the command, and older hosts reject its
+wire type. See [delegated ownership](contracts.md#delegated-execution-ownership).
+
 ## Orchestration approval deadlines
 
 Orchestration command failures retain HTTP status even when the response omits

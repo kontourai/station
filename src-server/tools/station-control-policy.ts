@@ -1857,6 +1857,7 @@ export const SCOPED_THREAD_COMMAND_FIELD: Readonly<Record<string, string>> = {
   interruptTurn: 'threadId',
   stopSession: 'threadId',
   discardDraft: 'threadId',
+  releaseUnknownOwnedWork: 'threadId',
 };
 
 /** `thread-commands-stay-in-scope`: the shared scope rule, for these commands. */
