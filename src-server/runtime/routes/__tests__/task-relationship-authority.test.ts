@@ -388,6 +388,45 @@ test('Task list groups authorized independent room requests and linked chats wit
   expect((await read('other')).workChatConversationIds).toEqual([]);
   expect(h.graph.readTask(h.task.id)?.sessionId).toBeUndefined();
   expect(start).toHaveBeenCalledOnce();
+  h.store.reserveNextConversationSession({
+    conversationId: result.record.sessionId,
+    predecessorSessionId: result.record.sessionId,
+    proposedSessionId: 'failed-successor',
+    createdAt: '2026-10-02T00:00:00.000Z',
+  });
+  h.store.appendEvent({
+    eventId: 'failed-successor-exit',
+    threadId: 'failed-successor',
+    sessionId: 'failed-successor',
+    provider: 'claude',
+    method: 'session.exited',
+    createdAt: '2026-10-02T00:00:00.000Z',
+    reason: 'stopped',
+  });
+  expect(h.store.readSessionByThread('failed-successor')).toBeUndefined();
+  expect(
+    await h.sessions.resolveConversationOpen(
+      result.record.sessionId,
+      sessionReadAuthorityFromRequest('owner', undefined, undefined),
+    ),
+  ).toMatchObject({
+    status: 'resolved',
+    currentSessionId: result.record.sessionId,
+  });
+  expect((await read('owner')).workChatConversationIds).toEqual(
+    expect.arrayContaining(['chat', result.record.sessionId]),
+  );
+  expect((await read('other')).workChatConversationIds).toEqual([]);
+  h.store.appendEvent({
+    eventId: 'failed-successor-reconfigured',
+    threadId: 'failed-successor',
+    sessionId: 'failed-successor',
+    provider: 'claude',
+    method: 'session.configured',
+    createdAt: '2026-10-02T00:00:00.000Z',
+    metadata: { projectSlug: 'foreign' },
+  });
+  expect((await read('owner')).workChatConversationIds).toEqual(['chat']);
   const open = h.sessions.resolveConversationOpen.bind(h.sessions);
   vi.spyOn(h.sessions, 'resolveConversationOpen').mockImplementationOnce(
     async (...args) => {

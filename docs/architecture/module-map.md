@@ -4882,7 +4882,11 @@ batches discovery of primary Sessions, independent room requests and explicit
 work-chat links for `GET /api/tasks`. It prepares request-local relationship
 authority, repeats discovery after asynchronous preparation, then rechecks
 Task/Project incarnation and Conversation access before emitting optional
-`workChatConversationIds`. The UI groups these chats under a single Task outcome
+`workChatConversationIds`. A failed continuation's unstarted lineage tail keeps
+the chat associated when Conversation open authorizes its exact predecessor;
+the tail must still have no persisted Session or start/configuration metadata.
+Materialized Sessions retain independent Project and reader checks.
+The UI groups these chats under a single Task outcome
 without changing its lead Session. Direct Task association precedes delegated
 grouping; multiple direct owners leave the chat separate. Counts include actual
 running chats rather than the Task's recorded status. SDK mutations and HTTP

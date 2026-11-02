@@ -15,10 +15,14 @@ export function createTaskRelationshipAuthority(deps: {
     | 'resolveConversationOpen'
     | 'currentConversationSessionId'
     | 'canUserReadConversation'
+    | 'canUserReadSession'
   >;
   events?: Pick<
     EventStore,
-    'conversationSessions' | 'conversationForSession' | 'latestEventByMethods'
+    | 'conversationSessions'
+    | 'conversationForSession'
+    | 'latestEventByMethods'
+    | 'readSessionByThread'
   >;
   readAuthority(request: Request): SessionReadAuthority;
   current(request: Request): boolean;
@@ -112,8 +116,17 @@ export function createTaskRelationshipAuthority(deps: {
         )
           continue;
         const child = deps.sessions.currentConversationSessionId(id);
-        if (opened.currentSessionId !== child || !deps.events) continue;
-        const lineage = JSON.stringify(deps.events.conversationSessions(id));
+        if (!deps.events) continue;
+        const links = deps.events.conversationSessions(id);
+        const tail = links.at(-1);
+        // Conversation open may describe the authorized predecessor of an
+        // unstarted continuation. Only that exact reserved tail lacks scope metadata.
+        const reservedChild =
+          opened.currentSessionId !== child &&
+          tail?.sessionId === child &&
+          tail.predecessorSessionId === opened.currentSessionId;
+        if (opened.currentSessionId !== child && !reservedChild) continue;
+        const lineage = JSON.stringify(links);
         const ownership = () => {
           if (
             deps.events!.conversationForSession(id)?.conversationId &&
@@ -129,6 +142,8 @@ export function createTaskRelationshipAuthority(deps: {
               'session.started',
               'session.configured',
             ]);
+            if (reservedChild && sessionId === child)
+              return !event && !deps.events!.readSessionByThread(sessionId);
             const payload = event?.payload;
             if (
               !payload ||
@@ -157,7 +172,13 @@ export function createTaskRelationshipAuthority(deps: {
             deps.sessions.currentConversationSessionId(id) === child &&
             JSON.stringify(deps.events!.conversationSessions(id)) === lineage &&
             ownership() &&
-            deps.sessions.canUserReadConversation(id, reader),
+            (reservedChild
+              ? links.every(
+                  (link) =>
+                    link.sessionId === child ||
+                    deps.sessions.canUserReadSession(link.sessionId, reader),
+                )
+              : deps.sessions.canUserReadConversation(id, reader)),
         );
       }
       return current() ? access : undefined;
