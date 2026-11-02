@@ -878,6 +878,73 @@ describe.skipIf(!chromiumAvailable)('inbox row geometry (#3043)', () => {
     },
   );
 
+  // #4266: on a phone the second line read [mark] … "No project" from the
+  // middle of the row, and the engine's name was a 1px clipped label.
+  test('a phone row names its engine in words and keeps the project beside it', async () => {
+    seed();
+    const { unmount } = render(
+      <MobileInboxPanel
+        open
+        tasks={[
+          item({
+            id: 'codex-row',
+            provider: 'codex',
+            agentLabel: 'Codex',
+            projectLabel: 'No project',
+            projectSlug: undefined,
+          }),
+        ]}
+        activeChatSessionId={null}
+        triggerRef={createRef<HTMLButtonElement>()}
+        onClose={vi.fn()}
+        onFocusChat={vi.fn()}
+        onOpenConversation={vi.fn()}
+        onOpenSession={vi.fn()}
+        onCloseChat={vi.fn()}
+        now={NOW}
+      />,
+    );
+    const markup = document.body.innerHTML;
+    unmount();
+    expect(markup, 'fixture draws an engine mark').toContain('identity-marks');
+    const pg = await browser.newPage({
+      viewport: { width: 412, height: 915 },
+      hasTouch: true,
+      isMobile: true,
+    });
+    try {
+      await pg.setContent(page(markup));
+      await settle(pg);
+      const line = await pg
+        .locator('.mobile-inbox__list .inbox-row--touch')
+        .first()
+        .evaluate((row) => {
+          const box = (selector: string) => {
+            const rect = row.querySelector(selector)!.getBoundingClientRect();
+            return { left: rect.left, right: rect.right, width: rect.width };
+          };
+          return {
+            row: box('.inbox-row__open'),
+            marks: box('.identity-marks'),
+            engine: box('.inbox-row__meta-text'),
+            engineText: row.querySelector('.inbox-row__meta-text')!.textContent,
+            project: box('.inbox-row__project'),
+          };
+        });
+      expect(line.engineText).toBe('Codex');
+      expect(line.engine.width).toBeGreaterThan(20);
+      expect(line.engine.left).toBeGreaterThanOrEqual(line.marks.right);
+      expect(line.project.left).toBeGreaterThanOrEqual(line.engine.right);
+      // Beside the engine, not from the row's midpoint.
+      expect(line.project.left - line.engine.right).toBeLessThan(40);
+      expect(line.project.left).toBeLessThan(
+        line.row.left + line.row.width / 2,
+      );
+    } finally {
+      await pg.close();
+    }
+  });
+
   test('the actions a touch row keeps in its Details sheet are 44px targets on a phone', async () => {
     seed();
     const view = render(
