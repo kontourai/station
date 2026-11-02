@@ -339,3 +339,128 @@ test('an expired tool credential tells the Session to restart before execution',
     now.mockRestore();
   }
 });
+
+test('bound catalog dispatches device logs and Task recording through their authorized routes', async () => {
+  let current = true;
+  const logs = vi.fn(async (_access, authority, id, appId, enabled) => ({
+    ok: true,
+    logs: {
+      sessionId: id,
+      appId,
+      output: 'sample',
+      truncated: false,
+      principal: authority.principalId,
+      enabled: enabled(),
+    },
+  }));
+  const recordSource = vi.fn(async (_access, input, resolveSource) => {
+    await resolveSource();
+    return {
+      id: 'clip',
+      source: { commit: 'a'.repeat(40), recording: { file: 'recording.webm' } },
+      durationMs: input.durationMs,
+    };
+  });
+  const recordToTask = vi.fn(
+    async (_access, _authority, _id, enabled, publish) => {
+      if (!enabled()) return { ok: false, code: 'feature_preview_disabled' };
+      return { ok: true, ...(await publish({ marker: 'device-source' })) };
+    },
+  );
+  const resolveRecord = () => ({
+    principal: { id: 'operator', source: 'session-owner' as const },
+    localProjectId: 'project',
+    projectIdSource: 'session-record' as const,
+  });
+  const device = createDeviceAgentRoutes({
+    isInternalRequest: () => true,
+    resolveCaller: (request) =>
+      resolveStationControlCallerForRequest(request, resolveRecord),
+    authorizePrincipal: createBrowserPrincipalAuthorizer({
+      isOperatorPrincipal: (id) => id === 'operator',
+    }),
+    agentAccessEnabled: () => true,
+    deviceLoopEnabled: () => true,
+    shares: { list: () => [] } as never,
+    automation: { logs, recordToTask } as never,
+    taskCapture: () => ({
+      runtime: {
+        sessionTaskReviewAccess: async (sessionId: string) =>
+          sessionId === 'bound-device-session'
+            ? { kind: 'granted', write: { projectId: 'project' } }
+            : { kind: 'not-found' },
+      } as never,
+      captures: {} as never,
+      recordings: { recordSource } as never,
+      localProjectIdFor: (id) => id,
+    }),
+  });
+  const app = new Hono();
+  app.use('*', async (c, next) => {
+    setRuntimeAuthenticatedRequestPrincipal(c.req.raw, {
+      kind: 'internal',
+      credential: 'test',
+      authority: undefined,
+      source: 'bearer',
+    });
+    await next();
+  });
+  app.route('/api/device-agent', device);
+  const server = await createCodexBoundToolServer({
+    sessionId: 'bound-device-session',
+    resolveRecord,
+    includeBrowser: false,
+    includeDevices: true,
+    isCurrent: () => current,
+    dispatch: async (request) => app.fetch(request),
+  });
+  try {
+    expect(server.tools.map((tool) => tool.name)).toEqual(
+      expect.arrayContaining(['device_logs', 'device_record_to_task']),
+    );
+    const logResult = (await server.call(
+      'device_logs',
+      { deviceSessionId: 'device-session', appId: 'com.example.app' },
+      () => current,
+    )) as { content: { text: string }[] };
+    expect(JSON.parse(logResult.content[0]!.text)).toMatchObject({
+      ok: true,
+      logs: {
+        sessionId: 'device-session',
+        appId: 'com.example.app',
+        principal: 'operator',
+        enabled: true,
+      },
+    });
+    const recording = (await server.call(
+      'device_record_to_task',
+      { deviceSessionId: 'device-session', durationMs: 1000 },
+      () => current,
+    )) as { content: { text: string }[] };
+    expect(JSON.parse(recording.content[0]!.text)).toMatchObject({
+      ok: true,
+      walkthroughId: 'clip',
+      commit: 'a'.repeat(40),
+    });
+    expect(recordSource).toHaveBeenCalledWith(
+      expect.objectContaining({ write: { projectId: 'project' } }),
+      expect.objectContaining({
+        durationMs: 1000,
+        signal: expect.any(AbortSignal),
+      }),
+      expect.any(Function),
+    );
+    current = false;
+    await expect(
+      server.call(
+        'device_logs',
+        { deviceSessionId: 'device-session', appId: 'com.example.app' },
+        () => current,
+      ),
+    ).rejects.toThrow('bound-tool-refused');
+    expect(logs).toHaveBeenCalledOnce();
+    expect(recordToTask).toHaveBeenCalledOnce();
+  } finally {
+    await server.close();
+  }
+});

@@ -35,6 +35,12 @@ authorization/recovery and usability evidence beyond fixture and synthesized-spe
 
 ## Record a Task clip
 
+With Device developer loop and Walkthroughs enabled, a person can record a
+Device clip from the Device pane, and a Task-bound agent can use
+`device_record_to_task`. The clip records its host, device and app observed at
+the start. The agent holds the input lease through recording and publication;
+human control prevents its claim. See [Device recording](mobile-device-workspace.md#capture-a-device-screen-to-a-task).
+
 With Walkthroughs enabled, a bound lead Session can call the sensitive
 `station-browser` tool `browser_record_to_task` with `durationMs` (1–30,000),
 and optional `browserSessionId`, `label`, and `maxBytes` (at most 16 MiB). The
@@ -46,7 +52,9 @@ The recorder pins a clean Task workspace and its commit, consumes Browser
 screencast frames, and encodes a silent WebM. It checks the workspace, Browser
 generation, caller, Task and preview again before publication. Dirty workspaces,
 unobservable submodules, changed authority, unavailable media tools, excess
-bytes or exhausted recording capacity refuse the operation. A commit pin does
+bytes or exhausted recording capacity refuse the operation. The shared recorder
+admits at most four active Browser and Device clips, with at most two per Task
+and author. A commit pin does
 not prove the displayed page was built from that commit. The manifest retains
 the commit, recording digest and byte length, and up to ten selected frames;
 audio and transcript coverage are absent.

@@ -12,6 +12,7 @@ import type { MobileDevicePlatform } from '@kontourai/station-contracts/mobile-d
 import { getJson, mutateJson } from '@kontourai/station-sdk';
 import type { ApiRequestScope } from '@kontourai/station-sdk/client';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useEffect } from 'react';
 
 /**
  * React Query bindings for the Device pane's Tools drawer (#1971).
@@ -44,6 +45,7 @@ const KNOWN_FAILURES: readonly DeviceToolsFailure[] = [
   'unsupported',
   'tool-unavailable',
   'tool-failed',
+  'app-not-running',
   'tool-timeout',
   'hub-unavailable',
   'unknown-host',
@@ -178,6 +180,68 @@ const deviceToolsKey = (
   target.platform,
   target.deviceId,
 ];
+
+export function useDeviceLogs(
+  scope: ApiRequestScope,
+  target: DeviceToolsTarget,
+  projectSlug: string | null,
+  appId: string,
+  enabled: boolean,
+) {
+  const queryClient = useQueryClient();
+  useEffect(() => {
+    if (!enabled)
+      void queryClient.cancelQueries({
+        queryKey: [
+          ...deviceToolsKey(scope, target, projectSlug),
+          'logs',
+          appId,
+        ],
+        exact: true,
+      });
+  }, [enabled, queryClient, scope, target, projectSlug, appId]);
+  return useQuery({
+    queryKey: [...deviceToolsKey(scope, target, projectSlug), 'logs', appId],
+    queryFn: async ({ signal }) => {
+      const value = await data(
+        await getJson(
+          `${scope.apiBase}${toolsPath(target, '/logs', { appId }, projectSlug)}`,
+          { signal, requestScope: scope, maxResponseBytes: 2 * 1024 * 1024 },
+        ),
+      );
+      if (
+        value.hostId !== target.hostId ||
+        value.platform !== target.platform ||
+        value.deviceId !== target.deviceId ||
+        value.appId !== appId ||
+        typeof value.output !== 'string' ||
+        typeof value.processId !== 'string' ||
+        typeof value.truncated !== 'boolean'
+      )
+        throw new DeviceToolsRequestError(200, undefined);
+      return {
+        output: value.output,
+        processId: value.processId,
+        truncated: value.truncated,
+      };
+    },
+    enabled,
+    refetchInterval: enabled ? 5000 : false,
+    refetchIntervalInBackground: false,
+    retry: false,
+  });
+}
+
+export function describeDeviceLogsFailure(error: unknown): string {
+  if (
+    error instanceof DeviceToolsRequestError &&
+    error.code === 'app-not-running'
+  )
+    return 'The app is not running on this device.';
+  return error instanceof DeviceToolsRequestError && error.status === 404
+    ? 'This Station cannot read device logs. Update the host and try again.'
+    : describeDeviceToolsFailure(error);
+}
 
 /** The drawer's values, read back once on open and on Refresh. */
 export function useDeviceToolsSnapshot(
