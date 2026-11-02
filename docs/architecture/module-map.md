@@ -2231,9 +2231,11 @@ obligations remain pending, retaining the own fold in `ownedWork`. Turn
 coordination continues to describe the parent's own turn.
 `ownedWork.pendingStops` exposes grouped custody, reason and count;
 `ownedWork.state` distinguishes `running`, `stopping`, `waiting-on-peer` and
-`unknown`. UI consumers should show these states rather than presenting pending
-cleanup as ordinary running work. Inbox/live-chat integration belongs to its
-status owner; this change exposes the wire contract without changing those views.
+`unknown`. The shared status ladder carries custody through its existing fact
+record and shows **Stopping**, **Waiting on another Station process**, or
+**Unknown** in Session lists, detail headers, project work and Inbox status
+lines. A closed parent with pending cleanup stays in the busy lane; the own
+lifecycle remains separate. Approval and failure retain their existing priority.
 Lifecycle transition validation and the completed-session send guard use the
 own fold, preserving those execution boundaries while the aggregate is busy.
 

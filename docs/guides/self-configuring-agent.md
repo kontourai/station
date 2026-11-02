@@ -760,6 +760,8 @@ that could adopt it. See the
    Unknown child custody stays pending for inspection but does not prevent the
    parent stopping itself. `ownedWork.state` and `pendingStops` distinguish
    stopping locally, waiting on a peer, and unknown cleanup from running work.
+   Session and Inbox status lines show **Stopping**, **Waiting on another
+   Station process**, or **Unknown** through the shared status ladder.
    Reopening resumes recorded obligations, and
    repeated delivery is harmless at the adapter. New result request IDs derive
    from the child execution Session and its terminal event. Historical stored

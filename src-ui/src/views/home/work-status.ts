@@ -1,4 +1,7 @@
-import { SESSION_STATUS_WORDS } from '@kontourai/station-contracts/session-attention';
+import {
+  OWNED_WORK_STATUS_WORDS,
+  SESSION_STATUS_WORDS,
+} from '@kontourai/station-contracts/session-attention';
 import { formatDuration } from '../../utils/relativeTime';
 import { type HomeWorkItem, TASK_AWAITS_ANSWER_LABEL } from './home-view-model';
 import type { WorkAttentionKind, WorkFacts } from './work-facts';
@@ -195,6 +198,14 @@ function rungFor(item: HomeWorkItem, facts: WorkFacts | undefined): Rung {
         reason: item.unanswerableNotice,
       };
     case 'Running': {
+      const ownedState = facts?.ownedWorkState;
+      if (ownedState && ownedState !== 'running')
+        return {
+          rung: 'childWork',
+          lane: 'running',
+          tone: ownedState === 'unknown' ? 'caution' : 'active',
+          word: OWNED_WORK_STATUS_WORDS[ownedState],
+        };
       const activity = facts?.activity;
       const since = epochMs(activity?.turnStartedAt);
       const children = activity?.childWorkCount ?? 0;

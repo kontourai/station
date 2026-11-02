@@ -54,7 +54,9 @@ reports `runningChildCount`, `pendingStopCount` and `ownLifecycleState` while
 aggregate owned work keeps the parent busy. `pendingStops` groups pending
 custody (`local`, `peer`, `unknown`), reason and count without exposing child IDs.
 `state` is `running`, `stopping`, `waiting-on-peer` or `unknown`; status views
-should prefer it when cleanup is pending. Unknown cleanup stays visible after
+use it when cleanup is pending. The shared status ladder renders **Stopping**,
+**Waiting on another Station process**, or **Unknown**, including a closed
+parent whose child cleanup remains pending. Unknown cleanup stays visible after
 an ancestor's own Stop completes. The counts cover verified,
 non-background descendants and pending stop obligations.
 

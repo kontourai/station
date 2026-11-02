@@ -56,6 +56,22 @@ export function removeEmptyRender(source) {
 }
 export const MUTATIONS = [
   {
+    id: 'cascade-custody-ui',
+    test: 'src-ui/src/__tests__/owned-work-status.test.tsx',
+    failure: 'owned cleanup renders',
+    files: [
+      {
+        path: 'src-ui/src/views/home/work-facts.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            'if (session?.ownedWork) entry.ownedWorkState = session.ownedWork.state;',
+            '',
+          ),
+      },
+    ],
+  },
+  {
     id: 'cascade-ended-child',
     test: 'src-server/services/orchestration/__tests__/ownership-cascade-review.test.ts',
     failure: 'a parent Stop completes for a terminal unbound child',

@@ -165,6 +165,14 @@ export function orchestrationLifecycleLabel(
   const currentChildWork =
     session.conversationActivity?.currentThreadId === session.threadId &&
     session.conversationActivity.runningChildWork !== undefined;
+  const owned = session.ownedWork;
+  if (
+    owned &&
+    (owned.runningChildCount > 0 || owned.pendingStopCount > 0) &&
+    disposition.state !== 'awaiting' &&
+    disposition.state !== 'failed'
+  )
+    return 'Running';
   // A completed or stopped parent turn may leave reported children running.
   // Keep the attention fold unchanged: background work is not a request to
   // the user. A closed or failed session retains its terminal outcome.
@@ -255,6 +263,12 @@ export const SESSION_STATUS_WORDS = {
   idle: 'Idle',
 } as const;
 
+export const OWNED_WORK_STATUS_WORDS = {
+  stopping: 'Stopping',
+  'waiting-on-peer': 'Waiting on another Station process',
+  unknown: 'Unknown',
+} as const;
+
 /**
  * The ladder's word for a session summary alone, as `workStatus(item, now)`
  * words it without UI facts: the lane is the same with or without them, and
@@ -262,7 +276,9 @@ export const SESSION_STATUS_WORDS = {
  */
 export function sessionLadderWord(
   session: OrchestrationSessionSummary,
-): (typeof SESSION_STATUS_WORDS)[keyof typeof SESSION_STATUS_WORDS] {
+):
+  | (typeof SESSION_STATUS_WORDS)[keyof typeof SESSION_STATUS_WORDS]
+  | (typeof OWNED_WORK_STATUS_WORDS)[keyof typeof OWNED_WORK_STATUS_WORDS] {
   if (session.controlMode === 'read-only-attached')
     return SESSION_STATUS_WORDS.elsewhere;
   switch (orchestrationLifecycleLabel(session)) {
@@ -274,8 +290,12 @@ export function sessionLadderWord(
       return SESSION_STATUS_WORDS.stopped;
     case 'Unanswerable':
       return SESSION_STATUS_WORDS.elsewhere;
-    case 'Running':
-      return SESSION_STATUS_WORDS.running;
+    case 'Running': {
+      const state = session.ownedWork?.state;
+      return state && state !== 'running'
+        ? OWNED_WORK_STATUS_WORDS[state]
+        : SESSION_STATUS_WORDS.running;
+    }
     case 'Draft':
       return SESSION_STATUS_WORDS.draft;
     case 'Completed':
