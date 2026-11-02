@@ -41,6 +41,9 @@ export interface AgentTurnLease {
   } | null;
   entry(id: string, value: unknown): Promise<unknown>;
   frame(id: string, wire: string): Promise<AgentFrame>;
+  frameBatch(
+    frames: readonly { readonly id: string; readonly wire: string }[],
+  ): Promise<AgentFrame[]>;
   pause(): void;
   assertCurrent(): Promise<void>;
   /** Exactly one foreground execution per committed ownership claim. */
@@ -138,6 +141,21 @@ export function createAgentRuntime(options: {
       key: Object.freeze(structuredClone(record.spec.key)),
       input: record.spec.input,
       providerSessionId,
+      async frameBatch(frames) {
+        if (settling) await settling;
+        const answer = await options.journal.execute(
+          {
+            type: 'projectFrameBatch',
+            key: turn.spec.key,
+            expected: turn.fence,
+            frames,
+          },
+          context,
+        );
+        if (answer.kind !== 'frames')
+          throw new Error('DURABLE_AGENT_PROJECTION_REFUSED');
+        return answer.frames;
+      },
       async frame(id, wire) {
         if (settling) await settling;
         const answer = await options.journal.execute(

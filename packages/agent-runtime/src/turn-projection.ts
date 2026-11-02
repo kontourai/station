@@ -35,6 +35,36 @@ export const frameCommand = z
     wire: z.string().max(32 * 1024 * 1024),
   })
   .strict();
+export type FrameBatchCommand = {
+  readonly type: 'projectFrameBatch';
+  readonly key: RunKey;
+  readonly expected: Fence;
+  readonly frames: readonly { readonly id: string; readonly wire: string }[];
+};
+export const frameBatchCommand = z
+  .object({
+    type: z.literal('projectFrameBatch'),
+    key: runKey,
+    expected: fence,
+    frames: z
+      .array(z.object({ id: text, wire: z.string().max(64 * 1024) }).strict())
+      .min(1)
+      .max(1024)
+      .refine(
+        (frames) =>
+          frames.reduce((n, frame) => n + Buffer.byteLength(frame.wire), 0) <=
+          64 * 1024,
+      )
+      .refine(
+        (frames) =>
+          new Set(frames.map((frame) => frame.id)).size === frames.length,
+      ),
+  })
+  .strict();
+export type FrameBatchResult = {
+  readonly kind: 'frames';
+  readonly frames: AgentFrame[];
+};
 export const framesDefinition =
   'CREATE TABLE agent_steps_frames(turn_id TEXT NOT NULL REFERENCES agent_steps_turns(id), id TEXT NOT NULL, position INTEGER NOT NULL CHECK(position>=0), record TEXT NOT NULL, PRIMARY KEY(turn_id,id), UNIQUE(turn_id,position)) STRICT';
 function parseFrame(row: Record<string, unknown>): AgentFrame {

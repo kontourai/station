@@ -509,6 +509,7 @@ function createStationOwner(home: string) {
         },
         allowSettlement,
         frame: async (frameId, wire) => (await leaseReady).frame(frameId, wire),
+        frameBatch: async (frames) => (await leaseReady).frameBatch(frames),
         onDetach: async () => {
           await leaseReady;
           const frames = withJournal(({ database }) =>

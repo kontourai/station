@@ -41,8 +41,11 @@ import {
   validateAgentEffects,
 } from './turn-effects.js';
 import {
+  type FrameBatchCommand,
+  type FrameBatchResult,
   type FrameCommand,
   type FrameResult,
+  frameBatchCommand,
   frameCommand,
   framesDefinition,
   projectAgentFrame,
@@ -88,6 +91,7 @@ export type AgentJournalResult =
   | ApprovalResult
   | EffectResult
   | FrameResult
+  | FrameBatchResult
   | {
       readonly kind: 'owned';
       readonly turn: AgentTurnRecord;
@@ -122,7 +126,11 @@ function copyAgentAnswer(answer: AgentJournalResult): AgentJournalResult {
   return { ...answer };
 }
 type Owned = { readonly key: RunKey; readonly expected: Fence };
-type StepCommand = EffectCommand | ApprovalCommand | FrameCommand;
+type StepCommand =
+  | EffectCommand
+  | ApprovalCommand
+  | FrameCommand
+  | FrameBatchCommand;
 type EffectProtocol = {
   [K in StepCommand['type']]: {
     command: Extract<StepCommand, { type: K }>;
@@ -186,6 +194,7 @@ const commandSchema = z.discriminatedUnion('type', [
   ...effectCommands,
   ...approvalCommands,
   frameCommand,
+  frameBatchCommand,
   z.object({ type: z.literal('open'), spec, owner }).strict(),
   z.object({ type: z.literal('read'), key: runKey }).strict(),
   z.object({ type: z.literal('claim'), ...ownedFields, owner }).strict(),
@@ -1022,7 +1031,8 @@ export function openSqliteAgentJournal(options: {
         const key = command.type === 'open' ? command.spec.key : command.key;
         validateSelected = synchronizeAgentValidation(database, idOf(key));
         const trackMembership =
-          participants.length > 0 || command.type !== 'projectFrame';
+          participants.length > 0 ||
+          !['projectFrame', 'projectFrameBatch'].includes(command.type);
         const beforeIds = !trackMembership
           ? []
           : agentStatement(
@@ -1092,10 +1102,31 @@ export function openSqliteAgentJournal(options: {
           }
           if (!turn || canonical(turn.fence) !== canonical(command.expected))
             return { kind: 'refused', reason: 'stale' };
-          if (command.type === 'projectFrame') {
+          if (
+            command.type === 'projectFrame' ||
+            command.type === 'projectFrameBatch'
+          ) {
             if (probe(turn.fence.owner) !== 'live')
               return { kind: 'refused', reason: 'unknown-owner' };
-            return projectAgentFrame(database, idOf(key), command, clock());
+            const at = clock();
+            if (command.type === 'projectFrameBatch')
+              return {
+                kind: 'frames',
+                frames: command.frames.map((frame) =>
+                  projectAgentFrame(
+                    database,
+                    idOf(key),
+                    {
+                      type: 'projectFrame',
+                      key,
+                      expected: command.expected,
+                      ...frame,
+                    },
+                    at,
+                  ).frame,
+                ),
+              };
+            return projectAgentFrame(database, idOf(key), command, at);
           }
           if (turn.state !== 'running')
             return { kind: 'refused', reason: 'settled' };
@@ -1171,7 +1202,8 @@ export function openSqliteAgentJournal(options: {
           (answer.kind === 'owned' ||
             answer.kind === 'effect' ||
             answer.kind === 'approval' ||
-            answer.kind === 'frame')
+            answer.kind === 'frame' ||
+            answer.kind === 'frames')
         ) {
           for (const participant of participants) {
             const returned: unknown = participant.commit?.(
@@ -1199,6 +1231,14 @@ export function openSqliteAgentJournal(options: {
             canonical(answer.frame)
         )
           throw new Error('DURABLE_AGENT_PARTICIPANT_CHANGED_STATE');
+        if (participants.length > 0 && answer.kind === 'frames') {
+          for (const frame of answer.frames)
+            if (
+              canonical(readAgentFrame(database, idOf(key), frame.id)) !==
+              canonical(frame)
+            )
+              throw new Error('DURABLE_AGENT_PARTICIPANT_CHANGED_STATE');
+        }
         if (trackMembership) {
           const expectedIds = new Set(beforeIds);
           if (answer.kind === 'owned') {

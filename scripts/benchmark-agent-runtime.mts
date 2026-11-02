@@ -213,7 +213,15 @@ async function run(
     } finally {
       const elapsed = performance.now() - start;
       commits.push(elapsed);
-      if (command.type === 'projectFrame') projections.push(elapsed);
+      if (
+        command.type === 'projectFrame' ||
+        command.type === 'projectFrameBatch'
+      ) {
+        const frames =
+          command.type === 'projectFrame' ? 1 : command.frames.length;
+        for (let index = 0; index < frames; index++)
+          projections.push(elapsed / frames);
+      }
       if (commits.length % 256 === 0)
         walPeakBytes = Math.max(walPeakBytes, diskBytes(`${journalPath}-wal`));
     }

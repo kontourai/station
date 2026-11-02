@@ -151,6 +151,9 @@ export interface DurableForegroundState {
   readonly attachTransport: () => void;
   readonly allowSettlement: () => void;
   readonly frame: (id: string, wire: string) => Promise<AgentFrame>;
+  readonly frameBatch: (
+    frames: readonly { readonly id: string; readonly wire: string }[],
+  ) => Promise<AgentFrame[]>;
   readonly onDetach?: () => Promise<void>;
   readonly onWire?: (wire: string) => void | Promise<void>;
   readonly failed: (error: unknown) => void;
@@ -166,7 +169,11 @@ const foregrounds = new WeakMap<object, Map<string, DurableForegroundState>>();
 const transports = new WeakMap<object, Set<Transport>>();
 const writerOwners = new WeakMap<
   object,
-  { state: () => DurableForegroundState | undefined; dispose: () => void }
+  {
+    state: () => DurableForegroundState | undefined;
+    flush: () => Promise<unknown>;
+    dispose: () => void;
+  }
 >();
 export function registerDurableForeground(
   agent: object,
@@ -247,7 +254,7 @@ export function prepareDurableForegroundHandoff(input: {
       void state.onDetach?.().catch(state.failed);
     }
   };
-  input.writer.write = async (wire) => {
+  const persist = async (wire: string | Uint8Array) => {
     const state = find();
     if (!state || typeof wire !== 'string' || !wire.startsWith('data: '))
       return originalWrite(wire);
@@ -264,10 +271,79 @@ export function prepareDurableForegroundHandoff(input: {
     if (detached) await state.onWire?.(retained);
     return input.writer;
   };
+  let pending: { id: string; wire: string }[] = [];
+  let bytes = 0;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let delivery: Promise<unknown> = Promise.resolve();
+  let failure: unknown;
+  const flush = () => {
+    if (timer) clearTimeout(timer);
+    timer = undefined;
+    if (!pending.length) return delivery;
+    const batch = pending;
+    pending = [];
+    bytes = 0;
+    const state = find();
+    if (!state)
+      return Promise.reject(new Error('Durable foreground unavailable'));
+    delivery = delivery.then(async () => {
+      const frames = await state.frameBatch(batch);
+      for (const frame of frames) {
+        const retained = encodeDurableAgentFrame(state.invocationId, frame);
+        if (!detached)
+          await Promise.race([originalWrite(retained), disconnected]);
+        if (detached) await state.onWire?.(retained);
+      }
+      return input.writer;
+    });
+    void delivery.catch((error) => {
+      failure = error;
+    });
+    return delivery;
+  };
+  input.writer.write = async (wire) => {
+    if (failure) throw failure;
+    const state = find();
+    const payload =
+      typeof wire === 'string' && wire.startsWith('data: ')
+        ? wire.slice(6).trimEnd()
+        : '';
+    const event = payload.startsWith('{') ? JSON.parse(payload) : undefined;
+    if (
+      state &&
+      typeof wire === 'string' &&
+      event &&
+      ['text-delta', 'reasoning-delta'].includes(event.type) &&
+      Buffer.byteLength(wire) <= 64 * 1024
+    ) {
+      const size = Buffer.byteLength(wire);
+      if (
+        pending.length &&
+        (bytes + size > 64 * 1024 || pending.length === 1024)
+      )
+        await flush();
+      pending.push({ id: frameKey(wire), wire });
+      bytes += size;
+      if (!timer)
+        timer = setTimeout(() => {
+          void flush().catch(() => {});
+        }, 16);
+      if (bytes >= 64 * 1024 || pending.length >= 1024) await flush();
+      return input.writer;
+    }
+    await flush();
+    delivery = delivery.then(() => persist(wire));
+    void delivery.catch((error) => {
+      failure = error;
+    });
+    return delivery;
+  };
   writerOwners.set(input.writer, {
     state: find,
+    flush,
     dispose: () => {
       disposed = true;
+      if (timer) clearTimeout(timer);
       bound = undefined;
       candidates.delete(transport);
       input.signal.removeEventListener('abort', disconnect);
@@ -284,14 +360,18 @@ export function releaseDurableForeground(
 ): void {
   const transport = writerOwners.get(writer);
   const state = transport?.state();
-  state?.allowSettlement();
-  if (state && !state.finished())
-    void state.completion
-      .then(cleanup, cleanup)
-      .finally(() => transport?.dispose())
-      .catch(state.failed);
-  else {
+  if (!state) {
     transport?.dispose();
     cleanup();
+    return;
   }
+  const drained = transport?.flush() ?? Promise.resolve();
+  void drained.then(state.allowSettlement, (error) => {
+    state.failed(error);
+    state.allowSettlement();
+  });
+  void Promise.allSettled([drained, state.completion])
+    .then(cleanup)
+    .finally(() => transport?.dispose())
+    .catch(state.failed);
 }

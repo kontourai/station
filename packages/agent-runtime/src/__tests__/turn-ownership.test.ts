@@ -165,3 +165,23 @@ it('late publication waits for an in-flight settlement receipt instead of using 
     value: { id: 'late-frame', wire: 'data: {"type":"finish"}\n\n' },
   });
 });
+
+it('a frame batch rolls back as one prefix and restored frame IDs keep their receipts', async () => {
+  const f = await setup();
+  const frames = [
+    { id: 'a', wire: 'data: {"text":"a"}\n\n' },
+    { id: 'b', wire: 'data: {"text":"b"}\n\n' },
+  ];
+  f.crash.failNextCommit(new Error('frame-batch-rollback'));
+  await expect(f.lease.frameBatch(frames)).rejects.toThrow(
+    'frame-batch-rollback',
+  );
+  expect((await f.lease.frame('probe', 'data: {}\n\n')).position).toBe(0);
+  const receipt = await f.lease.frameBatch(frames);
+  expect(receipt.map((frame) => frame.position)).toEqual([1, 2]);
+  expect(receipt.map((frame) => frame.wire)).toEqual(
+    frames.map((frame) => frame.wire),
+  );
+  await f.crash.reopen();
+  expect(await f.lease.frame('b', frames[1]!.wire)).toEqual(receipt[1]);
+});
