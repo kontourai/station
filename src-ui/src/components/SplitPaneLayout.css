@@ -640,9 +640,10 @@
    default rhythm; only the split-pane list row's padding is tuned so its
    OWN content-driven height lands within measurement tolerance of a real
    item row — proven with a real Chromium measurement, not grepped CSS text
-   (SplitPaneLayout.skeleton-geometry.test.tsx). */
+   (SplitPaneLayout.skeleton-geometry.test.tsx). The 12px text floor (#4403)
+   grew a real row to ~41.9px, so the vertical padding follows (6px -> 7.5px). */
 .split-pane__list .skeleton-list__item {
-  padding: 6px 12px;
+  padding: 7.5px 12px;
 }
 
 .split-pane__detail-skeleton {
