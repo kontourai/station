@@ -1,0 +1,7 @@
+{
+  "revision": "d22aecabae5a8ca39a4f9ba6d6f43a1002f39d58",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Refs #3569 final consumer review: the UI exhaustive event dispatcher now explicitly ignores session.cancellation-requested because intention cannot settle a turn or drain a send queue. Existing terminal and stop-settled handlers remain authoritative. The caller fixture narrows its queried canonical event before reading start metadata; no cast, authorization change, lifecycle mutation or rendered surface was added. The existing ownership/cancellation prose remains accurate. Focused UI and delegation owners passed 19 tests; the preceding compiler failures establish the missing consumer and narrowing.","inputs":["docs/architecture/module-map.md"]}
+  ]
+}

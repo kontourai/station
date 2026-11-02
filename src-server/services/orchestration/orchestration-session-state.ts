@@ -1,3 +1,4 @@
+import type { OwnedSessionActivity } from '@kontourai/station-contracts/orchestration';
 import type { ProviderDurabilityProfile } from '@kontourai/station-contracts/provider';
 import { SESSION_RECOVERY_FAILED_CODE } from '@kontourai/station-contracts/provider-failure';
 import type { ProviderRuntimeErrorEvent } from '@kontourai/station-contracts/runtime-events';
@@ -61,7 +62,7 @@ import type { IProviderAdapterRegistry } from '../../providers/provider-interfac
 import { withTenantExecutionContext } from '../../runtime/bootstrap/runtime-tenant-context.js';
 import { safeSanitizeUIBlockEventProvenance } from '../../runtime/conversation/ui-block-provenance.js';
 import { errorMessage } from '../../utils/error-message.js';
-import { isManagedAcpWorkspace } from '../acp/managed-acp-workspace.js';
+import { isManagedEngineWorkspace } from '../infra/managed-engine-workspace.js';
 import { receiptBus } from '../infra/receipt-bus.js';
 import type { RuntimeEngineStartLease } from '../infra/resource-posture.js';
 import { assertDispatchCwdUnmoved } from './dispatch-cwd-admission.js';
@@ -576,6 +577,7 @@ export function buildOrchestrationSessionSummary(options: {
     threadId: string,
     provider: string | undefined,
   ) => ChildWorkSessionView | undefined;
+  readOwnedWork?: (threadId: string) => OwnedSessionActivity | undefined;
   /**
    * The CONVERSATION's first prompted turn, supplied only when this thread is a
    * continuation child (`EventStore.conversationRootFirstPromptedTurn`).
@@ -724,7 +726,7 @@ export function buildOrchestrationSessionSummary(options: {
     ...(modelRoute ? { modelRoute } : {}),
     ...(base.model ? { model: base.model } : {}),
     ...(base.cwd ? { cwd: base.cwd } : {}),
-    ...(base.cwd && isManagedAcpWorkspace(base.cwd)
+    ...(base.cwd && isManagedEngineWorkspace(base.cwd)
       ? { cwdManagedWorkspace: true as const }
       : {}),
     ...(resumeCursor !== undefined ? { resumeCursor } : {}),
@@ -802,6 +804,24 @@ export function buildOrchestrationSessionSummary(options: {
     hasActiveTurn: hasOpenTurn(events),
     ...(draft !== undefined ? { draft } : {}),
   };
+  const ownedWork = options.readOwnedWork?.(base.threadId);
+  if (
+    ownedWork &&
+    (ownedWork.runningChildCount > 0 || ownedWork.pendingStopCount > 0)
+  ) {
+    summary.ownedWork = {
+      ...ownedWork,
+      state: ownedWork.pendingStops.some((stop) => stop.custody === 'unknown')
+        ? 'unknown'
+        : ownedWork.pendingStops.some((stop) => stop.custody === 'peer')
+          ? 'waiting-on-peer'
+          : ownedWork.pendingStopCount > 0
+            ? 'stopping'
+            : 'running',
+      ownLifecycleState: lifecycle.lifecycleState,
+    };
+    summary.lifecycleState = 'running';
+  }
   // #2456: a delegated session, as its parent's child work. Derived from the
   // summary's own folds (delegation + open turn + lifecycle), so it can never
   // disagree with the members it is computed from.

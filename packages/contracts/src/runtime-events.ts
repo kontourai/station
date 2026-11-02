@@ -403,6 +403,14 @@ export interface SessionExitedEvent extends CanonicalRuntimeEventBase {
   reason?: string;
 }
 
+/** Durable cancellation intent; it makes no assertion that an engine has stopped. */
+export interface SessionCancellationRequestedEvent
+  extends CanonicalRuntimeEventBase {
+  method: 'session.cancellation-requested';
+  sessionId: string;
+  action: 'stop' | 'cancel';
+}
+
 export interface TurnStartedEvent extends CanonicalRuntimeEventBase {
   method: 'turn.started';
   turnId: string;
@@ -1317,6 +1325,7 @@ export type CanonicalRuntimeEvent =
   | SessionConfiguredEvent
   | SessionStateChangedEvent
   | SessionExitedEvent
+  | SessionCancellationRequestedEvent
   | TurnStartedEvent
   | TurnCompletedEvent
   | TurnAbortedEvent
