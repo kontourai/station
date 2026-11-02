@@ -195,9 +195,11 @@ export function validateConfig(raw) {
   }
   if (raw.serverPort > 65532) {
     fail(
-      'dogfood config serverPort must be at most 65532 for voice/terminal/consent ports',
+      'dogfood config serverPort must be at most 65532 for its four-port block',
     );
   }
+  // The block stays four wide: + 1 is no longer bound, but a supervisor
+  // started by an older Station can still hold it until it restarts.
   const reservedPorts = [
     raw.serverPort,
     raw.serverPort + 1,
@@ -206,7 +208,7 @@ export function validateConfig(raw) {
     raw.uiPort,
   ];
   if (new Set(reservedPorts).size !== reservedPorts.length) {
-    fail('server, voice, terminal, consent, and UI ports must all be distinct');
+    fail('server block (+0 to +3) and UI ports must all be distinct');
   }
   let tailnet;
   try {

@@ -191,8 +191,7 @@ function shutdownDouble(): ShutdownDouble {
   runtime.acpBridge = { shutdown: vi.fn(async () => {}) };
   runtime.feedbackService = { stop: vi.fn() };
   runtime.voiceService = { stop: vi.fn(async () => {}) };
-  runtime.terminalWsServer = { stop: vi.fn() };
-  runtime.terminalService = { dispose: vi.fn(async () => {}) };
+  runtime.scopedTerminals = {};
   runtime.configLoader = {
     getProjectHomeDir: () => '/tmp/station-home-under-test',
     dispose: vi.fn(async () => {
@@ -437,6 +436,18 @@ describe('shutdown and the native-engine adoption window (station#1815)', () => 
       'loader-disposed',
       'lease-released',
     ]);
+  });
+
+  test('disposes the terminal sessions the routes composed', async () => {
+    const { runtime } = shutdownDouble();
+    runtime.nativeEngineAdoptionSettled = Promise.resolve();
+    runtime.nativeEngineAdoptionSettleBudgetMs = () => 25;
+    const dispose = vi.fn(async () => {});
+    runtime.scopedTerminals.sessions = { dispose };
+
+    await runtime.shutdown();
+
+    expect(dispose).toHaveBeenCalledTimes(1);
   });
 });
 

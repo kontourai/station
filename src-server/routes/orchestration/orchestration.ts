@@ -1936,11 +1936,6 @@ export function createOrchestrationRoutes(
         debug(message: string, meta?: Record<string, unknown>): void;
       };
     };
-    terminalService?: {
-      listProcessSummaries(): TerminalProcessSummary[];
-      readProcess(sessionId: string): TerminalProcessDetail | null;
-      close(sessionId: string): Promise<void>;
-    };
     /**
      * #3994: sessions the terminal socket owns, projected into the same
      * process shapes. Each call is authorized as the caller (terminal
@@ -6561,12 +6556,12 @@ export function createOrchestrationRoutes(
     // Terminal state is process-global and carries no durable tenant binding.
     // Keep the complete surface unavailable in a hosted deployment until it
     // can be authorized from a tenant-bound terminal record. Do this before
-    // looking at the optional service so an unavailable terminal is
+    // looking at the optional sessions so an unavailable terminal is
     // indistinguishable from an unbound one and no process state is read.
     if (deps.hostedTenantRegistry) {
       return c.json({ success: false, error: 'Terminal not found' }, 404);
     }
-    if (!deps.terminalService) {
+    if (!deps.scopedTerminals) {
       return c.json(
         { success: false, error: 'Terminal service unavailable' },
         503,
@@ -6574,10 +6569,7 @@ export function createOrchestrationRoutes(
     }
     return c.json({
       success: true,
-      data: [
-        ...deps.terminalService.listProcessSummaries(),
-        ...((await deps.scopedTerminals?.list(c.req.raw)) ?? []),
-      ],
+      data: await deps.scopedTerminals.list(c.req.raw),
     });
   });
 
@@ -6585,16 +6577,16 @@ export function createOrchestrationRoutes(
     if (deps.hostedTenantRegistry) {
       return c.json({ success: false, error: 'Process not found' }, 404);
     }
-    if (!deps.terminalService) {
+    if (!deps.scopedTerminals) {
       return c.json(
         { success: false, error: 'Terminal service unavailable' },
         503,
       );
     }
-    const data =
-      deps.terminalService.readProcess(param(c, 'sessionId')) ??
-      (await deps.scopedTerminals?.read(c.req.raw, param(c, 'sessionId'))) ??
-      null;
+    const data = await deps.scopedTerminals.read(
+      c.req.raw,
+      param(c, 'sessionId'),
+    );
     if (!data) {
       return c.json({ success: false, error: 'Process not found' }, 404);
     }
@@ -6605,23 +6597,17 @@ export function createOrchestrationRoutes(
     if (deps.hostedTenantRegistry) {
       return c.json({ success: false, error: 'Process not found' }, 404);
     }
-    if (!deps.terminalService) {
+    if (!deps.scopedTerminals) {
       return c.json(
         { success: false, error: 'Terminal service unavailable' },
         503,
       );
     }
     const sessionId = param(c, 'sessionId');
-    if (
-      !deps.terminalService.readProcess(sessionId) &&
-      (await deps.scopedTerminals?.close(c.req.raw, sessionId))
-    )
-      return c.json({ success: true, data: { sessionId } });
-    await deps.terminalService.close(sessionId);
-    return c.json({
-      success: true,
-      data: { sessionId: param(c, 'sessionId') },
-    });
+    if (!(await deps.scopedTerminals.close(c.req.raw, sessionId))) {
+      return c.json({ success: false, error: 'Process not found' }, 404);
+    }
+    return c.json({ success: true, data: { sessionId } });
   });
 
   app.post(

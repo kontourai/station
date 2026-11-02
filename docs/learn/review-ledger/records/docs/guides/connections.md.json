@@ -202,8 +202,6 @@
 
     "src-server/services/orchestration/session-transcript-reads.ts",
 
-    "src-server/services/terminal/terminal-ws-server.ts",
-
     "src-server/tools/station-control-catalog-tools.ts",
 
     "src-server/tools/station-control-delegation.ts",
@@ -408,7 +406,9 @@
 
     "src-server/runtime/mcp/station-control-mcp-token.ts",
 
-    "src-server/services/plugins/tool-server-oauth.ts"
+    "src-server/services/plugins/tool-server-oauth.ts",
+
+    "src-server/services/terminal/terminal-gateway.ts"
   ],
 
   "checks": [

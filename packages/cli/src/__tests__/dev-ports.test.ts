@@ -114,28 +114,24 @@ describe('allocateDevPorts — probe + scan forward', () => {
     expect(result.moved).toBe(true);
   });
 
-  test('probes all four listeners (server, terminal, voice, ui) and scans forward when the terminal port is busy', async () => {
-    // start() also binds serverPort+1 (terminal) and serverPort+2 (voice).
-    // Make ONLY the terminal port of the derived offset busy: server + ui are
-    // free, so a server+ui-only probe would wrongly accept offset 10 and then
-    // die on EADDRINUSE mid-start. The busy port SERVER_BASE+11 shadows offset
-    // 10 (as its terminal) AND offset 11 (as its server), so the scan lands on
-    // offset 12 — exactly the cross-offset coupling this probe defends against.
-    const busyTerminalPort = STATION_DEV_SERVER_PORT_BASE + 10 + 1;
-    const isPortFree = (port: number) => port !== busyTerminalPort;
+  test('does not reserve the server port + 1, which no listener binds', async () => {
+    const busyPort = STATION_DEV_SERVER_PORT_BASE + 10 + 1;
+    const isPortFree = (port: number) => port !== busyPort;
     const result = await allocateDevPorts(10, isPortFree);
-    expect(result.offset).toBe(12);
-    expect(result.serverPort).toBe(STATION_DEV_SERVER_PORT_BASE + 12);
-    expect(result.moved).toBe(true);
+    expect(result.offset).toBe(10);
+    expect(result.moved).toBe(false);
   });
 
   test('scans forward when only the voice port of the derived offset is busy', async () => {
-    // SERVER_BASE+12 is voice(offset 10), terminal(offset 11), and server
-    // (offset 12) — three offsets shadowed — so the first fully-free pair is 13.
+    // start() also binds serverPort+2 (voice), so a server+ui-only probe
+    // would wrongly accept offset 10 and then die on EADDRINUSE mid-start.
+    // SERVER_BASE+12 is voice(offset 10) and server(offset 12); offset 11
+    // binds 11, 13 and 14, so it is the first fully-free offset.
     const busyVoicePort = STATION_DEV_SERVER_PORT_BASE + 10 + 2;
     const isPortFree = (port: number) => port !== busyVoicePort;
     const result = await allocateDevPorts(10, isPortFree);
-    expect(result.offset).toBe(13);
+    expect(result.offset).toBe(11);
+    expect(result.moved).toBe(true);
   });
 
   test('supports an async predicate', async () => {

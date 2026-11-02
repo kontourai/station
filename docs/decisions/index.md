@@ -22,4 +22,5 @@ Numbered ADRs under `docs/adr/` are frozen history and are not listed here.
 | [pull-request-guide-generation](./pull-request-guide-generation.md) | current | Generate shared pull request guides without model execution tools |
 | [revision-evidence-freeze-policy](./revision-evidence-freeze-policy.md) | current | Freeze Task room revision evidence only when a consumer references it |
 | [telemetry-tiers](./telemetry-tiers.md) | current | Per-publisher Station telemetry tiers and consent boundaries |
+| [terminal-same-origin-only](./terminal-same-origin-only.md) | current | Terminals use only the same-origin socket; the port + 1 listener is removed |
 | [user-color-themes](./user-color-themes.md) | current | Named color themes layered on the shipped design tokens, Station unchanged by default |

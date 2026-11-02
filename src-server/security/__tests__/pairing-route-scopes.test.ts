@@ -734,24 +734,11 @@ describe('external surface capability table (station#2000)', () => {
       scope: 'orchestration:operate',
     });
     expect(
-      requiredExternalSurfaceCapability('terminal-ws', 'CONNECT', '/'),
-    ).toMatchObject({
-      capability: 'pairing-scope',
-      scope: 'terminal:operate',
-    });
-    expect(
       requiredExternalSurfaceCapability('voice-ws', 'CONNECT', '/'),
     ).toMatchObject({
       capability: 'pairing-scope',
       scope: 'orchestration:operate',
     });
-    expect(
-      requiredExternalSurfaceCapability(
-        'terminal-ws',
-        'CONNECT',
-        '/__station/health',
-      ),
-    ).toMatchObject({ capability: 'public' });
     expect(EXTERNAL_SURFACE_CAPABILITY_TABLE).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -1885,8 +1872,7 @@ describe('station#1398 slice 2: the fleet inference family and the model-invento
 });
 
 describe('pairing-route-scopes: WS upgrade paths', () => {
-  test('terminal requires terminal:operate; voice requires orchestration:operate', () => {
-    expect(PAIRING_WS_SCOPES.terminal).toBe('terminal:operate');
+  test('voice requires orchestration:operate', () => {
     expect(PAIRING_WS_SCOPES.voice).toBe('orchestration:operate');
   });
 
@@ -1901,20 +1887,12 @@ describe('pairing-route-scopes: WS upgrade paths', () => {
 });
 
 /**
- * `credentialAuthorizedForScope` is the exact function both WebSocket
- * first-frame auth wrappers call — terminal's in
- * `runtime-service-bootstrap.ts` (`PAIRING_WS_SCOPES.terminal`) and voice's
- * in `runtime-initialize.ts` (`PAIRING_WS_SCOPES.voice`). Mirrored describe
- * blocks per archive#1098: terminal already had a
- * capture-based bootstrap test (`runtime-service-bootstrap.test.ts`); voice
- * had none. Both are exercised identically here against the same shared
- * function, so this closes that gap without depending on either runtime's
- * heavy cold-start wiring.
+ * `credentialAuthorizedForScope` is the exact function the voice WebSocket
+ * first-frame auth wrapper calls in `runtime-initialize.ts`
+ * (`PAIRING_WS_SCOPES.voice`), exercised here without the runtime's heavy
+ * cold-start wiring (archive#1098).
  */
-describe.each([
-  ['terminal', PAIRING_WS_SCOPES.terminal],
-  ['voice', PAIRING_WS_SCOPES.voice],
-] as const)(
+describe.each([['voice', PAIRING_WS_SCOPES.voice]] as const)(
   'credentialAuthorizedForScope: %s WebSocket gate',
   (_name, requiredScope) => {
     test('a read-only credential is denied', async () => {

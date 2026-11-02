@@ -1181,7 +1181,6 @@ function validStartAttempt(start) {
   return Boolean(
     start &&
       validPort(start.serverPort) &&
-      validPort(start.serverPort + 1) &&
       validPort(start.serverPort + 2) &&
       validPort(start.serverPort + 3) &&
       validPort(start.uiPort) &&
@@ -1251,7 +1250,6 @@ async function startAttemptPortsAreAvailable(
     (
       await Promise.all([
         portAvailable(start.serverPort),
-        portAvailable(start.serverPort + 1),
         portAvailable(start.serverPort + 2),
         portAvailable(start.serverPort + 3),
         portAvailable(start.uiPort),

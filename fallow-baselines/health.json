@@ -15188,14 +15188,6 @@
         "count": 3
       }
     },
-    "src-server/services/terminal/__tests__/terminal-history-bounds.test.ts": {
-      "complexity_high": {
-        "count": 1
-      },
-      "crap_high": {
-        "count": 1
-      }
-    },
     "src-server/services/terminal/__tests__/terminal-sessions.process.test.ts": {
       "crap_moderate": {
         "count": 1
@@ -15223,20 +15215,6 @@
         "count": 1
       }
     },
-    "src-server/services/terminal/terminal-history.ts": {
-      "complexity_critical": {
-        "count": 1
-      },
-      "complexity_high": {
-        "count": 1
-      },
-      "crap_critical": {
-        "count": 1
-      },
-      "crap_high": {
-        "count": 1
-      }
-    },
     "src-server/services/terminal/terminal-journal.ts": {
       "complexity_critical": {
         "count": 1
@@ -15259,14 +15237,6 @@
         "count": 1
       }
     },
-    "src-server/services/terminal/terminal-service.ts": {
-      "complexity_high": {
-        "count": 1
-      },
-      "crap_high": {
-        "count": 1
-      }
-    },
     "src-server/services/terminal/terminal-sessions.ts": {
       "complexity_high": {
         "count": 1
@@ -15279,11 +15249,6 @@
       },
       "crap_moderate": {
         "count": 1
-      }
-    },
-    "src-server/services/terminal/terminal-ws-server.ts": {
-      "crap_high": {
-        "count": 3
       }
     },
     "src-server/services/transcription/sherpa-transcriber.ts": {
@@ -22671,7 +22636,6 @@
     "src-ui/src/float-over-chat/FloatOverChatHost.tsx:complexity",
     "src-ui/src/views/agent-editor/useAgentsViewModel.ts:complexity",
     "src-server/routes/consent/consent-native-routes.ts:complexity",
-    "src-server/services/terminal/terminal-history.ts:untested risk",
     "src-server/voice/providers/nova-sonic-events.ts:complexity",
     "src-ui/src/lib/serverOlderThanClient.ts:complexity",
     "src-ui/src/providers/voice/LocalSpeechSTTProvider.ts:complexity",

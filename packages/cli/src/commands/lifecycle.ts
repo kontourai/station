@@ -1705,7 +1705,6 @@ function getInstanceServicePorts(
 ): number[] {
   return [
     record.serverPort,
-    record.serverPort + 1,
     record.serverPort + 2,
     record.consentPort ?? record.serverPort + 3,
     record.uiPort,
@@ -1984,7 +1983,6 @@ function unreadableStateRecordIsDead(path: string): boolean {
       isProcessAlive(parsed.uiPid ?? null) ||
       findListeningPidsForPorts([
         serverPort,
-        serverPort + 1,
         serverPort + 2,
         parsed.consentPort ?? serverPort + 3,
         parsed.uiPort ?? DEFAULT_UI_PORT,
@@ -2853,7 +2851,7 @@ export function validateLifecyclePorts(
 ): void {
   if (!Number.isInteger(serverPort) || serverPort < 1 || serverPort > 65_532) {
     throw new Error(
-      `Invalid server port ${serverPort}. Expected an integer from 1 through 65532 so terminal, voice, and consent ports remain in range.`,
+      `Invalid server port ${serverPort}. Expected an integer from 1 through 65532 so voice and consent ports remain in range.`,
     );
   }
   if (!Number.isInteger(uiPort) || uiPort < 1 || uiPort > 65_535) {
@@ -2870,16 +2868,10 @@ export function validateLifecyclePorts(
       `Invalid consent port ${consentPort}. Expected an integer from 1 through 65535.`,
     );
   }
-  const ports = [
-    serverPort,
-    serverPort + 1,
-    serverPort + 2,
-    consentPort,
-    uiPort,
-  ];
+  const ports = [serverPort, serverPort + 2, consentPort, uiPort];
   if (new Set(ports).size !== ports.length) {
     throw new Error(
-      `Station listener ports must be distinct: server ${serverPort}, terminal ${serverPort + 1}, voice ${serverPort + 2}, consent ${consentPort}, UI ${uiPort}.`,
+      `Station listener ports must be distinct: server ${serverPort}, voice ${serverPort + 2}, consent ${consentPort}, UI ${uiPort}.`,
     );
   }
 }
@@ -2887,7 +2879,7 @@ export function validateLifecyclePorts(
 function formatReservedPorts(
   record: Pick<InstanceStateRecord, 'serverPort' | 'uiPort' | 'consentPort'>,
 ): string {
-  return `${record.serverPort} (server), ${record.serverPort + 1} (terminal), ${record.serverPort + 2} (voice), ${record.consentPort ?? record.serverPort + 3} (consent), ${record.uiPort} (ui)`;
+  return `${record.serverPort} (server), ${record.serverPort + 2} (voice), ${record.consentPort ?? record.serverPort + 3} (consent), ${record.uiPort} (ui)`;
 }
 
 function assertNoPortConflicts(
@@ -2951,7 +2943,6 @@ function assertNoRegistryPortConflicts(
       if (birthProvesReuse(instance.birth, instance.pid)) continue;
       const band = [
         instance.port,
-        instance.port + 1,
         instance.port + 2,
         instance.consentPort ?? instance.port + 3,
         ...(instance.uiPort === undefined ? [] : [instance.uiPort]),
@@ -4679,7 +4670,7 @@ export function serverStartFailureContext(logFile: string): string[] {
 
 /**
  * Waits for a TCP listener the managed server opens beside its API port (the
- * terminal and voice sockets). With `childAlive` it takes the same bounded
+ * voice socket). With `childAlive` it takes the same bounded
  * slow-boot extension as `waitForIdentity` (#2964): while the server is alive
  * and its identity wait is still legitimately extending, a flat 90 s here
  * failed the start first ("Timed out waiting for TCP listener") on loaded
@@ -5397,11 +5388,6 @@ export async function start(opts: StartOptions = {}): Promise<void> {
           readinessHeaders,
           { childAlive: childAliveProbe(serverProc.pid), signal },
         ),
-      (signal) =>
-        waitForTcpOk(host, serverPort + 1, STARTUP_READINESS_TIMEOUT_MS, {
-          childAlive: childAliveProbe(serverProc.pid),
-          signal,
-        }),
       (signal) =>
         waitForTcpOk(host, serverPort + 2, STARTUP_READINESS_TIMEOUT_MS, {
           childAlive: childAliveProbe(serverProc.pid),
