@@ -4,7 +4,11 @@ import { statSync } from 'node:fs';
 import { join } from 'node:path';
 import type { PrincipalRef } from '@kontourai/station-contracts/principal';
 import type { SessionReadAuthority } from '@kontourai/station-contracts/tenancy';
-import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
+import {
+  acquireFileMutationLockAsync,
+  inspectLock,
+  lockOwnerAlive,
+} from '@kontourai/station-shared/lifecycle-events';
 import {
   publishJsonFileWithOwnedLock,
   readJsonFile,
@@ -317,8 +321,14 @@ export class CreateRequestClaims {
     try {
       const reserved = await this.#update((ledger) => {
         const now = Date.now();
-        for (const [id, row] of Object.entries(ledger.claims))
-          if (claimExpired(row, now)) delete ledger.claims[id];
+        for (const [id, row] of Object.entries(ledger.claims)) {
+          if (!claimExpired(row, now)) continue;
+          if (!row.result && id !== key) {
+            const owner = inspectLock(`${this.#file}.${id}.owner`);
+            if (owner && lockOwnerAlive(owner.owner)) continue;
+          }
+          delete ledger.claims[id];
+        }
         if (callerSessionId && ledger.claims[legacyKey]?.legacyDigest)
           throw new CreateRequestConflictError();
         if (!callerSessionId && ledger.claims[legacyKey]) {

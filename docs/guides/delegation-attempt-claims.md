@@ -10,8 +10,13 @@ binds authenticated user/tenant/principal and verified calling Session to the
 request kind, key and input. Each intended request needs a unique key. Completed
 receipts replay for seven wall-clock days, then expire. A dead unmarked claim
 with no Session can be reclaimed; a durable starting mark without confirmation
-is indeterminate. Typed rejected starts with no Session release their claim.
-Unresolved and legacy unknown-start claims never expire. Admission reserves
+is indeterminate. A pre-start refusal releases its request claim even when the
+target Session already exists; typed rejected starts also release the claim.
+Unconfirmed starting claims expire seven days after their first mark, and legacy
+starting claims receive a durable window on migration. After expiry, key reuse is
+a new request and may duplicate the original effect. Expiry never authorizes
+automatic retry. Inspect the reserved conversationId with `get_session` or the
+Session API; Station cannot automatically reconcile an absent Session. Admission reserves
 receipt bytes before effects; 1,024 records or the 4 MiB budget produce a typed
 HTTP 429. The [API reference](../reference/api.md) explains the 3 KiB receipt
 bound, migration and clock limits. This general contract preserves the peer

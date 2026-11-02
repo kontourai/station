@@ -359,3 +359,36 @@ test('a starting claim expires after seven days, reclaiming capacity with an exp
     Object.keys(JSON.parse(readFileSync(file, 'utf8')).claims),
   ).toHaveLength(1);
 });
+
+test('expiry cannot prune a still-running create when another request is admitted', async () => {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(new Date('2026-11-01T00:00:00Z'));
+  const { claims, file } = setup();
+  let entered!: () => void;
+  let finish!: () => void;
+  const ready = new Promise<void>((resolve) => {
+    entered = resolve;
+  });
+  const hold = new Promise<void>((resolve) => {
+    finish = resolve;
+  });
+  const original = claims.run(input(), async (id) => {
+    await markCreateRequestStarting(id);
+    entered();
+    await hold;
+    return handle(id);
+  });
+  await ready;
+  vi.setSystemTime(new Date('2026-11-08T00:00:00Z'));
+  try {
+    await claims.run({ ...input(), requestKey: 'other' }, async (id) =>
+      handle(id),
+    );
+  } finally {
+    finish();
+  }
+  await expect(original).resolves.toMatchObject({ providerTurnId: 'turn-1' });
+  expect(
+    Object.keys(JSON.parse(readFileSync(file, 'utf8')).claims),
+  ).toHaveLength(2);
+});
