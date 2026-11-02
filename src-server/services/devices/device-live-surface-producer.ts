@@ -873,14 +873,10 @@ export class DeviceLiveSurfaceProducer implements LiveSurfaceProducer {
     // asks for a keyframe then, so an earlier request has nothing to add.
     const requestKeyframe = () => {
       if (socket.readyState !== 1) return;
-      try {
-        socket.send(
-          JSON.stringify({ type: 'reset-video', ack: false }),
-          () => {},
-        );
-      } catch (error) {
-        this.reportError('device keyframe request failed', error);
-      }
+      socket.send(
+        JSON.stringify({ type: 'reset-video', ack: false }),
+        () => {},
+      );
     };
     android.requestKeyframe = requestKeyframe;
     // Idle keyframes (see `keyframeIdleMs`): re-armed on every access unit;
