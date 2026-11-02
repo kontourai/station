@@ -112,7 +112,8 @@ function sharedSession() {
     resize: vi.fn((_cols: number, _rows: number) => undefined),
   } satisfies TerminalViewSession;
   const output = (text: string) => {
-    const chunk = new TextEncoder().encode(text);
+    // This realm's array, as the store's socket frames are: transferable.
+    const chunk = new Uint8Array(new TextEncoder().encode(text));
     retained.push(chunk);
     for (const listener of listeners) listener.output(chunk, 'live');
   };
