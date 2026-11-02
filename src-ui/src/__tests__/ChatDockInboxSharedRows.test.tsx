@@ -533,9 +533,16 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
     },
   );
 
-  it.each(['desktop', 'mobile'] as const)(
-    '%s groups delegated work with its root and opens the child needing approval',
-    async (host) => {
+  it.each([
+    ['desktop', 'none'],
+    ['mobile', 'none'],
+    ['desktop', 'child'],
+    ['mobile', 'child'],
+    ['desktop', 'ambiguous'],
+    ['mobile', 'ambiguous'],
+  ] as const)(
+    '%s groups delegated work with %s Task ownership and opens the child needing approval',
+    async (host, association) => {
       const sessions: OrchestrationSessionSummary[] = [
         {
           threadId: 'root',
@@ -565,7 +572,33 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
             }
           : {}),
       }));
-      const items = buildHomeWorkItems({ chats: {}, sessions, agents: [] });
+      const tasks: TaskListRecord[] =
+        association === 'none'
+          ? []
+          : ['task-a', 'task-b'].map((id) => ({
+              id,
+              projectId: 'alpha',
+              title: id === 'task-a' ? 'Parent outcome' : 'Child outcome',
+              description: '',
+              createdBy: 'user',
+              priority: 'normal',
+              status: 'in_progress',
+              createdAt: '2026-08-18T11:00:00Z',
+              updatedAt: '2026-08-18T11:59:00Z',
+              workChatConversationIds:
+                id === 'task-a'
+                  ? association === 'ambiguous'
+                    ? ['root', 'child']
+                    : ['root']
+                  : ['child'],
+            }));
+      const items = buildHomeWorkItems({
+        chats: {},
+        sessions,
+        agents: [],
+        tasks,
+        retainTaskChildren: true,
+      });
       const onOpenSession = vi.fn();
       const common = {
         activeChatSessionId: null,
@@ -575,7 +608,7 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
         onOpenConversation: vi.fn(),
         onOpenSession,
         onCloseChat: vi.fn(),
-        workFacts: buildWorkFacts({ items, sessions }),
+        workFacts: buildWorkFacts({ items, sessions, tasks }),
       };
       if (host === 'desktop') {
         render(
@@ -597,10 +630,21 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
         );
       }
       const needsYou = screen.getByRole('region', { name: /^Needs you/ });
-      expect(within(needsYou).getByText('Release review')).toBeTruthy();
-      expect(
-        within(needsYou).getByText('1 subtask · 1 needs you'),
-      ).toBeTruthy();
+      if (association === 'none') {
+        expect(within(needsYou).getByText('Release review')).toBeTruthy();
+        expect(
+          within(needsYou).getByText('1 subtask · 1 needs you'),
+        ).toBeTruthy();
+      } else if (association === 'child') {
+        expect(within(needsYou).getByText('Child outcome')).toBeTruthy();
+        expect(within(needsYou).queryByText('Parent outcome')).toBeNull();
+        expect(
+          within(needsYou).getByText('1 work chat · 1 needs you'),
+        ).toBeTruthy();
+      } else {
+        expect(within(needsYou).queryByText('Parent outcome')).toBeNull();
+        expect(within(needsYou).queryByText('Child outcome')).toBeNull();
+      }
       fireEvent.click(
         within(needsYou).getByRole('button', {
           name: 'Security review, No project',

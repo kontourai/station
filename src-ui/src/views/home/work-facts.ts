@@ -281,12 +281,7 @@ export function buildWorkFacts({
   const taskById = new Map(tasks.map((task) => [task.id, task]));
   const taskItems = items.filter((item) => item.kind === 'task');
   for (const item of items) {
-    if (
-      item.kind === 'task' ||
-      item.kind === 'remote-session' ||
-      facts.get(item.id)?.runRootId
-    )
-      continue;
+    if (item.kind === 'task' || item.kind === 'remote-session') continue;
     const identities = new Set([
       item.id,
       item.chatSessionId,
@@ -302,6 +297,11 @@ export function buildWorkFacts({
     );
     if (owners.length === 1)
       facts.set(item.id, { ...facts.get(item.id), runRootId: owners[0].id });
+    else if (owners.length > 1) {
+      const entry = { ...facts.get(item.id) };
+      delete entry.runRootId;
+      facts.set(item.id, entry);
+    }
   }
   return facts;
 }

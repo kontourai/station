@@ -4850,6 +4850,17 @@ A Task remains a durable work record before and after an engine runs. The [dispa
 
 **Interface.** `TaskDispatcher.dispatch(taskId, intent)` is the canonical Task dispatch Interface and returns a total tagged `DispatchOutcome`. `TaskGraphService` owns durable graph reads and transitions; it does not expose dispatch as a second caller Interface. Independent [Task room agent requests](../design/task-room-agent-requests.md) use existing delegation and retain their own executions without replacing the Task's current-session association.
 
+**Inbox projection.** [Task Inbox projection](../../src-server/runtime/routes/task-inbox-projection.ts)
+batches discovery of primary Sessions, independent room requests and explicit
+work-chat links for `GET /api/tasks`. It prepares request-local relationship
+authority, repeats discovery after asynchronous preparation, then rechecks
+Task/Project incarnation and Conversation access before emitting optional
+`workChatConversationIds`. The UI groups these chats under a single Task outcome
+without changing its lead Session. Direct Task association precedes delegated
+grouping; multiple direct owners leave the chat separate. Counts include actual
+running chats rather than the Task's recorded status. SDK mutations and HTTP
+data-change broadcasts invalidate Task lists when relationships change.
+
 **Read snapshots.** TaskGraph retains one parsed, validated document only when
 its serialized text contains at most 2,097,152 UTF-16 code units. Every read
 still opens and reads the current primary or existing `.previous` recovery

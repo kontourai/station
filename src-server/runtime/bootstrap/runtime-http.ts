@@ -2028,6 +2028,8 @@ function getInvalidationKeysForRequest(method: string, path: string): string[] {
   // (and any other reader of ['config']) must see the change.
   if (path.startsWith('/api/project-contributions/')) keys.push('config');
   if (path.includes('/projects')) keys.push('projects');
+  if (path === '/api/tasks' || path.startsWith('/api/tasks/'))
+    keys.push('tasks');
   if (path.includes('/knowledge')) keys.push('knowledge');
   if (path.includes('/registry')) keys.push('skills', 'integrations', 'agents');
 
