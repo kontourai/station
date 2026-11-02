@@ -18,6 +18,7 @@ import {
   WorkspacePaneHostRuntime,
   type WorkspacePaneRuntimeCallbacks,
 } from './workspacePaneHostRuntime';
+import './WorkspacePaneFrame.css';
 
 class WorkspacePaneErrorBoundary extends Component<
   {
@@ -187,7 +188,11 @@ export function WorkspacePaneFrame({
   if (elementless) return boundary;
 
   return (
-    <section ref={root} data-workspace-pane-lifecycle="suspended">
+    <section
+      ref={root}
+      className="workspace-pane-frame"
+      data-workspace-pane-lifecycle="suspended"
+    >
       {boundary}
     </section>
   );
