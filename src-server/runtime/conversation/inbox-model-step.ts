@@ -1,9 +1,11 @@
+import { currentAgentTurn } from '@kontourai/agent-runtime';
 import type { Memory } from '@voltagent/core';
 import {
   type ModelMessage,
   type PrepareStepFunction,
   wrapLanguageModel,
 } from 'ai';
+import { z } from 'zod';
 import {
   deliverPostToolInbox,
   type PostToolSteerInput,
@@ -77,30 +79,69 @@ export function createInboxStepPreparation(
 ): PrepareStepFunction {
   const correlation = currentAuthorizedTurnCorrelation();
   const inserted: InsertedSteer[] = [];
+  let streamOrdinal = -1;
   return async (step) => {
+    if (step.stepNumber === 0) {
+      streamOrdinal++;
+      inserted.length = 0;
+    }
     const prepared = await previous?.(step);
     if (!correlation) return prepared;
     const model = prepared?.model ?? step.model;
     const pending: PostToolSteerInput[] = [];
     const afterToolCallId = step.steps.at(-1)?.toolResults.at(-1)?.toolCallId;
-    if (
-      (!context?.memory || (context.userId && context.conversationId)) &&
-      typeof model !== 'string' &&
-      model.specificationVersion === 'v3' &&
-      afterToolCallId
-    ) {
-      deliverPostToolInbox(
-        correlation.sessionId,
-        correlation.turnId,
-        (input) => {
-          inserted.push({
-            afterToolCallId,
-            message: { role: 'user', content: input.text },
-          });
-          pending.push(input);
-        },
+    const capture = () => {
+      if (
+        (!context?.memory || (context.userId && context.conversationId)) &&
+        typeof model !== 'string' &&
+        model.specificationVersion === 'v3' &&
+        afterToolCallId
+      ) {
+        deliverPostToolInbox(
+          correlation.sessionId,
+          correlation.turnId,
+          (input) => {
+            inserted.push({
+              afterToolCallId,
+              message: { role: 'user', content: input.text },
+            });
+            pending.push(input);
+          },
+        );
+      }
+      return inserted.map((entry) => ({
+        afterToolCallId: entry.afterToolCallId,
+        text: entry.message.content,
+      }));
+    };
+    const turn = currentAgentTurn();
+    if (turn) {
+      // Capture prompt additions before dispatch. Recovery has no live inbox
+      // handoff to repeat, but must reconstruct the identical pinned request.
+      const saved = await turn.entry(
+        `inbox-steers:${streamOrdinal}:${step.stepNumber}`,
+        capture,
+      );
+      const entries = z
+        .array(
+          z
+            .object({
+              afterToolCallId: z.string().min(1),
+              text: z.string(),
+            })
+            .strict(),
+        )
+        .parse(saved);
+      inserted.splice(
+        0,
+        inserted.length,
+        ...entries.map((entry) => ({
+          afterToolCallId: entry.afterToolCallId,
+          message: { role: 'user' as const, content: entry.text },
+        })),
       );
     }
+    if (!turn) capture();
     if (!inserted.length) return prepared;
     let attempted = false;
     return {

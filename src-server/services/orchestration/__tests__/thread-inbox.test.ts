@@ -18,6 +18,11 @@ import {
   type LanguageModelV3,
   type LanguageModelV3StreamPart,
 } from '@ai-sdk/provider';
+import {
+  createAgentRuntime,
+  openSqliteAgentJournal,
+  runWithAgentTurn,
+} from '@kontourai/agent-runtime';
 import { coordinatorWakeClientTurnId } from '@kontourai/station-contracts/coordinator';
 import {
   EXTERNAL_ENGINE_DURABILITY,
@@ -651,6 +656,8 @@ describe('thread inbox (#3568)', () => {
     'turn-end',
     'compacted',
     'duplicate',
+    'crash-replay',
+    'stream-restart',
   ] as const)(
     'the Station post-tool loop applies the durable steer decision %s',
     async (mode) => {
@@ -685,12 +692,53 @@ describe('thread inbox (#3568)', () => {
       if (other) await runningFirstTurn(other);
       const memoryHome = makeTempDir('station-inbox-memory-');
       const memory = new FileMemoryAdapter({ projectHomeDir: memoryHome });
-      const acknowledgementMemory =
-        mode === 'duplicate' ? new Memory({ storage: memory }) : undefined;
+      const acknowledgementMemory = [
+        'duplicate',
+        'crash-replay',
+        'stream-restart',
+      ].includes(mode)
+        ? new Memory({ storage: memory })
+        : undefined;
       const memoryWrites = acknowledgementMemory
         ? vi.spyOn(acknowledgementMemory, 'addMessages')
         : undefined;
       let nestedPreparation: PrepareStepFunction | undefined;
+      const capturedSteps: Array<{
+        step: Parameters<PrepareStepFunction>[0];
+        messages: unknown;
+      }> = [];
+      const database =
+        mode === 'crash-replay'
+          ? new DatabaseSync(join(memoryHome, 'steers.sqlite'))
+          : undefined;
+      database?.exec(
+        'PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA foreign_keys=ON',
+      );
+      const journal = database && openSqliteAgentJournal({ database });
+      let dead = false;
+      const identity = {
+        id: 'steer-original',
+        pid: 123,
+        birth: 'original',
+        identityKind: 'exact' as const,
+      };
+      const liveness = (candidate: { id: string }) =>
+        dead && candidate.id === identity.id
+          ? ('dead' as const)
+          : ('live' as const);
+      const key = {
+        scopeId: 'station',
+        conversationId: THREAD,
+        invocationId: 'steer-replay',
+      };
+      const lease =
+        journal &&
+        (await createAgentRuntime({
+          journal,
+          owner: identity,
+          liveness,
+          implementation: 'steer-proof/1',
+        }).start({ key, input: 'original', implementation: 'steer-proof/1' }));
       let repeatedModel: LanguageModelV3 | undefined;
       let entered!: () => void;
       let resume!: () => void;
@@ -805,13 +853,23 @@ describe('thread inbox (#3568)', () => {
             conversationId: THREAD,
             userId: OWNER,
             prepareStep: (async (step) => {
-              if (mode === 'duplicate') {
+              if (
+                ['duplicate', 'crash-replay', 'stream-restart'].includes(mode)
+              ) {
                 nestedPreparation ??= createInboxStepPreparation(undefined, {
                   memory: acknowledgementMemory,
                   userId: OWNER,
                   conversationId: THREAD,
                 });
-                const prepared = await nestedPreparation(step);
+                const prepared = lease
+                  ? await runWithAgentTurn(lease, () =>
+                      nestedPreparation!(step),
+                    )
+                  : await nestedPreparation(step);
+                capturedSteps.push({
+                  step: { ...step, messages: structuredClone(step.messages) },
+                  messages: prepared?.messages ?? step.messages,
+                });
                 const candidate = prepared?.model;
                 if (
                   candidate &&
@@ -913,6 +971,53 @@ describe('thread inbox (#3568)', () => {
         return;
       }
       expect(calls).toBe(3);
+      if (mode === 'stream-restart') {
+        expect(nestedPreparation).toBeDefined();
+        const first = capturedSteps[0]!.step;
+        const restarted = await nestedPreparation!(first);
+        expect(
+          JSON.stringify(restarted?.messages ?? first.messages),
+        ).not.toContain(FOLLOW_UP);
+      }
+      if (mode === 'crash-replay') {
+        expect(journal).toBeDefined();
+        lease!.pause();
+        dead = true;
+        const successor = createAgentRuntime({
+          journal: journal!,
+          owner: { ...identity, id: 'steer-successor', birth: 'successor' },
+          liveness,
+          implementation: 'steer-proof/1',
+        });
+        const recovered = await successor.recover(key);
+        if (typeof recovered === 'string')
+          throw new Error(`Recovery refused: ${recovered}`);
+        try {
+          await runWithAuthorizedTurnCorrelation(
+            {
+              accountId: OWNER,
+              sessionId: THREAD,
+              turnId: 'turn-1',
+              correlationId: 'replay',
+            },
+            async () => {
+              const prepare = createInboxStepPreparation();
+              for (const captured of capturedSteps) {
+                const replayed = await runWithAgentTurn(recovered, () =>
+                  prepare(captured.step),
+                );
+                expect(replayed?.messages ?? captured.step.messages).toEqual(
+                  captured.messages,
+                );
+              }
+            },
+          );
+          expect(model.doStreamCalls).toHaveLength(3);
+        } finally {
+          await journal!.close();
+          database!.close();
+        }
+      }
       if (mode === 'duplicate') {
         if (!repeatedModel)
           throw new Error(

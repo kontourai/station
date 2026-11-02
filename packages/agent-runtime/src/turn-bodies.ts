@@ -1,6 +1,7 @@
 import type { DatabaseSync } from 'node:sqlite';
 import { z } from 'zod';
 import { hash } from './encoding.js';
+import { decodeAgentBody, encodeAgentBody } from './turn-body-codec.js';
 import { agentStatement } from './turn-statements.js';
 import { agentWire, readAgentWire } from './turn-wire.js';
 
@@ -133,7 +134,9 @@ export function readAgentBody(database: DatabaseSync, digest: string): string {
   if (!row || typeof row.wire !== 'string')
     throw new Error('DURABLE_AGENT_BODY_DAMAGED');
   let wire = row.wire;
-  if (wire.startsWith('{')) {
+  if (wire.startsWith('{') && JSON.parse(wire).version === 'agent-body/3') {
+    wire = decodeAgentBody(wire, (ref) => readAgentBodyChunk(database, ref));
+  } else if (wire.startsWith('{')) {
     const descriptor = chunkedSchema.parse(JSON.parse(wire));
     if (
       descriptor.chunks.length !== Math.ceil(descriptor.codeUnits / CHUNK_UNITS)
@@ -164,8 +167,15 @@ export function putAgentBody(database: DatabaseSync, wire: string): string {
   }
   const digest = hash(wire);
   readAgentWire(wire);
+  const compact =
+    agentStatement(
+      database,
+      'SELECT writer_format FROM agent_steps_meta WHERE id=1',
+    ).get()?.writer_format === 'agent-steps/11';
   let stored = wire;
-  if (
+  if (compact)
+    stored = encodeAgentBody(wire, (value) => putChunk(database, value));
+  else if (
     wire.length > CHUNK_UNITS &&
     agentStatement(
       database,

@@ -74,6 +74,11 @@ if (
   chunkCounts.some((n) => !Number.isSafeInteger(n) || n < 100 || n > 400)
 )
   throw new Error('Invalid bounded workload');
+const deltaBytes = Number(
+  args.find((a) => a.startsWith('--delta-bytes='))?.slice(14) ?? 64,
+);
+if (!Number.isSafeInteger(deltaBytes) || deltaBytes < 4 || deltaBytes > 1024)
+  throw new Error('Invalid delta byte size');
 const budgetMs =
   900_000 +
   2 *
@@ -154,10 +159,14 @@ async function run(
             delta:
               !tool && index === chunks - 1
                 ? 'DONE'
-                : `step${calls}.chunk${index}: streaming runtime durability evidence `.padEnd(
-                    64,
-                    'text ',
-                  ),
+                : deltaBytes === 4
+                  ? createHash('sha256')
+                      .update(`${calls}:${index}`)
+                      .digest('base64url')
+                      .slice(0, 4)
+                  : `step${calls}.chunk${index}: streaming runtime durability evidence `
+                      .padEnd(deltaBytes, 'text ')
+                      .slice(0, deltaBytes),
           })),
           { type: 'text-end', id: 'answer' },
           ...(tool
@@ -349,6 +358,12 @@ async function run(
     let bodyChunkBytes = 0;
     let framesBytes = 0;
     let frames = 0;
+    let tables: Array<{
+      name: string;
+      bytes: number;
+      payloadBytes: number;
+      rows: number;
+    }> = [];
     if (journalBytes) {
       const database = new DatabaseSync(journalPath, { readOnly: true });
       try {
@@ -367,20 +382,56 @@ async function run(
             .get()?.n,
         );
         bodiesBytes += bodyChunkBytes;
+        const blocks = database
+          .prepare(
+            'SELECT coalesce(sum(last_position-position+1),0) AS n,coalesce(sum(length(CAST(record AS BLOB))),0) AS bytes FROM agent_steps_frame_blocks',
+          )
+          .get();
         const projected = database
           .prepare(
             'SELECT count(*) AS n,coalesce(sum(length(CAST(record AS BLOB))),0) AS bytes FROM agent_steps_frames',
           )
           .get();
-        frames = Number(projected?.n);
-        framesBytes = Number(projected?.bytes);
+        frames = Number(projected?.n) + Number(blocks?.n);
+        framesBytes = Number(projected?.bytes) + Number(blocks?.bytes);
+        tables = database
+          .prepare(
+            'SELECT name,sum(pgsize) AS bytes FROM dbstat GROUP BY name ORDER BY name',
+          )
+          .all()
+          .map((row) => ({
+            name: String(row.name),
+            bytes: Number(row.bytes),
+            payloadBytes: 0,
+            rows: 0,
+          }));
+        for (const table of tables) {
+          if (!/^agent_steps_[a-z_]+$/.test(table.name)) continue;
+          const columns = database
+            .prepare(`PRAGMA table_info(${table.name})`)
+            .all();
+          if (!columns.length) continue;
+          const values = columns
+            .map(
+              (column) =>
+                `coalesce(length(CAST(${String(column.name)} AS BLOB)),0)`,
+            )
+            .join('+');
+          const details = database
+            .prepare(
+              `SELECT count(*) AS n,coalesce(sum(${values}),0) AS payload FROM ${table.name}`,
+            )
+            .get();
+          table.rows = Number(details?.n);
+          table.payloadBytes = Number(details?.payload);
+        }
       } finally {
         database.close();
       }
     }
     const onDiskBytes = diskBytes(dir.path);
-    const journalBudgetBytes = 128 * 1024 + steps * 512 * 1024 + 2 * textBytes;
-    const bodyBudgetBytes = steps * 128 * 1024 + 2 * textBytes;
+    const journalBudgetBytes = 128 * 1024 + steps * 16 * 1024 + 3 * textBytes;
+    const bodyBudgetBytes = steps * 8 * 1024 + 2 * textBytes;
     if (
       durable &&
       (journalBytes > journalBudgetBytes || bodiesBytes > bodyBudgetBytes)
@@ -413,6 +464,7 @@ async function run(
       durable,
       steps,
       chunks,
+      deltaBytes,
       paceMs,
       profile,
       milliseconds,
@@ -429,6 +481,9 @@ async function run(
       },
       storage: {
         textBytes,
+        tables,
+        fixedBytesPerStep:
+          Math.max(0, journalBytes - 3 * textBytes - 128 * 1024) / steps,
         onDiskBytes,
         journalBytes,
         bodiesBytes,

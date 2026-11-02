@@ -23533,7 +23533,7 @@ describe('OrchestrationService', () => {
       return eventStore.listEvents(threadId).map((entry) => entry.payload);
     }
 
-    test('a transient SQLITE_BUSY on turn.completed is retried with the same eventId, persisted once, and survives a reopen without a banner', async () => {
+    test('repeated lost write races on turn.completed retry the same event within the async budget and survive reopen without a banner', async () => {
       const threadId = 'transient-terminal-thread';
       const { events, isolated } = await startObservedTurn(
         threadId,
@@ -23546,10 +23546,16 @@ describe('OrchestrationService', () => {
         .mockImplementation((event, ...rest) => {
           if (event.method === 'turn.completed') {
             terminalAttempts.push(event.eventId);
-            if (terminalAttempts.length === 1) throw busy();
+            if (terminalAttempts.length <= 4) throw busy();
           }
           return appendEvent(event, ...rest);
         });
+      const listenerTimeouts: number[] = [];
+      const stopListening = eventBus.subscribe((message) => {
+        if (message.event !== SERVER_EVENTS.ORCHESTRATION_EVENT ||
+            (message.data?.event as CanonicalRuntimeEvent | undefined)?.eventId !== 'transient-terminal') return;
+        listenerTimeouts.push(Number(eventStore['db'].prepare('PRAGMA busy_timeout').get()?.timeout));
+      });
       // Admission (client-origin attribution, which consumes a send's
       // accepted attribution, and the raw progress observation) is once per
       // event: a retry repeats only the publish half.
@@ -23583,10 +23589,9 @@ describe('OrchestrationService', () => {
           (event) => event.eventId === 'transient-terminal',
         ),
       ).toHaveLength(1);
-      expect(terminalAttempts).toEqual([
-        'transient-terminal',
-        'transient-terminal',
-      ]);
+      expect(terminalAttempts).toEqual(Array(5).fill('transient-terminal'));
+      stopListening();
+      expect(listenerTimeouts).toEqual([5000]);
       expect(
         admissions.mock.calls.filter(
           ([event]) => event.eventId === 'transient-terminal',
@@ -23875,16 +23880,15 @@ describe('OrchestrationService', () => {
         }) as CanonicalRuntimeEvent;
       const appendEvent = eventStore.appendEvent.bind(eventStore);
       let heldAttempts = 0;
+      let unavailable = true;
       const appendSpy = vi
         .spyOn(eventStore, 'appendEvent')
         .mockImplementation((event, ...rest) => {
-          // The buffered text fails on all three flushes ahead of the
-          // terminal and on the one ahead of the interruption warning; the
-          // store then recovers. Counting attempts, not time, keeps the
-          // recovery after the last owner has given up.
+          // Hold through the async retry budget and the warning flush.
+          // Release only after the consumer reports observation loss.
           if (event.eventId === 'retained-delta-1') {
             heldAttempts += 1;
-            if (heldAttempts <= 4) throw busy();
+            if (unavailable) throw busy();
           }
           return appendEvent(event, ...rest);
         });
@@ -23904,8 +23908,11 @@ describe('OrchestrationService', () => {
           'Failed to surface adapter stream failure to thread',
           expect.objectContaining({ threadId }),
         ),
+        { timeout: 7_000 },
       );
-      expect(heldAttempts).toBe(4);
+      const failedAttempts = heldAttempts;
+      expect(failedAttempts).toBeGreaterThan(3);
+      unavailable = false;
 
       // Nothing else arrives for this thread: only a timer can flush it.
       await vi.waitFor(
@@ -23917,7 +23924,7 @@ describe('OrchestrationService', () => {
           ).toBe(true),
         { timeout: 2_000 },
       );
-      expect(heldAttempts).toBe(5);
+      expect(heldAttempts).toBeGreaterThan(failedAttempts);
       appendSpy.mockRestore();
       await isolated.shutdown();
     });
@@ -24269,7 +24276,7 @@ describe('OrchestrationService', () => {
       ).toHaveLength(1);
     });
 
-    test('the retry is bounded: three attempts under sustained contention, then the store-named warning and no terminal', async () => {
+    test('the retry is bounded by elapsed time under sustained contention, then warns without a terminal', async () => {
       const threadId = 'sustained-busy-thread';
       const { events, isolated } = await startObservedTurn(
         threadId,
@@ -24297,9 +24304,10 @@ describe('OrchestrationService', () => {
       } as CanonicalRuntimeEvent);
       await vi.waitFor(() =>
         expect(payloads(threadId).some(isInterruptionWarning)).toBe(true),
+        { timeout: 7_000 },
       );
 
-      expect(terminalAttempts).toBe(3);
+      expect(terminalAttempts).toBeGreaterThan(3);
       expect(
         (payloads(threadId).find(isInterruptionWarning) as { message?: string })
           ?.message,

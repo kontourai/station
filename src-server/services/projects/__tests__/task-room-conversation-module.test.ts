@@ -15,7 +15,7 @@ import {
   INTERNAL_SESSION_READ_SCOPE,
   sessionReadAuthorityFromRequest,
 } from '@kontourai/station-contracts/tenancy';
-import { expect, test, vi } from 'vitest';
+import { expect, onTestFinished, test, vi } from 'vitest';
 import {
   createGateTestRegistry,
   GateTestAdapter,
@@ -526,9 +526,28 @@ async function fixture(observe = true) {
 test.each(['lineage', 'history', 'query', 'stored'] as const)(
   'the %s conversation title comes from the person rather than the appended brief',
   async (surface) => {
+    const started = performance.now();
+    const phases: Array<{ phase: string; ms: number }> = [];
+    const phase = (name: string) => {
+      if (phases.length < 16)
+        phases.push({
+          phase: name,
+          ms: Math.round(performance.now() - started),
+        });
+    };
+    onTestFinished(({ task }) => {
+      if (task.result?.state === 'fail')
+        console.warn(
+          'Task room title timeout phases',
+          JSON.stringify({ surface, phases }),
+        );
+    });
+    phase('fixture:start');
     const f = await fixture();
+    phase('fixture:ready');
     try {
       const title = 'Where should preference state live?';
+      phase('delegation:start');
       const response = await f.post('/delegations', {
         prompt: title,
         target: {
@@ -543,17 +562,21 @@ test.each(['lineage', 'history', 'query', 'stored'] as const)(
           context: { version: f.brief.version, digest: f.brief.digest },
         },
       });
+      phase('delegation:response');
       expect(response.status, await response.clone().text()).toBe(200);
       const body = await readJson<{ data: TaskRoomWorkOutcome }>(response);
       if (body.data.kind !== 'recorded')
         throw new Error('Request not recorded');
       const sessionId = body.data.record.sessionId;
+      phase('turn-start:wait');
       await f.started(sessionId, 'turn-1');
+      phase('turn-start:ready');
       const authority = sessionReadAuthorityFromRequest(
         f.principal.id,
         undefined,
         undefined,
       );
+      phase(`title:${surface}:read`);
       let actual: string | undefined;
       if (surface === 'lineage')
         actual = (
@@ -573,10 +596,13 @@ test.each(['lineage', 'history', 'query', 'stored'] as const)(
         if (result.status !== 'found') throw new Error(result.status);
         actual = result.conversation.title;
       }
+      phase('title:read-complete');
       expect(actual).toBe(title);
       expect(f.adapter.turns[0].input).toContain('# Task brief: Make the room');
     } finally {
+      phase('cleanup:start');
       await f.close();
+      phase('cleanup:complete');
     }
   },
 );

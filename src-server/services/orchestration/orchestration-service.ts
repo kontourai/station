@@ -835,7 +835,7 @@ const DISCARDED_DRAFT_GATE_MAX = 256;
  * second Station process from stalling the adapter stream indefinitely before
  * the interruption warning names it.
  */
-const OBSERVED_EVENT_RETRY_DELAYS_MS = [25, 100] as const;
+const OBSERVED_EVENT_RETRY_BUDGET_MS = 5_000;
 
 /** What {@link OrchestrationService}'s append half hands its observer half. */
 interface CommittedEvent {
@@ -2474,6 +2474,7 @@ export class OrchestrationService {
    * until the LAST retry finishes, so a window timer cannot drop it on the
    * warn path while any retry still sleeps.
    */
+  private immediateObservedWrite = false;
   private readonly observedRetryThreads = new Map<string, number>();
   /** Threads whose missing configuration has already been logged for monitoring. */
   private readonly monitoringUnconfiguredThreads = new Set<string>();
@@ -13015,25 +13016,24 @@ export class OrchestrationService {
     if (!admitted) return true;
     let attempt = admitted;
     let retrying = false;
+    const deadline = performance.now() + OBSERVED_EVENT_RETRY_BUDGET_MS;
+    let delayMs = 25;
     try {
-      for (const delayMs of [...OBSERVED_EVENT_RETRY_DELAYS_MS, undefined]) {
+      for (;;) {
         try {
-          if (retrying && this.options.eventStore) {
-            await this.options.eventStore.waitForPublicationWrite(
-              admitted.threadId,
-              controller.signal,
-            );
-            attempt = renormalize(admitted);
+          if (retrying) attempt = renormalize(admitted);
+          const previous = this.immediateObservedWrite;
+          this.immediateObservedWrite = true;
+          try {
+            return this.offerOrPublishEvent(attempt);
+          } finally {
+            this.immediateObservedWrite = previous;
           }
-          const publish = () => this.offerOrPublishEvent(attempt);
-          return this.options.eventStore
-            ? this.options.eventStore.withImmediateWriteAttempt(publish)
-            : publish();
         } catch (error) {
           if (error instanceof EventStoreIngressError)
             return await this.publishResidualRefusal(attempt, adapter, error);
           if (
-            delayMs === undefined ||
+            performance.now() >= deadline ||
             !this.isRetryablePublishFailure(admitted, error)
           )
             throw error;
@@ -13055,13 +13055,17 @@ export class OrchestrationService {
           }
           // Leave the loop free for room-worker authorization. The next attempt
           // waits asynchronously for write availability before publishing.
-          await new Promise((resolve) => setTimeout(resolve, delayMs));
+          await new Promise((resolve) =>
+            setTimeout(
+              resolve,
+              Math.min(delayMs, Math.max(0, deadline - performance.now())),
+            ),
+          );
+          delayMs = Math.min(delayMs * 2, 100);
           if (controller.signal.aborted || !this.isAdapterCurrent(adapter))
             throw error;
-          attempt = renormalize(admitted);
         }
       }
-      throw new Error('unreachable: the final attempt returns or throws');
     } finally {
       // Whatever the outcome, this event's retry is over. Text still retained
       // for the thread gets its window timer back once no other retry on the
@@ -14855,7 +14859,12 @@ export class OrchestrationService {
     // #3561: store before show. Nothing a client or recovery can observe
     // changes before the append commits, so a throw from it propagates from
     // here with everything below unapplied, and a retry applies it once.
-    const committed = declined ? undefined : this.appendCanonicalEvent(event);
+    const append = () => this.appendCanonicalEvent(event);
+    const committed = declined
+      ? undefined
+      : this.immediateObservedWrite && this.options.eventStore
+        ? this.options.eventStore.withImmediateWriteAttempt(append)
+        : append();
     // T5 ordering, pinned by the source invariant in this file's test
     // suite: a stop must settle even for an event the quarantine gate
     // declines, or a stop on a quarantined thread never settles and rides

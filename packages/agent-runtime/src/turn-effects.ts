@@ -81,7 +81,12 @@ function readPartialBatch(database: DatabaseSync, ref: string): string[] {
 export function agentEffectHeader(
   database: DatabaseSync,
   effect: EffectRecord,
-  format: 1 | 2 | 3 = 3,
+  format: 1 | 2 | 3 | 4 = agentStatement(
+    database,
+    'SELECT writer_format FROM agent_steps_meta WHERE id=1',
+  ).get()?.writer_format === 'agent-steps/11'
+    ? 4
+    : 3,
 ): string {
   return canonical({
     ...effect,
@@ -89,23 +94,50 @@ export function agentEffectHeader(
     intent: { ...effect.intent, input: effect.inputDigest },
     attempts: effect.attempts.map((attempt) => ({
       ...attempt,
-      ...(format === 3
+      ...(format >= 3
         ? {
-            tail: attempt.partials.slice(
-              attempt.partials.length - (attempt.partials.length % 128),
-            ),
+            tail:
+              format === 4 &&
+              attempt.output !== null &&
+              ['model', 'provider'].includes(effect.intent.kind)
+                ? []
+                : attempt.partials.slice(
+                    attempt.partials.length - (attempt.partials.length % 128),
+                  ),
             tailDigest: hash(
               canonical(
-                attempt.partials.slice(
-                  attempt.partials.length - (attempt.partials.length % 128),
-                ),
+                format === 4 &&
+                  attempt.output !== null &&
+                  ['model', 'provider'].includes(effect.intent.kind)
+                  ? []
+                  : attempt.partials.slice(
+                      attempt.partials.length - (attempt.partials.length % 128),
+                    ),
               ),
             ),
           }
         : {}),
-      partials: (format === 1
-        ? attempt.partials
-        : partialBatches(attempt.partials, format === 3)
+      ...(format === 4
+        ? {
+            prefixLength:
+              attempt.output !== null &&
+              ['model', 'provider'].includes(effect.intent.kind)
+                ? attempt.partials.length
+                : null,
+            prefixDigest:
+              attempt.output !== null &&
+              ['model', 'provider'].includes(effect.intent.kind)
+                ? hash(canonical(attempt.partials))
+                : null,
+          }
+        : {}),
+      partials: (format === 4 &&
+      attempt.output !== null &&
+      ['model', 'provider'].includes(effect.intent.kind)
+        ? []
+        : format === 1
+          ? attempt.partials
+          : partialBatches(attempt.partials, format >= 3)
       ).map((wire) => agentBodyReference(database, wire)),
       output:
         attempt.output === null
@@ -325,18 +357,27 @@ export function readAgentEffect(
     return copyAgentEffect(prior.value);
   }
   const raw = JSON.parse(wire);
-  const tailed = raw?.version === 3;
+  const compact = raw?.version === 4;
+  const tailed = raw?.version === 3 || compact;
+  const prefixes: Array<{ length: number | null; digest: string | null }> = [];
   const batched = raw?.version === 2 || tailed;
   const tails: string[][] = [];
   if (tailed) {
     const stored = effectSchema
       .extend({
-        version: z.literal(3),
+        version: z.union([z.literal(3), z.literal(4)]),
         attempts: z
           .array(
             effectSchema.shape.attempts.element.extend({
               tail: z.array(payload).max(127),
               tailDigest: text,
+              prefixLength: z
+                .number()
+                .int()
+                .nonnegative()
+                .nullable()
+                .optional(),
+              prefixDigest: text.nullable().optional(),
             }),
           )
           .max(1024),
@@ -347,9 +388,25 @@ export function readAgentEffect(
         throw new Error('DURABLE_AGENT_PARTIAL_TAIL_DAMAGED');
       for (const part of attempt.tail) readAgentWire(part);
       tails.push(attempt.tail);
+      if (
+        compact &&
+        (attempt.prefixLength === undefined ||
+          attempt.prefixDigest === undefined)
+      )
+        throw new Error('DURABLE_AGENT_PARTIAL_BATCH_DAMAGED');
+      prefixes.push({
+        length: attempt.prefixLength ?? null,
+        digest: attempt.prefixDigest ?? null,
+      });
     }
     raw.attempts = stored.attempts.map(
-      ({ tail: _tail, tailDigest: _digest, ...attempt }) => attempt,
+      ({
+        tail: _tail,
+        tailDigest: _digest,
+        prefixLength: _length,
+        prefixDigest: _prefix,
+        ...attempt
+      }) => attempt,
     );
   }
   const header = effectSchema.parse(batched ? { ...raw, version: 1 } : raw);
@@ -375,6 +432,7 @@ export function readAgentEffect(
         'agent-steps/8',
         'agent-steps/9',
         'agent-steps/10',
+        'agent-steps/11',
       ].includes(
         String(
           agentStatement(
@@ -394,23 +452,52 @@ export function readAgentEffect(
         ...header.intent,
         input: readAgentBody(database, header.intent.input),
       },
-      attempts: header.attempts.map((attempt, index) => ({
-        ...attempt,
-        partials: [
-          ...attempt.partials.flatMap((ref) => {
-            if (!batched) return [readAgentBody(database, ref)];
-            const batch = readPartialBatch(database, ref);
-            if (tailed && batch.length !== 128)
-              throw new Error('DURABLE_AGENT_PARTIAL_BATCH_DAMAGED');
-            return batch;
-          }),
-          ...(tails[index] ?? []),
-        ],
-        output:
+      attempts: header.attempts.map((attempt, index) => {
+        const output =
           attempt.output === null
             ? null
-            : readAgentBody(database, attempt.output),
-      })),
+            : readAgentBody(database, attempt.output);
+        const prefix = prefixes[index];
+        if (prefix?.length !== null && prefix?.length !== undefined) {
+          if (
+            output === null ||
+            attempt.partials.length ||
+            tails[index]?.length ||
+            !['model', 'provider'].includes(header.intent.kind)
+          )
+            throw new Error('DURABLE_AGENT_PARTIAL_BATCH_DAMAGED');
+          const decoded = readAgentWire(output);
+          const parts =
+            header.intent.codec === 'strands-native/1' &&
+            decoded &&
+            typeof decoded === 'object' &&
+            'events' in decoded
+              ? decoded.events
+              : decoded;
+          if (!Array.isArray(parts) || prefix.length > parts.length)
+            throw new Error('DURABLE_AGENT_PARTIAL_BATCH_DAMAGED');
+          const partials = parts.slice(0, prefix.length).map(agentWire);
+          if (hash(canonical(partials)) !== prefix.digest)
+            throw new Error('DURABLE_AGENT_PARTIAL_BATCH_DAMAGED');
+          return { ...attempt, partials, output };
+        }
+        if (prefix?.digest !== null && prefix?.digest !== undefined)
+          throw new Error('DURABLE_AGENT_PARTIAL_BATCH_DAMAGED');
+        return {
+          ...attempt,
+          partials: [
+            ...attempt.partials.flatMap((ref) => {
+              if (!batched) return [readAgentBody(database, ref)];
+              const batch = readPartialBatch(database, ref);
+              if (tailed && batch.length !== 128)
+                throw new Error('DURABLE_AGENT_PARTIAL_BATCH_DAMAGED');
+              return batch;
+            }),
+            ...(tails[index] ?? []),
+          ],
+          output,
+        };
+      }),
     },
     true,
     header.intent.input,
@@ -424,14 +511,23 @@ function write(
   database: DatabaseSync,
   turnId: string,
   effect: EffectRecord,
-  format: 1 | 2 | 3 = 3,
+  format: 1 | 2 | 3 | 4 = agentStatement(
+    database,
+    'SELECT writer_format FROM agent_steps_meta WHERE id=1',
+  ).get()?.writer_format === 'agent-steps/11'
+    ? 4
+    : 3,
 ) {
   const input = putAgentBody(database, effect.intent.input);
   validate(effect, true, input);
   for (const attempt of effect.attempts) {
-    for (const part of format === 1
-      ? attempt.partials
-      : partialBatches(attempt.partials, format === 3))
+    for (const part of format === 4 &&
+    attempt.output !== null &&
+    ['model', 'provider'].includes(effect.intent.kind)
+      ? []
+      : format === 1
+        ? attempt.partials
+        : partialBatches(attempt.partials, format >= 3))
       putAgentBody(database, part);
     if (attempt.output !== null) putAgentBody(database, attempt.output);
   }

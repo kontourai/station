@@ -1,6 +1,6 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 import type { OwnerIdentity, OwnerLiveness } from '@kontourai/monument';
-import { canonical, hash } from './encoding.js';
+import { canonical, hash, RuntimeError } from './encoding.js';
 import type {
   ApprovalCommand,
   ApprovalResult,
@@ -39,6 +39,7 @@ export interface AgentTurnLease {
     readonly state: 'completed' | 'blocked' | 'cancelled';
     readonly at: number;
   } | null;
+  /** Capture once; a lazy value is evaluated only when the entry is absent. */
   entry(id: string, value: unknown): Promise<unknown>;
   frame(id: string, wire: string): Promise<AgentFrame>;
   frameBatch(
@@ -152,6 +153,10 @@ export function createAgentRuntime(options: {
           },
           context,
         );
+        if (answer.kind === 'owned' && answer.frameCapacity) {
+          turn = answer.turn;
+          throw new RuntimeError('DURABLE_AGENT_FRAME_CAPACITY');
+        }
         if (answer.kind !== 'frames')
           throw new Error('DURABLE_AGENT_PROJECTION_REFUSED');
         return answer.frames;
@@ -168,6 +173,10 @@ export function createAgentRuntime(options: {
           },
           context,
         );
+        if (answer.kind === 'owned' && answer.frameCapacity) {
+          turn = answer.turn;
+          throw new RuntimeError('DURABLE_AGENT_FRAME_CAPACITY');
+        }
         if (answer.kind !== 'frame')
           throw new Error('DURABLE_AGENT_PROJECTION_REFUSED');
         return answer.frame;
@@ -197,7 +206,7 @@ export function createAgentRuntime(options: {
             id,
             kind: 'entry',
             replay: 'safe',
-            input: agentWire(value),
+            input: agentWire(typeof value === 'function' ? value() : value),
           },
         });
         return readAgentWire(planned.effect.intent.input);
@@ -360,7 +369,11 @@ export function createAgentRuntime(options: {
           await runWithAgentTurn(lease, work);
         } catch (error) {
           state = controller.signal.aborted ? 'cancelled' : 'blocked';
-          failure = { error };
+          failure = {
+            error: turn.outputLimited
+              ? new RuntimeError('DURABLE_AGENT_FRAME_CAPACITY')
+              : error,
+          };
         }
         quiesced = true;
         if (controller.signal.aborted || cancellationRequested)

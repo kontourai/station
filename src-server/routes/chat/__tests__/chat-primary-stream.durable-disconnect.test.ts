@@ -426,123 +426,149 @@ it('disconnect still interrupts a real external Codex adapter through its app-se
   releaseDurableForeground(writer, () => {});
 });
 
-it('the real chat route completes beyond 65,536 retained frames without losing its terminal outcome', async () => {
-  const home = temp('durable-frame-capacity-');
-  const memory = new FileMemoryAdapter({ projectHomeDir: home });
-  await memory.createConversation({
-    id: 'conversation',
-    resourceId: 'assistant',
-    userId: 'owner',
-    title: 'Capacity',
-    metadata: {},
-  });
-  const owner = stationAgentRuntimeOwner(home);
-  const failures: unknown[] = [];
-  owner.configure({
-    preview: { select: (branches) => branches.enabled() },
-    failed: (error) => failures.push(error),
-  });
-  cleanup.push(() => owner.pause());
-  const entered = gate();
-  const resume = gate();
-  let finished = 0;
-  const agent: IAgent = {
-    id: 'assistant',
-    name: 'Assistant',
-    model: { modelId: 'capacity' },
-    getMemory: () => null,
-    generateText: async () => ({ text: 'unused' }),
-    streamText: async () => ({
-      fullStream: (async function* () {
-        entered.resolve();
-        await resume.promise;
-        yield { type: 'text-start', id: 'a' };
-        yield { type: 'text-delta', id: 'a', text: 'AFTER_CAP' };
-        yield { type: 'text-end', id: 'a' };
-        finished++;
-        yield { type: 'finish', finishReason: 'stop' };
-      })(),
-      text: Promise.resolve('AFTER_CAP'),
-      usage: Promise.resolve({
-        promptTokens: 0,
-        completionTokens: 0,
-        totalTokens: 0,
+it.each([65_536, 1_048_576, 1_048_573])(
+  'the real chat route preserves the terminal outcome at %i retained frames',
+  async (limit) => {
+    const home = temp('durable-frame-capacity-');
+    const memory = new FileMemoryAdapter({ projectHomeDir: home });
+    await memory.createConversation({
+      id: 'conversation',
+      resourceId: 'assistant',
+      userId: 'owner',
+      title: 'Capacity',
+      metadata: {},
+    });
+    const owner = stationAgentRuntimeOwner(home);
+    const failures: unknown[] = [];
+    owner.configure({
+      preview: { select: (branches) => branches.enabled() },
+      failed: (error) => failures.push(error),
+    });
+    cleanup.push(() => owner.pause());
+    const entered = gate();
+    const resume = gate();
+    let finished = 0;
+    const agent: IAgent = {
+      id: 'assistant',
+      name: 'Assistant',
+      model: { modelId: 'capacity' },
+      getMemory: () => null,
+      generateText: async () => ({ text: 'unused' }),
+      streamText: async () => ({
+        fullStream: (async function* () {
+          entered.resolve();
+          await resume.promise;
+          yield { type: 'text-start', id: 'a' };
+          yield { type: 'text-delta', id: 'a', text: 'AFTER_CAP' };
+          yield { type: 'text-end', id: 'a' };
+          finished++;
+          yield { type: 'finish', finishReason: 'stop' };
+        })(),
+        text: Promise.resolve('AFTER_CAP'),
+        usage: Promise.resolve({
+          promptTokens: 0,
+          completionTokens: 0,
+          totalTokens: 0,
+        }),
+        finishReason: Promise.resolve('stop'),
       }),
-      finishReason: Promise.resolve('stop'),
-    }),
-  };
-  bindDurableAgent(agent, {
-    home,
-    slug: 'assistant',
-    definition: 'capacity/1',
-    memory,
-  });
-  const runtime = createChatRuntimeFixture(home, memory);
-  const app = new Hono();
-  app.post('/chat', (c) =>
-    streamPrimaryAgentChat({
-      c,
-      ctx: runtime,
+    };
+    bindDurableAgent(agent, {
+      home,
       slug: 'assistant',
-      plugin: '',
-      input: 'hello',
-      restOptions: {
-        conversationId: 'conversation',
-        userId: 'owner',
-        clientTurnId: 'turn',
-      },
-      injectContext: null,
-      ragContext: null,
-      agent,
-      configurationLease: captureRuntimeConfigurationLease(runtime)!,
-    }),
-  );
-  const response = await app.request('/chat', { method: 'POST' });
-  const wire = response.text();
-  cleanup.push(async () => {
-    resume.resolve();
-    await wire.catch(() => {});
-  });
-  await entered.promise;
-  // Seed a valid prior prefix; the next frame must enter through the route.
-  const db = new DatabaseSync(`${home}/data/agent-runtime/steps.sqlite`);
-  try {
-    const turn = db.prepare('SELECT id FROM agent_steps_turns').get();
-    if (typeof turn?.id !== 'string') throw Error('Live turn prerequisite');
-    const first = Number(
-      db
-        .prepare(
-          'SELECT coalesce(max(position),-1)+1 AS n FROM agent_steps_frames WHERE turn_id=?',
-        )
-        .get(turn.id)?.n,
+      definition: 'capacity/1',
+      memory,
+    });
+    const runtime = createChatRuntimeFixture(home, memory);
+    const app = new Hono();
+    app.post('/chat', (c) =>
+      streamPrimaryAgentChat({
+        c,
+        ctx: runtime,
+        slug: 'assistant',
+        plugin: '',
+        input: 'hello',
+        restOptions: {
+          conversationId: 'conversation',
+          userId: 'owner',
+          clientTurnId: 'turn',
+        },
+        injectContext: null,
+        ragContext: null,
+        agent,
+        configurationLease: captureRuntimeConfigurationLease(runtime)!,
+      }),
     );
-    const retained = 'data: {"type":"retained-prefix"}\n\n';
-    const digest = `sha256:${createHash('sha256').update(JSON.stringify(retained)).digest('hex')}`;
-    db.prepare(`WITH RECURSIVE positions(n) AS (SELECT ? UNION ALL SELECT n+1 FROM positions WHERE n<65535)
+    const response = await app.request('/chat', { method: 'POST' });
+    const wire = response.text();
+    cleanup.push(async () => {
+      resume.resolve();
+      await wire.catch(() => {});
+    });
+    await entered.promise;
+    // Seed a valid prior prefix; the next frame must enter through the route.
+    const db = new DatabaseSync(`${home}/data/agent-runtime/steps.sqlite`);
+    try {
+      const turn = db.prepare('SELECT id FROM agent_steps_turns').get();
+      if (typeof turn?.id !== 'string') throw Error('Live turn prerequisite');
+      const first = Number(
+        db
+          .prepare(
+            'SELECT coalesce(max(position),-1)+1 AS n FROM agent_steps_frames WHERE turn_id=?',
+          )
+          .get(turn.id)?.n,
+      );
+      const retained = 'data: {"type":"retained-prefix"}\n\n';
+      const digest = `sha256:${createHash('sha256').update(JSON.stringify(retained)).digest('hex')}`;
+      db.prepare(`WITH RECURSIVE positions(n) AS (SELECT ? UNION ALL SELECT n+1 FROM positions WHERE n<?)
       INSERT INTO agent_steps_frames SELECT ?, 'prefix:'||n, n, json_object('version',1,'id','prefix:'||n,'position',n,'wire',?,'digest',?,'createdAt','2026-01-01T00:00:00.000Z') FROM positions`).run(
-      first,
-      turn.id,
-      retained,
-      digest,
-    );
-  } finally {
-    db.close();
-  }
-  resume.resolve();
-  await expect(
-    wire.then((value) =>
-      value
-        .split('\n')
-        .filter((line) => line.startsWith('data: {'))
-        .map((line) => JSON.parse(line.slice(6)))
-        .filter((event) => event.type === 'text-delta')
-        .map((event) => event.text ?? event.delta)
-        .join(''),
-    ),
-  ).resolves.toBe('AFTER_CAP');
-  expect(await wire).toContain('data: [DONE]');
-  expect(failures).toEqual([]);
-  expect(finished).toBe(1);
-  expect(owner.read('conversation', 'turn')?.turn.state).toBe('completed');
-  expect(owner.frames('conversation', 'turn').length).toBeGreaterThan(65_536);
-}, 30_000);
+        first,
+        limit - 1,
+        turn.id,
+        retained,
+        digest,
+      );
+    } finally {
+      db.close();
+    }
+    resume.resolve();
+    const result = await wire;
+    const events = result
+      .split('\n')
+      .filter((line) => line.startsWith('data: {'))
+      .map((line) => JSON.parse(line.slice(6)));
+    expect(result).toContain('data: [DONE]');
+    if (limit >= 1_048_573) {
+      expect(events).toContainEqual(
+        expect.objectContaining({
+          type: 'error',
+          code: 'DURABLE_AGENT_FRAME_CAPACITY',
+          errorText: expect.stringContaining('durable output limit'),
+        }),
+      );
+      await expect
+        .poll(() => owner.read('conversation', 'turn')?.turn.state)
+        .toBe('blocked');
+      expect(
+        events
+          .filter((event) => event.type === 'text-delta')
+          .map((event) => event.text ?? event.delta)
+          .join(''),
+      ).toBe(limit === 1_048_576 ? '' : 'AFTER_CAP');
+    } else {
+      expect(
+        events
+          .filter((event) => event.type === 'text-delta')
+          .map((event) => event.text ?? event.delta)
+          .join(''),
+      ).toBe('AFTER_CAP');
+      expect(failures).toEqual([]);
+      expect(finished).toBe(1);
+      expect(owner.read('conversation', 'turn')?.turn.state).toBe('completed');
+      expect(owner.frames('conversation', 'turn').length).toBeGreaterThan(
+        65_536,
+      );
+    }
+  },
+  60_000,
+);

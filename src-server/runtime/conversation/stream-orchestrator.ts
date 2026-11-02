@@ -1,4 +1,4 @@
-import { currentAgentTurn } from '@kontourai/agent-runtime';
+import { currentAgentTurn, RuntimeError } from '@kontourai/agent-runtime';
 import {
   mcpToolApprovalKey,
   resolveAuthoredToolApproval,
@@ -480,6 +480,11 @@ function outwardFailureStatus(error: unknown): {
  * outward generic.
  */
 export function outwardTurnFailureText(error: unknown): string {
+  if (
+    error instanceof RuntimeError &&
+    error.code === 'DURABLE_AGENT_FRAME_CAPACITY'
+  )
+    return 'This response reached the durable output limit. Its saved output is preserved; start a new turn to continue.';
   const { statusCode, statusInferred } = outwardFailureStatus(error);
   if (statusInferred) return MODEL_PROVIDER_CREDENTIALS_REJECTED;
   if (statusCode !== undefined)
@@ -512,7 +517,15 @@ export async function writeSSEError(
   await streamWriter.write(
     `data: ${JSON.stringify({
       type: 'error',
-      errorText: outwardTransportError('sse'),
+      errorText:
+        error instanceof RuntimeError &&
+        error.code === 'DURABLE_AGENT_FRAME_CAPACITY'
+          ? outwardTurnFailureText(error)
+          : outwardTransportError('sse'),
+      ...(error instanceof RuntimeError &&
+      error.code === 'DURABLE_AGENT_FRAME_CAPACITY'
+        ? { code: error.code }
+        : {}),
       statusCode,
       ...(statusCode === 429
         ? { failureKind: modelProviderFailureKind(error) }

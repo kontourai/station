@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import type { AgentFrame } from '@kontourai/agent-runtime';
+import { type AgentFrame, RuntimeError } from '@kontourai/agent-runtime';
 import { z } from 'zod';
 
 export class DurableForegroundChannel<T> implements AsyncIterable<T> {
@@ -263,7 +263,13 @@ export function prepareDurableForegroundHandoff(input: {
       payload === '[DONE]' || JSON.parse(payload)?.type === 'finish';
     if (terminal) {
       state.allowSettlement();
-      await state.completion;
+      await state.completion.catch((error) => {
+        if (
+          !(error instanceof RuntimeError) ||
+          error.code !== 'DURABLE_AGENT_FRAME_CAPACITY'
+        )
+          throw error;
+      });
     }
     const frame = await state.frame(frameKey(wire), wire);
     const retained = encodeDurableAgentFrame(state.invocationId, frame);
@@ -302,7 +308,21 @@ export function prepareDurableForegroundHandoff(input: {
     return delivery;
   };
   input.writer.write = async (wire) => {
-    if (failure) throw failure;
+    if (failure) {
+      const capacity =
+        failure instanceof RuntimeError &&
+        failure.code === 'DURABLE_AGENT_FRAME_CAPACITY';
+      const errorWire =
+        typeof wire === 'string' &&
+        wire.startsWith('data: {') &&
+        JSON.parse(wire.slice(6)).type === 'error';
+      if (!capacity || !errorWire) throw failure;
+      // The reserved error/done slots remain writable after normal capacity.
+      // Join blocked settlement before projecting with its new owner fence.
+      await find()?.completion.catch(() => {});
+      failure = undefined;
+      delivery = Promise.resolve();
+    }
     const state = find();
     const payload =
       typeof wire === 'string' && wire.startsWith('data: ')

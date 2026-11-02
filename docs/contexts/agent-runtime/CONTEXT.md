@@ -132,3 +132,10 @@ tool refusal. The new Station adapter conformance exercises actual native loops
 with a scripted provider, separately from those helpers. It is not live-provider,
 physical-crash, cache-benefit or release qualification. Text input is the preview's
 supported admission form; unavailable configuration holds recovery.
+
+
+The opt-in agent-turn writer now uses compressed frame blocks and shared native
+text bodies while retaining logical frame and provider chunk boundaries. Finished
+completed-turn replay expires after seven days; a refusing tombstone and explicit
+expiry frame remain. Uncertain turns retain their evidence. See the private package
+README for writer-11 storage, typed frame capacity, and steer replay contracts.

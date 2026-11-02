@@ -1,5 +1,6 @@
 import type { DatabaseSync } from 'node:sqlite';
 import { afterEach, expect, it } from 'vitest';
+import { bodyDefinitions } from '../turn-bodies.js';
 import { turnFixture } from './turn-fixture.js';
 
 function removeChangeTracking(database: DatabaseSync) {
@@ -11,6 +12,12 @@ function removeChangeTracking(database: DatabaseSync) {
     database.exec(`DROP TRIGGER ${String(row.name)}`);
   database.exec('DROP TABLE agent_steps_changes');
   database.exec('DROP TABLE agent_steps_body_chunks');
+  database.exec('DROP TABLE agent_steps_frame_blocks');
+  database.exec(
+    'DROP TABLE agent_steps_retained; DROP INDEX agent_steps_terminal_age',
+  );
+  database.exec('DROP TRIGGER agent_steps_bodies_no_delete');
+  database.exec(bodyDefinitions[2]);
 }
 const cleanup: (() => Promise<void>)[] = [];
 afterEach(async () => {
@@ -41,7 +48,7 @@ it('migration from the ownership writer preserves original turn bytes and future
   expect(
     f.database.prepare('SELECT writer_format FROM agent_steps_meta').get()
       ?.writer_format,
-  ).toBe('agent-steps/10');
+  ).toBe('agent-steps/11');
   f.database.exec(
     "DROP TABLE agent_steps_meta; CREATE TABLE agent_steps_meta(id INTEGER PRIMARY KEY, writer_format TEXT NOT NULL) STRICT; INSERT INTO agent_steps_meta VALUES(1,'agent-steps/99');",
   );
@@ -65,5 +72,5 @@ it('writer-5 migration retains the original turn bytes', async () => {
   expect(
     f.database.prepare('SELECT writer_format FROM agent_steps_meta').get()
       ?.writer_format,
-  ).toBe('agent-steps/10');
+  ).toBe('agent-steps/11');
 });

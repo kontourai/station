@@ -203,6 +203,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'src-server/services/projects/__tests__/repository-acquisition-service.test.ts',
   'src-server/routes/projects/__tests__/project-working-directory-authority.test.ts',
   'packages/agent-runtime/src/__tests__/body-process.test.ts',
+  // Four bounded SIGKILL owner probes; private SQLite per child, no speed assertion.
+  'packages/agent-runtime/src/__tests__/turn-prefix-process.test.ts',
   // Immutable Git extraction and one private SQLite runner; no shared output or timing assertion.
   'packages/agent-runtime/src/__tests__/sqlite-compatibility.test.ts',
   'src-server/runtime/mcp/__tests__/mcp-ui-network.process.test.ts',

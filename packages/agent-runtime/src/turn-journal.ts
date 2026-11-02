@@ -7,7 +7,15 @@ import type {
   AtomicPort,
 } from '@kontourai/monument/testing';
 import { z } from 'zod';
-import { canonical, fence, hash, owner, runKey, text } from './encoding.js';
+import {
+  canonical,
+  fence,
+  hash,
+  owner,
+  RuntimeError,
+  runKey,
+  text,
+} from './encoding.js';
 import {
   type ApprovalCommand,
   type ApprovalResult,
@@ -27,6 +35,7 @@ import {
   changeDefinitions,
   compactAgentChanges,
   compactChangeDefinitions,
+  retainedChangeDelete,
 } from './turn-changes.js';
 import {
   agentEffectHeader,
@@ -50,12 +59,20 @@ import {
   type FrameCommand,
   type FrameResult,
   frameBatchCommand,
+  frameBlockDefinitions,
   frameCommand,
   framesDefinition,
   projectAgentFrame,
+  projectAgentFrames,
   readAgentFrame,
   readAgentFrames,
 } from './turn-projection.js';
+import {
+  compactAgentBodies,
+  retainAgentTurns,
+  retainedBodyDefinitions,
+  retentionDefinitions,
+} from './turn-retention.js';
 import { agentStatement } from './turn-statements.js';
 import {
   acceptAgentValidation,
@@ -84,6 +101,8 @@ const turnSchema = z
     version: z.literal(1),
     spec,
     inputDigest: text,
+    retired: z.boolean().optional(),
+    outputLimited: z.boolean().optional(),
     fence,
     state: z.enum(['running', 'completed', 'cancelled', 'blocked']),
     cancelRequested: z.boolean().optional(),
@@ -98,6 +117,7 @@ export type AgentJournalResult =
   | FrameBatchResult
   | {
       readonly kind: 'owned';
+      readonly frameCapacity?: true;
       readonly turn: AgentTurnRecord;
       readonly providerSessionId: string;
       readonly settledAt: number | null;
@@ -245,13 +265,29 @@ const writer9Definitions = [
   writer8Definitions[0]!.replaceAll('agent-steps/8', 'agent-steps/9'),
   ...writer8Definitions.slice(1),
 ];
-const currentDefinitions = [
+const writer10Definitions = [
   writer9Definitions[0]!.replaceAll('agent-steps/9', 'agent-steps/10'),
   ...writer9Definitions
     .slice(1)
     .filter((sql) => !new Set<string>(changeDefinitions).has(sql)),
   ...compactChangeDefinitions,
   ...bodyChunkDefinitions,
+];
+const currentDefinitions = [
+  writer10Definitions[0]!.replaceAll('agent-steps/10', 'agent-steps/11'),
+  ...writer10Definitions
+    .slice(1)
+    .map((sql) =>
+      sql.startsWith('CREATE TRIGGER agent_steps_bodies_no_delete')
+        ? retainedBodyDefinitions[0]!
+        : sql.startsWith('CREATE TRIGGER agent_steps_body_chunks_no_delete')
+          ? retainedBodyDefinitions[1]!
+          : sql.startsWith('CREATE TRIGGER agent_steps_changes_no_delete')
+            ? retainedChangeDelete
+            : sql,
+    ),
+  ...frameBlockDefinitions,
+  ...retentionDefinitions,
 ];
 const idOf = (key: RunKey) => canonical(key);
 const affinityKey = (spec: AgentTurnSpec): RunKey => ({
@@ -265,7 +301,11 @@ function validateRow(row: Record<string, unknown>): AgentTurnRecord {
     row.scope !== turn.spec.key.scopeId ||
     row.conversation !== turn.spec.key.conversationId ||
     row.active !== Number(turn.state === 'running') ||
-    turn.inputDigest !== hash(turn.spec.input) ||
+    (turn.retired
+      ? turn.state !== 'completed' || turn.spec.input !== '[expired]'
+      : turn.inputDigest !== hash(turn.spec.input)) ||
+    (turn.outputLimited === true &&
+      !['blocked', 'cancelled'].includes(turn.state)) ||
     (turn.cancelRequested === true) !== (turn.cancelRequestedAt !== undefined)
   )
     throw new Error('DURABLE_AGENT_JOURNAL_DAMAGED');
@@ -290,7 +330,7 @@ function validateAgentJournalSchema(
     agentStatement(
       database,
       'SELECT writer_format FROM agent_steps_meta WHERE id=1',
-    ).get()?.writer_format !== 'agent-steps/10'
+    ).get()?.writer_format !== 'agent-steps/11'
   )
     throw new Error('DURABLE_AGENT_WRITER_UNSUPPORTED');
   const schema = JSON.stringify([
@@ -318,7 +358,7 @@ function validateAgentJournalSchema(
     agentStatement(
       database,
       'SELECT writer_format FROM agent_steps_meta WHERE id=1',
-    ).get()?.writer_format !== 'agent-steps/10'
+    ).get()?.writer_format !== 'agent-steps/11'
   )
     throw new Error('DURABLE_AGENT_WRITER_UNSUPPORTED');
   validatedSchemas.set(database, schema);
@@ -344,6 +384,20 @@ function settledAt(
   database: DatabaseSync,
   turn: AgentTurnRecord,
 ): number | null {
+  if (
+    agentStatement(
+      database,
+      'SELECT writer_format FROM agent_steps_meta WHERE id=1',
+    ).get()?.writer_format === 'agent-steps/11'
+  ) {
+    const expired =
+      agentStatement(
+        database,
+        'SELECT 1 FROM agent_steps_retained WHERE turn_id=?',
+      ).get(idOf(turn.spec.key)) !== undefined;
+    if (expired !== (turn.retired === true))
+      throw new Error('DURABLE_AGENT_RETENTION_DAMAGED');
+  }
   const row = agentStatement(
     database,
     'SELECT state,settled_at FROM agent_steps_terminal WHERE turn_id=?',
@@ -573,6 +627,14 @@ export function auditSqliteAgentJournal({
     if (
       agentStatement(
         database,
+        'PRAGMA foreign_key_check(agent_steps_frame_blocks)',
+      ).all().length ||
+      agentStatement(
+        database,
+        'PRAGMA foreign_key_check(agent_steps_retained)',
+      ).all().length ||
+      agentStatement(
+        database,
         'PRAGMA foreign_key_check(agent_steps_frames)',
       ).all().length ||
       agentStatement(
@@ -615,6 +677,7 @@ export function openSqliteAgentJournal(options: {
   const owned = (turn: AgentTurnRecord): AgentJournalResult => ({
     kind: 'owned',
     turn,
+    ...(turn.outputLimited ? { frameCapacity: true as const } : {}),
     providerSessionId: affinity(turn.spec),
     settledAt: settledAt(database, turn),
   });
@@ -637,7 +700,7 @@ export function openSqliteAgentJournal(options: {
     database.exec('BEGIN IMMEDIATE');
     try {
       for (const sql of currentDefinitions) database.exec(sql);
-      database.exec("INSERT INTO agent_steps_meta VALUES(1,'agent-steps/10')");
+      database.exec("INSERT INTO agent_steps_meta VALUES(1,'agent-steps/11')");
       database.exec('COMMIT');
     } catch (error) {
       if (database.isTransaction) database.exec('ROLLBACK');
@@ -956,8 +1019,42 @@ export function openSqliteAgentJournal(options: {
       for (const sql of bodyChunkDefinitions) database.exec(sql);
       migrateAgentEffectTails(database);
       database.exec('DROP TABLE agent_steps_meta');
-      database.exec(currentDefinitions[0]!);
+      database.exec(writer10Definitions[0]!);
       database.exec("INSERT INTO agent_steps_meta VALUES(1,'agent-steps/10')");
+      database.exec('COMMIT');
+    } catch (error) {
+      if (database.isTransaction) database.exec('ROLLBACK');
+      invalidateAgentValidation(database);
+      throw error;
+    }
+  }
+  if (
+    agentStatement(
+      database,
+      'SELECT writer_format FROM agent_steps_meta WHERE id=1',
+    ).get()?.writer_format === 'agent-steps/10'
+  ) {
+    const actual = agentStatement(
+      database,
+      "SELECT sql FROM main.sqlite_schema WHERE (lower(name) GLOB 'agent_steps_*' OR lower(tbl_name) GLOB 'agent_steps_*') AND sql IS NOT NULL ORDER BY sql",
+    )
+      .all()
+      .map((row) => row.sql);
+    if (canonical(actual) !== canonical([...writer10Definitions].sort()))
+      throw new Error('DURABLE_AGENT_MIGRATION_REFUSED');
+    database.exec('BEGIN IMMEDIATE');
+    try {
+      for (const sql of frameBlockDefinitions) database.exec(sql);
+      for (const sql of retentionDefinitions) database.exec(sql);
+      database.exec(
+        'DROP TRIGGER agent_steps_bodies_no_delete; DROP TRIGGER agent_steps_body_chunks_no_delete; DROP TRIGGER agent_steps_changes_no_delete',
+      );
+      for (const sql of retainedBodyDefinitions) database.exec(sql);
+      database.exec(retainedChangeDelete);
+      database.exec('DROP TABLE agent_steps_meta');
+      database.exec(currentDefinitions[0]!);
+      database.exec("INSERT INTO agent_steps_meta VALUES(1,'agent-steps/11')");
+      migrateAgentEffectTails(database);
       database.exec('COMMIT');
     } catch (error) {
       if (database.isTransaction) database.exec('ROLLBACK');
@@ -1114,29 +1211,49 @@ export function openSqliteAgentJournal(options: {
             command.type === 'projectFrame' ||
             command.type === 'projectFrameBatch'
           ) {
+            if (turn.retired) return { kind: 'refused', reason: 'settled' };
             if (probe(turn.fence.owner) !== 'live')
               return { kind: 'refused', reason: 'unknown-owner' };
             const at = clock();
-            if (command.type === 'projectFrameBatch')
-              return {
-                kind: 'frames',
-                frames: command.frames.map(
-                  (frame) =>
-                    projectAgentFrame(
-                      database,
-                      idOf(key),
-                      {
-                        type: 'projectFrame',
-                        key,
-                        expected: command.expected,
-                        ...frame,
-                      },
-                      at,
-                    ).frame,
-                ),
-              };
-            return projectAgentFrame(database, idOf(key), command, at);
+            database.exec('SAVEPOINT frame_projection');
+            try {
+              if (command.type === 'projectFrameBatch')
+                return {
+                  kind: 'frames',
+                  frames: projectAgentFrames(
+                    database,
+                    idOf(key),
+                    command.frames.map((frame) => ({
+                      type: 'projectFrame',
+                      key,
+                      expected: command.expected,
+                      ...frame,
+                    })),
+                    at,
+                  ),
+                };
+              return projectAgentFrame(database, idOf(key), command, at);
+            } catch (error) {
+              if (
+                !(error instanceof RuntimeError) ||
+                error.code !== 'DURABLE_AGENT_FRAME_CAPACITY'
+              )
+                throw error;
+              database.exec('ROLLBACK TO frame_projection');
+              turn.outputLimited = true;
+              turn.state = turn.cancelRequested ? 'cancelled' : 'blocked';
+              agentStatement(
+                database,
+                'INSERT INTO agent_steps_terminal VALUES(?,?,?) ON CONFLICT(turn_id) DO UPDATE SET state=excluded.state',
+              ).run(idOf(key), turn.state, at);
+              write(turn);
+              return owned(turn);
+            } finally {
+              database.exec('RELEASE frame_projection');
+            }
           }
+          if (turn.outputLimited && command.type === 'settle')
+            return owned(turn);
           if (turn.state !== 'running')
             return { kind: 'refused', reason: 'settled' };
           if (
@@ -1205,6 +1322,14 @@ export function openSqliteAgentJournal(options: {
           return owned(turn);
         };
         const answer = decide();
+        if (
+          (command.type === 'open' || command.type === 'settle') &&
+          answer.kind === 'owned'
+        ) {
+          retainAgentTurns(database, clock());
+          compactAgentBodies(database);
+          invalidateAgentValidation(database);
+        }
         if (
           command.type !== 'read' &&
           command.type !== 'effectRead' &&

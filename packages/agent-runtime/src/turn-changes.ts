@@ -39,11 +39,15 @@ export function compactAgentChanges(database: DatabaseSync) {
   );
 }
 
+export const retainedChangeDelete = compactDelete.replace(
+  ' BEGIN SELECT',
+  ' AND NOT EXISTS(SELECT 1 FROM agent_steps_retained WHERE turn_id=OLD.turn_id) BEGIN SELECT',
+);
 export function agentChangeCursor(database: DatabaseSync): number {
   const cursor =
     agentStatement(
       database,
-      'SELECT max(seq) AS n FROM agent_steps_changes',
+      "SELECT seq AS n FROM sqlite_sequence WHERE name='agent_steps_changes'",
     ).get()?.n ?? 0;
   if (typeof cursor !== 'number' || !Number.isSafeInteger(cursor) || cursor < 0)
     throw new Error('DURABLE_AGENT_CHANGE_DAMAGED');
