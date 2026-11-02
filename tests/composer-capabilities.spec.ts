@@ -72,8 +72,38 @@ async function seedRoutes(
   executionRequests: Array<Record<string, unknown>>,
   textOnly = false,
   declaredProfile: ProviderDurabilityProfile | null = STEERING_ENGINE_DURABILITY,
+  projectionWait?: Promise<void>,
+  blockedRecovery = false,
 ) {
   const prepared = new Map<string, Record<string, unknown>>();
+  if (blockedRecovery)
+    await page.route('**/api/orchestration/sessions/*/usage-limit', (route) =>
+      route.fulfill(
+        json({
+          success: true,
+          data: {
+            recovery: {
+              failureKind: 'rate-limit',
+              scope: 'account',
+              decision: 'wait-until-reset',
+              outcome: 'armed',
+              dueAt: '2030-01-01T23:00:00Z',
+              attempts: 0,
+              maxAttempts: 1,
+              usageLimit: true,
+              autoResume: true,
+              updatedAt: '2026-04-12T00:00:01Z',
+              admission: {
+                state: 'blocked',
+                reason: 'scan-unavailable',
+                retryAt: '2030-01-01T21:01:00Z',
+              },
+            },
+          },
+        }),
+      ),
+    );
+
   await Promise.all([
     page.route('**/api/system/status', (route) =>
       route.fulfill(
@@ -185,8 +215,9 @@ async function seedRoutes(
         }),
       ),
     ),
-    page.route('**/api/orchestration/sessions/read-model', (route) =>
-      route.fulfill(
+    page.route('**/api/orchestration/sessions/read-model', async (route) => {
+      await projectionWait;
+      return route.fulfill(
         json({
           success: true,
           data: executionRequests.map((request) => ({
@@ -196,17 +227,23 @@ async function seedRoutes(
             ...(declaredProfile ? { durability: declaredProfile } : {}),
             model: 'gpt-6.1-sol',
             assignedAgentSlug: 'codex',
-            status: 'running',
-            lifecycleState: 'running',
+            status: blockedRecovery ? 'error' : 'running',
+            lifecycleState: blockedRecovery ? 'failed' : 'running',
             createdAt: '2026-04-12T00:00:00Z',
             updatedAt: '2026-04-12T00:00:00Z',
             isLoaded: true,
             isPersisted: true,
-            eventCount: 1,
+            eventCount: blockedRecovery ? 2 : 1,
+            ...(blockedRecovery
+              ? {
+                  lastEventMethod: 'runtime.error',
+                  lastRuntimeErrorUsageLimit: true,
+                }
+              : {}),
           })),
         }),
-      ),
-    ),
+      );
+    }),
     page.route('**/api/orchestration/chat', async (route) => {
       const request = route.request().postDataJSON() as Record<string, unknown>;
       executionRequests.push(request);
@@ -231,6 +268,22 @@ async function seedRoutes(
               createdAt: '2026-04-12T00:00:00Z',
               prompt: request.message,
             },
+            ...(blockedRecovery
+              ? [
+                  {
+                    eventId: `${turnId}-limit`,
+                    method: 'runtime.error',
+                    provider: 'codex',
+                    threadId: conversationId,
+                    turnId,
+                    createdAt: '2026-04-12T00:00:01Z',
+                    message: 'Usage limit reached',
+                    code: 'usageLimitExceeded',
+                    retriable: false,
+                    details: { usageLimit: true, scope: 'account' },
+                  },
+                ]
+              : []),
           ],
         ],
       });
@@ -403,7 +456,11 @@ for (const [label, width] of [
     const executionRequests: Array<Record<string, unknown>> = [];
     await page.setViewportSize({ width, height: 900 });
     await installMockOrchestrationSse(page);
-    await seedRoutes(page, executionRequests, false, null);
+    let releaseProjection!: () => void;
+    const projectionWait = new Promise<void>((resolve) => {
+      releaseProjection = resolve;
+    });
+    await seedRoutes(page, executionRequests, false, null, projectionWait);
     const { composer, started } = await openStartComposer(page, label);
     await composer
       .getByRole('textbox', { name: 'What would you like done?' })
@@ -416,33 +473,85 @@ for (const [label, width] of [
       exact: true,
     });
     await input.getByRole('textbox').fill('keep this follow-up');
+    try {
+      for (const phase of ['pending', 'unavailable'] as const) {
+        if (phase === 'unavailable') releaseProjection();
+        for (const theme of ['dark', 'light']) {
+          await page.setViewportSize({ width, height: 900 });
+          await page.evaluate(
+            (value) =>
+              document.documentElement.setAttribute('data-theme', value),
+            theme,
+          );
+          await page.getByRole('button', { name: 'Send mode: Queue' }).click();
+          const mode = page.getByRole('dialog', {
+            name: 'Send mode',
+            exact: true,
+          });
+          await expect(
+            mode.getByRole('button', { name: /Steer (this turn|when safe)/ }),
+          ).toBeDisabled();
+          await expect(
+            mode.getByText(
+              phase === 'pending'
+                ? 'Loading steering support…'
+                : 'Steering unavailable: the host did not report a durability profile.',
+            ),
+          ).toBeVisible();
+          await evidence(
+            page,
+            testInfo,
+            `steering-${phase}-${width}-${theme}.png`,
+          );
+          await page.keyboard.press('Escape');
+          await expect(mode).toBeHidden();
+        }
+      }
+    } finally {
+      releaseProjection();
+    }
+    expect(executionRequests).toHaveLength(1);
+  });
+}
+
+test('blocked credential recovery explains its reason and retry at both widths and themes', async ({
+  page,
+}, testInfo) => {
+  const executionRequests: Array<Record<string, unknown>> = [];
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await installMockOrchestrationSse(page);
+  await seedRoutes(
+    page,
+    executionRequests,
+    false,
+    STEERING_ENGINE_DURABILITY,
+    undefined,
+    true,
+  );
+  const { composer, started } = await openStartComposer(page, 'desktop');
+  await composer
+    .getByRole('textbox', { name: 'What would you like done?' })
+    .fill('start and reach the usage limit');
+  await composer.getByRole('button', { name: 'Start', exact: true }).click();
+  await started();
+  const banner = page.getByTestId('usage-limit-banner');
+  await expect(banner).toContainText(
+    'saved credential recovery records cannot be read',
+  );
+  await expect(banner.getByRole('status')).toContainText('Next check');
+  await expect(
+    banner.getByRole('button', { name: 'Resume now', exact: true }),
+  ).toBeEnabled();
+  for (const width of [390, 1440])
     for (const theme of ['dark', 'light']) {
       await page.setViewportSize({ width, height: 900 });
       await page.evaluate(
         (value) => document.documentElement.setAttribute('data-theme', value),
         theme,
       );
-      await page.getByRole('button', { name: 'Send mode: Queue' }).click();
-      const mode = page.getByRole('dialog', { name: 'Send mode', exact: true });
-      await expect(
-        mode.getByRole('button', { name: /Steer (this turn|when safe)/ }),
-      ).toBeDisabled();
-      await expect(
-        mode.getByText(
-          'Steering unavailable: the host did not report a durability profile.',
-        ),
-      ).toBeVisible();
-      await evidence(
-        page,
-        testInfo,
-        `steering-unavailable-${width}-${theme}.png`,
-      );
-      await page.keyboard.press('Escape');
-      await expect(mode).toBeHidden();
+      await evidence(page, testInfo, `recovery-blocked-${width}-${theme}.png`);
     }
-    expect(executionRequests).toHaveLength(1);
-  });
-}
+});
 
 for (const [label, viewport] of [
   ['desktop', { width: 1280, height: 860 }],

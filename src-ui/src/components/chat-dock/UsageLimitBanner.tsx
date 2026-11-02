@@ -330,7 +330,7 @@ function UsageLimitBannerFor({
               {' '}
               Next check{' '}
               <time dateTime={recovery.admission.retryAt}>
-                {clockTime(new Date(recovery.admission.retryAt).getTime())}
+                {clockTime(Date.parse(recovery.admission.retryAt), nowMs)}
               </time>
               .
             </>
