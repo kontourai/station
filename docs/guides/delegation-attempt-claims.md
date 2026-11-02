@@ -4,6 +4,26 @@ Opt-in durable duplicate suppression for portable delegation creates. Only the
 receiver side exists: the request claim and its lookup. There is no sender
 ledger, fence, cancel, UI or retention protocol yet.
 
+All delegation creates require `clientTurnId`. The separate
+[CreateRequestClaims owner](../../src-server/services/orchestration/create-request-claims.ts)
+binds authenticated user/tenant/principal and verified calling Session to the
+request kind, key and input. Each intended request needs a unique key. Completed
+receipts replay for seven wall-clock days, then expire. Dead unmarked requests
+reclaim immediately, including resumed Sessions. A starting mark without confirmed
+acceptance is indeterminate within its seven-day window. At expiry, the same key
+can reclaim only when no durable Session start record exists. Otherwise a compact
+tombstone keeps refusing it with its original Session reference.
+
+Tombstones are pruned oldest first only under admission capacity pressure; they
+count toward the 1,024-record and 4 MiB bounds. If pruning cannot make room, a typed
+HTTP 429 starts nothing. A pruned key loses protection, so neither absence nor
+expiry authorizes automatic retry. Inspect the original Session before any
+deliberate separate new request, which may duplicate existing work. The
+[API reference](../reference/api.md) owns the precise starting/refusal rules,
+3 KiB pending receipt reservation and clock limits. It preserves the peer
+identity, lookup authority and opt-in `attemptId` protocol below. The SDK uses an
+existing `attemptId` as its default key; retain it with the original input.
+
 ## Opt-in field
 
 `POST /api/orchestration/delegations` accepts an optional `attemptId`

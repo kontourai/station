@@ -1,8 +1,8 @@
 import { createHash } from 'node:crypto';
+import type { TurnDeduplicator } from '@kontourai/monument';
 import type { ConversationHandoffEffectStatus } from '@kontourai/station-contracts/orchestration';
 import { z } from 'zod';
 import type { EventStore } from './event-store.js';
-import type { TurnDeduplicator } from './turn-deduplicator.js';
 
 const witnessSchema = z
   .object({

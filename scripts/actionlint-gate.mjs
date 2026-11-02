@@ -363,7 +363,7 @@ const FORK_SMOKE_JOB = Object.freeze({
   file: '.github/workflows/ci.yml',
   jobId: 'fork-smoke',
 });
-const SAME_REPOSITORY_FAST_CHECKS_CONDITION = `\${{ always() && !cancelled() && (github.event_name == 'merge_group' || (github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) && github.event.pull_request.head.repo.full_name == github.repository) || github.event_name == 'workflow_dispatch' || needs.classify.outputs.heavy == 'true') }}`;
+const SAME_REPOSITORY_FAST_CHECKS_CONDITION = `\${{ always() && !cancelled() && needs.pr-admission.outputs.admitted != 'false' && (github.event_name == 'merge_group' || (github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) && github.event.pull_request.head.repo.full_name == github.repository) || github.event_name == 'workflow_dispatch' || needs.classify.outputs.heavy == 'true') }}`;
 const FORK_SMOKE_CONDITION = `\${{ github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) && github.event.pull_request.head.repo.full_name != github.repository }}`;
 // #2176: the whole-tree source scans run for same-repository pull requests
 // only. A fork candidate never reaches it (fork-smoke owns forks).
@@ -390,6 +390,7 @@ const PRIMARY_ROUTER_JOBS = new Set([
   'classify',
   'pr-title',
   'source-policy',
+  'pr-admission',
   'delivery-plan',
   'delivery-validation',
   'fast-checks',
@@ -1674,6 +1675,7 @@ function ciCredentialFindings(file, jobs) {
     .filter(([jobId, job]) => {
       if (jobId === 'delivery-plan' && isExactDeliveryPlanner(job))
         return false;
+      if (jobId === 'pr-admission' && isExactPrAdmission(job)) return false;
       if (jobId !== 'pr-title') return referencesCredential(job);
       const withoutReadToken = structuredClone(job);
       for (const step of withoutReadToken.steps ?? []) {
@@ -2533,6 +2535,22 @@ function fastChecksShardingFindings(file, jobs) {
   return findings;
 }
 
+/**
+ * The conflict-deferral job reads the pull request's mergeability with the
+ * read-only token before any candidate execution (scripts/pr-source-admission.mjs).
+ * It checks out only the trusted workflow revision. Any change to its
+ * authority, checkout or command needs a reviewed new digest.
+ */
+function isExactPrAdmission(job) {
+  if (!job) return false;
+  return (
+    createHash('sha256')
+      .update(JSON.stringify(canonicalValue(job)))
+      .digest('hex') ===
+    '9a67126c86c49e020d11e540eb8581fd277bbfac26fe3ca29d3ddf5da70e386b'
+  );
+}
+
 function isExactSourcePolicyCall(job) {
   if (!job) return false;
   return (
@@ -2591,6 +2609,7 @@ function primaryCiRouterFindings(file, document) {
       job?.permissions !== undefined &&
       !hasOnlyReadContentsPermission(job.permissions) &&
       !(jobId === 'source-policy' && isExactSourcePolicyCall(job)) &&
+      !(jobId === 'pr-admission' && isExactPrAdmission(job)) &&
       !(
         jobId === 'delivery-plan' &&
         hasExactKeys(job.permissions, ['contents', 'pull-requests']) &&

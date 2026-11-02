@@ -27,6 +27,11 @@ const host = vi.hoisted(() => ({
   apiBase: 'https://station.example.test',
   authorityKey: 'device-one',
 }));
+const navigation = vi.hoisted(() => ({ navigate: vi.fn() }));
+vi.mock('../../../contexts/NavigationContext', () => ({
+  useNavigationActions: () => navigation,
+}));
+
 vi.mock('../../../contexts/ApiBaseContext', () => ({
   useHostRequestAuthorityScope: () => ({ ...host }),
 }));
@@ -62,6 +67,7 @@ const clients: QueryClient[] = [];
 const writeText = vi.fn(async (_text: string) => {});
 
 beforeEach(() => {
+  navigation.navigate.mockClear();
   posts.length = 0;
   writeText.mockClear();
   setClientCredentialResolver(() => ({
@@ -155,4 +161,67 @@ test('creates an email-restricted invitation and reveals its link to copy', asyn
   fireEvent.click(screen.getByRole('button', { name: 'Copy invitation' }));
   await screen.findByText('Invitation copied.');
   expect(writeText).toHaveBeenCalledWith(link.value);
+});
+
+test.each([
+  'http://127.0.0.1:45678',
+  'http://127.2.3.4:45678',
+  'http://localhost:45678',
+  'http://dev.localhost:45678',
+  'http://[::1]:45678',
+])(
+  'an invitation at %s explains that another computer cannot use it',
+  async (origin) => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () =>
+        Response.json({
+          success: true,
+          data: { ...view, invitationOrigin: origin },
+        }),
+      ),
+    );
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    clients.push(client);
+    render(
+      <QueryClientProvider client={client}>
+        <AccessSection slug="example" projectId="local-one" />
+      </QueryClientProvider>,
+    );
+    await screen.findByText(origin);
+    expect(
+      screen.getByText(/This address only works on this computer/),
+    ).toBeTruthy();
+    expect(
+      screen.queryByText(/Creating a link does not make this Station public/),
+    ).toBeNull();
+  },
+);
+
+test('missing account sign-in keeps invitation creation disabled and offers Station setup', async () => {
+  const { invitationOrigin: _origin, ...withoutSignIn } = view;
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () => Response.json({ success: true, data: withoutSignIn })),
+  );
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false } },
+  });
+  clients.push(client);
+  render(
+    <QueryClientProvider client={client}>
+      <AccessSection slug="example" projectId="local-one" />
+    </QueryClientProvider>,
+  );
+  const create = await screen.findByRole('button', {
+    name: 'Create invitation',
+  });
+  expect((create as HTMLButtonElement).disabled).toBe(true);
+  fireEvent.click(screen.getByRole('button', { name: 'Sharing setup' }));
+  expect(navigation.navigate).toHaveBeenCalledWith('/settings', {
+    view: 'system',
+  });
+  expect(posts).toHaveLength(0);
 });

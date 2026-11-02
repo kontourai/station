@@ -636,7 +636,11 @@
 
     "src-server/services/automation/repair-controller.ts",
 
-    "src-server/services/terminal/terminal-tickets.ts"
+    "src-server/services/terminal/terminal-tickets.ts",
+
+    "src-server/services/orchestration/create-request-claims.ts",
+
+    "src-server/services/orchestration/__tests__/create-request-claims.test.ts"
   ],
 
   "checks": [

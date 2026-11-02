@@ -1,0 +1,7 @@
+{
+  "revision": "c7dffedfef44552545dd9dc67cf95fde00800cfb",
+
+  "notes": [
+    {"path":"docs/reference/deploy-ledger.md","note":"Reviewed the inherited generated deploy ledger selected transitively by this source-review update. The Markdown rows match the JSON ledger and retain exact source, workflow and artifact caveats. This create-admission change publishes nothing and changes no ledger data, schema or generation; these historical release records do not qualify this PR.","inputs":["docs/reference/deploy-ledger.md","docs/reference/deploy-ledger.json"]}
+  ]
+}

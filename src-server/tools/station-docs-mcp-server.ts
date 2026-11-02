@@ -3,7 +3,6 @@ import { z } from 'zod';
 
 import packageJson from '../../package.json' with { type: 'json' };
 import {
-  STATION_DOCS_CONTENT_DIGEST,
   STATION_DOCS_TOPICS,
   type StationDocsTopic,
 } from './station-docs-content.js';
@@ -103,13 +102,33 @@ function jsonToolResult(data: unknown) {
  * Every tool result carries this envelope so a model reading the output —
  * not just the tool description — is told what it is holding.
  */
-const SHIPPED_SOURCE = {
-  source: 'station-docs',
-  kind: 'shipped-documentation',
-  stationVersion: STATION_DOCS_VERSION,
-  documentationDigest: STATION_DOCS_CONTENT_DIGEST,
-  note: "Static documentation bundled with Station. This is not live state: it does not describe this Station's agents, runs, jobs, projects, or settings.",
-} as const;
+let shippedSource: Promise<Readonly<Record<string, string>>> | undefined;
+
+/**
+ * `documentationDigest` is SHA-256 over the compiled topics, the same value
+ * `stationDocsDigest()` in scripts/generate-station-docs.mjs reports. It is
+ * computed here rather than committed to the generated content file because a
+ * committed digest line changed with every docs edit, so every pair of
+ * docs-touching branches conflicted on it. Global Web Crypto keeps this module
+ * inside the station-docs import allowlist.
+ */
+function shippedSourceEnvelope(): Promise<Readonly<Record<string, string>>> {
+  shippedSource ??= globalThis.crypto.subtle
+    .digest(
+      'SHA-256',
+      new TextEncoder().encode(JSON.stringify(STATION_DOCS_TOPICS)),
+    )
+    .then((hash) => ({
+      source: 'station-docs',
+      kind: 'shipped-documentation',
+      stationVersion: STATION_DOCS_VERSION,
+      documentationDigest: Array.from(new Uint8Array(hash), (byte) =>
+        byte.toString(16).padStart(2, '0'),
+      ).join(''),
+      note: "Static documentation bundled with Station. This is not live state: it does not describe this Station's agents, runs, jobs, projects, or settings.",
+    }));
+  return shippedSource;
+}
 
 const STATION_DOCS_TOOLS = [
   {
@@ -175,7 +194,7 @@ export function createStationDocsMcpServer(): McpServer {
     },
     async ({ parentId }) =>
       jsonToolResult({
-        ...SHIPPED_SOURCE,
+        ...(await shippedSourceEnvelope()),
         topics: STATION_DOCS_TOPICS.filter(
           (topic) => parentId === undefined || topic.parentId === parentId,
         ).map(toSummary),
@@ -196,12 +215,12 @@ export function createStationDocsMcpServer(): McpServer {
       const topic = findStationDocsTopic(id);
       if (!topic) {
         return jsonToolResult({
-          ...SHIPPED_SOURCE,
+          ...(await shippedSourceEnvelope()),
           error: `Unknown documentation topic '${id}'.`,
           availableTopicIds: STATION_DOCS_TOPICS.map((entry) => entry.id),
         });
       }
-      return jsonToolResult({ ...SHIPPED_SOURCE, topic });
+      return jsonToolResult({ ...(await shippedSourceEnvelope()), topic });
     },
   );
 
@@ -224,7 +243,7 @@ export function createStationDocsMcpServer(): McpServer {
     },
     async ({ query, limit }) =>
       jsonToolResult({
-        ...SHIPPED_SOURCE,
+        ...(await shippedSourceEnvelope()),
         query,
         results: searchStationDocs(query, limit ?? 10),
       }),

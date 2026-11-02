@@ -52,6 +52,7 @@ import {
   executeForegroundMessage,
 } from '../../../services/execution-target/execution-target-execution.js';
 import { NotificationService } from '../../../services/notifications/notification-service.js';
+import { FileDelegationAttemptClaimStore } from '../../../services/orchestration/delegation-attempt-claim-store.js';
 import { EventBus } from '../../../services/orchestration/event-bus.js';
 import { EventStore } from '../../../services/orchestration/event-store.js';
 import { OrchestrationService } from '../../../services/orchestration/orchestration-service.js';
@@ -308,6 +309,7 @@ async function createHarness(roots: string[], stationDefault?: ApprovalMode) {
   };
   const execute = (input: {
     message: string;
+    clientTurnId?: string;
     conversationId?: string;
     model?: { options?: Record<string, unknown> };
     setApprovalMode?: ApprovalMode;
@@ -318,6 +320,7 @@ async function createHarness(roots: string[], stationDefault?: ApprovalMode) {
     executeForegroundMessage(
       {
         message: input.message,
+        ...(input.clientTurnId ? { clientTurnId: input.clientTurnId } : {}),
         ...(input.conversationId
           ? { conversationId: input.conversationId }
           : {}),
@@ -340,6 +343,7 @@ async function createHarness(roots: string[], stationDefault?: ApprovalMode) {
       deps,
     );
   const routes = createOrchestrationRoutes(service, {
+    delegationAttemptClaimStore: new FileDelegationAttemptClaimStore(root),
     eventBus,
     logger: { debug: vi.fn() },
     getUserId: () => OWNER,
@@ -348,6 +352,7 @@ async function createHarness(roots: string[], stationDefault?: ApprovalMode) {
       execute({
         message: input.message,
         conversationId: input.conversationId,
+        clientTurnId: input.clientTurnId,
         ...(input.fullAccessGrant
           ? { fullAccessGrant: input.fullAccessGrant }
           : {}),
@@ -410,6 +415,8 @@ async function createHarness(roots: string[], stationDefault?: ApprovalMode) {
    * phone's decisions (the probes model it missing them).
    */
   let seen: number | null = null;
+  let turnNumber = 0;
+  const nextTurnKey = () => `approval-fixture-${++turnNumber}`;
   const composerSend = async (
     body: Record<string, unknown>,
     carried?: ApprovalMode,
@@ -417,6 +424,7 @@ async function createHarness(roots: string[], stationDefault?: ApprovalMode) {
   ) => {
     const response = await post('/api/orchestration/chat', {
       ...body,
+      clientTurnId: body.clientTurnId ?? nextTurnKey(),
       target: {
         environment: { kind: 'current' },
         agent: 'claude',
@@ -448,7 +456,11 @@ async function createHarness(roots: string[], stationDefault?: ApprovalMode) {
     eventBus,
     /** The composer's first send: `/chat`, optionally carrying a pick. */
     firstSend: (carried?: ApprovalMode, defaultChannel?: ApprovalMode) =>
-      composerSend({ message: 'first' }, carried, defaultChannel),
+      composerSend(
+        { message: 'first', conversationId: CONVERSATION },
+        carried,
+        defaultChannel,
+      ),
     /** A composer send on the existing conversation, maybe carrying a pick. */
     send: (carried?: ApprovalMode, defaultChannel?: ApprovalMode) =>
       composerSend(
@@ -464,7 +476,7 @@ async function createHarness(roots: string[], stationDefault?: ApprovalMode) {
     async continueWithoutPosture() {
       const response = await post(
         `/api/orchestration/chat/${encodeURIComponent(CONVERSATION)}/continue`,
-        { message: 'reply' },
+        { message: 'reply', clientTurnId: nextTurnKey() },
       );
       expect(response.status, await response.text()).toBe(200);
       await turnsSettled();
