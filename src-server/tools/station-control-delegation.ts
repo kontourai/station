@@ -145,7 +145,7 @@ import {
   presentOpenRequest,
 } from '../services/orchestration/request-presentation.js';
 import type { StartOwnerAttribution } from '../services/orchestration/session-owner-attribution.js';
-import { SessionStartIndeterminateError } from '../services/orchestration/session-turn-boundary.js';
+import { SessionStartIndeterminateError } from '../services/orchestration/session-turn-boundary-binding.js';
 import { snapshotTurnSubmissionFields } from '../services/orchestration/turn-submission-digest.js';
 import {
   type PortableExecutionConsentIdentity,
