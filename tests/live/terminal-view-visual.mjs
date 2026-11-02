@@ -7,7 +7,7 @@
  * Screenshots the terminal at 390 and 1440 px in light and dark (bottom panel,
  * with and without a selection, the right dock at 1440, and the dock round
  * trip back to the lower panel), then measures keystroke-to-glyph latency
- * (median and p95) and the page frame rate over 10 s of a five-million-line
+ * (median and p95) and the page frame rate over 10 s of a ten-million-line
  * flood. Writes the PNGs and results.json (revision, machine and load,
  * per-shot layout, round-trip checks, latencies, frames) to <dir>. The shell is bash with a fixed prompt, so no
  * user, host or path is captured. Uses its own temp home and ports
@@ -448,12 +448,12 @@ try {
   }
 
   // Flood: the page's frames per second over a 10 s window while the shell
-  // prints five million lines. The flood touches a file when it ends, so the
+  // prints ten million lines (plain integers: BSD seq writes 5e+06). The flood touches a file when it ends, so the
   // results say whether it outlasted the window.
   const floodWindowMs = 10_000;
   const floodDone = join(repo, 'flood-done');
   const floodStart = Date.now();
-  await type('seq 1 5000000; touch flood-done\r');
+  await type('seq -f %.0f 1 10000000; touch flood-done\r');
   // Watched while the window runs, so the end is timed, not found afterwards.
   let floodEndedMs = null;
   const watch = setInterval(() => {
@@ -488,7 +488,7 @@ try {
       }),
     floodWindowMs,
   );
-  results.flood.lines = 5_000_000;
+  results.flood.lines = 10_000_000;
   // What the terminal shows at the window's end and when the wait stops:
   // the typed command and how far the count got.
   await page.screenshot({ path: join(out, 'flood-window-end.png') });
