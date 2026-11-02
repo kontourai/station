@@ -1256,10 +1256,16 @@ profile whose overlay is identical to the active profile's; when every
 enrolled candidate differs, it refuses with `environment_mismatch`. Choosing
 a profile by hand, or pinning one on an Agent, is not restricted this way.
 
-Automatic profile recovery waits while startup reconciliation cannot read its
-obligations or an earlier application remains unresolved. This pause applies
-across connections; Station retries an armed recovery after reconciliation can
-be attempted again. It does not prove that a previous provider call was undone.
+All automatic recovery, including same-account replay, pauses while startup
+reconciliation cannot read its obligations or an earlier application remains
+unresolved. An unreadable scan cannot establish which connections are affected.
+Station warns once when this pause begins and again when readiness recovers.
+The recovery status exposes `admission.state: blocked`, a bounded reason, and
+its next retry time when scheduled. The usage-limit banner shows the pause.
+Retries back off from 60 seconds to a maximum of 10 minutes; a successful
+reconciliation restores ordinary recovery. This does not prove that a previous
+provider call was undone. The refusal metric is
+`station.recovery.admission_refused`, with only a bounded `reason` attribute.
 
 ### Prefer allowance that expires sooner during account recovery
 

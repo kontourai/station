@@ -1,6 +1,5 @@
 import { compareCodePoints } from './decisions/order.js';
 import {
-  decideRecoveryArm,
   decideRecoveryStorageGuard,
   type RecoveryGuardRow,
   recoveryGuardPlan,
@@ -134,7 +133,7 @@ export class MemoryRecoveryVolume<I extends RecoverySqlIntent> {
             case 'armRecoveryIntent': {
               const [input] = command.args;
               let row = find(input.fingerprint);
-              if (decideRecoveryArm(row !== undefined) === 'create') {
+              if (!row) {
                 row = {
                   intent: structuredClone(
                     options.makeIntent(structuredClone(input)),
@@ -145,8 +144,6 @@ export class MemoryRecoveryVolume<I extends RecoverySqlIntent> {
                 };
                 rows.set(input.fingerprint, row);
               }
-              if (!row)
-                throw new Error('Recovery arm decision lost its record.');
               result = view(row);
               break;
             }

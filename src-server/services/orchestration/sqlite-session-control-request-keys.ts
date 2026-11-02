@@ -5,7 +5,8 @@ import {
 } from '@kontourai/monument';
 import {
   createSessionControlRequestKeys,
-  type SessionControlRequestKeys,
+  type SessionControlRequestKeys as PortableRequestKeys,
+  runWithSessionControlKey as runPortableSessionControlKey,
 } from '@kontourai/monument/session-control';
 import {
   openSqliteKernelStorage,
@@ -82,6 +83,13 @@ export const SESSION_CONTROL_REQUEST_KEY_KERNEL_TABLES: SqliteKernelTables = {
   inbox: 'unused',
 };
 
+export type SessionControlRequestKeys = PortableRequestKeys<'station'>;
+
+export const runWithSessionControlKey: <Result>(
+  ...args: Parameters<typeof runPortableSessionControlKey<Result, 'station'>>
+) => ReturnType<typeof runPortableSessionControlKey<Result, 'station'>> =
+  runPortableSessionControlKey;
+
 export function createSqliteSessionControlRequestKeys(
   db: SqliteDatabase,
   options: {
@@ -111,5 +119,14 @@ export function createSqliteSessionControlRequestKeys(
   resolveKernelLimits(context.limits);
   const execute = <C extends KernelCommand>(command: C): KernelResult<C> =>
     kernel.executeSync(command, context);
-  return createSessionControlRequestKeys(execute, now);
+  const keys = createSessionControlRequestKeys(execute, now);
+  return {
+    ...keys,
+    claim(id, digest) {
+      const claim = keys.claim(id, digest);
+      return claim.kind === 'capacity'
+        ? { ...claim, scope: claim.scope === 'store' ? 'station' : claim.scope }
+        : claim;
+    },
+  };
 }

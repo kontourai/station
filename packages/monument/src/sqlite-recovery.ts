@@ -1,5 +1,4 @@
 import {
-  decideRecoveryArm,
   decideRecoveryStorageGuard,
   type RecoveryGuardRow,
   recoveryGuardPlan,
@@ -351,10 +350,7 @@ class SqliteRecoveryStorage<
 
   armRecoveryIntent(input: RecoveryIntentInput<I>): I {
     const existing = this.findRecoveryIntent(input.fingerprint);
-    if (decideRecoveryArm(existing !== null) === 'existing') {
-      if (!existing) throw new Error('Recovery arm decision lost its record.');
-      return existing;
-    }
+    if (existing) return existing;
     this.options.db
       .prepare(
         `INSERT OR IGNORE INTO ${this.options.table}

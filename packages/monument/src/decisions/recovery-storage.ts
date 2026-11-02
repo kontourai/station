@@ -63,11 +63,6 @@ export type RecoveryGuardCommand =
         | 'cancelShutdownRecoveries';
     };
 
-/** A fingerprint names its first durable intent; later arms replay it. */
-export function decideRecoveryArm(exists: boolean): 'existing' | 'create' {
-  return exists ? 'existing' : 'create';
-}
-
 /** Pure admission decision; SQLite still applies an exact guarded write under its lock. */
 export function decideRecoveryStorageGuard(
   command: RecoveryGuardCommand,

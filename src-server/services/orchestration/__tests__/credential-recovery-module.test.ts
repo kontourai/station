@@ -541,6 +541,7 @@ describe('CredentialRecoveryModule', () => {
 
     await expect(module.recover(observation)).resolves.toEqual({
       kind: 'unavailable',
+      reason: 'scan-unavailable',
     });
     expect(stage).not.toHaveBeenCalled();
     expect(recoveryLedger(eventStore).find(intent.fingerprint)).toMatchObject({
@@ -603,8 +604,14 @@ describe('CredentialRecoveryModule', () => {
           signal: new AbortController().signal,
         },
       });
-    await expect(recover(same)).resolves.toEqual({ kind: 'unavailable' });
-    await expect(recover(other)).resolves.toEqual({ kind: 'unavailable' });
+    await expect(recover(same)).resolves.toEqual({
+      kind: 'unavailable',
+      reason: 'reconciliation-indeterminate',
+    });
+    await expect(recover(other)).resolves.toEqual({
+      kind: 'unavailable',
+      reason: 'reconciliation-indeterminate',
+    });
     expect(stage).not.toHaveBeenCalled();
     settled = true;
     await expect(recover(other)).resolves.toEqual({

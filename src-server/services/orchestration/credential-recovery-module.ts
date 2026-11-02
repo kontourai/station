@@ -2,7 +2,10 @@ import type {
   RecoveryClaim,
   RecoveryTransition,
 } from '@kontourai/monument/recovery';
-import type { ConnectionRecoveryIntent } from '@kontourai/station-contracts/connection-recovery';
+import type {
+  ConnectionRecoveryIntent,
+  RecoveryAdmissionRefusalReason,
+} from '@kontourai/station-contracts/connection-recovery';
 import { credentialProfileApplication } from '../../telemetry/metrics.js';
 import type { ClassifiedConnectionFailure } from '../connections/connection-recovery-policy.js';
 import type { CredentialApplicationHandle } from './credential-application-ledger.js';
@@ -90,7 +93,7 @@ interface CredentialRecoveryObservation {
 type CredentialRecoveryOutcome =
   | { kind: 'unnecessary' }
   | { kind: 'conflicted' }
-  | { kind: 'unavailable' }
+  | { kind: 'unavailable'; reason: RecoveryAdmissionRefusalReason }
   | { kind: 'restarted'; turnId: string }
   | { kind: 'recovered' }
   | { kind: 'rolled-back' }
@@ -129,6 +132,7 @@ type CredentialRecoveryReconciliationOutcome =
  * recovery caller depend on one Module while the Adapter remains concrete.
  */
 export interface CredentialRecoveryModule {
+  admission(): RecoveryAdmissionRefusalReason | undefined;
   recover(
     observation: CredentialRecoveryObservation,
   ): Promise<CredentialRecoveryOutcome>;
@@ -141,6 +145,7 @@ export interface CredentialRecoveryModule {
 
 interface CredentialRecoveryImplementationDependencies {
   ledger: RecoveryLedger;
+  logger?: { warn(message: string, meta?: Record<string, unknown>): void };
   adapter: CredentialProfileRecoveryAdapter;
   dispatchAdapter: RecoveryDispatchAdapter;
   restoreSession(input: {
@@ -171,10 +176,36 @@ class CredentialRecoveryImplementation implements CredentialRecoveryModule {
   private startupReadiness?: Promise<CredentialRecoveryReconciliationOutcome>;
   private startupReconciliationComplete = false;
   private orphanSweepComplete = false;
+  private admissionBlock?: RecoveryAdmissionRefusalReason;
 
   constructor(
     private readonly dependencies: CredentialRecoveryImplementationDependencies,
   ) {}
+
+  admission(): RecoveryAdmissionRefusalReason | undefined {
+    return this.admissionBlock;
+  }
+
+  private observeReadiness(
+    outcome: CredentialRecoveryReconciliationOutcome,
+  ): void {
+    if (outcome.kind === 'reconciled') {
+      if (this.admissionBlock)
+        this.dependencies.logger?.warn('Automatic recovery admission restored');
+      this.admissionBlock = undefined;
+      return;
+    }
+    const reason =
+      outcome.kind === 'unavailable'
+        ? 'scan-unavailable'
+        : 'reconciliation-indeterminate';
+    if (!this.admissionBlock)
+      this.dependencies.logger?.warn(
+        'Automatic recovery is blocked until credential recovery readiness is reconciled',
+        { reason },
+      );
+    this.admissionBlock = reason;
+  }
 
   recover(
     observation: CredentialRecoveryObservation,
@@ -194,7 +225,14 @@ class CredentialRecoveryImplementation implements CredentialRecoveryModule {
     observation: CredentialRecoveryObservation,
   ): Promise<CredentialRecoveryOutcome> {
     const readiness = await this.awaitStartupReadiness();
-    if (readiness.kind !== 'reconciled') return { kind: 'unavailable' };
+    if (readiness.kind !== 'reconciled')
+      return {
+        kind: 'unavailable',
+        reason:
+          readiness.kind === 'unavailable'
+            ? 'scan-unavailable'
+            : 'reconciliation-indeterminate',
+      };
     return this.recoverOne(observation);
   }
 
@@ -497,6 +535,7 @@ class CredentialRecoveryImplementation implements CredentialRecoveryModule {
       pending: 0,
     }));
     this.startupReadiness = operation.then((outcome) => {
+      this.observeReadiness(outcome);
       // A transient inspect/settle/ack failure is itself a durable pending
       // obligation, and an unreadable obligation scan proves nothing (#2823).
       // Do not consume the startup sweep or permanently latch a false-ready

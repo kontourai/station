@@ -1,4 +1,5 @@
 import { frameAgentMessage } from '@kontourai/station-shared/agent-message-frame';
+import { runWithSessionControlKey } from '../../services/orchestration/sqlite-session-control-request-keys.js';
 /**
  * #3160 (epic #3167): the REST side of Station Control's Session tools —
  * `send_to_session`, `interrupt_session` and `wait_session`. An agent can wait
@@ -38,7 +39,6 @@ import {
   type SessionSendMode,
 } from '@kontourai/monument';
 import {
-  runWithSessionControlKey,
   type SessionControlAttempt,
   sessionControlDeliveryId,
   sessionControlRequestDigest,

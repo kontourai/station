@@ -7,7 +7,7 @@ export interface SessionControlRequestKeyId {
   readonly key: string;
 }
 
-export type SessionControlKeyClaim =
+export type SessionControlKeyClaim<StoreScope extends string = 'store'> =
   /** A new request: run it. */
   | { readonly kind: 'claimed' }
   /** An earlier attempt left no result: run it again with its recorded decision. */
@@ -16,12 +16,17 @@ export type SessionControlKeyClaim =
   | { readonly kind: 'in-progress' }
   | { readonly kind: 'replay'; readonly result: unknown }
   | { readonly kind: 'conflict' }
-  /** `caller`: all of this caller's rows are unresolved; `station`: the backstop. */
-  | { readonly kind: 'capacity'; readonly scope: 'caller' | 'station' };
+  /** `caller`: all of this caller's rows are unresolved; `store`: the backstop. */
+  | { readonly kind: 'capacity'; readonly scope: 'caller' | StoreScope };
 
-export interface SessionControlRequestKeys {
+export interface SessionControlRequestKeys<
+  StoreScope extends string = 'store',
+> {
   /** Claim the key for a request with this digest. */
-  claim(id: SessionControlRequestKeyId, digest: string): SessionControlKeyClaim;
+  claim(
+    id: SessionControlRequestKeyId,
+    digest: string,
+  ): SessionControlKeyClaim<StoreScope>;
   /** Persist what the attempt decided to do, before it does it. */
   recordDecision(id: SessionControlRequestKeyId, decision: string): void;
   /** Persist the final result; later same-digest claims replay it. */
@@ -63,27 +68,33 @@ export type SessionControlAttempt<Result> =
   /** It may have had its effect: keep the claim, store nothing. */
   | { readonly settle: 'pending'; readonly result: Result };
 
-export type SessionControlKeyedOutcome<Result> =
+export type SessionControlKeyedOutcome<
+  Result,
+  StoreScope extends string = 'store',
+> =
   | { readonly kind: 'executed'; readonly result: Result }
   | { readonly kind: 'replayed'; readonly result: Result }
   | { readonly kind: 'conflict' }
   | { readonly kind: 'in-progress' }
-  | { readonly kind: 'capacity'; readonly scope: 'caller' | 'station' };
+  | { readonly kind: 'capacity'; readonly scope: 'caller' | StoreScope };
 
 /**
  * Run one keyed request exactly as the table says: claim, attempt, settle. A
  * thrown attempt is treated as `pending`: the effect may have happened, so the
  * claim stays and a replay re-drives it with its recorded decision.
  */
-export async function runWithSessionControlKey<Result>(
-  keys: SessionControlRequestKeys,
+export async function runWithSessionControlKey<
+  Result,
+  StoreScope extends string = 'store',
+>(
+  keys: SessionControlRequestKeys<StoreScope>,
   id: SessionControlRequestKeyId,
   digest: string,
   attempt: (resume: {
     readonly decision?: string;
     recordDecision(decision: string): void;
   }) => Promise<SessionControlAttempt<Result>>,
-): Promise<SessionControlKeyedOutcome<Result>> {
+): Promise<SessionControlKeyedOutcome<Result, StoreScope>> {
   const claim = keys.claim(id, digest);
   switch (claim.kind) {
     case 'conflict':
@@ -159,7 +170,7 @@ export function createSessionControlRequestKeys(
         case 'capacity':
           return {
             kind: 'capacity',
-            scope: claim.scope === 'store' ? 'station' : 'caller',
+            scope: claim.scope,
           };
         case 'claimed':
           running.add(sessionControlKeyIdentity(id));

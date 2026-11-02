@@ -23,7 +23,6 @@ import {
   type SessionTurnBoundaryRecord,
   SHUTDOWN_RETAINED_BOUNDARIES,
 } from '@kontourai/monument/session-boundary';
-import type { SessionControlRequestKeys } from '@kontourai/monument/session-control';
 import {
   openSqliteKernelStorage,
   type SqliteKernelStorage,
@@ -404,6 +403,7 @@ import { createSqliteRevisionEvidencePersistence } from './sqlite-revision-evide
 import {
   createSqliteSessionControlRequestKeys,
   SESSION_CONTROL_REQUEST_KEY_SCHEMA,
+  type SessionControlRequestKeys,
 } from './sqlite-session-control-request-keys.js';
 import { createSqliteSessionTurnBoundaryCoordinator } from './sqlite-session-turn-boundary.js';
 import {

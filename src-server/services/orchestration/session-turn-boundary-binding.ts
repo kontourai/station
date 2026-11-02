@@ -10,6 +10,7 @@ import {
   type SessionTurnBoundaryAuthority as PortableAuthority,
   type SessionTurnBoundaryClaim as PortableClaim,
   type SessionTurnBoundaryCoordinator as PortableCoordinator,
+  type SessionStartBoundaryClaim,
   SHUTDOWN_RETAINED_BOUNDARIES,
 } from '@kontourai/monument/session-boundary';
 import {
@@ -26,8 +27,6 @@ import type { CapturedTurnIntent } from './prepared-turn-intent.js';
 import type { TurnClaim } from './turn-deduplicator.js';
 
 export { SESSION_START_INDETERMINATE_CODE } from '@kontourai/station-contracts/provider-failure';
-
-import type { SessionStartBoundaryClaim } from '@kontourai/monument/session-boundary';
 
 export type SessionTurnBoundaryCoordinator = PortableCoordinator<
   CapturedTurnIntent,
@@ -125,6 +124,9 @@ export class SessionStartIndeterminateError
   }
 }
 
+const SESSION_START_ADMISSION_REFUSED =
+  'Session start admission is unavailable; no provider call was made.';
+
 /** Invoke only after policy/resource admission; retain uncertainty across restart. */
 export async function runSessionStartWithBoundary<T>(
   authority: SessionTurnBoundaryAuthority,
@@ -139,17 +141,12 @@ export async function runSessionStartWithBoundary<T>(
   const owned = admission
     ? { kind: 'owner' as const, claim: admission }
     : authority.claimSessionStart(threadId, new Date().toISOString());
-  if (owned.kind !== 'owner')
-    throw new Error(
-      'Session start admission is unavailable; no provider call was made.',
-    );
+  if (owned.kind !== 'owner') throw new Error(SESSION_START_ADMISSION_REFUSED);
   if (
     owned.claim.beginInvocation(new Date().toISOString()).kind !== 'applied'
   ) {
     owned.claim.indeterminate(new Date().toISOString());
-    throw new Error(
-      'Session start admission is unavailable; no provider call was made.',
-    );
+    throw new Error(SESSION_START_ADMISSION_REFUSED);
   }
   let result: T;
   try {

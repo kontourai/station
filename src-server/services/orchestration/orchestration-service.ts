@@ -3552,6 +3552,7 @@ export class OrchestrationService {
       if (options.credentialProfileRecoveryAdapter) {
         this.credentialRecovery = createCredentialRecoveryModule({
           ledger: recoveryLedger,
+          logger: options.logger,
           adapter: options.credentialProfileRecoveryAdapter,
           dispatchAdapter: recoveryDispatchAdapter,
           restoreSession: async (input) =>

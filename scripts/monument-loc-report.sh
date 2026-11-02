@@ -7,8 +7,9 @@ if [[ $# -ne 2 ]]; then
 fi
 
 cloc_bin=${CLOC:-cloc}
-if [[ $("$cloc_bin" --version) != 2.06 ]]; then
-  echo 'This report requires cloc 2.06.' >&2
+cloc_version=$("$cloc_bin" --version)
+if ! python3 -c 'import sys; raise SystemExit(tuple(map(int, sys.argv[1].split("."))) < (2, 6))' "$cloc_version"; then
+  echo 'This report requires cloc 2.06 or newer.' >&2
   exit 2
 fi
 
@@ -27,13 +28,13 @@ for side in before after; do
   "$cloc_bin" --quiet --timeout=60 --json "$scratch/$side/packages/monument" > "$scratch/$side-monument.json"
 done
 
-python3 - "$scratch" "$before" "$after" <<'PY'
+python3 - "$scratch" "$before" "$after" "$cloc_version" <<'PY'
 import json
 import pathlib
 import sys
 
 root, before, after = pathlib.Path(sys.argv[1]), sys.argv[2], sys.argv[3]
-print(f'cloc 2.06; before {before}; after {after}')
+print(f'cloc {sys.argv[4]}; before {before}; after {after}')
 for name in ('station', 'monument'):
     values = []
     for side in ('before', 'after'):

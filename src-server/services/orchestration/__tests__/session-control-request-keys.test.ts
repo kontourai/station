@@ -1,6 +1,5 @@
 import { join } from 'node:path';
 import {
-  runWithSessionControlKey,
   sessionControlDeliveryId,
   sessionControlRequestDigest,
 } from '@kontourai/monument/session-control';
@@ -10,6 +9,7 @@ import { EventStore } from '../event-store.js';
 import type { SqliteDatabase } from '../sqlite-database.js';
 import {
   createSqliteSessionControlRequestKeys,
+  runWithSessionControlKey,
   SESSION_CONTROL_REQUEST_KEY_MAX_ROWS,
   SESSION_CONTROL_REQUEST_KEY_MAX_ROWS_PER_CALLER,
   SESSION_CONTROL_REQUEST_KEY_TTL_MS,

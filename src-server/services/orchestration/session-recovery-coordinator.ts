@@ -9,6 +9,7 @@ import type {
   ConnectionRecoveryOutcome,
   ConnectionRecoveryOutcomeReason,
   ConnectionRecoveryProjection,
+  RecoveryAdmissionRefusalReason,
 } from '@kontourai/station-contracts/connection-recovery';
 import {
   type CanonicalRuntimeEvent,
@@ -21,6 +22,7 @@ import { dispatchableChatAttachments } from '../../providers/sessions/chat-attac
 import {
   attachmentReplayRefusals,
   connectionRecoveryOutcomes,
+  recoveryAdmissionRefused,
 } from '../../telemetry/metrics.js';
 import type { ClassifiedConnectionFailure } from '../connections/connection-recovery-policy.js';
 import {
@@ -89,6 +91,8 @@ const CANCELLATION_RETRY_MS = 100;
  * takes. It never dispatches on an unread fence and never gives up.
  */
 const SOURCE_TERMINAL_FENCE_RETRY_MS = 60_000;
+const ADMISSION_RETRY_MIN_MS = 60_000;
+const ADMISSION_RETRY_MAX_MS = 10 * 60_000;
 
 /**
  * Small recovery owner for the orchestration event seam. It schedules only
@@ -114,6 +118,7 @@ export class SessionRecoveryCoordinator {
   private credentialRecovery?: CredentialRecoveryModule;
   private disposed = false;
   private dueScanRetry?: ReturnType<typeof setTimeout>;
+  private admissionRetry?: { delayMs: number; retryAt: string };
 
   constructor(
     private readonly options: {
@@ -164,7 +169,20 @@ export class SessionRecoveryCoordinator {
   }
 
   latestProjection(threadId: string): ConnectionRecoveryProjection | undefined {
-    return this.ledger.latestProjection(threadId);
+    const projection = this.ledger.latestProjection(threadId);
+    const reason = this.credentialRecovery?.admission();
+    return projection?.outcome === 'armed' && reason
+      ? {
+          ...projection,
+          admission: {
+            state: 'blocked',
+            reason,
+            ...(this.admissionRetry
+              ? { retryAt: this.admissionRetry.retryAt }
+              : {}),
+          },
+        }
+      : projection;
   }
 
   observe(event: CanonicalRuntimeEvent): void {
@@ -729,8 +747,10 @@ export class SessionRecoveryCoordinator {
 
   /**
    * A different enrolled account is actionable immediately; its adoption
-   * must not wait for the exhausted account's reset time. If no eligible
-   * profile can be staged, preserve the ordinary timing-based recovery.
+   * must not wait for the exhausted account's reset time. Unreadable or
+   * indeterminate credential readiness blocks all automatic recovery, including
+   * ordinary replay. After reconciliation, ordinary recovery remains available
+   * when no eligible profile can be staged.
    */
   private async tryProfileRecoveryOrSchedule(
     intent: ConnectionRecoveryIntent,
@@ -738,6 +758,15 @@ export class SessionRecoveryCoordinator {
   ): Promise<boolean> {
     const module = this.credentialRecovery;
     if (!module) return false;
+    const blocked = module.admission();
+    if (
+      blocked &&
+      (!this.admissionRetry ||
+        Date.parse(this.admissionRetry.retryAt) > this.now().getTime())
+    ) {
+      this.deferAdmission(intent, blocked);
+      return true;
+    }
     const controller = new AbortController();
     this.dispatchControllers.set(intent.fingerprint, controller);
     const outcome = await module.recover({
@@ -749,6 +778,7 @@ export class SessionRecoveryCoordinator {
         controller.signal,
       ),
     });
+    if (outcome.kind !== 'unavailable') this.admissionRetry = undefined;
     if (outcome.kind === 'unnecessary') {
       this.clearIntentRuntime(intent, false);
       return false;
@@ -763,13 +793,7 @@ export class SessionRecoveryCoordinator {
       return true;
     }
     if (outcome.kind === 'unavailable') {
-      this.clearIntentRuntime(intent, false);
-      this.schedule(
-        intent.fingerprint,
-        new Date(
-          this.now().getTime() + SOURCE_TERMINAL_FENCE_RETRY_MS,
-        ).toISOString(),
-      );
+      this.deferAdmission(intent, outcome.reason);
       return true;
     }
     if (outcome.kind === 'conflicted') {
@@ -791,6 +815,25 @@ export class SessionRecoveryCoordinator {
       if (failed.kind === 'applied') this.recordIntentOutcome(intent, 'failed');
     }
     return true;
+  }
+
+  private deferAdmission(
+    intent: ConnectionRecoveryIntent,
+    reason: RecoveryAdmissionRefusalReason,
+  ): void {
+    const now = this.now().getTime();
+    const previous = this.admissionRetry;
+    const delayMs = previous
+      ? Math.min(previous.delayMs * 2, ADMISSION_RETRY_MAX_MS)
+      : ADMISSION_RETRY_MIN_MS;
+    const retry =
+      previous && Date.parse(previous.retryAt) > now
+        ? previous
+        : { delayMs, retryAt: new Date(now + delayMs).toISOString() };
+    this.admissionRetry = retry;
+    recoveryAdmissionRefused.add(1, { reason });
+    this.clearIntentRuntime(intent, false);
+    this.schedule(intent.fingerprint, retry.retryAt);
   }
 
   private async completeRecoveredIntent(

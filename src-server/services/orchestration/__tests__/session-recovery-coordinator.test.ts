@@ -7,6 +7,7 @@ import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import {
   connectionRecoveryOutcomes,
   credentialProfileApplication,
+  recoveryAdmissionRefused,
 } from '../../../telemetry/metrics.js';
 import type {
   CredentialReceiptAcknowledgement,
@@ -67,6 +68,7 @@ type TestCredentialRecoveryAdapter = Omit<
 
 vi.mock('../../../telemetry/metrics.js', () => ({
   connectionRecoveryOutcomes: { add: vi.fn() },
+  recoveryAdmissionRefused: { add: vi.fn() },
   credentialProfileApplication: { add: vi.fn() },
   orchestrationEventsPersisted: { add: vi.fn() },
   orchestrationEventPersistDuration: { record: vi.fn() },
@@ -168,6 +170,7 @@ class SessionRecoveryCoordinator extends RuntimeSessionRecoveryCoordinator {
           restoreSession: async (input) => restoreSession?.(input),
           quarantineSession,
           now: coordinatorOptions.now ?? (() => new Date()),
+          logger: coordinatorOptions.logger,
         })
       : undefined;
     super({
@@ -188,8 +191,114 @@ describe('SessionRecoveryCoordinator', () => {
       .forEach((dir) => rmSync(dir, { recursive: true, force: true })),
   );
 
+  test('#2823: a persistent unreadable scan visibly blocks all recovery and backs off to ten minutes', async () => {
+    vi.useFakeTimers({ now: new Date('2026-07-29T12:00:00.000Z') });
+    const store = new EventStore(
+      join(makeTempDir('recovery-admission-outage-'), 'events.sqlite'),
+    );
+    const scan = observeRecoveryScans(store).mockImplementation((...args) => {
+      if (args[1] === 'profile') throw new Error('private storage failure');
+    });
+    const logger = { warn: vi.fn() };
+    const stage = vi.fn(async () => credentialAttempt());
+    const restartResume = vi.fn(async () => ({ turnId: 'profile-turn' }));
+    const sendTurn = vi.fn(async () => ({ turnId: 'ordinary-turn' }));
+    const metric = vi.mocked(recoveryAdmissionRefused.add);
+    const metricStart = metric.mock.calls.length;
+    const coordinator = new SessionRecoveryCoordinator({
+      eventStore: store,
+      adapterForProvider: () => undefined,
+      credentialRecoveryAdapter: { stage },
+      restartResume,
+      sendTurn,
+      logger,
+      now: () => new Date(),
+    });
+    try {
+      for (const provider of ['claude', 'codex']) {
+        const now = new Date().toISOString();
+        store.appendEvent({
+          eventId: `${provider}-source`,
+          provider,
+          threadId: provider,
+          turnId: 'source-turn',
+          method: 'turn.started',
+          createdAt: now,
+          prompt: 'input',
+        });
+        recoveryLedger(store).arm({
+          fingerprint: `${provider}-recovery`,
+          threadId: provider,
+          provider,
+          sourceEventId: `${provider}-source`,
+          sourceTurnId: 'source-turn',
+          failureKind: 'capacity',
+          scope: 'account',
+          decision: 'retry-now',
+          dueAt: now,
+          maxAttempts: 1,
+          outcome: 'armed',
+          createdAt: now,
+          updatedAt: now,
+        });
+      }
+      coordinator.reconcile();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(logger.warn).toHaveBeenCalledTimes(1);
+      expect(logger.warn.mock.calls[0]).toEqual([
+        'Automatic recovery is blocked until credential recovery readiness is reconciled',
+        { reason: 'scan-unavailable' },
+      ]);
+      for (const delay of [60_000, 120_000, 240_000, 480_000, 600_000]) {
+        for (const provider of ['claude', 'codex'])
+          expect(coordinator.latestProjection(provider)).toMatchObject({
+            outcome: 'armed',
+            attempts: 0,
+            admission: {
+              state: 'blocked',
+              reason: 'scan-unavailable',
+              retryAt: new Date(Date.now() + delay).toISOString(),
+            },
+          });
+        const before = scan.mock.calls.length;
+        await vi.advanceTimersByTimeAsync(delay - 1);
+        expect(scan).toHaveBeenCalledTimes(before);
+        await vi.advanceTimersByTimeAsync(1);
+        expect(scan.mock.calls.length).toBeGreaterThan(before);
+      }
+      const afterTwentyFiveMinutes = scan.mock.calls.length;
+      await vi.advanceTimersByTimeAsync(300_000);
+      expect(scan).toHaveBeenCalledTimes(afterTwentyFiveMinutes);
+      expect(stage).not.toHaveBeenCalled();
+      expect(restartResume).not.toHaveBeenCalled();
+      expect(sendTurn).not.toHaveBeenCalled();
+      expect(logger.warn).toHaveBeenCalledTimes(1);
+      const refusals = metric.mock.calls.slice(metricStart);
+      expect(refusals.length).toBeGreaterThan(0);
+      for (const call of refusals)
+        expect(call).toEqual([1, { reason: 'scan-unavailable' }]);
+      scan.mockImplementation(() => undefined);
+      await vi.advanceTimersByTimeAsync(300_000);
+      expect(stage).toHaveBeenCalledTimes(2);
+      expect(restartResume).toHaveBeenCalledTimes(2);
+      expect(sendTurn).not.toHaveBeenCalled();
+      expect(logger.warn).toHaveBeenCalledTimes(2);
+      expect(logger.warn.mock.calls[1]).toEqual([
+        'Automatic recovery admission restored',
+      ]);
+      for (const provider of ['claude', 'codex'])
+        expect(
+          coordinator.latestProjection(provider)?.admission,
+        ).toBeUndefined();
+    } finally {
+      await coordinator.dispose();
+      store.close();
+      vi.useRealTimers();
+    }
+  });
+
   test('#2823: retries profile recovery after startup storage becomes readable', async () => {
-    vi.useFakeTimers();
+    vi.useFakeTimers({ now: new Date('2026-07-29T12:00:00.000Z') });
     const store = new EventStore(
       join(makeTempDir('recovery-readiness-'), 'events.sqlite'),
     );
@@ -215,7 +324,7 @@ describe('SessionRecoveryCoordinator', () => {
       credentialRecoveryAdapter: { stage },
       restartResume,
       sendTurn,
-      now: () => now,
+      now: () => new Date(),
     });
     store.appendEvent({
       eventId: 'started',
