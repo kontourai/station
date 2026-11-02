@@ -218,6 +218,7 @@ function BrowserDriverChip({
   apiBase: string;
   browserSessionId: string;
 }) {
+  const coarsePointer = useCoarsePointer();
   const [open, setOpen] = useState(false);
   const menuRef = useMenuFocus<HTMLDivElement>(open, () => setOpen(false));
   const history = useQuery({
@@ -243,8 +244,12 @@ function BrowserDriverChip({
         type="button"
         className="browser-pane__chip browser-pane__chip--button"
         data-tone={tone}
-        aria-label={`${DRIVER_TEXT[tone]}. Control options`}
-        title={DRIVER_TEXT[tone]}
+        aria-label={`${DRIVER_TEXT[tone]}. ${canRelease ? 'Control options' : 'Recent actions'}`}
+        title={
+          tone === 'agent'
+            ? `${DRIVER_TEXT.agent}. ${coarsePointer ? 'Tap' : 'Click'} the page to take over.`
+            : DRIVER_TEXT[tone]
+        }
         aria-haspopup="menu"
         aria-expanded={open}
         onClick={() => setOpen((value) => !value)}
@@ -414,7 +419,7 @@ export default function BrowserPane({
                 ? 'Open an existing Project, then try again.'
                 : error instanceof BrowserApiError &&
                     (error.code === 'stale-sign-in' || status === 401)
-                  ? 'Reconnect this device to Station, then try again.'
+                  ? 'Reconnect this device to this Station, then try again.'
                   : "Ask the Station operator to grant you Project admin access, or open the Browser on the operator's device."
             }
             action={
