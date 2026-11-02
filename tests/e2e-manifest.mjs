@@ -1771,7 +1771,7 @@ export const e2eManifest = [
     tierTarget: 'full',
     primary: true,
     rationale:
-      "kontourai/station#3307/#618 mid-conversation switching: the composer model picker's per-turn override carries through dispatch and is reported by the switched turn's TurnProvenanceCard via the real shared provenance fold; completed-turn fork proves explicit replay-only cursor/tool/approval disclosure, same-provider idempotent retry then independent divergence with the parent retained, and alternate-Agent replay fallback opening the returned durable child. Agent handoff remains the linear Continue-with path with its own durable boundary disclosure.",
+      "kontourai/station#3307/#618 mid-conversation switching: the composer model picker's per-turn override carries through dispatch and is reported by the switched turn's TurnProvenanceCard via the real shared provenance fold; completed-turn fork proves explicit replay-only cursor/tool/approval disclosure, same-provider idempotent retry then independent divergence with the parent retained, and alternate-Agent replay fallback opening the returned durable child; #4406 Regenerate and Edit and resend fork before the asking message, re-send or prefill it, and keep the parent's answer. Agent handoff remains the linear Continue-with path with its own durable boundary disclosure.",
     exceptions: [],
   },
   {
