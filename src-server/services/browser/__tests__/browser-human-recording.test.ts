@@ -9,6 +9,7 @@ import {
   encodeBrowserRecording,
   TaskBrowserRecording,
 } from '../../projects/task-browser-recording.js';
+import { TaskDeviceRecording } from '../../projects/task-device-recording.js';
 import { TaskBrowserRecordingError } from '../../projects/task-recording-errors.js';
 import { BrowserHumanRecording } from '../browser-human-recording.js';
 import type { BrowserSessionRecord } from '../browser-session-registry.js';
@@ -203,6 +204,32 @@ describe('human Browser recording', () => {
     await expect(task.record(access, authority, options)).rejects.toThrow(
       'capacity',
     );
+    const device = new TaskDeviceRecording(task);
+    const deviceAccess = {
+      kind: 'granted',
+      write: {
+        projectId: 'p',
+        taskId: 't',
+        taskCreatedAt: 'date',
+        author: { kind: 'person', principalId: 'alice' },
+        beforeCommit: () => true,
+      },
+    } as never;
+    const deviceSource = vi.fn(async (): Promise<never> => {
+      throw new Error('Device source reached');
+    });
+    const refused = device.start(
+      deviceAccess,
+      { durationMs: 1000 },
+      deviceSource,
+    );
+    await vi.waitFor(() =>
+      expect(device.status(deviceAccess, refused.id)).toMatchObject({
+        state: 'failed',
+        code: 'recording-unavailable',
+      }),
+    );
+    expect(deviceSource).not.toHaveBeenCalled();
     expect(h.recorder.stop(first, 'alice', 'bs_test', 3)).toBe(true);
     await vi.waitFor(() =>
       expect(h.recorder.status(first, 'alice', 'bs_test', 3)?.state).toBe(
@@ -212,6 +239,16 @@ describe('human Browser recording', () => {
     await expect(task.record(access, authority, options)).rejects.toThrow(
       'Task source reached',
     );
+    const admitted = device.start(
+      deviceAccess,
+      { durationMs: 1000 },
+      deviceSource,
+    );
+    await vi.waitFor(() =>
+      expect(device.status(deviceAccess, admitted.id).state).toBe('failed'),
+    );
+    expect(deviceSource).toHaveBeenCalledOnce();
+    await device.dispose();
     await task.dispose();
     await h.recorder.dispose();
   });
