@@ -274,22 +274,52 @@ describe('live surface routes through runtime authentication', () => {
 
   test('stream params outside their bounds or unknown query keys are refused', async () => {
     const h = harness();
-    for (const query of [
-      'maxFps=0',
-      'maxFps=31',
-      'quality=abc',
-      'maxWidth=99999',
-      'fps=10',
-      'maxFps=5&maxFps=6',
+    // Each refusal names the key it was refused for (#4418).
+    for (const [query, field] of [
+      ['maxFps=0', 'stream-params'],
+      ['maxFps=31', 'stream-params'],
+      ['quality=abc', 'stream-params'],
+      ['maxWidth=99999', 'stream-params'],
+      // An unknown key is never echoed back.
+      ['fps=10', 'unknown'],
+      ['%3Cscript%3E=1', 'unknown'],
+      ['maxFps=5&maxFps=6', 'maxFps'],
+      ['codec=vp9', 'codec'],
+      ['codec=h264&codec=h264', 'codec'],
     ]) {
       const response = await h.request(`${base}/frames?${query}`, 'operator');
       expect(response.status, query).toBe(400);
-      expect(await response.json()).toEqual({
+      expect(await response.json(), query).toEqual({
         success: false,
         code: 'invalid-request',
+        field,
       });
     }
     expect(h.registry.get(SURFACE)!.hub.viewerCount).toBe(0);
+  });
+
+  test('codec=h264 attaches an H.264 viewer only where the producer offers H.264 (#4418)', async () => {
+    const h = harness();
+    const hub = h.registry.get(SURFACE)!.hub;
+    const attach = hub.attach.bind(hub);
+    const codecs: string[] = [];
+    hub.attach = (params, identity, options) => {
+      codecs.push(options?.codec ?? 'image');
+      return attach(params, identity, options);
+    };
+    // The synthetic producer offers images only: the request falls back.
+    const imageOnly = await h.request(`${base}/frames?codec=h264`, 'operator');
+    expect(imageOnly.status).toBe(200);
+    await imageOnly.body!.cancel();
+    Object.assign(h.producer.capabilities, {
+      codecs: [...h.producer.capabilities.codecs, 'h264'],
+    });
+    const video = await h.request(`${base}/frames?codec=h264`, 'operator');
+    expect(video.status).toBe(200);
+    await video.body!.cancel();
+    const plain = await h.request(`${base}/frames`, 'operator');
+    await plain.body!.cancel();
+    expect(codecs).toEqual(['image', 'h264', 'image']);
   });
 
   test('narrowing the credential scope ends a running frames stream', async () => {
