@@ -1,7 +1,7 @@
 # Visual replies
 
 An Agent can publish a chart, table, diagram, collage or mockup as an HTML page
-inside its chat. The built-in Station Agent already receives these tools. For
+inside its chat. The built-in **Station Assistant** Agent already receives these tools. For
 other Agents, configure the `station-control` attachment as described below. The shared registrations
 are available through Claude Code, Codex and capable ACP connections. A
 connection that cannot carry MCP servers reports that delivery limitation.
@@ -128,7 +128,7 @@ page in it. See the [security and deletion decision](https://github.com/kontoura
 
 ## Which Agents receive the tools
 
-The built-in **Station** Agent receives station-control's full catalog by
+The built-in **Station Assistant** Agent receives station-control's full catalog by
 default, including visual replies, when its selected engine supports that MCP
 passthrough. The runtime default Agent also receives the full catalog. Preview
 and render are bounded writes on Station's auto-approved tool list; the engine

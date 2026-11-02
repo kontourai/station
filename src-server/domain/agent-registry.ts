@@ -19,6 +19,7 @@ import {
   type EngineConnectionId,
   engineConnectionId,
   ReservedStationIdentityError,
+  STATION_AGENT_DISPLAY_NAME,
   STATION_AGENT_ID,
 } from '@kontourai/station-contracts/agent-identity';
 import { acquireFileMutationLockAsync } from '@kontourai/station-shared/lifecycle-events';
@@ -837,7 +838,7 @@ export async function materializeStationAgent(
   if (!(await configLoader.agentExists(STATION_AGENT_ID))) {
     await configLoader.createAgent({
       slug: STATION_AGENT_ID,
-      name: 'Station',
+      name: STATION_AGENT_DISPLAY_NAME,
       prompt: '',
       tools: {
         mcpServers: [...BUILTIN_STATION_AGENT_MCP_SERVER_IDS],

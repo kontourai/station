@@ -35,7 +35,7 @@ without adding a model API key:
    the Project. Operator setup is saved across reloads; reopen **New Project** to
    check and continue the same Project, intent and starter. See [repository setup and recovery](https://github.com/kontourai/station/blob/main/docs/guides/connections.md#start-a-project-from-a-repository)
    and [document import](https://github.com/kontourai/station/blob/main/docs/guides/knowledge.md#import-documents-from-your-computer).
-5. To talk to the built-in **Station** assistant using the same Codex account,
+5. To talk to the built-in **Station Assistant** using the same Codex account,
    open **Settings → General → Built-in agent engine → Change…**, choose
    **Codex**, choose **Use this engine**, then **Save**. Select **Station** in
    the chat's Agent picker. Ask it to list your projects to exercise a read-only

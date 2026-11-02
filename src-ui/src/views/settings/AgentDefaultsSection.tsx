@@ -161,7 +161,10 @@ export function AgentDefaultsSection({
   const { data: agentConnections = [] } = useEngineConnectionsQuery() as {
     data?: AgentConnectionView[];
   };
-  const preferredRuntime = preferredChatRuntime(agentConnections);
+  const preferredRuntime = preferredChatRuntime(
+    agentConnections,
+    config.builtinAgentEngineConnectionId,
+  );
   const runtimeModels = runtimeCatalogVisibleModels(preferredRuntime);
   const useRuntimeModelOptions =
     !config.defaultLLMProvider && runtimeModels.length > 0;

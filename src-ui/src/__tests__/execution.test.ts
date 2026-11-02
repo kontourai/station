@@ -739,6 +739,25 @@ describe('execution utils', () => {
     expect(runtime?.config.defaultModel).toBe('gpt-5-codex');
   });
 
+  test("preferredChatRuntime names the Station's chosen engine before Claude Code (#4388)", () => {
+    const ready = (id: string): ConnectionConfig => ({
+      id,
+      kind: 'agent',
+      type: id,
+      name: id,
+      enabled: true,
+      capabilities: ['agent-runtime'],
+      config: { engineId: id },
+      status: 'ready',
+      prerequisites: [],
+    });
+    const connections = [ready('claude'), ready('codex')];
+    expect(preferredChatRuntime(connections, 'codex')?.id).toBe('codex');
+    // Nothing chosen (or a choice that is not ready): the old order holds.
+    expect(preferredChatRuntime(connections)?.id).toBe('claude');
+    expect(preferredChatRuntime(connections, 'opencode')?.id).toBe('claude');
+  });
+
   test('preferredChatRuntime keeps ACP connections out of the "connected" bucket (station#1003 Phase B parity with the pre-rename executionClass literal)', () => {
     const kiro = {
       id: 'kiro',
