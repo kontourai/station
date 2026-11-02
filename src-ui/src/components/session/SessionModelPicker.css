@@ -144,7 +144,7 @@
   gap: var(--k-space-2);
   padding: var(--k-space-2) var(--k-space-3);
   color: var(--k-text-muted);
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
 }
 .session-model-picker__models {
   display: flex;
@@ -204,7 +204,7 @@
   grid-column: 2;
   max-width: 100%;
   color: var(--k-text-muted);
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
   overflow-wrap: anywhere;
 }
 .session-model-picker__models [role="option"] > .brand-icon {
@@ -264,7 +264,7 @@
 }
 .session-model-picker__selected-heading small {
   color: var(--k-text-muted);
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
 }
 .session-model-picker__selected-heading strong {
   margin-top: var(--k-space-1);
