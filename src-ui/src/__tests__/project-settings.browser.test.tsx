@@ -290,15 +290,47 @@ test('invitation setup and its created link remain usable at both widths and the
     import {humanPrincipal} from '@kontourai/station-contracts/principal';
     import {PROJECT_MEMBER_ROLES,PROJECT_MEMBERSHIP_VERSION} from '@kontourai/station-contracts/project-membership';
     import {NavigationProvider} from './src-ui/src/contexts/NavigationContext';
-    import {AccessPanelView} from './src-ui/src/views/project-settings/AccessPanelView';
+    import {AccessSection} from './src-ui/src/views/project-settings/AccessSection';
+    import {QueryClient,QueryClientProvider} from '@tanstack/react-query';
+    import {setClientCredentialResolver} from '@kontourai/station-sdk/client';
     const owner=humanPrincipal('deployment','owner','Station owner');
     const at='2026-11-02T12:00:00.000Z';
     const invitation={id:'invite-one',recipientEmail:null,role:'viewer',actions:['view'],invitedBy:owner,status:'pending',expiresAt:'2026-11-09T12:00:00.000Z',createdAt:at};
     const view={version:PROJECT_MEMBERSHIP_VERSION,actingPrincipal:owner,invitationOrigin:'http://127.0.0.1:45678',scope:{stationId:'station-one',localProjectId:'one',localProjectSlug:'example',portableProjectId:'prj_one'},members:[{principal:owner,role:'owner',actions:PROJECT_MEMBER_ROLES.owner,status:'active',revision:1,grantedBy:owner,updatedAt:at}],invitations:[invitation]};
-    createRoot(document.getElementById('root')).render(<NavigationProvider><main style={{maxWidth:'1000px',margin:'auto',padding:'16px'}}><AccessPanelView view={view} busy={false} apply={async()=>({kind:'invited',token:'k'.repeat(43),invitation})}/></main></NavigationProvider>);
+    setClientCredentialResolver(()=>({origin:'http://station.test',requestAuthority:{apiBase:'http://station.test',authorityKey:'fixture',isCurrent:()=>true}}));
+    window.fetch=async(input,init)=>{
+      const path=new URL(String(input),'http://station.test').pathname;
+      if(path==='/api/projects/example/access') return Response.json({success:true,data:view});
+      if(path==='/api/projects/example/access/invitations' && init?.method==='POST') {
+        const requested=JSON.parse(init.body);
+        return Response.json({success:true,data:{token:'k'.repeat(43),invitation:{...invitation,recipientEmail:requested.email,role:requested.role,actions:PROJECT_MEMBER_ROLES[requested.role],expiresAt:requested.expiresAt}}});
+      }
+      throw new Error('Unexpected invitation fixture request: '+path);
+    };
+    const client=new QueryClient({defaultOptions:{queries:{retry:false}}});
+    createRoot(document.getElementById('root')).render(<QueryClientProvider client={client}><NavigationProvider><main style={{maxWidth:'1000px',margin:'auto',padding:'16px'}}><AccessSection slug="example" projectId="one"/></main></NavigationProvider></QueryClientProvider>);
   `;
-  const { browser, page, errors } =
-    await scrollBrowserFixture(invitationFixture);
+  const authorityFixture: Plugin = {
+    name: 'invitation-authority-fixture',
+    setup(builder) {
+      builder.onResolve({ filter: /ApiBaseContext$/ }, () => ({
+        path: 'ApiBaseContext',
+        namespace: 'invitation-authority',
+      }));
+      builder.onLoad(
+        { filter: /.*/, namespace: 'invitation-authority' },
+        () => ({
+          loader: 'js',
+          contents:
+            "export const useHostRequestAuthorityScope=()=>({apiBase:'http://station.test',authorityKey:'fixture',isCurrent:()=>true});",
+        }),
+      );
+    },
+  };
+  const { browser, page, errors } = await scrollBrowserFixture(
+    invitationFixture,
+    [authorityFixture],
+  );
   try {
     const baseStyles = await page.addStyleTag({
       content:
@@ -309,8 +341,22 @@ test('invitation setup and its created link remain usable at both widths and the
     await baseStyles.evaluate((element) => document.head.prepend(element));
     const out = resolve('.kontourai/invitation-journey-audit');
     mkdirSync(out, { recursive: true });
-    await page.getByRole('button', { name: 'Create invitation' }).click();
-    await page.getByRole('region', { name: 'Share this invitation' }).waitFor();
+    page.setDefaultTimeout(5000);
+    try {
+      await page.getByRole('button', { name: 'Create invitation' }).click();
+      await page
+        .getByRole('region', { name: 'Share this invitation' })
+        .waitFor();
+    } catch (cause) {
+      await page.screenshot({
+        path: `${out}/render-failed.png`,
+        fullPage: true,
+      });
+      throw new Error(
+        `Invitation fixture did not reach creation: ${JSON.stringify(errors)}; ${await page.locator('body').innerText()}`,
+        { cause },
+      );
+    }
     await page
       .locator('summary')
       .filter({ hasText: 'Invitation link' })
@@ -331,6 +377,16 @@ test('invitation setup and its created link remain usable at both widths and the
           .getByRole('button', { name: 'Copy invitation', exact: true })
           .boundingBox();
         expect(copy!.height).toBeGreaterThanOrEqual(44);
+        for (const name of [
+          'Sharing setup',
+          'Review browser requests',
+          'Feature previews',
+        ]) {
+          const action = await page
+            .getByRole('button', { name, exact: true })
+            .boundingBox();
+          expect(action!.height).toBeGreaterThanOrEqual(44);
+        }
         expect(
           await page.evaluate(
             () => document.documentElement.scrollWidth <= innerWidth,
@@ -343,6 +399,10 @@ test('invitation setup and its created link remain usable at both widths and the
         });
       }
     }
+    await page
+      .getByRole('button', { name: 'Review browser requests', exact: true })
+      .click();
+    expect(new URL(page.url()).pathname).toBe('/notifications');
     expect(errors).toEqual([]);
   } finally {
     await browser.close();

@@ -73,7 +73,7 @@ function StationSharingActions() {
         </Button>
       </div>
       <p className="project-access__hint">
-        Missing setup? Enable Project sharing setting in{' '}
+        Project sharing setting is in{' '}
         <Button
           variant="link"
           onClick={() =>
