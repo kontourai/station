@@ -92,18 +92,24 @@ export function useInboxDismissActions(
     dismiss: (item: HomeWorkItem) => {
       try {
         dismissInboxItem(item, facts?.get(item.id));
-        if (lastDismissToast) toastStore.dismiss(lastDismissToast);
-        undoLastDismiss = () => restore(item);
-        setError(null);
+      } catch {
+        setError('Could not save dismissal. Try again.');
+        return;
+      }
+      // The dismissal is saved; a toast failure must not report otherwise,
+      // and ⌘Z and Restore still reach it.
+      undoLastDismiss = () => restore(item);
+      setError(null);
+      if (lastDismissToast) toastStore.dismiss(lastDismissToast);
+      lastDismissToast = null;
+      try {
         lastDismissToast = toastStore.show(
           'Conversation dismissed',
           undefined,
           8000,
           [{ label: 'Undo', onClick: () => restore(item) }],
         );
-      } catch {
-        setError('Could not save dismissal. Try again.');
-      }
+      } catch {}
     },
     restore,
     notice: error ? (
