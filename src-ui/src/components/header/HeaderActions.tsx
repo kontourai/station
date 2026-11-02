@@ -153,6 +153,7 @@ function ConnectionNameHint({
  * Toggles the Station switcher. It opens on the previous Station, or on its
  * filter once there are enough to need one, so the chord then Enter flips back.
  */
+const STATION_SWITCH_WHEN = { not: 'browserFocused' } as const;
 function StationSwitchShortcut({ onToggle }: { onToggle: () => void }) {
   useKeyboardShortcut(
     'station.switch',
@@ -160,6 +161,9 @@ function StationSwitchShortcut({ onToggle }: { onToggle: () => void }) {
     ['cmd', 'shift'],
     'Switch Station',
     onToggle,
+    true,
+    0,
+    STATION_SWITCH_WHEN,
   );
   return null;
 }

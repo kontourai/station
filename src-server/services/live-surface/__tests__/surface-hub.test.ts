@@ -64,6 +64,36 @@ async function frameCounter(viewer: LiveSurfaceViewer): Promise<number> {
 }
 
 describe('live surface hub', () => {
+  test('agent actions are bounded and appear only for negotiated viewers', async () => {
+    const { hub } = build();
+    const legacy = hub.attach(PARAMS);
+    const opted = hub.attach(PARAMS, undefined, { agentActions: () => true });
+    const initialLegacy = await legacy.next();
+    await opted.next();
+    expect(
+      initialLegacy?.kind === 'state' && initialLegacy.state,
+    ).not.toHaveProperty('agentActions');
+    for (let i = 0; i < 15; i += 1)
+      hub.publishAgentAction({
+        kind: 'click',
+        generation: 3,
+        point: { x: i, y: 4 },
+        box: { x: i, y: 4, width: 2, height: 3 },
+        viewport: { x: 0, y: 0, width: 100, height: 100 },
+      });
+    const next = await opted.next();
+    expect(next?.kind).toBe('state');
+    if (next?.kind !== 'state') throw new Error('expected state');
+    expect(next.state.agentActions?.events).toHaveLength(12);
+    expect(next.state.agentActions?.events.at(-1)).toMatchObject({
+      kind: 'click',
+      generation: 3,
+      point: { x: 14, y: 4 },
+    });
+    legacy.close();
+    opted.close();
+    await hub.dispose();
+  });
   test('starts the producer on the first viewer and stops it at zero viewers', async () => {
     const { producer, hub } = build();
     expect(producer.running).toBe(false);

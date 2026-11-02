@@ -130,6 +130,12 @@ export function setFloatPlacement(
   if (options.persist) writeJson(FRAME_KEY, next);
 }
 
+export function isFloatSourceOpen(sourceKey: string): boolean {
+  return [...floating.values()].some(
+    (source) => floatSourceKey(source) === sourceKey,
+  );
+}
+
 export function getFloatingSource(conversation: string): FloatSource | null {
   return floating.get(conversation) ?? null;
 }
