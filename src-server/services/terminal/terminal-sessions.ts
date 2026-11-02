@@ -359,9 +359,7 @@ export class TerminalSessions<Principal> {
             )
           : undefined;
       const spawnKind: ShellSpawnKind =
-        outputCapBytes === undefined
-          ? {}
-          : { kind: 'command', outputCapBytes };
+        outputCapBytes === undefined ? {} : { kind: 'command', outputCapBytes };
       const cwd = await realpath(input.cwd);
       const record = recordSchema.parse({
         ...scopeSchema.parse(scope),
