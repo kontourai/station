@@ -452,6 +452,7 @@ export function StartModelPicker({
   onClose: () => void;
 }) {
   const anchorRef: RefObject<HTMLElement | null> = useRef(anchor);
+  const titleId = React.useId();
   if (profile && onEnvironmentChange)
     return (
       <StationScopedModelPicker
@@ -480,6 +481,7 @@ export function StartModelPicker({
     <ResponsiveDialogSurface
       layer={layer}
       ariaLabel="Model"
+      ariaLabelledBy={titleId}
       onClose={onClose}
       historyMode="entry"
       anchorRef={anchorRef}
@@ -492,6 +494,7 @@ export function StartModelPicker({
       ) : (
         <React.Suspense fallback={loadingFrame}>
           <SessionModelPicker
+            hostTitleId={titleId}
             returnFocusTarget={anchor}
             models={models}
             providers={modelPickerProviders(models, modelConnections)}
@@ -544,10 +547,12 @@ function StationScopedModelPicker(
         environmentId: 'current',
       }));
   const anchorRef = useRef(props.anchor);
+  const titleId = React.useId();
   return (
     <ResponsiveDialogSurface
       layer={props.layer}
       ariaLabel="Engine & model"
+      ariaLabelledBy={titleId}
       onClose={props.onClose}
       historyMode="entry"
       anchorRef={anchorRef}
@@ -561,6 +566,7 @@ function StationScopedModelPicker(
         }
       >
         <SessionModelPicker
+          hostTitleId={titleId}
           stationControl={
             <>
               <label className="session-model-picker__station-control">

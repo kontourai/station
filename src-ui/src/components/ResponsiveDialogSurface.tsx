@@ -141,6 +141,8 @@ interface ResponsiveDialogHeaderProps {
   /** Passed straight through to `ResponsiveDialogCloseButton`'s `label`. */
   closeLabel: string;
   onClose: () => void;
+  /** Id for the title, so the dialog around it can be named by it. */
+  titleId?: string;
 }
 
 /**
@@ -162,11 +164,12 @@ export function ResponsiveDialogHeader({
   subtitle,
   closeLabel,
   onClose,
+  titleId,
 }: ResponsiveDialogHeaderProps) {
   return (
     <div className="responsive-dialog-header">
       <div>
-        <strong>{title}</strong>
+        <strong id={titleId}>{title}</strong>
         {subtitle && <span>{subtitle}</span>}
       </div>
       <ResponsiveDialogCloseButton label={closeLabel} onClick={onClose} />
@@ -530,7 +533,19 @@ export function ResponsiveDialogSurface({
       }}
     >
       <OverlayLayerContext.Provider value={overlayLayer}>
-        {role === 'alertdialog' ? (
+        {/* A closed surface stays mounted to keep its state, but it is not
+            a dialog: no role, no modal claim, and nothing in it reachable
+            (#4403 — the closed Coding tool sheet still read as one). */}
+        {!open ? (
+          <div
+            ref={panelRef}
+            className={panelProps.className}
+            style={panelStyle}
+            inert
+          >
+            {children}
+          </div>
+        ) : role === 'alertdialog' ? (
           <div {...panelProps} role="alertdialog">
             {children}
           </div>

@@ -23,6 +23,7 @@ import {
   profileJourney,
 } from './helpers/journey-profile';
 import { mockLongTranscriptConversation } from './helpers/long-transcript-conversation';
+import { MODEL_PICKER_NAME } from './helpers/model-picker';
 import {
   dismissSetupLauncher,
   emitMockOrchestrationEvent,
@@ -3708,7 +3709,7 @@ test('mobile model provider filters keep a non-overlapping horizontal rail (#226
   expect(modelHit).toBe(true);
   await modelButton.click();
 
-  const picker = page.getByRole('dialog', { name: 'Choose model' });
+  const picker = page.getByRole('dialog', { name: MODEL_PICKER_NAME });
   const providerRail = picker.getByRole('group', { name: 'Providers' });
   const firstModel = picker.getByRole('option').first();
   await expect(providerRail).toBeVisible();
@@ -4261,7 +4262,7 @@ for (const width of [320, 390, 1280]) {
         path: testInfo.outputPath(`composer-${width}-${theme}.png`),
       });
       await model.click();
-      const picker = page.getByRole('dialog', { name: 'Choose model' });
+      const picker = page.getByRole('dialog', { name: MODEL_PICKER_NAME });
       await expect(picker).toBeVisible();
       await picker.getByRole('button', { name: 'Close model picker' }).click();
       await expect(picker).toBeHidden();

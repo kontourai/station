@@ -2,6 +2,7 @@ import { expect, type Page, test } from '@playwright/test';
 import { contrastRatio } from './helpers/color-contrast';
 import { agentConnectionFixture } from './helpers/connection-fixtures';
 import { foregroundMessageReceiptEnvelope } from './helpers/execution-receipt';
+import { MODEL_PICKER_NAME } from './helpers/model-picker';
 import { MIN_TOUCH_TARGET_PX } from './helpers/touch-target';
 import { installVisualViewportFixture } from './helpers/visual-viewport';
 
@@ -406,7 +407,7 @@ test('provider-managed project ignores a stale unsupported project model even wh
     .locator('.new-chat-modal__agent-row', { hasText: 'Station' })
     .getByRole('button', { name: /^Model: / })
     .click();
-  const picker = page.getByRole('dialog', { name: 'Choose model' });
+  const picker = page.getByRole('dialog', { name: MODEL_PICKER_NAME });
   await expect(picker.getByRole('option', { name: /Llama 3.2/ })).toBeVisible();
   await expect(
     picker.getByRole('option', { name: /Qwen 3 Coder/ }),
@@ -1024,7 +1025,7 @@ test('OpenCode chooses its model where the chat starts, and says it is fixed aft
   // Glossary vocabulary only (docs/design/chat-composer.md §3.3).
   await expect(rowModel).not.toContainText('runtime');
   await rowModel.click();
-  const picker = page.getByRole('dialog', { name: 'Choose model' });
+  const picker = page.getByRole('dialog', { name: MODEL_PICKER_NAME });
   await picker.getByRole('option', { name: /GPT-5.5/ }).click();
   // Choosing the Model closes the picker; nothing is left to dismiss.
   await expect(picker).toBeHidden();
@@ -1160,7 +1161,7 @@ test('new chat keeps engine diagnostics out of the mobile Agent chooser', async 
   const again = await openAgentList(page);
   await again.getByRole('button', { name: /^Model: GPT-5 Codex/ }).click();
   await expect(
-    page.getByRole('dialog', { name: 'Choose model' }),
+    page.getByRole('dialog', { name: MODEL_PICKER_NAME }),
   ).toBeVisible();
 });
 

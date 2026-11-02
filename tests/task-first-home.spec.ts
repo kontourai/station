@@ -25,6 +25,7 @@ import {
   installJourneyProfile,
   profileJourney,
 } from './helpers/journey-profile';
+import { MODEL_PICKER_NAME } from './helpers/model-picker';
 import {
   emitMockOrchestrationEvent,
   installMockOrchestrationSse,
@@ -788,7 +789,7 @@ async function openComposerModelPicker(page: Page, composer: Locator) {
     .getByRole('button', { name: /^Model: / })
     .first()
     .click();
-  const picker = page.getByRole('dialog', { name: 'Choose model' });
+  const picker = page.getByRole('dialog', { name: MODEL_PICKER_NAME });
   await expect(picker).toBeVisible();
   return picker;
 }
@@ -1293,7 +1294,7 @@ test.describe('Task-first Home (#332, mocked)', () => {
       name: /Model: Codex · Work — Shared model/,
     });
     await modelButton.click();
-    const picker = page.getByRole('dialog', { name: 'Choose model' });
+    const picker = page.getByRole('dialog', { name: MODEL_PICKER_NAME });
     await expect(picker).toBeVisible();
     await expect(
       picker.getByRole('button', { name: 'LiteLLM · Local' }),
@@ -1314,7 +1315,7 @@ test.describe('Task-first Home (#332, mocked)', () => {
       .getByRole('button', { name: /Model: Bedrock · Prod — Shared model/ })
       .click();
     await page
-      .getByRole('dialog', { name: 'Choose model' })
+      .getByRole('dialog', { name: MODEL_PICKER_NAME })
       .getByRole('button', { name: 'Use agent default' })
       .click();
     await expect(
@@ -1811,7 +1812,7 @@ test.describe('Task-first Home (#332, mocked)', () => {
       page.getByRole('button', { name: 'Changes vs HEAD, 1 changed line' }),
     ).toBeVisible();
     await expect(
-      page.getByRole('textbox', { name: /^Type a message/ }),
+      page.getByRole('textbox', { name: 'Message', exact: true }),
     ).toBeVisible();
   });
 
@@ -1928,7 +1929,7 @@ test.describe('Task-first Home (#332, mocked)', () => {
         name: /Model: Codex · Work — Shared model/,
       });
       await modelButton.click();
-      const picker = page.getByRole('dialog', { name: 'Choose model' });
+      const picker = page.getByRole('dialog', { name: MODEL_PICKER_NAME });
       await expect(picker).toBeVisible();
       await expectContainedAndTouchFriendly(picker);
       await picker.getByRole('button', { name: 'Close model picker' }).click();

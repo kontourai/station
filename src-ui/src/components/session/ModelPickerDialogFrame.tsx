@@ -2,7 +2,13 @@ import {
   captureReturnFocus,
   restoreReturnFocus,
 } from '@kontourai/station-shared/return-focus';
-import { type KeyboardEvent, type ReactNode, useEffect, useRef } from 'react';
+import {
+  type KeyboardEvent,
+  type ReactNode,
+  useEffect,
+  useId,
+  useRef,
+} from 'react';
 import { MOBILE_MEDIA_QUERY } from '../../hooks/useIsMobile';
 import { ResponsiveDialogHeader } from '../ResponsiveDialogSurface';
 
@@ -17,6 +23,7 @@ export function ModelPickerDialogFrame({
   title = 'Model',
   onClose,
   returnFocusTarget,
+  hostTitleId,
 }: {
   children: ReactNode;
   title?: string;
@@ -27,7 +34,16 @@ export function ModelPickerDialogFrame({
    * replaces a loading frame: focus then sits inside the frame being removed.
    */
   returnFocusTarget?: HTMLElement | null;
+  /**
+   * Set when the picker sits inside a dialog surface that already is the
+   * dialog (the composer's model popover): the frame is then not a second
+   * `role="dialog"` (#4403), and its title takes this id so the host is
+   * named by the visible title. Unset, the frame is the dialog itself.
+   */
+  hostTitleId?: string;
 }) {
+  const ownTitleId = useId();
+  const titleId = hostTitleId ?? ownTitleId;
   const panelRef = useRef<HTMLDivElement>(null);
   // Read once, at mount, like the focus it stands in for.
   const returnFocusTargetRef = useRef(returnFocusTarget);
@@ -88,12 +104,13 @@ export function ModelPickerDialogFrame({
     <div
       ref={panelRef}
       className="session-model-picker"
-      role="dialog"
-      aria-label="Choose model"
+      role={hostTitleId ? undefined : 'dialog'}
+      aria-labelledby={hostTitleId ? undefined : titleId}
       tabIndex={-1}
       onKeyDownCapture={containFocus}
     >
       <ResponsiveDialogHeader
+        titleId={titleId}
         title={title}
         subtitle="For this conversation"
         closeLabel="Close model picker"

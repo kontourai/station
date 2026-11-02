@@ -264,9 +264,7 @@ describe('NewChatModal engine chips', () => {
       screen.getByRole('button', { name: /Model: shared-model/ }),
     );
 
-    expect(
-      await screen.findByRole('dialog', { name: 'Choose model' }),
-    ).toBeTruthy();
+    expect(await screen.findByRole('dialog', { name: 'Model' })).toBeTruthy();
     expect(await screen.findByPlaceholderText('Search models…')).toBeTruthy();
     expect(
       (
@@ -291,13 +289,13 @@ describe('NewChatModal engine chips', () => {
     );
     // Choosing a Model finishes the picker, as it does in a chat's composer.
     await waitFor(() =>
-      expect(screen.queryByRole('dialog', { name: 'Choose model' })).toBeNull(),
+      expect(screen.queryByRole('dialog', { name: 'Model' })).toBeNull(),
     );
 
     fireEvent.click(
       screen.getByRole('button', { name: /Model: Shared model/ }),
     );
-    await screen.findByRole('dialog', { name: 'Choose model' });
+    await screen.findByRole('dialog', { name: 'Model' });
     // The reset names the default's source, never the choice it clears.
     expect(
       screen.getByRole('button', { name: 'Use agent default' }),
@@ -313,7 +311,7 @@ describe('NewChatModal engine chips', () => {
         target: { value: 'high' },
       },
     );
-    expect(screen.getByRole('dialog', { name: 'Choose model' })).toBeTruthy();
+    expect(screen.getByRole('dialog', { name: 'Model' })).toBeTruthy();
     fireEvent.change(screen.getByRole('combobox', { name: 'Filter models' }), {
       target: { value: 'provider-two' },
     });
@@ -321,7 +319,7 @@ describe('NewChatModal engine chips', () => {
       screen.getByRole('option', { name: /Shared model · Provider two/ }),
     );
     await waitFor(() =>
-      expect(screen.queryByRole('dialog', { name: 'Choose model' })).toBeNull(),
+      expect(screen.queryByRole('dialog', { name: 'Model' })).toBeNull(),
     );
     fireEvent.click(
       document.querySelector(
@@ -350,11 +348,11 @@ describe('NewChatModal engine chips', () => {
         }}
       />,
     );
-    const dialog = () => screen.queryByRole('dialog', { name: 'Choose model' });
+    const dialog = () => screen.queryByRole('dialog', { name: 'Model' });
     fireEvent.click(
       screen.getByRole('button', { name: /^Model: historical-model/ }),
     );
-    await screen.findByRole('dialog', { name: 'Choose model' });
+    await screen.findByRole('dialog', { name: 'Model' });
     fireEvent.change(screen.getByRole('combobox', { name: 'Filter models' }), {
       target: { value: 'provider-one' },
     });
@@ -366,7 +364,7 @@ describe('NewChatModal engine chips', () => {
     fireEvent.click(
       screen.getByRole('button', { name: /^Model: Shared model/ }),
     );
-    await screen.findByRole('dialog', { name: 'Choose model' });
+    await screen.findByRole('dialog', { name: 'Model' });
     // Reset restores the source turn's Model, so it says so.
     fireEvent.click(screen.getByRole('button', { name: 'Use source turn' }));
     await waitFor(() => expect(dialog()).toBeNull());
