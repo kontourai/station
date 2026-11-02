@@ -234,7 +234,17 @@
 
     "src-ui/src/hooks/orchestration/snapshotHandlers.ts",
 
-    "src-ui/src/hooks/useDerivedSessions.ts"
+    "src-ui/src/hooks/useDerivedSessions.ts",
+
+    "src-ui/src/components/session/SessionModelPicker.css",
+
+    "src-ui/src/components/ModelRuntimeOptionFields.tsx",
+
+    "src-ui/src/__tests__/SessionModelPicker.test.tsx",
+
+    "src-ui/src/__tests__/NewChatModalEngineChips.test.tsx",
+
+    "src-ui/src/components/chat-start/__tests__/StartModelPicker.test.tsx"
   ],
 
   "checks": [
