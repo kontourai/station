@@ -946,6 +946,7 @@ test('explicit report input crosses real Flow dispatch, canonical answer and ret
       await bothLoaded;
       return result;
     });
+  narrowFailures.length = 0;
   const [narrowed, concurrentNarrowed] = await Promise.all(
     [0, 1].map(() =>
       narrowReportGroupAfterInput(

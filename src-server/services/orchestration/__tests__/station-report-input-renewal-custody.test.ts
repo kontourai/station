@@ -47,6 +47,8 @@ test.each([
   'lost-adoption',
   'shutdown-preparing',
   'revoked-after-renew',
+  'response-contention',
+  'response-revoked',
 ] as const)(
   'input renewal keeps real caller custody: %s',
   async (scenario) => {
@@ -119,7 +121,15 @@ test.each([
       .spyOn(runtime, 'narrowAfterInput')
       .mockImplementation(async (...args) => {
         try {
-          return await narrow(...args);
+          const result = await narrow(...args);
+          if (
+            scenario === 'response-contention' ||
+            scenario === 'response-revoked'
+          ) {
+            held = await writer.acquire();
+            responseReady();
+          }
+          return result;
         } catch (error) {
           narrowFailure = error;
           throw error;
@@ -167,6 +177,10 @@ test.each([
       join(h.f.home, 'security', '.home-writer.mutation'),
     );
     let held: Awaited<ReturnType<typeof writer.acquire>> | undefined;
+    let responseReady!: () => void;
+    const responseEntered = new Promise<void>((resolve) => {
+      responseReady = resolve;
+    });
     let resumeCandidate = () => {};
     let cleanupAllowed = false;
     const pending: Promise<unknown>[] = [];
@@ -419,6 +433,9 @@ test.each([
       });
     onTestFinished(() => candidate.mockRestore());
     const captureError = Error('controlled retained capture failure');
+    const retirementError = Error(
+      'controlled candidate retirement confirmation failure',
+    );
     let captureFaultApplied = false;
     if (scenario === 'capture-close-failed') {
       const inspect = sourceWireOwner.inspectSdkSourceWire;
@@ -443,10 +460,7 @@ test.each([
         .spyOn(sourceWireOwner, 'retireSdkSourceWire')
         .mockImplementation((...args) => {
           retireCalls.push(args);
-          if (!cleanupAllowed)
-            return Promise.reject(
-              new Error('controlled candidate retirement confirmation failure'),
-            );
+          if (!cleanupAllowed) return Promise.reject(retirementError);
           return retire(...args);
         });
       onTestFinished(() => fault.mockRestore());
@@ -463,6 +477,82 @@ test.each([
     );
     void narrowing.catch(() => {});
     pending.push(narrowing);
+    if (scenario === 'response-contention' || scenario === 'response-revoked') {
+      await Promise.race([
+        responseEntered,
+        narrowing.then(() => {
+          throw Error('narrow returned before response contention');
+        }),
+      ]);
+      let queued!: () => void;
+      const queuedPromise = new Promise<void>((resolve) => {
+        queued = resolve;
+      });
+      const acquire = HomeWriterOwner.prototype.acquire;
+      const admission = vi
+        .spyOn(HomeWriterOwner.prototype, 'acquire')
+        .mockImplementation(function (this: HomeWriterOwner, ...args) {
+          const result = acquire.apply(this, args);
+          if (this.homeDir === writer.homeDir) queued();
+          return result;
+        });
+      onTestFinished(() => admission.mockRestore());
+      const first = await Promise.race([
+        queuedPromise.then(() => 'queued'),
+        narrowing.then(
+          () => 'returned',
+          () => 'refused',
+        ),
+      ]);
+      if (scenario === 'response-revoked') {
+        assert.ok(held);
+        writer.runWithLease(held, () => {
+          assert.equal(
+            h.f.environment.devicePairing.verifyCredential(
+              h.f.paired.credential,
+            ),
+            true,
+          );
+          h.f.environment.devicePairing.revokeDevice(
+            h.f.paired.device.id,
+            'operator-credential',
+          );
+        });
+      }
+      await held?.release();
+      held = undefined;
+      assert.equal(
+        first,
+        'queued',
+        'response currency must fairly admit after sibling Home custody',
+      );
+      admission.mockRestore();
+      if (scenario === 'response-revoked') {
+        await assert.rejects(
+          narrowing,
+          (error: unknown) =>
+            error instanceof Error && 'status' in error && error.status === 503,
+        );
+        assert.equal(
+          narrowFailure,
+          undefined,
+          'renewal succeeded before response authority was withdrawn',
+        );
+        const persistence = new StationDelegationPersistence(
+          join(h.f.loader.getProjectHomeDir(), 'report-groups'),
+        );
+        const execution = await persistence.readReportExecution(
+          created.group.groupId,
+          created.group.groupId,
+          () => undefined,
+        );
+        assert.equal(execution.authority?.epochs.length, 2);
+        assert.equal(execution.group?.grants.authority.authority_epoch, 2);
+        assert.equal(h.rawFetch.mock.calls.length, 1);
+        assert.equal(starts.mock.calls.length, 1);
+        return;
+      }
+    }
     if (scenario === 'shutdown-preparing') {
       await Promise.race([
         ready,
@@ -616,6 +706,14 @@ test.each([
         assert.equal(execution.group?.grants.authority.authority_epoch, 2);
       } else {
         assert.equal(captureFaultApplied, true);
+        const captureOutcome = narrowFailure.errors[0];
+        assert.ok(
+          captureOutcome instanceof DelegationRoundsTransactionUncertainError,
+        );
+        assert.deepEqual(captureOutcome.errors, [
+          captureError,
+          retirementError,
+        ]);
         let first: unknown = narrowFailure;
         while (first instanceof AggregateError && first.errors.length)
           first = first.errors[0];

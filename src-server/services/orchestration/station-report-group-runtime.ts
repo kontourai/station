@@ -349,6 +349,21 @@ export class StationReportGroupRuntime {
     await admit(current);
     return current;
   }
+  async withResponseCurrent<Value>(
+    context: RuntimeSourceRequestContext,
+    current: () => void,
+    body: () => Value,
+  ): Promise<Value> {
+    const writer = await HomeWriterOwner.forHome(
+      this.owners.runtime.environmentSecurityService.getProjectHomeDir(),
+    );
+    return writer.runRequest(context.req.raw.signal, () => {
+      current();
+      const value = body();
+      current();
+      return value;
+    });
+  }
   #assertCurrent(context: RuntimeSourceRequestContext) {
     return this.owners.runtime.environmentSecurityService.withCurrentAuthority(
       () => {

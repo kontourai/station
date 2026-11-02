@@ -1803,6 +1803,8 @@ export class LocalSourceAdmissionOwner {
       this.#dropSnapshot(capability);
       if (state.sdk)
         await retireSdkSourceWire(state.sdk.owner, state.sdk.handle);
+      else if (this.#snapshots.get(capability) === state)
+        refuse('snapshot_disposal_unconfirmed');
     };
   }
   #assertSnapshot(

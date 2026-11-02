@@ -78,13 +78,14 @@ export function createReportGroupRoutes(
       const run = async () => {
         const current = await runtime.authorizeResponse(c);
         const data = await work(runtime);
-        current();
-        if (Buffer.byteLength(JSON.stringify(data)) > 262_000)
-          return c.json(
-            { success: false, code: 'report_group_response_too_large' },
-            503,
-          );
-        return c.json({ success: true, data });
+        return runtime.withResponseCurrent(c, current, () => {
+          if (Buffer.byteLength(JSON.stringify(data)) > 262_000)
+            return c.json(
+              { success: false, code: 'report_group_response_too_large' },
+              503,
+            );
+          return c.json({ success: true, data });
+        });
       };
       return finalizer ? await runtime.withFinalizerResponse(run) : await run();
     } catch (error) {

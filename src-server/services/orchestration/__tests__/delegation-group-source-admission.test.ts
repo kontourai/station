@@ -365,6 +365,7 @@ test('F3 reentrant failed prototype disposal retains its capacity quarantine', a
         };
       },
     };
+    const retire = f.owner.prepareSnapshotRetirement(sealed.capability);
     await f.owner.prepareSnapshot(
       f.context(),
       subject,
@@ -376,6 +377,7 @@ test('F3 reentrant failed prototype disposal retains its capacity quarantine', a
       () => f.owner.releaseSnapshot(sealed.capability),
       /negative ACK/,
     );
+    await assert.rejects(retire, { code: 'snapshot_disposal_unconfirmed' });
   }
   assert.equal(calls, 4);
   assert.equal(held.length, 4);
