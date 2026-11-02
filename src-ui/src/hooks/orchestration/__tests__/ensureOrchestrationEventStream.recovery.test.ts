@@ -35,6 +35,7 @@ import {
   ensureOrchestrationEventStream,
   resyncOrchestrationEventStream,
 } from '../ensureOrchestrationEventStream';
+import { subscribeSharedOrchestrationStream } from '../sharedStreamListeners';
 import { getStreamConnectionState } from '../streamConnectionState';
 
 const encoder = new TextEncoder();
@@ -426,3 +427,94 @@ describe('ensureOrchestrationEventStream recovery (station#2301)', () => {
     }
   });
 });
+
+test.each([
+  { label: 'missing', acknowledgement: undefined, interest: 'early' },
+  { label: 'invalid', acknowledgement: '0', interest: 'early' },
+  { label: 'acknowledged', acknowledgement: '1', interest: 'early' },
+  { label: 'late', acknowledgement: undefined, interest: 'late' },
+  { label: 'no general owner', acknowledgement: undefined, interest: 'none' },
+] as const)(
+  'general-event transport requires stream acknowledgement: $label',
+  async ({ label, acknowledgement, interest }) => {
+    const apiBase = `http://recovery.test/general-ack-${encodeURIComponent(label)}`;
+    const signals: AbortSignal[] = [];
+    const generalData: unknown[] = [];
+    const generalFrame = [
+      'event: station:general',
+      `data: ${JSON.stringify({ event: 'data:changed', data: '{"version":1}' })}`,
+      '',
+      '',
+    ].join('\n');
+    const legacyFrame = 'event: data:changed\ndata: {"version":1}\n\n';
+    fetchMock.mockImplementation(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input instanceof Request ? input.url : input);
+        if (url.startsWith(apiBase)) {
+          if (init?.signal) signals.push(init.signal);
+          if (url === `${apiBase}/api/orchestration/events?includeGeneral=1`) {
+            const response = openSseResponse(
+              SNAPSHOT + generalFrame,
+              init?.signal,
+            );
+            if (acknowledgement !== undefined)
+              response.headers.set('X-Station-General-Stream', acknowledgement);
+            return response;
+          }
+          if (url === `${apiBase}/events`)
+            return openSseResponse(legacyFrame, init?.signal);
+          throw new Error(`Unexpected general-event request: ${url}`);
+        }
+        return openSseResponse(SNAPSHOT, init?.signal);
+      },
+    );
+    const listener = subscribeSharedOrchestrationStream(apiBase, {
+      onMessage: (message) => {
+        if (message.event === 'station:general')
+          generalData.push(JSON.parse(message.data));
+      },
+    });
+    const release = ensureOrchestrationEventStream(
+      apiBase,
+      undefined,
+      'acknowledgement-owner',
+      interest === 'early',
+      true,
+    );
+    let releaseLate: (() => void) | undefined;
+    try {
+      await settle();
+      if (interest === 'late') {
+        expect(requestsTo(apiBase)).toHaveLength(1);
+        releaseLate = ensureOrchestrationEventStream(
+          apiBase,
+          undefined,
+          'acknowledgement-owner',
+          true,
+          true,
+        );
+        await settle();
+      }
+      const legacy = requestsTo(apiBase).filter(
+        ([input]) =>
+          String(input instanceof Request ? input.url : input) ===
+          `${apiBase}/events`,
+      );
+      expect(legacy).toHaveLength(
+        acknowledgement !== '1' && interest !== 'none' ? 1 : 0,
+      );
+      expect(getStreamConnectionState(apiBase).phase).toBe('receiving');
+      if (interest !== 'none')
+        expect(generalData).toEqual([
+          { event: 'data:changed', data: '{"version":1}' },
+        ]);
+    } finally {
+      releaseLate?.();
+      release();
+      listener.close();
+      await settle();
+    }
+    expect(signals.length).toBeGreaterThan(0);
+    expect(signals.every((signal) => signal.aborted)).toBe(true);
+  },
+);
