@@ -1,6 +1,10 @@
 /** @vitest-environment jsdom */
 
 import { CONVERSATION_INTENT_SUMMARY_MAX_ITEMS } from '@kontourai/station-contracts/conversation-intent-summary';
+import {
+  STATION_ENGINE_DURABILITY,
+  STEERING_ENGINE_DURABILITY,
+} from '@kontourai/station-contracts/engine-capability-matrix';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
@@ -186,6 +190,92 @@ describe('conversation-open callerAccess', () => {
       ).rejects.toMatchObject({ kind: 'invalid-response' });
     }
   });
+});
+
+describe('conversation-open adapter durability', () => {
+  test.each([
+    { name: 'older host', durability: undefined, accepted: true },
+    {
+      name: 'Station declaration',
+      durability: STATION_ENGINE_DURABILITY,
+      accepted: true,
+    },
+    {
+      name: 'native declaration',
+      durability: STEERING_ENGINE_DURABILITY,
+      accepted: true,
+    },
+    ...[
+      null,
+      {},
+      { ...STATION_ENGINE_DURABILITY, steerPlacement: { state: 'native' } },
+      {
+        ...STATION_ENGINE_DURABILITY,
+        compaction: { state: 'none', detail: 'test', owner: 'guessed' },
+      },
+      {
+        ...STATION_ENGINE_DURABILITY,
+        steerPlacement: {
+          state: 'native',
+          detail: 'test',
+          boundary: 'guessed',
+        },
+      },
+      {
+        ...STATION_ENGINE_DURABILITY,
+        steerPlacement: { state: { toString: 'native' }, detail: 'test' },
+      },
+    ].map((durability, index) => ({
+      name: `malformed declaration ${index}`,
+      durability,
+      accepted: false,
+    })),
+  ])(
+    'opens $name only when the declaration is valid',
+    async ({ durability, accepted }) => {
+      _setApiBase('https://station.example.test');
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockResolvedValue(
+          new Response(
+            JSON.stringify({
+              success: true,
+              data: {
+                status: 'resolved',
+                currentSessionId: 'c',
+                canContinue: true,
+                recoveryActions: [],
+                answerability: { answerable: true },
+                conversation: { id: 'c', title: 'Chat', agentSlug: 'codex' },
+                transcript: {
+                  available: true,
+                  owner: 'runtime',
+                  messageCount: 1,
+                },
+                execution: {
+                  sessionId: 'c',
+                  agentId: 'codex',
+                  provider: 'codex',
+                  durability,
+                },
+              },
+            }),
+            { headers: { 'Content-Type': 'application/json' } },
+          ),
+        ),
+      );
+      const request = resolveConversationOpen('c');
+      if (!accepted) {
+        await expect(request).rejects.toMatchObject({
+          kind: 'invalid-response',
+        });
+        return;
+      }
+      const result = await request;
+      expect(result.status).toBe('resolved');
+      expect(result.execution?.durability).toEqual(durability);
+    },
+  );
 });
 
 describe('conversation intent summary normalization', () => {

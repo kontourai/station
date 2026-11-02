@@ -327,7 +327,10 @@ async function openDockStartComposer(page: Page) {
   });
   await page.goto('/?dock=open&maximize=true');
   await dismissSetupLauncher(page);
-  const add = page.locator('.chat-dock__tab-actions .chat-dock__new').last();
+  const add = page
+    .locator('#chat-dock')
+    .getByRole('button', { name: 'New chat', exact: true })
+    .last();
   await expect(add).toBeVisible({ timeout: 15_000 });
   await add.click();
   const modal = page.getByRole('region', { name: 'New chat', exact: true });
@@ -585,14 +588,14 @@ for (const [label, viewport] of [
     await evidence(page, testInfo, `running-turn-empty-${label}.png`);
 
     // The Agent chip's name ends before its caret, in an ellipsis.
-    const agentChip = page.locator('.chat-input__agent-btn');
+    const agentChip = page.locator('#chat-dock .chat-input__agent-btn');
     await expect(agentChip.locator('.chat-input__agent-name')).toHaveText(
       AGENTS[0].name,
     );
-    await expect(page.locator('.chat-input__model-name')).toHaveText(
+    await expect(page.locator('#chat-dock .chat-input__model-name')).toHaveText(
       'CODEX (BRIAN-MEDIA PROXY) / GPT 6.1 Sol',
     );
-    const modelName = page.locator('.chat-input__model-name');
+    const modelName = page.locator('#chat-dock .chat-input__model-name');
     expect(
       await modelName.evaluate(
         (element) => getComputedStyle(element).textOverflow,

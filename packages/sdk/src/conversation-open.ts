@@ -191,6 +191,7 @@ function validExecution(
     'executionAgentId',
     'expectedDefinitionFingerprint',
     'provider',
+    'durability',
     'engineConnectionId',
     'model',
     'acceptedModel',
@@ -234,6 +235,8 @@ function validExecution(
     execution.sessionId === sessionId &&
     execution.agentId === agentId &&
     parseEngineId(execution.provider) !== undefined &&
+    (execution.durability === undefined ||
+      validDurabilityProfile(execution.durability)) &&
     (execution.expectedDefinitionFingerprint === undefined ||
       (typeof execution.expectedDefinitionFingerprint === 'string' &&
         /^sha256:[a-f0-9]{64}$/.test(
@@ -245,4 +248,68 @@ function validExecution(
     (execution.acceptedModel === undefined ||
       boundedText(execution.acceptedModel))
   );
+}
+
+function validDurabilityProfile(value: unknown): boolean {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const profile = value as Record<string, unknown>;
+  const cells = [
+    'steerPlacement',
+    'crashContinuation',
+    'toolReplay',
+    'pendingApprovals',
+    'contextCarriage',
+    'fork',
+    'compaction',
+    'partialOutput',
+    'usage',
+  ];
+  if (Object.keys(profile).some((key) => !cells.includes(key))) return false;
+  for (const key of cells) {
+    const value = profile[key];
+    if (!value || typeof value !== 'object' || Array.isArray(value))
+      return false;
+    const cell = value as Record<string, unknown>;
+    if (
+      typeof cell.state !== 'string' ||
+      !['native', 'emulated', 'none'].includes(cell.state) ||
+      typeof cell.detail !== 'string'
+    )
+      return false;
+    const extra =
+      key === 'steerPlacement'
+        ? 'boundary'
+        : key === 'contextCarriage'
+          ? 'history'
+          : key === 'compaction'
+            ? 'owner'
+            : undefined;
+    if (
+      Object.keys(cell).some(
+        (field) => field !== 'state' && field !== 'detail' && field !== extra,
+      )
+    )
+      return false;
+    if (
+      key === 'steerPlacement' &&
+      cell.boundary !== undefined &&
+      (typeof cell.boundary !== 'string' ||
+        !['engine-defined', 'station-observed'].includes(cell.boundary))
+    )
+      return false;
+    if (
+      key === 'contextCarriage' &&
+      cell.history !== undefined &&
+      (typeof cell.history !== 'string' ||
+        !['station-memory', 'seed'].includes(cell.history))
+    )
+      return false;
+    if (
+      key === 'compaction' &&
+      (typeof cell.owner !== 'string' ||
+        !['station', 'engine', 'unknown'].includes(cell.owner))
+    )
+      return false;
+  }
+  return true;
 }

@@ -4947,7 +4947,10 @@ text and head after an unanswered request and reconcile against the same
 Station and authority before retrying. An unconfirmed handoff is never
 replayed automatically. Session snapshots and conversation-open execution also
 carry the current adapter's optional `durability` declaration; a missing field
-provides no steering authority. Display notes have a separate 50-note capacity
+provides no steering authority. Conversation-open decoding accepts a complete
+adapter declaration, validates its capability states and placement/ownership
+fields, and rejects malformed declarations as `invalid-response`.
+Display notes have a separate 50-note capacity
 and seven-day retention, pruned on submission. See [inbox kinds and crash outcomes](session-api.md#submit-steer-follow-up-or-display-input).
 
 `ProjectTaskRoomProtocolError` remains a plain `Error` subclass. Its
