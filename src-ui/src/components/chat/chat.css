@@ -3517,6 +3517,23 @@
   text-align: start;
   cursor: pointer;
 }
+/* The answer sheet's Add to Task (#4404 A40) is TaskPicker's own trigger,
+   one wrapper deep; it reads as a row like its siblings. */
+.message-details__menu > .task-picker,
+.message-details__menu > .task-picker > .task-picker__trigger {
+  display: flex;
+  width: 100%;
+}
+.message-details__menu > .task-picker > .task-picker__trigger {
+  justify-content: flex-start;
+  min-height: 44px;
+  padding: 0 var(--k-space-3);
+  border: var(--k-border-thin) solid var(--k-line);
+  border-radius: var(--k-radius-control);
+  background: var(--k-panel-raised);
+  color: var(--k-text);
+  font: inherit;
+}
 .message-details__menu > .turn-footer__overflow-item--danger {
   color: var(--error-text, var(--k-negative));
 }
