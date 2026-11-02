@@ -86,8 +86,6 @@
 
     "packages/sdk/src/unified-search.ts",
 
-    "packages/shared/package.json#/exports/.~1native-relay-link",
-
     "packages/shared/src/__tests__/station-home-archive.test.ts",
 
     "packages/shared/src/__tests__/station-home-recovery-candidate.test.ts",
@@ -640,8 +638,6 @@
 
     "src-server/services/orchestration/project-task-room-working-state.ts",
 
-    "src-server/services/orchestration/recovery-ledger.ts",
-
     "src-server/services/orchestration/run-service.ts",
 
     "src-server/services/orchestration/session-command-module.ts",
@@ -655,8 +651,6 @@
     "src-server/services/orchestration/session-query-module.ts",
 
     "src-server/services/orchestration/session-recovery-coordinator.ts",
-
-    "src-server/services/orchestration/session-turn-boundary.ts",
 
     "src-server/services/orchestration/sqlite-adoption-persistence.ts",
 
@@ -989,10 +983,6 @@
     "packages/contracts/src/usage-export.ts",
 
     "src-server/analytics/usage-export-reader.ts",
-
-    "pnpm-lock.yaml#/packages",
-
-    "pnpm-lock.yaml#/snapshots",
 
     "src-server/services/orchestration/thread-inbox.ts",
 
@@ -1560,7 +1550,33 @@
 
     "src-ui/src/components/chat/ConversationInboxMessages.css",
 
-    "src-ui/src/__tests__/ConversationInboxMessages.geometry.test.tsx"
+    "src-ui/src/__tests__/ConversationInboxMessages.geometry.test.tsx",
+
+    "packages/monument/src/recovery-ledger.ts",
+
+    "packages/monument/src/session-control.ts",
+
+    "src-server/services/orchestration/recovery-ledger-binding.ts",
+
+    "src-server/services/orchestration/sqlite-session-control-request-keys.ts",
+
+    "packages/monument/src/sqlite-recovery.ts",
+
+    "packages/monument/src/memory-recovery.ts",
+
+    "packages/monument/src/decisions/recovery-storage.ts",
+
+    "packages/monument/src/testing/recovery-conformance.ts",
+
+    "packages/monument/src/session-boundary.ts",
+
+    "src-server/services/orchestration/session-turn-boundary-binding.ts",
+
+    "src-server/telemetry/metrics.ts",
+
+    "packages/contracts/src/connection-recovery.ts",
+
+    "src-ui/src/components/chat-dock/UsageLimitBanner.tsx"
   ],
 
   "checks": [

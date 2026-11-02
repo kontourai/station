@@ -467,6 +467,8 @@ preference, or pass `null` to clear it. The mutation does not enroll accounts,
 probe quota by itself, apply credentials, or prove a recovery succeeded. See
 [the policy and evidence boundaries](../guides/connections.md#prefer-allowance-that-expires-sooner-during-account-recovery).
 
+Session recovery projections may include `admission: { state: "blocked", reason, retryAt? }` while automatic recovery is paused. This runtime status does not change the durable intent outcome. The bounded reasons distinguish an unavailable scan from indeterminate reconciliation; `retryAt`, when present, is the next admission check rather than a provider reset.
+
 ## Out-of-line event content
 
 The `@kontourai/station-sdk/runtime-event-content` subpath reads the value

@@ -6,6 +6,10 @@ import type { FlowEvidenceEntry } from '@kontourai/flow';
 import type { TurnDeduplicator } from '@kontourai/monument';
 import { TurnIdempotencySettledError } from '@kontourai/monument';
 import {
+  ORCHESTRATION_SHUTDOWN_EXIT_REASON,
+  type SessionTurnBoundaryTransition,
+} from '@kontourai/monument/session-boundary';
+import {
   type AgentExecutionConfig,
   type AgentSpec,
   isSupportedAgentIconToken,
@@ -522,11 +526,9 @@ import {
 import { SessionTranscriptReads } from './session-transcript-reads.js';
 import {
   createInMemorySessionTurnBoundaryAuthority,
-  ORCHESTRATION_SHUTDOWN_EXIT_REASON,
   runSessionStartWithBoundary,
   type SessionTurnBoundaryAuthority,
-  type SessionTurnBoundaryTransition,
-} from './session-turn-boundary.js';
+} from './session-turn-boundary-binding.js';
 import {
   SkillExperienceRuntime,
   type SkillExperienceSource,
@@ -3575,6 +3577,7 @@ export class OrchestrationService {
       if (options.credentialProfileRecoveryAdapter) {
         this.credentialRecovery = createCredentialRecoveryModule({
           ledger: recoveryLedger,
+          logger: options.logger,
           adapter: options.credentialProfileRecoveryAdapter,
           dispatchAdapter: recoveryDispatchAdapter,
           restoreSession: async (input) =>

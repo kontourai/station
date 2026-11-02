@@ -1,5 +1,9 @@
 import crypto from 'node:crypto';
 import {
+  isProviderTurnBoundary,
+  type SessionTurnBoundaryRecord,
+} from '@kontourai/monument/session-boundary';
+import {
   type CanonicalRuntimeEvent,
   isDeferredRetriableTurnError,
   isProviderTriggeredTurn,
@@ -16,10 +20,6 @@ import { sleep } from '../../utils/sleep.js';
 import type { EventStore, PersistedRuntimeEvent } from './event-store.js';
 import { TURN_ABORT_SETTLED_REQUEST_STATUS } from './open-requests.js';
 import { isInvocationlessRecoveryAbort } from './session-lifecycle-service.js';
-import {
-  isProviderTurnBoundary,
-  type SessionTurnBoundaryRecord,
-} from './session-turn-boundary.js';
 
 /**
  * `request.resolved.response.reason` on the resolution recovery writes for a
@@ -497,7 +497,7 @@ export class InterruptedTurnRecovery {
       if (record.state !== 'accepted' && record.state !== 'indeterminate') {
         // Read-only defensive guard: `EventStore.takeInterruptedTurnBoundaries()`
         // only ever fills this list from those two states (see
-        // `session-turn-boundary.ts`'s `reconcileDeadOwners`); skip anything
+        // Monument's `reconcileDeadOwners`); skip anything
         // else rather than resolve a row this method does not understand.
         continue;
       }

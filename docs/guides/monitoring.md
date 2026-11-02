@@ -1406,6 +1406,7 @@ domain operations, so their totals are not counts of one business action.
 | `station.notification.operations` | Notification service/route operations | `op` |
 | `station.notification.agent_operations` | Agent notification admission outcomes; no content or Session identity | `result`, `urgency` |
 | `station.scheduler.job.runs` | Actual job outcomes **and** management requests; currently not an execution-only count | `status` or `op`; no per-job label |
+| `station.recovery.admission_refused` | Automatic recovery attempts refused while credential readiness is unreadable or indeterminate; one observation per refused attempt, not per account | `reason`: `scan-unavailable` or `reconciliation-indeterminate` |
 | `station.scheduler.concurrency.deferrals` | Invocation-capacity lifecycle outcomes | `reason`, `disposition` |
 | `station.mcp.lifecycle` | MCP connection lifecycle observations | `event`, `server` |
 | `station.mcp.negotiation.total` | Negotiation outcomes | `era`, `protocol_version`, `fallback`, `extensions`, `outcome`, and failure-only `error_class` |

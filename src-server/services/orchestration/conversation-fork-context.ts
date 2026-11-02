@@ -208,7 +208,7 @@ export interface NativeForkCommitInput {
 }
 export interface NativeForkEffectClaim {
   /** A stable wrapper; the captured authority claim is never exposed. */
-  readonly sessionStart: import('./session-turn-boundary.js').SessionStartBoundaryClaim;
+  readonly sessionStart: import('@kontourai/monument/session-boundary').SessionStartBoundaryClaim;
   observeChild(cursor: unknown, nativeIdentityKey: string): void;
   commit(input: NativeForkCommitInput): 'committed' | 'already-committed';
   indeterminate(): void;

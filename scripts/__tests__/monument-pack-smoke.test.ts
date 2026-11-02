@@ -124,6 +124,9 @@ describe('monument pack smoke: checks', () => {
       '.': entry('index'),
       './sqlite': entry('sqlite'),
       './adapter': entry('adapter'),
+      './session-control': entry('session-control'),
+      './recovery': entry('recovery-ledger'),
+      './session-boundary': entry('session-boundary'),
       './testing': entry('testing/index'),
     },
   };
@@ -172,6 +175,9 @@ describe('monument pack smoke: checks', () => {
       '.': '',
       './sqlite': '',
       './adapter': '',
+      './session-control': '',
+      './recovery': '',
+      './session-boundary': '',
       './testing': '',
     };
     expect(
@@ -186,7 +192,7 @@ describe('monument pack smoke: checks', () => {
         publishConfig: { exports: exportsMap },
       }),
     ).toEqual([
-      'exports (., ./adapter, ./extra, ./sqlite, ./testing) and publishConfig.exports (., ./adapter, ./sqlite, ./testing) name different entry points',
+      'exports (., ./adapter, ./extra, ./recovery, ./session-boundary, ./session-control, ./sqlite, ./testing) and publishConfig.exports (., ./adapter, ./recovery, ./session-boundary, ./session-control, ./sqlite, ./testing) name different entry points',
       'exports declares ./extra; add it to ENTRY_POINTS in scripts/monument-pack-smoke.mjs so the smoke covers it',
     ]);
     expect(
@@ -502,7 +508,7 @@ describe.skipIf(process.platform === 'win32')(
       writeFileSync(path, `${JSON.stringify(manifest, null, 2)}\n`);
     };
 
-    it('passes the real package: all four entry points import under plain node and type-check', {
+    it('passes the real package: all seven entry points import under plain node and type-check', {
       timeout: CASE_TIMEOUT,
     }, async () => {
       // The control for every rejection below.

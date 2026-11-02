@@ -94,6 +94,7 @@ function startAuthorizationServer(options: ServerOptions) {
   let authorizationServer = ORIGIN;
   let issued = 0;
   let hold: Promise<void> | undefined;
+  let heldTokenEntered: (() => void) | undefined;
   const mcpHandler = createMcpHandler(
     () => {
       const server = new McpServer({ name: 'byo-proof', version: '1.0.0' });
@@ -163,7 +164,11 @@ function startAuthorizationServer(options: ServerOptions) {
       if (url.pathname === '/token') {
         const held = hold;
         hold = undefined;
-        if (held) await held;
+        if (held) {
+          heldTokenEntered?.();
+          heldTokenEntered = undefined;
+          await held;
+        }
         tokenRequests.push({
           origin: url.origin,
           params: new URLSearchParams(await request.text()),
@@ -202,7 +207,10 @@ function startAuthorizationServer(options: ServerOptions) {
       hold = new Promise<void>((resolve) => {
         release = resolve;
       });
-      return release;
+      const entered = new Promise<void>((resolve) => {
+        heldTokenEntered = resolve;
+      });
+      return Object.assign(release, { entered });
     },
     /** RFC 9728 metadata names a different authorization server from now on. */
     nameAuthorizationServer: (origin: string) => {
@@ -1546,8 +1554,7 @@ describe('round 6: no check-then-send gap around the issuer pin', () => {
       callback.searchParams.set('state', url.searchParams.get('state') ?? '');
       const releaseExchange = as.holdNextTokenRequest();
       const finish = env.service.finishOAuth(SERVER, callback.href, alice);
-      await vi.waitFor(() => expect(as.contacted.has(ORIGIN)).toBe(true));
-      await new Promise((resolve) => setTimeout(resolve, 50));
+      await releaseExchange.entered;
 
       let claimed = false;
       const claim = claimIntegrationOAuthIssuerPin(

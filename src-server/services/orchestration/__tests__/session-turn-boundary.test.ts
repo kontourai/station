@@ -2,6 +2,10 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
+import {
+  SESSION_TURN_ACCEPTED_CAPACITY,
+  type SessionTurnBoundaryRecord,
+} from '@kontourai/monument/session-boundary';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { probeExactProcessIdentity } from '@kontourai/station-shared/process-identity';
 import { afterEach, describe, expect, test, vi } from 'vitest';
@@ -13,11 +17,9 @@ import {
   createSessionTurnBoundaryAuthority,
   runSessionStartWithBoundary,
   SESSION_START_INDETERMINATE_CODE,
-  SESSION_TURN_ACCEPTED_CAPACITY,
   SessionStartIndeterminateError,
   type SessionTurnBoundaryCoordinator,
-  type SessionTurnBoundaryRecord,
-} from '../session-turn-boundary.js';
+} from '../session-turn-boundary-binding.js';
 
 function terminal(threadId: string, turnId: string): CanonicalRuntimeEvent {
   return {
