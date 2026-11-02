@@ -5,17 +5,24 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { BrowserAnnotation } from '../BrowserAnnotation';
 import type { BrowserPaneApi } from '../browserPaneApi';
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+});
 const screenshot = new Blob(['captured'], { type: 'image/png' });
 
 it('maps pointer input through a letterboxed canvas and attaches a box with Enter', async () => {
   vi.stubGlobal(
     'URL',
-    Object.assign(URL, {
-      createObjectURL: vi.fn(() => 'blob:captured'),
-      revokeObjectURL: vi.fn(),
-    }),
+    class extends URL {
+      static createObjectURL() {
+        return '';
+      }
+      static revokeObjectURL() {}
+    },
   );
+  vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:captured');
+  vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
   vi.stubGlobal(
     'ResizeObserver',
     class {
@@ -49,6 +56,7 @@ it('maps pointer input through a letterboxed canvas and attaches a box with Ente
     <BrowserAnnotation
       stageRef={stageRef}
       screenshot={screenshot}
+      scroll={{ x: 12, y: 34 }}
       viewport={{ width: 800, height: 400, deviceScaleFactor: 1 }}
       generation={1}
       sessionId="bs_test"
@@ -96,11 +104,15 @@ it('maps pointer input through a letterboxed canvas and attaches a box with Ente
 it('selects with target viewport coordinates and erases the selected element', async () => {
   vi.stubGlobal(
     'URL',
-    Object.assign(URL, {
-      createObjectURL: vi.fn(() => 'blob:captured'),
-      revokeObjectURL: vi.fn(),
-    }),
+    class extends URL {
+      static createObjectURL() {
+        return '';
+      }
+      static revokeObjectURL() {}
+    },
   );
+  vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:captured');
+  vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
   vi.stubGlobal(
     'ResizeObserver',
     class {
@@ -138,6 +150,7 @@ it('selects with target viewport coordinates and erases the selected element', a
     <BrowserAnnotation
       stageRef={stageRef}
       screenshot={screenshot}
+      scroll={{ x: 12, y: 34 }}
       viewport={{ width: 800, height: 400, deviceScaleFactor: 1 }}
       generation={7}
       sessionId="bs_test"
@@ -151,7 +164,10 @@ it('selects with target viewport coordinates and erases the selected element', a
   Object.defineProperty(surface, 'setPointerCapture', { value: () => {} });
   fireEvent.pointerDown(surface, { clientX: 60, clientY: 145 });
   await waitFor(() =>
-    expect(pick).toHaveBeenCalledWith('bs_test', { x: 100, y: 50 }, 7, true),
+    expect(pick).toHaveBeenCalledWith('bs_test', { x: 100, y: 50 }, 7, true, {
+      x: 12,
+      y: 34,
+    }),
   );
   await waitFor(() =>
     expect(screen.getByRole('button', { name: 'Attach' })).not.toHaveProperty(
@@ -167,6 +183,20 @@ it('selects with target viewport coordinates and erases the selected element', a
     key: 'e',
   });
   fireEvent.pointerDown(surface, { clientX: 60, clientY: 145 });
+  expect(screen.getByRole('button', { name: 'Attach' })).toHaveProperty(
+    'disabled',
+    true,
+  );
+  pick.mockRejectedValueOnce(
+    new Error('Page scroll changed during annotation.'),
+  );
+  fireEvent.keyDown(screen.getByRole('group', { name: 'Browser annotation' }), {
+    key: 's',
+  });
+  fireEvent.pointerDown(surface, { clientX: 60, clientY: 145 });
+  expect(
+    await screen.findByText('Could not inspect this element. Try again.'),
+  ).toBeTruthy();
   expect(screen.getByRole('button', { name: 'Attach' })).toHaveProperty(
     'disabled',
     true,

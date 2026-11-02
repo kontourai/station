@@ -813,6 +813,73 @@ describe('Browser pane: screenshots', () => {
     ).toBe(403);
   });
 
+  test('annotation screenshot carries a stable viewport origin and refuses a scroll during capture', async () => {
+    const h = harness({ networkPreview: true });
+    const { browserSessionId: id } = await h.open();
+    let y = 25;
+    h.fake.handle('Page.getLayoutMetrics', () => ({
+      cssVisualViewport: { pageX: 12, pageY: y },
+    }));
+    h.fake.handle('Page.captureScreenshot', () => ({ data: PNG_1X1 }));
+    const response = await h.browser(
+      'GET',
+      `/sessions/${id}/screenshot?annotation=1`,
+    );
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      success: true,
+      data: { scroll: { x: 12, y: 25 }, image: PNG_1X1, mimeType: 'image/png' },
+    });
+    h.fake.handle('Page.captureScreenshot', () => {
+      y = 26;
+      return { data: PNG_1X1 };
+    });
+    expect(
+      (await h.browser('GET', `/sessions/${id}/screenshot?annotation=1`))
+        .status,
+    ).toBe(409);
+  });
+
+  test('annotation waits for an earlier screenshot before measuring its own origin', async () => {
+    const h = harness({ networkPreview: true });
+    const { browserSessionId: id } = await h.open();
+    let release!: () => void;
+    let enter!: () => void;
+    const entered = new Promise<void>((resolve) => {
+      enter = resolve;
+    });
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let y = 0;
+    let shots = 0;
+    h.fake.handle('Page.getLayoutMetrics', () => ({
+      cssVisualViewport: { pageX: 0, pageY: y },
+    }));
+    h.fake.handle('Page.captureScreenshot', async () => {
+      if (++shots === 1) {
+        enter();
+        await gate;
+      }
+      return { data: PNG_1X1 };
+    });
+    const previous = h.browser('GET', `/sessions/${id}/screenshot`);
+    await entered;
+    const annotation = h.browser(
+      'GET',
+      `/sessions/${id}/screenshot?annotation=1`,
+    );
+    y = 50;
+    release();
+    expect((await previous).status).toBe(200);
+    const response = await annotation;
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      data: { scroll: { x: 0, y: 50 } },
+    });
+    expect(shots).toBe(2);
+  });
+
   test('a closed session has no screenshot (409)', async () => {
     const h = harness();
     const { browserSessionId: id } = await h.open();

@@ -221,12 +221,22 @@ export function browserPaneApi(apiBase: string, fetcher: BrowserFetch) {
       point: { x: number; y: number },
       generation: number,
       screenshot: boolean,
+      expectedScroll?: { x: number; y: number },
       signal?: AbortSignal,
     ) =>
       call<BrowserPickedElementView>(
         fetcher,
         `${root}/sessions/${enc(browserSessionId)}/pick`,
-        { method: 'POST', body: { ...point, generation, screenshot }, signal },
+        {
+          method: 'POST',
+          body: {
+            ...point,
+            generation,
+            screenshot,
+            ...(expectedScroll ? { expectedScroll } : {}),
+          },
+          signal,
+        },
       ),
     startRecording: (id: string, generation: number) =>
       call<{ recordingId: string }>(
@@ -321,6 +331,25 @@ export function browserPaneApi(apiBase: string, fetcher: BrowserFetch) {
         throw new BrowserApiError(response.status, code);
       }
       return response.blob();
+    },
+    annotationScreenshot: async (
+      browserSessionId: string,
+    ): Promise<{ blob: Blob; scroll: { x: number; y: number } }> => {
+      const result = await call<{
+        image: string;
+        mimeType: 'image/png' | 'image/jpeg';
+        scroll: { x: number; y: number };
+      }>(
+        fetcher,
+        `${root}/sessions/${enc(browserSessionId)}/screenshot?annotation=1`,
+      );
+      const bytes = Uint8Array.from(atob(result.image), (character) =>
+        character.charCodeAt(0),
+      );
+      return {
+        blob: new Blob([bytes], { type: result.mimeType }),
+        scroll: result.scroll,
+      };
     },
     reopen: (browserSessionId: string) =>
       call<BrowserSessionView>(

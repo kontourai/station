@@ -29,6 +29,7 @@ import {
   type CdpTransport,
   LOCAL_BROWSER_HOST_ID,
 } from './browser-host.js';
+import { readBrowserViewportOffset } from './browser-pick.js';
 import {
   ABOUT_BLANK,
   type BrowserUrlRejection,
@@ -618,6 +619,42 @@ export class BrowserSessionRegistry {
     const inflight = this.inflightShots.get(browserSessionId);
     if (inflight) return inflight;
     const shot = this.captureScreenshotOnce(browserSessionId).finally(() => {
+      if (this.inflightShots.get(browserSessionId) === shot)
+        this.inflightShots.delete(browserSessionId);
+    });
+    this.inflightShots.set(browserSessionId, shot);
+    return shot;
+  }
+
+  /** Capture an annotation image with its stable viewport origin. */
+  async captureAnnotationScreenshot(browserSessionId: string) {
+    const previous = this.inflightShots.get(browserSessionId);
+    const shot = (async () => {
+      if (previous) await previous.catch(() => {});
+      const live = this.liveTarget(browserSessionId);
+      if (!live)
+        throw new BrowserSessionError(
+          'not-live',
+          'The browser is not running.',
+        );
+      const scroll = await readBrowserViewportOffset(live);
+      const image = await this.captureScreenshotOnce(browserSessionId);
+      const after = await readBrowserViewportOffset(live);
+      const target = this.liveTarget(browserSessionId);
+      if (
+        after.x !== scroll.x ||
+        after.y !== scroll.y ||
+        !target ||
+        target.generation !== live.generation ||
+        target.target.targetId !== live.target.targetId ||
+        target.target.cdpSessionId !== live.target.cdpSessionId
+      )
+        throw new BrowserSessionError(
+          'stale-generation',
+          'The page changed during annotation capture.',
+        );
+      return { ...image, scroll };
+    })().finally(() => {
       if (this.inflightShots.get(browserSessionId) === shot)
         this.inflightShots.delete(browserSessionId);
     });

@@ -2,11 +2,18 @@ import { describe, expect, it, vi } from 'vitest';
 import { pickBrowserElement } from '../browser-pick.js';
 import type { BrowserLiveTarget } from '../browser-session-registry.js';
 
-function fixture(changed = false) {
+function fixture(
+  changed = false,
+  extra?: {
+    tagName: string;
+    attributes: Array<{ name: string; value: string }>;
+  },
+) {
   let frames = 0;
   let loader = 'old';
   let invalidContext = false;
   let worldId = 0;
+  let scroll = { x: 100, y: 200 };
   const calls: Array<{ method: string; params?: object }> = [];
   const cdp = {
     send: vi.fn(async (method: string, params?: object) => {
@@ -37,10 +44,10 @@ function fixture(changed = false) {
             result: {
               value: {
                 selector: 'html > body > button',
-                tagName: 'button',
+                tagName: extra?.tagName ?? 'button',
                 role: '',
                 name: '',
-                attributes: [
+                attributes: extra?.attributes ?? [
                   {
                     name: 'href',
                     value: 'https://user:pass@example.test/a?token=secret#frag',
@@ -77,7 +84,7 @@ function fixture(changed = false) {
             nodes: [{ role: { value: 'button' }, name: { value: 'Save' } }],
           };
         case 'Page.getLayoutMetrics':
-          return { cssVisualViewport: { pageX: 100, pageY: 200 } };
+          return { cssVisualViewport: { pageX: scroll.x, pageY: scroll.y } };
         case 'Page.captureScreenshot':
           return {
             data: Buffer.from([137, 80, 78, 71, 13, 10, 26, 10, 1]).toString(
@@ -97,6 +104,9 @@ function fixture(changed = false) {
   return {
     live,
     calls,
+    setScroll: (x: number, y: number) => {
+      scroll = { x, y };
+    },
     invalidate: () => {
       invalidContext = true;
     },
@@ -136,6 +146,68 @@ describe('browser element picking', () => {
     expect(result.html).not.toMatch(
       /user|pass|secret-value|token=|frag|credential=|session=|sk-abcdefghijk123|private/,
     );
+  });
+
+  it('redacts additional URL attributes and keeps commas inside srcset URLs', async () => {
+    const names = ['data', 'cite', 'background', 'longdesc', 'codebase'];
+    const h = fixture(false, {
+      tagName: 'object',
+      attributes: [
+        ...names.map((name) => ({ name, value: '/asset?token=private' })),
+        {
+          name: 'imagesrcset',
+          value: '/one,part?token=private 1x, /two?secret=private 2x',
+        },
+      ],
+    });
+    const result = await pickBrowserElement(
+      h.live,
+      { width: 100, height: 80 },
+      { x: 15, y: 25 },
+      false,
+    );
+    for (const name of names)
+      expect(result.html).toContain(
+        `${name}="https://example.test/asset?[redacted]"`,
+      );
+    expect(result.html).toContain(
+      'imagesrcset="https://example.test/one,part?[redacted] 1x, https://example.test/two?[redacted] 2x"',
+    );
+    expect(result.html).not.toContain('private');
+    const meta = fixture(false, {
+      tagName: 'meta',
+      attributes: [
+        {
+          name: 'content',
+          value: '0; URL=https://user:pass@example.test/?token=private',
+        },
+      ],
+    });
+    const metaResult = await pickBrowserElement(
+      meta.live,
+      { width: 100, height: 80 },
+      { x: 15, y: 25 },
+      false,
+    );
+    expect(metaResult.html).toContain('content="[redacted]"');
+    expect(metaResult.html).not.toContain('private');
+  });
+
+  it('refuses a pick when the page has scrolled since the screenshot', async () => {
+    const h = fixture();
+    h.setScroll(100, 201);
+    await expect(
+      pickBrowserElement(
+        h.live,
+        { width: 100, height: 80 },
+        { x: 15, y: 25 },
+        true,
+        { x: 100, y: 200 },
+      ),
+    ).rejects.toThrow('scroll changed');
+    expect(
+      h.calls.some((call) => call.method === 'DOM.getNodeForLocation'),
+    ).toBe(false);
   });
 
   it('reuses an isolated world for the same document and replaces it after navigation', async () => {
