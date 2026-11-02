@@ -158,17 +158,21 @@ export async function startRuntimeHealthChecks(context: {
   };
   interval?: number;
   runHealthChecks: () => Promise<void>;
-}): Promise<void> {
+}): Promise<() => Promise<void>> {
   startRuntimeEventLoopLagMonitoring({
     timers: context.timers,
     logger: context.logger,
   });
   const interval = context.interval ?? MS_PER_MINUTE;
   let ownedWork: Promise<void> | undefined;
+  let stopped = false;
   const runHealthChecks = async () => {
+    if (stopped) return;
     if (!ownedWork) {
       ownedWork = Promise.resolve()
-        .then(() => context.maintainOwnedWork())
+        .then(() => {
+          if (!stopped) return context.maintainOwnedWork();
+        })
         .catch((error) =>
           context.logger.warn('Owned-work maintenance failed', { error }),
         )
@@ -180,8 +184,14 @@ export async function startRuntimeHealthChecks(context: {
   };
 
   await runHealthChecks();
-  context.timers.push(setInterval(runHealthChecks, interval));
+  const timer = setInterval(runHealthChecks, interval);
+  context.timers.push(timer);
   context.logger.debug('Health checks started', { interval });
+  return async () => {
+    stopped = true;
+    clearInterval(timer);
+    await ownedWork;
+  };
 }
 
 /**

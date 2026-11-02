@@ -5485,10 +5485,13 @@ export class OrchestrationService {
       this.threadProviders.get(threadId) ??
       this.sessionReadModel.get(threadId)?.provider ??
       this.options.eventStore?.readSessionByThread(threadId)?.provider;
-    return (
-      this.durabilityProfileForProvider(provider)?.steerPlacement.state ??
-      (provider ? 'pending' : 'none')
-    );
+    const declared = this.durabilityProfileForProvider(provider);
+    if (declared) return declared.steerPlacement.state;
+    if (provider && this.options.adapterRegistry.get(provider)) return 'none';
+    return this.startingSessionThreads.has(threadId) ||
+      this.materializingSessions.has(threadId)
+      ? 'pending'
+      : 'none';
   }
 
   async readSession(
@@ -12135,6 +12138,7 @@ export class OrchestrationService {
         ...(turnId ? { turnId } : {}),
       });
     }
+    store.requestCascadeDelivery(threadId, terminalId);
     store.requestCascadeRecheck(threadId);
     await this.reconcileCascadeStops();
     if (
@@ -12176,6 +12180,10 @@ export class OrchestrationService {
           ReturnType<EventStore['cascadeStopOwner']>
         >();
         for (const intent of intents) {
+          const recheckGeneration = store.cascadeStopRecheckGeneration(
+            intent.childId,
+            intent.terminalId,
+          );
           const retained = this.cascadeStopAdapters.get(intent.childId);
           let adapter = this.sessionAdapters.get(intent.childId) ?? retained;
           let held = retained !== undefined;
@@ -12213,7 +12221,15 @@ export class OrchestrationService {
             };
           owners.set(intent.childId, owner);
           if (owner.custody === 'settled') {
-            store.completeCascadeStop(intent.childId, intent.terminalId);
+            if (
+              !store.completeCascadeStop(
+                intent.childId,
+                intent.terminalId,
+                undefined,
+                recheckGeneration,
+              )
+            )
+              this.cascadeStopReconcileAgain = true;
             continue;
           }
           const recorded = store.recordCascadeStopCustody(
@@ -12223,6 +12239,7 @@ export class OrchestrationService {
             owner.reason,
             owner.custody === 'unknown' ? Date.now() + 30_000 : 0,
             owner.snapshot,
+            recheckGeneration,
           );
           if (!recorded) {
             owners.set(intent.childId, {
@@ -12304,6 +12321,7 @@ export class OrchestrationService {
               this.cascadeStopAdapters.delete(intent.childId);
               continue;
             }
+            this.cascadeStopReconcileAgain = true;
             if (
               !store
                 .pendingCascadeStops()

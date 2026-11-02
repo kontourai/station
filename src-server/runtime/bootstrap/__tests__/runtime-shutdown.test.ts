@@ -1,5 +1,6 @@
 import { describe, expect, test, vi } from 'vitest';
 import { cancelSharedDeviceCodeLogins } from '../../../services/connections/device-code-login.js';
+import { startRuntimeHealthChecks } from '../runtime-health.js';
 import { shutdownRuntimeServices } from '../runtime-shutdown.js';
 
 vi.mock('../../../services/connections/device-code-login.js', () => ({
@@ -37,6 +38,49 @@ describe('shutdownRuntimeServices', () => {
     await expect(shutdown).resolves.toBeUndefined();
     expect(signals.every((signal) => signal.aborted)).toBe(true);
     expect(schedulerService.stop).toHaveBeenCalledOnce();
+    vi.useRealTimers();
+  });
+
+  test('shutdown drains the scheduled health maintenance before closing orchestration', async () => {
+    vi.useFakeTimers();
+    let finish!: () => void;
+    const pending = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+    const maintainOwnedWork = vi.fn(() => pending);
+    const timers: NodeJS.Timeout[] = [];
+    const stopHealthChecks = vi.fn(
+      await startRuntimeHealthChecks({
+        timers,
+        logger: { debug: vi.fn(), warn: vi.fn() },
+        interval: 1000,
+        maintainOwnedWork,
+        runHealthChecks: async () => {},
+      }),
+    );
+    const orchestrationService = { shutdown: vi.fn(async () => {}) };
+    const shutting = shutdownRuntimeServices({
+      logger: { info: vi.fn(), error: vi.fn(), warn: vi.fn() },
+      timers,
+      stopHealthChecks,
+      orchestrationService,
+      mcpConfigs: new Map(),
+      activeAgents: new Map(),
+      acpBridge: { shutdown: vi.fn(async () => {}) },
+      feedbackService: { stop: vi.fn() },
+      voiceService: { stop: vi.fn(async () => {}) },
+      configLoader: { dispose: vi.fn(async () => {}) },
+    });
+    try {
+      await vi.waitFor(() => expect(stopHealthChecks).toHaveBeenCalledOnce());
+      expect(orchestrationService.shutdown).not.toHaveBeenCalled();
+    } finally {
+      finish();
+      await shutting;
+    }
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(maintainOwnedWork).toHaveBeenCalledOnce();
+    expect(orchestrationService.shutdown).toHaveBeenCalledOnce();
     vi.useRealTimers();
   });
 

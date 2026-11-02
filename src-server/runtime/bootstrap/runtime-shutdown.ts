@@ -17,6 +17,7 @@ const RETIRED_MCP_DISCONNECT_TIMEOUT_MS = 2_000;
 export async function shutdownRuntimeServices({
   logger,
   timers,
+  stopHealthChecks,
   schedulerService,
   orchestrationService,
   attachedSessionFollowService,
@@ -43,6 +44,7 @@ export async function shutdownRuntimeServices({
 }: {
   logger: any;
   timers: NodeJS.Timeout[];
+  stopHealthChecks?: () => Promise<void>;
   schedulerService?: { stop(): Promise<void> };
   orchestrationService?: { shutdown(): Promise<void> };
   attachedSessionFollowService?: { stop(): void };
@@ -115,6 +117,7 @@ export async function shutdownRuntimeServices({
 
   for (const timer of timers) clearTimeout(timer);
   timers.length = 0;
+  await attempt('runtimeHealthChecks.stop', stopHealthChecks);
 
   // Engine device-code logins are child processes waiting on a person. Their
   // own deadlines bound them, but a restart must not leave them running until

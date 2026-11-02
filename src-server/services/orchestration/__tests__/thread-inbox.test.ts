@@ -482,7 +482,7 @@ describe('thread inbox (#3568)', () => {
     expect(world.adapter.steers).toEqual([]);
   });
 
-  test('an unknown profile keeps a durable steer queued until the declaration arrives', async () => {
+  test('a completed Session read without an adapter declaration refuses queued steering', async () => {
     let world: World;
     world = boot(path(), {
       steerFidelity: (threadId) =>
@@ -514,18 +514,16 @@ describe('thread inbox (#3568)', () => {
     });
     await world.inbox.idle();
     expect(world.inbox.list(THREAD)).toMatchObject([
-      { state: 'queued', message: FOLLOW_UP },
+      {
+        state: 'refused',
+        reasonCode: 'unsupported-engine',
+        message: FOLLOW_UP,
+      },
     ]);
     expect(world.adapter.steers).toEqual([]);
     world.adapter.metadata.durability = STEERING_ENGINE_DURABILITY;
     await world.inbox.reconcile();
-    await world.inbox.idle();
-    expect(world.inbox.list(THREAD)).toMatchObject([
-      { state: 'sent', message: FOLLOW_UP },
-    ]);
-    expect(world.adapter.steers).toEqual([FOLLOW_UP]);
-    await world.inbox.reconcile();
-    expect(world.adapter.steers).toEqual([FOLLOW_UP]);
+    expect(world.adapter.steers).toEqual([]);
   });
 
   test('the inbox drives a scripted adapter through the real receipted orchestration dispatch', async () => {

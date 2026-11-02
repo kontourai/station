@@ -100,6 +100,66 @@ async function fixture(
     },
   };
 }
+test('reopening finished owned children creates no stop intents or cancellation fences', () => {
+  const path = join(makeTempDir('cascade-finished-reopen-'), 'events.sqlite');
+  const store = new EventStore(path);
+  store.bindSessionActivity(() => false);
+  const assertEmpty = (reader: EventStore) => {
+    expect(reader.pendingCascadeStops()).toEqual([]);
+    expect(
+      reader['db']
+        .prepare('SELECT * FROM orchestration_cancellation_fences')
+        .all(),
+    ).toEqual([]);
+  };
+  try {
+    for (const id of ['parent', 'child'])
+      store.appendEvent({
+        eventId: `${id}-start`,
+        threadId: id,
+        sessionId: id,
+        provider: 'claude',
+        method: 'session.started',
+        createdAt: '2026-01-01T00:00:00Z',
+        ...(id === 'child'
+          ? {
+              metadata: {
+                delegation: {
+                  parentSessionId: 'parent',
+                  parentConversationId: 'parent',
+                },
+                stationDelegationProvenance: 'caller-derived',
+              },
+            }
+          : {}),
+      });
+    for (const id of ['child', 'parent'])
+      store.appendEvent({
+        eventId: `${id}-exit`,
+        threadId: id,
+        sessionId: id,
+        provider: 'claude',
+        method: 'session.exited',
+        reason: 'completed',
+        createdAt: '2026-01-01T00:00:01Z',
+      });
+    assertEmpty(store);
+  } finally {
+    store.close();
+  }
+  const reopened = new EventStore(path);
+  try {
+    assertEmpty(reopened);
+    expect(
+      reopened
+        .sessionTurnBoundaryAuthority()
+        .claim('child', '2026-01-01T00:00:02Z').kind,
+    ).toBe('owner');
+  } finally {
+    reopened.close();
+  }
+});
+
 test('an unbound store cannot assume a terminal child has no local binding', async () => {
   const f = await fixture('finished');
   const reader = new EventStore(f.path);
@@ -290,3 +350,61 @@ test.each(['idle', 'completed'] as const)(
     }
   },
 );
+
+test('an observation from an older recheck cannot acknowledge a newer release request', async () => {
+  const f = await fixture('unknown');
+  try {
+    await f.service.dispatch({ type: 'stopSession', threadId: 'parent' });
+    const intent = f.store.pendingCascadeStops({ childId: 'child' })[0]!;
+    const generation = f.store.cascadeStopRecheckGeneration(
+      'child',
+      intent.terminalId,
+    );
+    const observed = f.store.cascadeStopOwner('child', false);
+    f.store.requestCascadeRecheck('parent');
+    const current = f.store.cascadeStopRecheckGeneration(
+      'child',
+      intent.terminalId,
+    );
+    expect(current).toBe(generation + 1);
+    expect(
+      f.store.recordCascadeStopCustody(
+        'child',
+        intent.terminalId,
+        'unknown',
+        observed.reason,
+        0,
+        observed.snapshot,
+        generation,
+      ),
+    ).toBe(false);
+    expect(
+      f.store.completeCascadeStop(
+        'child',
+        intent.terminalId,
+        undefined,
+        generation,
+      ),
+    ).toBe(false);
+    expect(() =>
+      f.store.deleteThread('parent', { releaseUnknownOwnedWork: true }),
+    ).toThrow('still checking');
+    const fresh = f.store.cascadeStopOwner('child', false);
+    expect(
+      f.store.recordCascadeStopCustody(
+        'child',
+        intent.terminalId,
+        'unknown',
+        fresh.reason,
+        0,
+        fresh.snapshot,
+        current,
+      ),
+    ).toBe(true);
+    expect(() =>
+      f.store.deleteThread('parent', { releaseUnknownOwnedWork: true }),
+    ).not.toThrow();
+  } finally {
+    await f.close();
+  }
+});
