@@ -1,8 +1,9 @@
-import { spawn } from 'node:child_process';
+import { execFile, spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { open, rm, writeFile } from 'node:fs/promises';
+import { open, rm, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { performance } from 'node:perf_hooks';
+import { promisify } from 'node:util';
 import {
   parseWalkthrough,
   WALKTHROUGH_LIMITS,
@@ -68,6 +69,58 @@ async function waitForCleanup(done: Promise<void>): Promise<void> {
     ]);
   } finally {
     clearTimeout(timer);
+  }
+}
+
+const execFileAsync = promisify(execFile);
+
+async function convertPngFrame(
+  ffmpeg: string,
+  input: string,
+  output: string,
+  signal: AbortSignal,
+): Promise<number> {
+  try {
+    await execFileAsync(
+      ffmpeg,
+      [
+        '-nostdin',
+        '-n',
+        '-v',
+        'error',
+        '-i',
+        input,
+        '-frames:v',
+        '1',
+        '-threads',
+        '1',
+        '-f',
+        'image2',
+        '-vcodec',
+        'mjpeg',
+        output,
+      ],
+      {
+        signal,
+        timeout: ENCODE_TIMEOUT_MS,
+        maxBuffer: 64 * 1024,
+        windowsHide: true,
+      },
+    );
+    const result = await stat(output);
+    if (
+      !result.isFile() ||
+      result.size < 1 ||
+      result.size > MAX_RAW_FRAME_BYTES
+    )
+      throw new Error('invalid frame');
+    return result.size;
+  } catch {
+    throwIfCancelled(signal);
+    throw new TaskBrowserRecordingError(
+      'recording-unavailable',
+      'Device image conversion failed.',
+    );
   }
 }
 
@@ -412,12 +465,16 @@ export class TaskBrowserRecording {
             'recording-unavailable',
             'Recording authority changed.',
           );
-        const viewer = entry.hub.attach({
-          maxFps: 10,
-          quality: 70,
-          maxWidth: 1280,
-          maxHeight: 1280,
-        });
+        const viewer = entry.hub.attach(
+          {
+            maxFps: 10,
+            quality: 70,
+            maxWidth: 1280,
+            maxHeight: 1280,
+          },
+          undefined,
+          { codec: 'image' },
+        );
         const duration = new AbortController();
         const captureSignal = AbortSignal.any([signal, duration.signal]);
         const started = performance.now();
@@ -435,6 +492,7 @@ export class TaskBrowserRecording {
           width: number;
           height: number;
           bytes: number;
+          png?: boolean;
         }[] = [];
         let rawBytes = 0;
         try {
@@ -467,7 +525,7 @@ export class TaskBrowserRecording {
                 'recording-unavailable',
                 'Rotated Device recording is unavailable.',
               );
-            if (record.header.codec !== 'jpeg')
+            if (record.header.codec !== 'jpeg' && record.header.codec !== 'png')
               throw new TaskBrowserRecordingError(
                 'recording-unavailable',
                 'The surface returned an unsupported frame.',
@@ -478,7 +536,7 @@ export class TaskBrowserRecording {
                 'recording-too-large',
                 'Frames exceed the recording limit.',
               );
-            const file = `frame-${String(frames.length).padStart(4, '0')}.jpg`;
+            const file = `frame-${String(frames.length).padStart(4, '0')}.${record.header.codec === 'png' ? 'png' : 'jpg'}`;
             const tMs =
               frames.length === 0
                 ? 0
@@ -496,6 +554,7 @@ export class TaskBrowserRecording {
               width: record.header.width,
               height: record.header.height,
               bytes: record.body.byteLength,
+              ...(record.header.codec === 'png' ? { png: true } : {}),
             });
           }
           throwIfCancelled(signal);
@@ -515,6 +574,28 @@ export class TaskBrowserRecording {
             'recording-unavailable',
             'The surface produced no frames.',
           );
+        const conversionSignal = AbortSignal.any([
+          signal,
+          AbortSignal.timeout(ENCODE_TIMEOUT_MS),
+        ]);
+        for (const frame of frames) {
+          if (!frame.png) continue;
+          const jpeg = frame.file.replace(/\.png$/, '.jpg');
+          frame.bytes = await convertPngFrame(
+            resolution.paths.ffmpeg,
+            join(stage.path, frame.file),
+            join(stage.path, jpeg),
+            conversionSignal,
+          );
+          rawBytes += frame.bytes;
+          if (rawBytes > MAX_RAW_FRAME_BYTES)
+            throw new TaskBrowserRecordingError(
+              'recording-too-large',
+              'Frames exceed the recording limit.',
+            );
+          await rm(join(stage.path, frame.file));
+          frame.file = jpeg;
+        }
         const durationMs = stopped
           ? Math.min(
               input.durationMs,
