@@ -1349,7 +1349,17 @@ import {
   requiredExternalSurfaceCapability,
 } from './pairing-route-scopes.js';
 
+export interface CurrentCredentialRouteAssessment {
+  readonly operator: boolean;
+  readonly grantedScope: string;
+}
+
 export interface CurrentRuntimeRequestPrincipalSecurity {
+  /** Synchronous route evidence for this call only; never retain across awaits. */
+  assessCredentialRoute?(
+    credential: string,
+    route: { method: string; path: string },
+  ): CurrentCredentialRouteAssessment | undefined;
   verifyOperatorCredential?(credential: string): boolean;
   authorizeCredential(
     credential: string,
@@ -1394,6 +1404,23 @@ export function runtimeRequestPrincipalMayAccessHttpRoute(
     );
   const { path } = route;
   const method = route.method;
+  if (security.assessCredentialRoute) {
+    const assessed = security.assessCredentialRoute(principal.credential, {
+      method,
+      path,
+    });
+    if (!assessed) return false;
+    const capability = requiredExternalSurfaceCapability('http', method, path);
+    if (capability?.capability !== 'pairing-scope' || !capability.scope)
+      return false;
+    return pairingScopeSatisfiesHttpRoute(
+      assessed.grantedScope,
+      capability.scope,
+      { method, path },
+      assessed.operator === true,
+      principal.locality === 'home-possession',
+    );
+  }
   if (!security.authorizeCredential(principal.credential, { method, path })) {
     return false;
   }

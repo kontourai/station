@@ -670,6 +670,37 @@ export class EnvironmentSecurityService {
     },
   ): boolean {
     if (this.verifyOperatorCredential(candidate)) return true;
+    return this.#authorizeDeviceCredential(candidate, request);
+  }
+
+  assessCredentialRoute(
+    candidate: string,
+    route: { method: string; path: string },
+  ): Readonly<{ operator: boolean; grantedScope: string }> | undefined {
+    if (this.verifyOperatorCredential(candidate))
+      return Object.freeze({
+        operator: true,
+        grantedScope: DEFAULT_GRANT_PAIRING_SCOPE,
+      });
+    // Assessment must never turn a structurally supplied activity into a write.
+    const request = { method: route.method, path: route.path };
+    if (!this.#authorizeDeviceCredential(candidate, request)) return undefined;
+    const grantedScope = this.#devicePairingService?.effectiveScope(candidate);
+    return grantedScope === undefined
+      ? undefined
+      : Object.freeze({ operator: false, grantedScope });
+  }
+
+  #authorizeDeviceCredential(
+    candidate: string,
+    request: {
+      method: string;
+      path: string;
+      activity?: {
+        lastSeenFrom?: Exclude<PairedDevice['lastSeenFrom'], null>;
+      };
+    },
+  ): boolean {
     if (
       ['POST', 'PUT', 'PATCH', 'DELETE'].includes(
         request.method.toUpperCase(),
@@ -743,7 +774,7 @@ export class EnvironmentSecurityService {
       // so only the promoted-device half can admit here). Read-side surfaces
       // consume the same method, so what the UI offers and what this boundary
       // admits cannot drift.
-      const approved = this.credentialMayDecidePairingRequests(candidate);
+      const approved = this.#deviceMayDecidePairingRequests(candidate);
       return approved && request.activity
         ? (this.#devicePairingService?.recordCredentialActivity(
             candidate,
@@ -774,8 +805,14 @@ export class EnvironmentSecurityService {
    * is not the caller acting.
    */
   credentialMayDecidePairingRequests(candidate: string): boolean {
-    if (
+    return (
       this.verifyOperatorCredential(candidate) ||
+      this.#deviceMayDecidePairingRequests(candidate)
+    );
+  }
+
+  #deviceMayDecidePairingRequests(candidate: string): boolean {
+    if (
       this.#devicePairingService?.isLocalGrantMintedCredential(candidate) ||
       this.#devicePairingService?.credentialMayManagePairing(candidate)
     )

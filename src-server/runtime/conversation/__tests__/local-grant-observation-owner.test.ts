@@ -5,6 +5,7 @@ import fs, {
   readdirSync,
   readFileSync,
   realpathSync,
+  renameSync,
   rmSync,
   writeFileSync,
 } from 'node:fs';
@@ -19,6 +20,7 @@ import {
   bindRuntimeLocalOperator,
   getRuntimeAuthenticatedRequestPrincipal,
   isRuntimeRequestPrincipalCurrent,
+  runtimeRequestPrincipalMayAccessHttpRoute,
   setRuntimeAuthenticatedRequestPrincipal,
 } from '../../../security/runtime-request-security.js';
 import { DevicePairingService } from '../../../services/ssh/device-pairing-service.js';
@@ -687,4 +689,268 @@ test('uncertain publication of another Device fences the still-active grant befo
     fault.mockRestore();
     syncBuiltinESMExports();
   }
+});
+
+test('route currency reads the operator record once and keeps signer checks independent', async () => {
+  const h = await setup();
+  const owner = await captureEnvironmentLocalGrantObservationOwner(
+    h.request,
+    h.environment,
+    h.environment,
+  );
+  const lease = owner.requireCurrentLocalGrant(h.request);
+  const legacy = legacyRouteSecurity(h.environment);
+  const original = fs.readFileSync;
+  let reads = 0;
+  const probe = vi.spyOn(fs, 'readFileSync').mockImplementation((...args) => {
+    if (String(args[0]) === join(h.home, 'security', 'environment.json'))
+      reads++;
+    return original(...args);
+  });
+  syncBuiltinESMExports();
+  try {
+    h.environment.verifyOperatorCredential(h.paired.credential);
+    assert.ok(reads > 0, 'operator-record observer must execute');
+    reads = 0;
+    assert.equal(
+      h.environment.withCurrentAuthority(() =>
+        isRuntimeRequestPrincipalCurrent(h.request, legacy),
+      ),
+      true,
+    );
+    const legacyReads = reads;
+    reads = 0;
+    assert.equal(
+      h.environment.withCurrentAuthority(() =>
+        isRuntimeRequestPrincipalCurrent(h.request, h.environment),
+      ),
+      true,
+    );
+    const routeReads = reads;
+    assert.ok(
+      routeReads <= 1,
+      `route currency read environment.json ${routeReads} times; maximum 1`,
+    );
+    assert.ok(
+      routeReads < legacyReads,
+      'assessment must avoid duplicate legacy record reads',
+    );
+    reads = 0;
+    h.environment.signRevisionEvidenceAuthorityBinding('route-cost-control');
+    const signerReads = reads;
+    assert.equal(
+      signerReads,
+      2,
+      'signer retains its before/after identity checks',
+    );
+    reads = 0;
+    lease.assertCurrent();
+    assert.ok(
+      reads <= signerReads + 2 * routeReads,
+      `owner currency read environment.json ${reads} times`,
+    );
+  } finally {
+    probe.mockRestore();
+    syncBuiltinESMExports();
+  }
+});
+
+function legacyRouteSecurity(environment: EnvironmentSecurityService) {
+  return {
+    authorizeCredential: (
+      credential: string,
+      route: { method: string; path: string },
+    ) => environment.authorizeCredential(credential, route),
+    resolveGrantedScope: (credential: string) =>
+      environment.resolveGrantedScope(credential),
+    verifyOperatorCredential: (credential: string) =>
+      environment.verifyOperatorCredential(credential),
+  };
+}
+
+test.each([
+  'operator',
+  'local-grant',
+  'ui-bootstrap',
+  'read-only',
+  'unknown',
+  'revoked',
+] as const)(
+  'route assessment preserves legacy policy and fixed outcomes for %s',
+  async (kind) => {
+    const h = await setup(
+      kind === 'ui-bootstrap' ? kind : 'local-grant',
+      kind === 'read-only' ? 'orchestration:read' : undefined,
+    );
+    const request = new Request(h.request.url, { method: 'POST' });
+    setRuntimeAuthenticatedRequestPrincipal(request, {
+      ...h.principal,
+      credential:
+        kind === 'operator'
+          ? h.record.credential
+          : kind === 'unknown'
+            ? 'unknown'
+            : h.paired.credential,
+    });
+    if (kind === 'revoked')
+      h.environment.devicePairing.revokeDevice(
+        h.paired.device.id,
+        'operator-credential',
+      );
+    const routes = [
+      {
+        method: 'POST',
+        path: '/api/orchestration/chat',
+        allowed: ['operator', 'local-grant', 'ui-bootstrap'],
+      },
+      {
+        method: 'POST',
+        path: '/api/environments/peers',
+        allowed: ['operator'],
+      },
+      {
+        method: 'POST',
+        path: '/api/pairing/offers',
+        allowed: ['operator', 'local-grant', 'ui-bootstrap'],
+      },
+      {
+        method: 'POST',
+        path: '/api/connections/agent/example/account-login',
+        allowed: ['operator'],
+      },
+      {
+        method: 'GET',
+        path: '/api/operator/telemetry-companion',
+        allowed: ['operator', 'local-grant', 'ui-bootstrap', 'read-only'],
+      },
+      { method: 'POST', path: '/unmapped-authority-route', allowed: [] },
+    ];
+    const legacy = legacyRouteSecurity(h.environment);
+    for (const held of [false, true]) {
+      const check = () => {
+        for (const route of routes) {
+          const actual = runtimeRequestPrincipalMayAccessHttpRoute(
+            request,
+            h.environment,
+            route,
+          );
+          assert.equal(
+            actual,
+            runtimeRequestPrincipalMayAccessHttpRoute(request, legacy, route),
+            `${kind}: ${route.path}: legacy parity`,
+          );
+          assert.equal(
+            actual,
+            route.allowed.includes(kind),
+            `${kind}: ${route.path}: fixed policy`,
+          );
+        }
+      };
+      if (held) h.environment.withCurrentAuthority(check);
+      else check();
+    }
+  },
+);
+
+test('route assessment never reuses an operator decision within a span or after rotation', async () => {
+  const h = await setup();
+  const request = new Request(h.request.url, { method: 'POST' });
+  setRuntimeAuthenticatedRequestPrincipal(request, {
+    ...h.principal,
+    credential: h.record.credential,
+  });
+  const path = join(h.home, 'security', 'environment.json');
+  const original = readFileSync(path);
+  try {
+    h.environment.withCurrentAuthority(() => {
+      assert.equal(
+        isRuntimeRequestPrincipalCurrent(request, h.environment),
+        true,
+      );
+      const replacement = `${path}.replacement`;
+      writeFileSync(
+        replacement,
+        JSON.stringify({
+          ...h.record,
+          credential: randomBytes(32).toString('base64url'),
+        }),
+        { mode: 0o600 },
+      );
+      renameSync(replacement, path);
+      assert.equal(
+        isRuntimeRequestPrincipalCurrent(request, h.environment),
+        false,
+      );
+    });
+  } finally {
+    writeFileSync(path, original, { mode: 0o600 });
+  }
+  assert.equal(isRuntimeRequestPrincipalCurrent(request, h.environment), true);
+  await h.environment.rotateCredential();
+  assert.equal(isRuntimeRequestPrincipalCurrent(request, h.environment), false);
+});
+
+test.each(['missing', 'corrupt'] as const)(
+  'route assessment preserves record failure policy (%s)',
+  async (mode) => {
+    const h = await setup();
+    const operator = new Request(h.request.url, { method: 'POST' });
+    setRuntimeAuthenticatedRequestPrincipal(operator, {
+      ...h.principal,
+      credential: h.record.credential,
+    });
+    // Warm the existing cadence-based last-used touch before faulting only the record.
+    assert.equal(
+      isRuntimeRequestPrincipalCurrent(h.request, h.environment),
+      true,
+    );
+    const path = join(h.home, 'security', 'environment.json');
+    if (mode === 'missing') rmSync(path);
+    else writeFileSync(path, 'invalid record');
+    const legacy = legacyRouteSecurity(h.environment);
+    for (const [request, expected] of [
+      [operator, false],
+      [h.request, true],
+    ] as const) {
+      assert.equal(
+        isRuntimeRequestPrincipalCurrent(request, h.environment),
+        expected,
+      );
+      assert.equal(isRuntimeRequestPrincipalCurrent(request, legacy), expected);
+    }
+  },
+);
+
+test('route assessment strips activity while ingress authorization counts the real request', async () => {
+  const h = await setup();
+  h.environment.withCurrentAuthority(() =>
+    assert.equal(
+      isRuntimeRequestPrincipalCurrent(h.request, h.environment),
+      true,
+    ),
+  );
+  const before = h.environment.devicePairing
+    .listDevices()
+    .find((device) => device.id === h.paired.device.id);
+  assert.ok(before);
+  const route = {
+    method: 'POST',
+    path: '/api/orchestration/chat',
+    activity: { lastSeenFrom: 'tailnet' as const },
+  };
+  assert.ok(h.environment.assessCredentialRoute(h.paired.credential, route));
+  const after = h.environment.devicePairing
+    .listDevices()
+    .find((device) => device.id === h.paired.device.id);
+  assert.deepEqual(after, before);
+  assert.equal(
+    h.environment.authorizeCredential(h.paired.credential, route),
+    true,
+  );
+  const counted = h.environment.devicePairing
+    .listDevices()
+    .find((device) => device.id === h.paired.device.id);
+  assert.ok(counted);
+  assert.equal(counted.usageCount, (before.usageCount ?? 0) + 1);
+  assert.equal(counted.lastSeenFrom, 'tailnet');
 });
