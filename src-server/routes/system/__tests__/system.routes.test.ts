@@ -2382,13 +2382,12 @@ describe('System Routes', () => {
     expect(body.data).toHaveLength(1);
   });
 
-  test('GET /terminal-port returns port + 1', async () => {
+  test('GET /terminal-port is not served', async () => {
     const app = createSystemRoutes(createMockDeps() as any, mockLogger);
-    const body = await json(await app.request('/terminal-port'));
-    expect(body.port).toBe(3142);
+    expect((await app.request('/terminal-port')).status).toBe(404);
   });
 
-  test('GET /voice-port returns port + 2 (mirrors /terminal-port for the Voice WS server)', async () => {
+  test('GET /voice-port returns port + 2 for the Voice WS server', async () => {
     const app = createSystemRoutes(createMockDeps() as any, mockLogger);
     const body = await json(await app.request('/voice-port'));
     expect(body.success).toBe(true);

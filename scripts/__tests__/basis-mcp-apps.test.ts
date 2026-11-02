@@ -9,24 +9,25 @@ import { BASIS_MCP_APP_MANIFEST } from '../basis-mcp-app-manifest.mjs';
 import { inspectGeneratedBuildInputs } from '../check-dist-freshness.mjs';
 import { generateBuildInputs } from '../dependency-lifecycle.mjs';
 import {
+  BIOME_FORMAT_LIVENESS_MS,
   biomeFormatterInvocation,
-  formatterTimeout,
+  formatGenerated,
   generateBasisMcpApps,
   ZOD_LOCALE_AGGREGATE_PLUGIN,
 } from '../generate-basis-mcp-apps.mjs';
 
-describe('Basis MCP app generator', () => {
-  test('accepts an explicit formatter deadline and rejects malformed values', () => {
-    expect(formatterTimeout({})).toBe(30_000);
-    expect(
-      formatterTimeout({ STATION_BASIS_FORMAT_TIMEOUT_MS: '600000' }),
-    ).toBe(600_000);
-    for (const value of ['0', '-1', 'no', '1.5'])
-      expect(() =>
-        formatterTimeout({ STATION_BASIS_FORMAT_TIMEOUT_MS: value }),
-      ).toThrow();
-  });
+/** A stand-in formatter: echoes stdin after `delayMs`. */
+function slowFormatter(delayMs: number) {
+  return {
+    command: process.execPath,
+    args: [
+      '-e',
+      `const input = require('node:fs').readFileSync(0, 'utf8'); setTimeout(() => process.stdout.write(input), ${delayMs});`,
+    ],
+  };
+}
 
+describe('Basis MCP app generator', () => {
   test('runs the package Biome entrypoint through Node on every host', () => {
     expect(
       biomeFormatterInvocation(
@@ -46,6 +47,41 @@ describe('Basis MCP app generator', () => {
         ),
       ],
     });
+  });
+
+  test('formats through the real Biome entrypoint', () => {
+    expect(
+      formatGenerated('export default  "x"', 'packages/fixture/generated.ts', {
+        env: {},
+      }),
+    ).toBe("export default 'x';\n");
+  });
+
+  test('the formatter liveness bound outlasts the 55 s a loaded host needed', () => {
+    expect(BIOME_FORMAT_LIVENESS_MS).toBe(120_000);
+  });
+
+  test('names a formatter that outlives its liveness bound', () => {
+    expect(() =>
+      formatGenerated('export {};\n', 'packages/fixture/generated.ts', {
+        env: {},
+        invocation: slowFormatter(20_000),
+        baseTimeoutMs: 300,
+      }),
+    ).toThrow(
+      /biome format of packages\/fixture\/generated\.ts did not finish within 300ms, its liveness bound\. On a loaded host, set STATION_LIVENESS_SCALE/,
+    );
+  });
+
+  test('scales the formatter bound by STATION_LIVENESS_SCALE', () => {
+    // 1.5 s outlasts the 750 ms base bound but not the ×8 one.
+    expect(
+      formatGenerated('export {};\n', 'packages/fixture/generated.ts', {
+        env: { STATION_LIVENESS_SCALE: '8' },
+        invocation: slowFormatter(1_500),
+        baseTimeoutMs: 750,
+      }),
+    ).toBe('export {};\n');
   });
 
   test('builds every manifest entry twice and writes only after equality', async () => {
@@ -188,34 +224,10 @@ describe('Basis MCP app output routing', () => {
     const dotGit = resolve(root, '.git');
     const run = vi.fn();
     const log = vi.fn();
-    generateBuildInputs({
-      run,
-      exists: (path) => path === dotGit,
-      log,
-      env: {},
-    });
-    expect(run).toHaveBeenCalledWith(
-      process.execPath,
-      ['scripts/generate-basis-mcp-apps.mjs'],
-      { timeout: 120_000 },
-    );
-    generateBuildInputs({
-      run,
-      exists: () => true,
-      env: { STATION_BASIS_GENERATION_TIMEOUT_MS: '1200000' },
-    });
-    expect(run).toHaveBeenLastCalledWith(
-      process.execPath,
-      ['scripts/generate-basis-mcp-apps.mjs'],
-      { timeout: 1_200_000 },
-    );
-    expect(() =>
-      generateBuildInputs({
-        run,
-        exists: () => true,
-        env: { STATION_BASIS_GENERATION_TIMEOUT_MS: '0' },
-      }),
-    ).toThrow();
+    generateBuildInputs({ run, exists: (path) => path === dotGit, log });
+    expect(run).toHaveBeenCalledWith(process.execPath, [
+      'scripts/generate-basis-mcp-apps.mjs',
+    ]);
     expect(log).not.toHaveBeenCalled();
 
     const absent = vi.fn();

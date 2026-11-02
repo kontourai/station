@@ -661,7 +661,6 @@ export {
   fetchTaskTurnReferences,
   fetchTaskUserInputReferences,
   fetchTaskWorkItem,
-  fetchTerminalPort,
   fetchTerminalProcess,
   fetchTerminalProcesses,
   fetchUnregisteredACPConnections,

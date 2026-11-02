@@ -2356,10 +2356,7 @@ describe('lifecycle instance state', () => {
     }
   });
 
-  it.each([
-    ['terminal', 3243],
-    ['voice', 3244],
-  ])(
+  it.each([['voice', 3244]])(
     'does not treat a %s-only listener as the instance, and never kills it (#3253)',
     async (_name, lingeringPort) => {
       ensureDir(TEST_CWD);
@@ -2796,7 +2793,7 @@ describe('lifecycle instance state', () => {
     ).toThrow('Invalid hosted probe authority in instance state');
   });
 
-  it('blocks starts whose requested ports overlap a sibling terminal or voice socket', async () => {
+  it('blocks starts whose requested ports overlap a sibling voice or consent socket', async () => {
     ensureDir(TEST_CWD);
     ensureBuildOutputs('agent-crud');
     ensureDir(TEST_ALT_HOME);
@@ -2887,7 +2884,7 @@ describe('lifecycle instance state', () => {
       writeBuildManifest('collide-b');
       const base = await reserveFreePortBase();
       // The sibling started from another checkout, so this checkout holds no
-      // record of it: only the real listener on its terminal port exists.
+      // record of it: only its real listener on this port exists.
       const siblingPid = await spawnPortOwner(base);
       // The new server dies at once, as a Station does when its port is taken;
       // its UI child keeps running until the failed start rolls it back.
@@ -8017,19 +8014,21 @@ describe('buildUiServerScript (injection-conditional API base)', () => {
   });
 });
 
-describe('validateLifecyclePorts (station#3677 five-port reservation)', () => {
+describe('validateLifecyclePorts (station#3677 port reservation)', () => {
   it('derives consent at server+3, validates an explicit override, and rejects every collision', async () => {
     const { lifecycle } = await loadLifecycleModule();
-    // Default derivation: server, terminal(+1), voice(+2), consent(+3), ui.
+    // Default derivation: server, voice(+2), consent(+3), ui.
     expect(() => lifecycle.validateLifecyclePorts(3141, 3000)).not.toThrow();
     // An explicit consent port gets the same validation.
     expect(() =>
       lifecycle.validateLifecyclePorts(3141, 3000, 3999),
     ).not.toThrow();
-    // Colliding with the terminal port refuses.
-    expect(() => lifecycle.validateLifecyclePorts(3141, 3000, 3142)).toThrow(
+    // Colliding with the voice port refuses.
+    expect(() => lifecycle.validateLifecyclePorts(3141, 3000, 3143)).toThrow(
       /distinct/,
     );
+    // The server port + 1 is not reserved.
+    expect(() => lifecycle.validateLifecyclePorts(3141, 3142)).not.toThrow();
     // A UI port equal to the DERIVED consent port refuses too.
     expect(() => lifecycle.validateLifecyclePorts(3141, 3144)).toThrow(
       /distinct/,
@@ -8550,12 +8549,12 @@ describe('lifecycle build + restart ergonomics', () => {
           signal: expect.any(AbortSignal),
         },
       );
-      // Terminal (+1) and voice (+2) are TCP-probed. The consent listener
-      // (+3, station#3677) deliberately is NOT: review MED 4 — a TCP probe
-      // proves only that SOMETHING accepted a socket, so the consent line
-      // derives from the runtime's own `/api/system/instance` self-report
-      // instead (asserted below).
-      expect(tcpConnect).toHaveBeenCalledWith({
+      // Voice (+2) is TCP-probed; nothing listens on +1. The consent
+      // listener (+3, station#3677) deliberately is NOT: review MED 4 — a TCP
+      // probe proves only that SOMETHING accepted a socket, so the consent
+      // line derives from the runtime's own `/api/system/instance`
+      // self-report instead (asserted below).
+      expect(tcpConnect).not.toHaveBeenCalledWith({
         host: '127.0.0.1',
         port: 3243,
       });
@@ -8937,7 +8936,6 @@ describe('lifecycle build + restart ergonomics', () => {
 
   it.each([
     ['derived voice port out of range', 65_534, 3000],
-    ['UI overlaps terminal', 3242, 3243],
     ['UI overlaps voice', 3242, 3244],
     ['non-integer server port', 3242.5, 5274],
   ])('rejects %s before build or spawn', async (_label, serverPort, uiPort) => {
@@ -8954,10 +8952,10 @@ describe('lifecycle build + restart ergonomics', () => {
     expect(spawn).not.toHaveBeenCalled();
   });
 
-  it('cleans the complete instance when terminal readiness never arrives', async () => {
+  it('cleans the complete instance when voice readiness never arrives', async () => {
     ensureDir(TEST_CWD);
     ensureDir(TEST_ALT_HOME);
-    writeBuildManifest('terminal-not-ready');
+    writeBuildManifest('voice-not-ready');
     const spawn = vi
       .fn()
       .mockReturnValueOnce({ pid: 44001, unref: vi.fn() })
@@ -8989,7 +8987,7 @@ describe('lifecycle build + restart ergonomics', () => {
         // Each refused probe spends a whole base budget, so the wait walks
         // through its bounded slow-boot extensions (#2964) and still gives up.
         now += 90_000;
-        socket.emit('error', new Error('seeded terminal refusal'));
+        socket.emit('error', new Error('seeded voice refusal'));
       });
       return socket;
     });
@@ -9007,7 +9005,7 @@ describe('lifecycle build + restart ergonomics', () => {
         // so with this clock frozen the capture blocked forever (station#1712).
         inspectProcessFingerprint: (pid: number) => ({
           pid,
-          startToken: 'terminal-not-ready-start',
+          startToken: 'voice-not-ready-start',
           commandDigest: 'c'.repeat(64),
         }),
       },
@@ -9018,24 +9016,22 @@ describe('lifecycle build + restart ergonomics', () => {
         lifecycle.start({
           baseDir: TEST_ALT_HOME,
           host: '127.0.0.1',
-          instanceName: 'terminal-not-ready',
+          instanceName: 'voice-not-ready',
           serverPort: 3242,
           uiPort: 5274,
         }),
-      ).rejects.toThrow('Timed out waiting for TCP listener 127.0.0.1:3243');
+      ).rejects.toThrow('Timed out waiting for TCP listener 127.0.0.1:3244');
       // start() hands the server child's liveness to the TCP waits (#2964):
-      // with it, the terminal port is probed again after the base deadline;
+      // with it, the voice port is probed again after the base deadline;
       // without it, the first refused probe would be the only one.
       // The mock declares no parameters, so its calls are read as unknowns.
-      const terminalProbes = (tcpConnect.mock.calls as unknown[][]).filter(
-        ([target]) => (target as { port?: number } | undefined)?.port === 3243,
+      const voiceProbes = (tcpConnect.mock.calls as unknown[][]).filter(
+        ([target]) => (target as { port?: number } | undefined)?.port === 3244,
       );
-      expect(terminalProbes.length).toBeGreaterThan(1);
+      expect(voiceProbes.length).toBeGreaterThan(1);
       expect(killProcessTree).toHaveBeenCalledWith(44001);
       expect(killProcessTree).toHaveBeenCalledWith(44002);
-      expect(existsSync(getInstanceStatePath('terminal-not-ready'))).toBe(
-        false,
-      );
+      expect(existsSync(getInstanceStatePath('voice-not-ready'))).toBe(false);
     } finally {
       dateSpy.mockRestore();
       killSpy.mockRestore();
@@ -9064,7 +9060,7 @@ describe('lifecycle build + restart ergonomics', () => {
       socket.setTimeout = vi.fn();
       queueMicrotask(() => {
         now += 90_000;
-        socket.emit('error', new Error('seeded terminal refusal'));
+        socket.emit('error', new Error('seeded voice refusal'));
       });
       return socket;
     });
@@ -9077,7 +9073,7 @@ describe('lifecycle build + restart ergonomics', () => {
         sleepSync: vi.fn((ms: number) => {
           now += ms;
         }),
-        // See the sibling terminal-not-ready case: the module's own
+        // See the sibling voice-not-ready case: the module's own
         // `sleepSync` binding is not what this override replaces, so without a
         // seeded fingerprint the capture spins on the frozen clock (#1712).
         inspectProcessFingerprint: (pid: number) => ({
@@ -9101,7 +9097,7 @@ describe('lifecycle build + restart ergonomics', () => {
 
       expect(failure).toBeInstanceOf(Error);
       expect((failure as Error).message).toContain(
-        'Timed out waiting for TCP listener 127.0.0.1:3243',
+        'Timed out waiting for TCP listener 127.0.0.1:3244',
       );
       expect((failure as Error).message).toContain(
         'Cleanup also failed: Failed to stop Station instance cleanup-also-fails.',
@@ -9114,7 +9110,7 @@ describe('lifecycle build + restart ergonomics', () => {
         ),
       ).toEqual([
         expect.stringContaining(
-          'Timed out waiting for TCP listener 127.0.0.1:3243',
+          'Timed out waiting for TCP listener 127.0.0.1:3244',
         ),
         expect.stringContaining(
           'Failed to stop Station instance cleanup-also-fails.',

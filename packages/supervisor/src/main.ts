@@ -38,6 +38,7 @@ import { runSupervisor } from './supervisor.ts';
 
 const DURATION_FLAGS = {
   'park-timeout-ms': ['handoff', 'parkTimeoutMs'],
+  'boot-park-timeout-ms': ['handoff', 'bootParkTimeoutMs'],
   'readiness-timeout-ms': ['handoff', 'readinessTimeoutMs'],
   'drain-deadline-ms': ['handoff', 'drainDeadlineMs'],
   'kill-grace-ms': ['handoff', 'killGraceMs'],

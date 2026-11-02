@@ -357,7 +357,6 @@ import type { HonoServerConfig } from '@voltagent/server-hono';
 import type { Context } from 'hono';
 import { setCookie } from 'hono/cookie';
 import type { FileMemoryAdapter } from '../../adapters/file/memory-adapter.js';
-import { NodePtyAdapter } from '../../adapters/node-pty-adapter.js';
 import { servesCoordinatorSession } from '../../capabilities/station-capability-flags.js';
 import {
   loadOrCreateAgentRegistry,
@@ -366,6 +365,7 @@ import {
 import type { ConfigLoader } from '../../domain/config-loader.js';
 import type { FileStorageAdapter } from '../../domain/file-storage-adapter.js';
 import { FileStorageNotFoundError } from '../../domain/project-file-transactions.js';
+import type { IPtyAdapter } from '../../domain/pty-adapter.js';
 import { resolveEffectiveAppSetting } from '../../domain/settings-effective.js';
 import { KnowledgeIndexAdapterRegistry } from '../../knowledge-index/index-adapter-registry.js';
 import { CONVERSATION_STORE_ADAPTER_ID } from '../../knowledge-store/adapters/conversation-store.js';
@@ -910,7 +910,6 @@ import {
   registerTerminalGateway,
   TerminalGateway,
 } from '../../services/terminal/terminal-gateway.js';
-import type { TerminalService } from '../../services/terminal/terminal-service.js';
 import {
   TerminalSessionRefusal,
   TerminalSessions,
@@ -1244,7 +1243,9 @@ export interface ConfigureRuntimeRoutesContext {
   knowledgeStoreProvider: KnowledgeStoreProvider;
   resolveEmbeddingProvider: () => IEmbeddingProvider | null;
   voiceService: any;
-  terminalService: TerminalService;
+  ptyAdapter: IPtyAdapter;
+  /** Filled once the terminal routes mount; shutdown disposes it. */
+  scopedTerminals: { sessions?: TerminalSessions<Request> };
   activeAgents: Map<string, Agent>;
   agentMetadataMap: Map<string, any>;
   memoryAdapters: Map<string, any>;
@@ -7002,9 +7003,7 @@ export function configureRuntimeRoutes(
   // #3994: the TerminalSessions store, composed further down on personal
   // hosts only. Engine sign-in, the process routes and the Project terminal
   // close read it per request.
-  const scopedTerminals: {
-    sessions?: TerminalSessions<Request>;
-  } = {};
+  const scopedTerminals = context.scopedTerminals;
   const scopedTerminalRefused = (error: unknown) => {
     if (error instanceof TerminalSessionRefusal) return true;
     throw error;
@@ -7050,7 +7049,6 @@ export function configureRuntimeRoutes(
       ...(memoryContinuation && threadInbox ? { memoryContinuation } : {}),
       logger: context.logger,
       actionOperations,
-      terminalService: context.terminalService,
       scopedTerminals: {
         list: async (request) =>
           ((await scopedTerminals.sessions?.listObservable(request)) ?? []).map(
@@ -9268,7 +9266,7 @@ export function configureRuntimeRoutes(
       context.configLoader.getProjectHomeDir(),
       createTerminalShellHost(
         supervisorWorkloadChannel(),
-        new NodePtyAdapter(),
+        context.ptyAdapter,
         async () => (await context.configLoader.loadAppConfig()).terminalShell,
       ),
       {
@@ -9333,7 +9331,6 @@ export function configureRuntimeRoutes(
         },
       },
     );
-    context.terminalService.scopedSessions = terminalSessions;
     scopedTerminals.sessions = terminalSessions;
     context.app.get(TERMINAL_SOCKET_PATH, (c) =>
       authorizeTerminalRequest(c.req.raw)
@@ -9453,7 +9450,6 @@ export function configureRuntimeRoutes(
           isRequestPrincipalCurrent(request),
         layoutCatalog,
         kitObservabilityRegistry,
-        terminalService: context.terminalService,
         closeScopedTerminal: async (request, projectId, terminalId) => {
           const sessions = scopedTerminals.sessions;
           if (!sessions) return false;

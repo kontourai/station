@@ -451,14 +451,9 @@ describe('station start, restart and stop under the process supervisor', () => {
     expect(parentOf(core1)).toBe(record.serverPid);
     expect(
       status1.listeners.map((l: { port: number }) => l.port).sort(),
-    ).toEqual(
-      [
-        ports.server,
-        ports.server + 1,
-        ports.server + 2,
-        ports.server + 3,
-      ].sort(),
-    );
+    ).toEqual([ports.server, ports.server + 2, ports.server + 3].sort());
+    // The former terminal slot stays reserved but is never bound.
+    expect(await refused(ports.server + 1)).toBe(true);
 
     // `station service run` tears down an instance whose recorded pid is
     // not among its port's listeners; the supervisor holds the socket.
@@ -542,7 +537,7 @@ describe('station start, restart and stop under the process supervisor', () => {
     // (on Windows a signal kills it outright and it logs nothing).
     expect(log).toContain('shutting down with exit code 0');
     expect(log).not.toContain('received SIGTERM');
-    for (const port of [ports.server, ports.server + 1, ports.ui]) {
+    for (const port of [ports.server, ports.server + 2, ports.ui]) {
       expect(await refused(port), `port ${port}`).toBe(true);
     }
   }, 600_000);
@@ -696,7 +691,7 @@ describe('station start, restart and stop under the process supervisor', () => {
         60_000,
         'the supervisor, its core and the UI listener exiting',
       );
-      for (const port of [ports.server, ports.server + 1, ports.ui]) {
+      for (const port of [ports.server, ports.server + 2, ports.ui]) {
         expect(await refused(port), `port ${port}`).toBe(true);
       }
     },
