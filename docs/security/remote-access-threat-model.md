@@ -662,6 +662,16 @@ length and digest. The sensitive Browser recording tool requires a bound lead
 Session and publishes only after authority and clean-workspace rechecks. A clip
 can expose page contents and is served through that Task's authorized reads.
 
+The default-off Browser artifacts preview admits element picking only from a
+current person with Browser view authority. Requests that may originate from
+an Agent are refused, even when page evaluation is enabled. A pick can expose
+element attributes and computed styles beyond visible pixels, so sharing its
+image and description with a conversation remains an explicit action. Network
+diagnostics retain only bounded in-memory metadata, without headers or bodies;
+URL credentials, query values and fragments are removed. Agent network reads
+also require the Project's Browser evaluation permission. These boundaries do
+not establish hostile-page or released-package qualification.
+
 The exact `POST /api/projects/:projectSlug/walkthroughs/import` and
 `POST /api/transcription` uploads also retain the standard principal rate
 bucket. Their body ceilings derive from their owning upload limits: 512 MiB
