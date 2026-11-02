@@ -4340,8 +4340,13 @@ export class OrchestrationService {
     return this.sessionRecoveryCompletedSignal.promise;
   }
 
-  async shutdown(): Promise<void> {
+  stopCascadeDelivery(): void {
     this.cascadeDeliveryStopped = true;
+    this.cascadeDeliveryAbort.abort();
+  }
+
+  async shutdown(): Promise<void> {
+    this.stopCascadeDelivery();
     this.stopSessionDeletionNotifications?.();
     // #3562: boot recovery retries on a backoff; none of it may publish once
     // the publish path below starts coming down. Its rows stay for next boot.
@@ -12103,6 +12108,7 @@ export class OrchestrationService {
    */
   private cascadeStopReconciliation?: Promise<void>;
   private cascadeDeliveryStopped = false;
+  private readonly cascadeDeliveryAbort = new AbortController();
   private cascadeStopReconcileAgain = false;
   private readonly cascadeStopAdapters = new Map<
     string,
@@ -12195,10 +12201,14 @@ export class OrchestrationService {
             );
             held ||=
               adapter !== undefined &&
-              (await adapter.hasSession(intent.childId));
+              (await raceWithSignal(
+                Promise.resolve(adapter.hasSession(intent.childId)),
+                this.cascadeDeliveryAbort.signal,
+              ));
           } catch {
             unavailable = true;
           }
+          if (this.cascadeDeliveryStopped) return;
           let owner = store.cascadeStopOwner(
             intent.childId,
             held || this.startingSessionThreads.has(intent.childId),
@@ -12269,6 +12279,7 @@ export class OrchestrationService {
             this.cascadeStopAdapters.set(intent.childId, adapter);
         }
         for (const intent of intents) {
+          if (this.cascadeDeliveryStopped) return;
           const owner = owners.get(intent.childId)!;
           if (
             owner.custody !== 'local' ||
@@ -12306,6 +12317,7 @@ export class OrchestrationService {
                 intent.childId,
               );
             }
+            if (this.cascadeDeliveryStopped) return;
             const completed = store.completeCascadeStop(
               intent.childId,
               intent.terminalId,

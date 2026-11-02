@@ -1,6 +1,7 @@
 import { monitorEventLoopDelay, PerformanceObserver } from 'node:perf_hooks';
 import { MS_PER_MINUTE } from '@kontourai/station-contracts/time';
 import { getCachedUser } from '../../routes/system/auth.js';
+import { awaitSettlementWithin } from '../../utils/bounded-async.js';
 import { runtimeEventLoopLag } from '../../telemetry/metrics.js';
 
 const EVENT_LOOP_LAG_SAMPLE_INTERVAL_MS = 10_000;
@@ -190,7 +191,12 @@ export async function startRuntimeHealthChecks(context: {
   return async () => {
     stopped = true;
     clearInterval(timer);
-    await ownedWork;
+    const pending = ownedWork;
+    if (pending) {
+      if (!(await awaitSettlementWithin(pending, 5_000)))
+        throw new Error('Owned-work maintenance shutdown timed out.');
+      await pending;
+    }
   };
 }
 

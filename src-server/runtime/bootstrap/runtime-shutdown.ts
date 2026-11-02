@@ -46,7 +46,10 @@ export async function shutdownRuntimeServices({
   timers: NodeJS.Timeout[];
   stopHealthChecks?: () => Promise<void>;
   schedulerService?: { stop(): Promise<void> };
-  orchestrationService?: { shutdown(): Promise<void> };
+  orchestrationService?: {
+    stopCascadeDelivery?(): void;
+    shutdown(): Promise<void>;
+  };
   attachedSessionFollowService?: { stop(): void };
   consoleBridgeService?: { stop(): Promise<void> };
   voltAgent?: { shutdown(): Promise<void> };
@@ -94,6 +97,7 @@ export async function shutdownRuntimeServices({
   logger.info('Shutting down Station Runtime...');
   // Fence admissions synchronously, before any unrelated shutdown awaits.
   const localMcpCleanup = mcpCustody?.shutdown();
+  orchestrationService?.stopCascadeDelivery?.();
 
   const failures: Error[] = [];
   const attempt = async (

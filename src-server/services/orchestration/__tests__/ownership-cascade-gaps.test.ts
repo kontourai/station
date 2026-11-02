@@ -12,6 +12,8 @@ import {
 import { awaitSessionRecoveryCompleted } from '../../../__test-utils__/session-runtime-barriers.js';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import type { ProviderAdapterShape } from '../../../providers/adapter-shape.js';
+import { startRuntimeHealthChecks } from '../../../runtime/bootstrap/runtime-health.js';
+import { shutdownRuntimeServices } from '../../../runtime/bootstrap/runtime-shutdown.js';
 import { EventBus } from '../event-bus.js';
 import { EventStore } from '../event-store.js';
 import { OrchestrationService } from '../orchestration-service.js';
@@ -468,6 +470,53 @@ test('a probe spanning a new recheck cannot clear that request before a fresh pr
     releaseFirst();
     releaseFresh();
     await maintenance;
+    await f.close();
+  }
+});
+
+
+test('runtime shutdown finishes within six seconds when a real cascade probe never settles', async () => {
+  const f = await fixture('held');
+  let releaseProbe!: (value: boolean) => void;
+  const probe = new Promise<boolean>((resolve) => { releaseProbe = resolve; });
+  const entered = vi.fn();
+  const timers: NodeJS.Timeout[] = [];
+  let maintenance: Promise<void> | undefined;
+  let shutting: Promise<void> | undefined;
+  try {
+    vi.mocked(f.adapter.hasSession).mockImplementation(async (id) => {
+      if (id === 'child') { entered(); return probe; }
+      return f.running.has(id);
+    });
+    f.store.appendEvent({ eventId: 'shutdown-stop', threadId: 'parent', sessionId: 'parent', provider: 'claude',
+      method: 'session.cancellation-requested', action: 'stop', createdAt: '2026-01-01T00:00:01Z' });
+    const writes = vi.spyOn(f.store, 'recordCascadeStopCustody');
+    const stopHealthChecks = await startRuntimeHealthChecks({ timers, interval: 1000,
+      logger: { debug() {}, warn() {} },
+      maintainOwnedWork: () => maintenance = f.service.maintainOwnedWork(), runHealthChecks: async () => {},
+    });
+    await vi.waitFor(() => expect(entered).toHaveBeenCalledOnce());
+    let settled = false;
+    shutting = shutdownRuntimeServices({
+      logger: { info() {}, error() {}, warn() {} }, timers, stopHealthChecks, orchestrationService: f.service,
+      mcpConfigs: new Map(), activeAgents: new Map(), acpBridge: { shutdown: async () => {} },
+      feedbackService: { stop() {} }, voiceService: { stop: async () => {} }, configLoader: { dispose: async () => {} },
+    });
+    const outcome = shutting.then(() => { settled = true; }, () => { settled = true; });
+    await vi.waitFor(() => expect(settled).toBe(true), { timeout: 6000 });
+    await outcome;
+    await shutting;
+    expect(f.stop).not.toHaveBeenCalled();
+    expect(writes).not.toHaveBeenCalled();
+    releaseProbe(true);
+    await maintenance;
+    expect(f.stop).not.toHaveBeenCalled();
+    expect(writes).not.toHaveBeenCalled();
+  } finally {
+    releaseProbe(false);
+    await maintenance;
+    await shutting?.catch(() => {});
+    for (const timer of timers) clearTimeout(timer);
     await f.close();
   }
 });

@@ -78,6 +78,27 @@ describe('runtime-health', () => {
     }
   });
 
+  test('health shutdown bounds a maintenance callback that never resolves', async () => {
+    vi.useFakeTimers();
+    let finish!: () => void;
+    const pending = new Promise<void>((resolve) => { finish = resolve; });
+    const timers: NodeJS.Timeout[] = [];
+    const stop = await startRuntimeHealthChecks({ timers,
+      logger: { debug: vi.fn(), warn: vi.fn() },
+      maintainOwnedWork: () => pending, runHealthChecks: async () => {},
+    });
+    let failure: unknown;
+    const stopping = stop().catch((error) => { failure = error; });
+    try {
+      await vi.advanceTimersByTimeAsync(5000);
+      expect(failure).toBeInstanceOf(Error);
+      expect(String(failure)).toContain('maintenance');
+    } finally {
+      finish(); await stopping;
+      for (const timer of timers) clearTimeout(timer);
+    }
+  });
+
   test('records monotonic event-loop lag and treats early wakeups as zero', () => {
     let now = 100;
     let tick: (() => void) | undefined;
