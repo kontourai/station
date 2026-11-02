@@ -174,11 +174,11 @@ session, capture and accessibility services with the same ownership ledger and
 lease; host removal or replacement invalidates existing grants. Agent shutdown
 is not included.
 
-Only a credential minted for `sdk-in-process` currently supplies bound assurance.
-Codex and ACP `http-header-token` sessions are not offered the
-device tools in their tool list, and a call from them is still refused as
-`caller-not-bound`; a stdio connection with no verified caller is refused as
-`caller-required`. Tool visibility grants no authority. The separate toolchain
+Claude's in-process tools and the preview Codex dynamic-tool channel can carry
+bound assurance. Codex requires the **Codex browser and device tools** Feature
+Preview and an Agent with the built-in Station Control source. ACP
+`http-header-token` calls remain `caller-not-bound`; a stdio connection with no
+verified caller is refused as `caller-required`. Tool visibility grants no authority. The separate toolchain
 **Agent access** setting is the explicit operator opt-in for both managed
 agent-device tooling and these live tools. It does not put external CLI commands
 under the shared lease.
