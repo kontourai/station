@@ -40,6 +40,10 @@ import {
   INTERNAL_PROXY_CALLER_HEADER,
 } from '../../utils/internal-api-token.js';
 import { configureRuntimeHttp } from '../bootstrap/runtime-http.js';
+import {
+  bindCodexToolRequest,
+  codexToolRequestIsBound,
+} from '../mcp/codex-bound-request.js';
 
 const BEARER_CREDENTIAL = 'a'.repeat(43);
 const BEARER_CREDENTIAL_2 = 'b'.repeat(43);
@@ -228,6 +232,65 @@ function internalProxyAuth(): RequestInit {
 describe('station#514: authenticated mutation budget', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+  });
+
+  it('carries an in-process tool proof only across its own bounded-body replacement', async () => {
+    const { app, request } = createBudgetHarness({ extraMutationRoutes: [] });
+    const token = 'test-bound-caller';
+    app.post('/api/browser-agent/status', (c) =>
+      c.json({ bound: codexToolRequestIsBound(c.req.raw, token) }),
+    );
+    const original = new Request(`${ALLOWED_ORIGIN}/api/browser-agent/status`, {
+      method: 'POST',
+      headers: {
+        [INTERNAL_API_TOKEN_HEADER]: getInternalApiToken(),
+        [INTERNAL_PROXY_CALLER_HEADER]: 'local',
+        'x-station-control-caller-token': token,
+        'content-type': 'application/json',
+      },
+      body: '{}',
+    });
+    bindCodexToolRequest(original, token, () => true);
+    const copied = original.clone();
+    const accepted = await request(
+      '/api/browser-agent/status',
+      {},
+      '127.0.0.1',
+      original,
+    );
+    expect(await accepted.json()).toEqual({ bound: true });
+    expect(codexToolRequestIsBound(original, token)).toBe(false);
+    const refused = await request(
+      '/api/browser-agent/status',
+      {},
+      '127.0.0.1',
+      copied,
+    );
+    expect(await refused.json()).toEqual({ bound: false });
+  });
+
+  it('admits only the exact in-process tool request without treating it as loopback', async () => {
+    const { app, request } = createBudgetHarness({ extraMutationRoutes: [] });
+    const token = 'private-tool-token';
+    app.post('/api/browser-agent/status', (c) => c.json({ reached: true }));
+    const original = new Request(`${ALLOWED_ORIGIN}/api/browser-agent/status`, {
+      method: 'POST',
+      headers: {
+        'x-station-control-caller-token': token,
+        'content-type': 'application/json',
+      },
+      body: '{}',
+    });
+    bindCodexToolRequest(original, token, () => true);
+    const copied = original.clone();
+    expect(
+      (await request('/api/browser-agent/status', {}, undefined, original))
+        .status,
+    ).toBe(200);
+    expect(
+      (await request('/api/browser-agent/status', {}, undefined, copied))
+        .status,
+    ).toBe(401);
   });
 
   // ── AC: Limits apply before mutation side effects ──
