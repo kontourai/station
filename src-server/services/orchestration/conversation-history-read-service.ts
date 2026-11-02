@@ -47,6 +47,9 @@ export function deduplicateConversationItems(
 export class ConversationHistoryReadService {
   constructor(
     private readonly options: {
+      readDurabilityProfile?: Parameters<
+        typeof buildOrchestrationSessionSummary
+      >[0]['readDurabilityProfile'];
       eventStore: EventStore;
       canReadSession: (
         threadId: string,
@@ -143,6 +146,7 @@ export class ConversationHistoryReadService {
         );
         const summary = buildOrchestrationSessionSummary({
           readOwnedWork: (threadId) => ownedWorkByThread.get(threadId),
+          readDurabilityProfile: this.options.readDurabilityProfile,
           persisted,
           loaded,
           events: events.map((event) => event.payload),

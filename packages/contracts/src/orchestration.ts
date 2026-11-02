@@ -9,6 +9,7 @@ import type {
   ApprovalMode,
   AttachedSessionSourceMetadata,
   ModelLaunchPlan,
+  ProviderDurabilityProfile,
   ProviderSendTurnInput,
   ProviderSession,
   ProviderSessionStartInput,
@@ -1162,6 +1163,8 @@ export interface OrchestrationSessionSummary extends ProviderSession {
     state: 'running' | 'stopping' | 'waiting-on-peer' | 'unknown';
     ownLifecycleState: SessionLifecycleState;
   };
+  /** Current adapter declaration, projected at read time. */
+  durability?: ProviderDurabilityProfile;
   controlMode: SessionControlMode;
   /**
    * REQUIRED, and that is the point (ADR 0012 / archive#1778). The consumer
@@ -1718,8 +1721,12 @@ export interface ConversationInboxEntry {
    * send answers or Station restarts).
    */
   clientTurnId?: string;
-  /** Only follow-ups today; steer and display-only kinds may follow. */
-  kind: 'follow-up';
+  /** How the message is placed in the conversation. */
+  kind: 'follow-up' | 'steer' | 'display';
+  /** The execution head admitted with this entry, when supplied. */
+  expectedHead?: string;
+  /** Whether the authenticated reader is the recorded sender. */
+  ownedByCaller?: boolean;
   state: ConversationInboxEntryState;
   /** 1 for the next to be sent, among entries still waiting; absent once settled. */
   position?: number;
@@ -1997,6 +2004,7 @@ export interface ConversationListItem {
  */
 /** Execution facts from the same authorized current-child read, never Agent defaults. */
 export interface ConversationOpenExecution {
+  durability?: ProviderDurabilityProfile;
   sessionId: string;
   /** Present only when this receiver verified the persisted execution owner as itself. */
   environment?: { kind: 'current' };

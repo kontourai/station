@@ -73,6 +73,7 @@ import type {
   ApprovalMode,
   DelegationProvenance,
   EngineId,
+  ProviderDurabilityProfile,
   ProviderSendTurnInput,
   ProviderSession,
   StationConfinement,
@@ -89,6 +90,7 @@ import {
   PROVIDER_SESSION_STARTING_CODE,
   PROVIDER_TURN_IN_PROGRESS_CODE,
   readApprovalMode,
+  readProviderDurabilityProfile,
   SESSION_AGENT_DISPLAY_NAME_MAX_LENGTH,
   SESSION_AGENT_DISPLAY_NAME_METADATA_KEY,
   SESSION_AGENT_ICON_METADATA_KEY,
@@ -435,6 +437,7 @@ import {
   buildOrchestrationSessionSummary,
   deriveReadModelSession,
   extractPeerPendingRequestObservation,
+  OrchestrationProviderSessionNotFoundError,
   PEER_PENDING_REQUEST_METADATA_KEY,
   persistReadModelSession,
   type RecoveredSessionStartOptions,
@@ -2786,10 +2789,17 @@ export class OrchestrationService {
       runtimeMessages: (id, scope) =>
         this.transcriptReads.readSessionMessages(id, scope),
       metadata: (id) => this.readLatestSessionStartMetadata(id),
-      nativeMemoryOwnsTranscript: (id, provider) =>
-        (provider ??
-          this.options.eventStore?.readSessionByThread(id)?.provider) ===
-          'station-agent' && this.supportsNativeMemoryContinuity(),
+      nativeMemoryOwnsTranscript: (id, provider) => {
+        const actual =
+          provider ??
+          this.options.eventStore?.readSessionByThread(id)?.provider;
+        return (
+          actual !== undefined &&
+          this.durabilityProfileForProvider(actual)?.contextCarriage.history ===
+            'station-memory' &&
+          this.supportsNativeMemoryContinuity()
+        );
+      },
       requiresNativeIdentity: (id) => {
         const provider =
           this.options.eventStore?.readSessionByThread(id)?.provider;
@@ -2802,6 +2812,7 @@ export class OrchestrationService {
     });
     this.sessionEventReads = new SessionEventReads({
       readOwnedWork: this.readOwnedWork,
+      readDurabilityProfile: this.durabilityProfileForProvider,
       ...(options.eventStore ? { eventStore: options.eventStore } : {}),
       logger: options.logger,
       listSessions: (authority) => this.listSessions(authority),
@@ -3008,6 +3019,7 @@ export class OrchestrationService {
           : undefined;
         const session = buildOrchestrationSessionSummary({
           readOwnedWork: this.readOwnedWork,
+          readDurabilityProfile: this.durabilityProfileForProvider,
           persisted,
           loaded,
           events: [...events],
@@ -3155,6 +3167,7 @@ export class OrchestrationService {
     );
     if (options.eventStore) {
       this.conversationHistoryReader = new ConversationHistoryReadService({
+        readDurabilityProfile: this.durabilityProfileForProvider,
         eventStore: options.eventStore,
         canReadSession: (threadId, authority) =>
           this.sessionAuthz.canReadSession(threadId, authority),
@@ -3229,7 +3242,8 @@ export class OrchestrationService {
         );
       },
       nativeMemoryOwnsTranscriptFor: (provider) =>
-        provider === 'station-agent' && this.supportsNativeMemoryContinuity(),
+        this.durabilityProfileForProvider(provider)?.contextCarriage.history ===
+          'station-memory' && this.supportsNativeMemoryContinuity(),
       nativeIdentityRequiredFor: (provider) =>
         options.adapterRegistry.get(provider)?.metadata.continuity
           ?.resumeIdentity === 'require-match',
@@ -3332,6 +3346,7 @@ export class OrchestrationService {
                     session.assignedAgentSlug,
                   ),
                   provider: session.provider,
+                  durability: readProviderDurabilityProfile(session),
                   ...(executionAgentId ? { executionAgentId } : {}),
                   ...(expectedDefinitionFingerprint
                     ? { expectedDefinitionFingerprint }
@@ -4942,6 +4957,7 @@ export class OrchestrationService {
           conversationDraftFactsByThread?.get(threadId);
         const summary = buildOrchestrationSessionSummary({
           readOwnedWork: (threadId) => ownedWorkByThread?.get(threadId),
+          readDurabilityProfile: this.durabilityProfileForProvider,
           persisted,
           loaded,
           events: events.map((event) => event.payload),
@@ -5402,6 +5418,69 @@ export class OrchestrationService {
     );
   }
 
+  readonly durabilityProfileForProvider = (
+    provider: string | undefined,
+  ): ProviderDurabilityProfile | undefined =>
+    readProviderDurabilityProfile(
+      provider === undefined
+        ? undefined
+        : this.options.adapterRegistry.get(provider)?.metadata,
+    );
+
+  recordPostToolSteer(input: {
+    threadId: string;
+    turnId: string;
+    clientInputId: string;
+    payload: { message: string; clientOrigin?: ClientOrigin };
+  }): void {
+    const store = this.options.eventStore;
+    const session =
+      this.sessionReadModel.get(input.threadId) ??
+      store?.readSessionByThread(input.threadId);
+    if (!store || !session) throw new Error('Steer history is unavailable.');
+    const receipt = { ...input, input: input.payload.message };
+    if (!store.claimSteerInput(receipt))
+      throw new Error('Steer dispatch is already claimed.');
+    if (
+      !this.publishCanonicalEvent({
+        eventId: `inbox-steer:${input.threadId}:${input.clientInputId}`,
+        method: 'turn.started',
+        provider: session.provider,
+        threadId: input.threadId,
+        turnId: input.turnId,
+        createdAt: new Date().toISOString(),
+        prompt: input.payload.message,
+        inputKind: 'steer',
+        ...(input.payload.clientOrigin
+          ? { clientOrigin: input.payload.clientOrigin }
+          : {}),
+      })
+    )
+      throw new Error('Steer history was refused.');
+    store.confirmSteerInput(receipt, input.turnId);
+  }
+
+  canSteerAtPostToolBoundary(threadId: string, turnId: string): boolean {
+    return (
+      !this.quarantinedThreads.has(threadId) &&
+      !this.isDormantSessionThread(threadId) &&
+      !this.ranUnconfinedNowConfined(threadId, turnId)
+    );
+  }
+
+  async steerFidelityForThread(
+    threadId: string,
+  ): Promise<'native' | 'emulated' | 'none'> {
+    const provider =
+      this.threadProviders.get(threadId) ??
+      this.sessionReadModel.get(threadId)?.provider ??
+      this.options.eventStore?.readSessionByThread(threadId)?.provider;
+    return (
+      this.durabilityProfileForProvider(provider)?.steerPlacement.state ??
+      'none'
+    );
+  }
+
   async readSession(
     threadId: string,
     authority: SessionReadScope,
@@ -5463,6 +5542,7 @@ export class OrchestrationService {
     return {
       session: buildOrchestrationSessionSummary({
         readOwnedWork: this.readOwnedWork,
+        readDurabilityProfile: this.durabilityProfileForProvider,
         persisted,
         loaded,
         events: summaryEvents,
@@ -5981,6 +6061,7 @@ export class OrchestrationService {
     // enumerated, and an internal one costs two map lookups.
     const summary = buildOrchestrationSessionSummary({
       readOwnedWork: this.readOwnedWork,
+      readDurabilityProfile: this.durabilityProfileForProvider,
       persisted,
       loaded,
       events,
@@ -6034,6 +6115,7 @@ export class OrchestrationService {
         return unavailable();
       const summary = buildOrchestrationSessionSummary({
         readOwnedWork: this.readOwnedWork,
+        readDurabilityProfile: this.durabilityProfileForProvider,
         persisted,
         loaded,
         events:
@@ -6824,6 +6906,7 @@ export class OrchestrationService {
           const provider = (loaded ?? persisted)?.provider;
           const summary = buildOrchestrationSessionSummary({
             readOwnedWork: this.readOwnedWork,
+            readDurabilityProfile: this.durabilityProfileForProvider,
             persisted,
             loaded,
             events: eventStore
@@ -10369,50 +10452,78 @@ export class OrchestrationService {
             return { receipt, result: storedSteer };
           }
 
-          // archive#3476: same as interrupt — no engine, therefore no live
-          // turn to steer. `no-active-turn` is the existing vocabulary for
-          // exactly this and is what the caller would have received anyway
-          // once a freshly-restarted engine reported no turn in flight.
-          if (this.isDormantSessionThread(command.threadId)) {
-            const result: SteerTurnResult = {
-              outcome: 'no-active-turn',
-              threadId: command.threadId,
-            };
+          const recordedSession =
+            this.sessionReadModel.get(command.threadId) ??
+            this.options.eventStore?.readSessionByThread(command.threadId);
+          const knownProvider =
+            this.threadProviders.get(command.threadId) ??
+            recordedSession?.provider;
+          const refuseSteer = (result: SteerTurnResult, engine: string) => {
             orchestrationSteerDispatches.add(1, {
               outcome: result.outcome,
-              engine:
-                this.sessionReadModel.get(command.threadId)?.provider ??
-                'unknown',
+              engine,
             });
             steerMetricRecorded = true;
             this.persistReceipt(receipt);
             return { receipt, result };
+          };
+          if (this.isDormantSessionThread(command.threadId))
+            return refuseSteer(
+              { outcome: 'no-active-turn', threadId: command.threadId },
+              knownProvider ?? 'unknown',
+            );
+          if (knownProvider && !this.options.adapterRegistry.get(knownProvider))
+            return refuseSteer(
+              {
+                outcome: 'unsupported-engine',
+                threadId: command.threadId,
+                engineId: knownProvider,
+                engineName: engineDisplayLabel(knownProvider) ?? 'Engine',
+              },
+              knownProvider,
+            );
+          let adapter: ProviderAdapterShape;
+          try {
+            adapter = await resolveOrchestrationAdapterForThread({
+              threadId: command.threadId,
+              threadProviders: this.threadProviders,
+              requireAdapter: (provider) => this.requireAdapter(provider),
+              adapters: this.options.adapterRegistry.list(),
+            });
+          } catch (error) {
+            if (
+              !(error instanceof OrchestrationProviderSessionNotFoundError) ||
+              recordedSession ||
+              this.materializingSessions.has(command.threadId)
+            )
+              throw error;
+            return refuseSteer(
+              { outcome: 'no-active-turn', threadId: command.threadId },
+              knownProvider ?? 'unknown',
+            );
           }
-          const adapter = await resolveOrchestrationAdapterForThread({
-            threadId: command.threadId,
-            threadProviders: this.threadProviders,
-            requireAdapter: (provider) => this.requireAdapter(provider),
-            adapters: this.options.adapterRegistry.list(),
-          });
           const matrix = ENGINE_CAPABILITY_MATRICES[adapter.provider];
-          const engineId = matrix?.engineId ?? engineIdForAdapter(adapter);
+          const engineId =
+            matrix?.engineId ??
+            (adapter.metadata ? engineIdForAdapter(adapter) : adapter.provider);
           steerMetricEngine = engineId;
           const engineName =
-            engineDisplayLabel(engineId) ?? adapter.metadata.displayName;
-          if (!matrix?.midTurnSteer || !adapter.steerTurn) {
+            engineDisplayLabel(engineId) ??
+            adapter.metadata?.displayName ??
+            'Engine';
+          const durability = readProviderDurabilityProfile(adapter.metadata);
+          if (
+            !durability ||
+            durability.steerPlacement.state === 'none' ||
+            !adapter.steerTurn
+          ) {
             const result: SteerTurnResult = {
               outcome: 'unsupported-engine',
               threadId: command.threadId,
               engineId,
               engineName,
             };
-            orchestrationSteerDispatches.add(1, {
-              outcome: result.outcome,
-              engine: engineId,
-            });
-            steerMetricRecorded = true;
-            this.persistReceipt(receipt);
-            return { receipt, result };
+            return refuseSteer(result, engineId);
           }
           // archive#3559: `activeTurnIdForEvents` folds via `nextActiveTurnId`,
           // which reads only `ACTIVE_TURN_FOLD_METHODS` and treats every
@@ -15713,6 +15824,7 @@ export class OrchestrationService {
         .map((event) => event.payload);
       const session = buildOrchestrationSessionSummary({
         readOwnedWork: this.readOwnedWork,
+        readDurabilityProfile: this.durabilityProfileForProvider,
         persisted,
         loaded,
         events,

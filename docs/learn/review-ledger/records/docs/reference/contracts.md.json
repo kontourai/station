@@ -392,7 +392,11 @@
 
     "src-server/runtime/routes/__tests__/runtime-routes-station-control-authority.test.ts",
 
-    "src-server/tools/station-control-policy.ts"
+    "src-server/tools/station-control-policy.ts",
+
+"src-ui/src/hooks/orchestration/snapshotHandlers.ts",
+
+    "src-ui/src/hooks/useDerivedSessions.ts"
   ],
 
   "checks": [
