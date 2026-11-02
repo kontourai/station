@@ -37,15 +37,12 @@ import type {
   Prerequisite,
 } from '@kontourai/station-contracts/tool';
 import { validateInputRequestContent } from '@kontourai/station-shared/input-request';
-import {
-  externalMcpToolApprovalIdentity,
-  resolveAuthoredToolApproval,
-} from '@kontourai/station-shared/mcp-tool-selection';
+import type {
+  PreToolPolicyDecision,
+  StagedPreToolPolicyEvaluator,
+} from '../../runtime/agents/pre-tool-policy.js';
 import { builtinStationApiServerId } from '../../runtime/bootstrap/station-control-runtime-env.js';
-import {
-  canonicalizeExternalToolName,
-  isAutoApprovedExternalTool,
-} from '../../runtime/tools/tool-executor.js';
+import type { InvocationContext } from '../../runtime/types.js';
 import {
   assertRequiredConfinementObserved,
   ConfinementRefusedError,
@@ -186,6 +183,7 @@ import type { CodexModelOptions } from './codex-models.js';
 import { terminateCodexProcess } from './codex-process-termination.js';
 import { findUnaccountedCodexConfig } from './codex-project-config-provenance.js';
 import { applyEngineProxyAuthPrerequisite } from './engine-proxy-auth-prerequisite.js';
+import { externalPreToolPolicyIdentity } from './external-pre-tool-policy-identity.js';
 import { codexAnswers, codexInputRequest } from './harness-questions.js';
 import {
   nativeResumeBindingKey,
@@ -200,6 +198,9 @@ type CodexExecutionKnobs = NonNullable<
 interface CodexAdapterOptions {
   boundToolsEnabled?: () => boolean;
   boundToolsEpoch?: () => number | undefined;
+  resolveBoundToolPolicy?: (
+    input: ProviderSessionStartInput,
+  ) => Promise<StagedPreToolPolicyEvaluator | undefined>;
   createBoundTools?: (input: {
     sessionId: string;
     tenantExecutionContext?: import('@kontourai/station-contracts/tenancy').TenantExecutionContext;
@@ -323,7 +324,7 @@ function codexBoundToolResult(value: unknown) {
     throw new Error('bound-tool-result-refused');
   });
   const refused = items.some((item) => {
-    if (item.type !== 'inputText') return false;
+    if (item.type !== 'inputText' || typeof item.text !== 'string') return false;
     try {
       const parsed: unknown = JSON.parse(item.text);
       return (
@@ -2177,6 +2178,14 @@ export class CodexAdapter implements ProviderAdapterShape {
           : undefined;
       record.closeBoundTools = boundTools?.close;
       record.boundChannelCurrent = boundTools ? bindingCurrent : undefined;
+      let boundPolicy: StagedPreToolPolicyEvaluator | undefined;
+      if (boundTools && this.options.resolveBoundToolPolicy) {
+        try {
+          boundPolicy = await this.options.resolveBoundToolPolicy(input);
+        } catch {
+          boundPolicy = undefined;
+        }
+      }
       const offeredTools =
         boundTools?.tools.filter((tool) => {
           if (!tool.name.startsWith('device_')) return true;
@@ -2322,14 +2331,17 @@ export class CodexAdapter implements ProviderAdapterShape {
           };
           return channel.invoke(
             call,
-            () =>
+            (current) =>
               this.approveBoundTool(
                 record,
                 call.turnId,
                 call.name,
                 payload.arguments,
                 rpcKey,
-                input.agent,
+                input,
+                call.callId,
+                boundPolicy,
+                current,
               ),
             async (current) => {
               const response = await boundTools.call(
@@ -3560,41 +3572,56 @@ export class CodexAdapter implements ProviderAdapterShape {
     return { outcome: 'stopped', taskId };
   }
 
-  private approveBoundTool(
+  private async approveBoundTool(
     record: CodexSessionRecord,
     turnId: string,
     tool: string,
     args: unknown,
     rpcKey: string,
-    agent: ProviderSessionStartInput['agent'],
+    input: ProviderSessionStartInput,
+    callId: string,
+    policy: StagedPreToolPolicyEvaluator | undefined,
+    current: () => boolean,
   ): Promise<boolean> {
     const server = tool.startsWith('browser_')
       ? 'station-browser'
       : 'station-control';
     const name = `mcp__${server}__${tool}`;
-    const identity = externalMcpToolApprovalIdentity(name);
-    const authored = resolveAuthoredToolApproval(
-      [name, canonicalizeExternalToolName(name)],
-      agent?.autoApprove,
-      agent?.askBeforeUse,
-      identity.key,
-    );
-    if (authored !== 'ask' && record.approvedTools.has(name))
-      return Promise.resolve(true);
-    if (
-      authored !== 'ask' &&
-      isAutoApprovedExternalTool(
-        name,
-        agent?.autoApprove,
-        agent?.toolServers,
-        'authentic',
-      )
-    )
-      return Promise.resolve(true);
+    if (!policy || !input.agent || !current()) return false;
+    const rawDelegation = input.metadata?.delegation;
+    const delegation =
+      rawDelegation && typeof rawDelegation === 'object'
+        ? (rawDelegation as InvocationContext['delegation'])
+        : undefined;
+    let decision: PreToolPolicyDecision;
+    try {
+      decision = await raceWithSignal(
+        policy(
+          { toolName: name, toolCallId: callId, toolArgs: args },
+          {
+            agentSlug: input.agent.slug,
+            conversationId: input.threadId,
+            delegation,
+          },
+          {
+            interaction: 'external',
+            identity: externalPreToolPolicyIdentity(name),
+          },
+        ),
+        AbortSignal.timeout(5_000),
+      );
+    } catch {
+      return false;
+    }
+    if (!current() || decision.behavior === 'deny') return false;
+    if (decision.behavior === 'allow') return true;
+    if (decision.behavior === 'defer' && record.approvedTools.has(name))
+      return true;
+    if (delegation?.denyApprovals) return false;
     record.boundToolApprovals ??= new Map();
     const pending = record.boundToolApprovals;
     if (pending.size >= 16 || record.cancelledBoundTurns?.has(turnId))
-      return Promise.resolve(false);
+      return false;
     const requestId = crypto.randomUUID();
     return new Promise((resolve) => {
       pending.set(requestId, { resolve, turnId, rpcKey, toolName: name });

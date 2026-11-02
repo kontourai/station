@@ -12,12 +12,23 @@ import {
 test('dynamic calls are bound to the current Session and turn, approved once, and not replayed', async () => {
   const process = new FakeCodexProcess();
   let previewEnabled = true;
+  let policyDenied = true;
   const execute = vi.fn(async () => ({
     content: [{ type: 'text', text: 'ok' }],
   }));
   const adapter = new CodexAdapter({
     processFactory: () => process as never,
     boundToolsEnabled: () => previewEnabled,
+    resolveBoundToolPolicy: async () => async () =>
+      policyDenied
+        ? {
+            behavior: 'deny',
+            denial: {
+              allowed: false,
+              reason: 'Project policy refused this tool.',
+            },
+          }
+        : { behavior: 'defer' },
     createBoundTools: async () => ({
       tools: [
         {
@@ -60,6 +71,14 @@ test('dynamic calls are bound to the current Session and turn, approved once, an
     tool: 'browser_status',
     arguments: {},
   };
+  await emit(process, {
+    id: 20,
+    method: 'item/tool/call',
+    params: { ...params, callId: 'policy-denied' },
+  });
+  expect(repliesTo(process, 20)[0]?.error).toBeDefined();
+  expect(execute).not.toHaveBeenCalled();
+  policyDenied = false;
   await emit(process, {
     id: 21,
     method: 'item/tool/call',
@@ -167,6 +186,7 @@ test('resume admits only the freshly authorized catalog and refuses stale persis
     processFactory: () => process as never,
     boundToolsEnabled: () => true,
     boundToolsEpoch: () => previewEpoch,
+    resolveBoundToolPolicy: async () => async () => ({ behavior: 'defer' }),
     createBoundTools: async () => ({
       tools: [
         {
@@ -258,6 +278,7 @@ test('a provider disconnect cancels a pending tool approval before any effect', 
   const adapter = new CodexAdapter({
     processFactory: () => process as never,
     boundToolsEnabled: () => true,
+    resolveBoundToolPolicy: async () => async () => ({ behavior: 'defer' }),
     createBoundTools: async () => ({
       tools: [
         {
@@ -330,5 +351,71 @@ test('a provider disconnect cancels a pending tool approval before any effect', 
   ).rejects.toThrow();
   expect(execute).not.toHaveBeenCalled();
   await adapter.stopAll();
+  await iterator.return?.();
+});
+
+test('a delegated Session without approval authority refuses an approval-bound tool', async () => {
+  const process = new FakeCodexProcess();
+  const execute = vi.fn(async () => ({
+    content: [{ type: 'text', text: 'ok' }],
+  }));
+  const adapter = new CodexAdapter({
+    processFactory: () => process as never,
+    boundToolsEnabled: () => true,
+    resolveBoundToolPolicy: async () => async () => ({ behavior: 'defer' }),
+    createBoundTools: async () => ({
+      tools: [
+        {
+          name: 'browser_status',
+          description: 'status',
+          inputSchema: { type: 'object' },
+        },
+      ],
+      call: execute,
+      close: async () => {},
+    }),
+  });
+  const events: any[] = [];
+  const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+  void (async () => {
+    for (;;) {
+      const event = await iterator.next();
+      if (event.done) return;
+      events.push(event.value);
+    }
+  })();
+  const session = adapter.startSession({
+    provider: 'codex',
+    threadId: 'delegated-session',
+    cwd: '/tmp',
+    agent: {} as never,
+    metadata: { delegation: { denyApprovals: true } },
+  });
+  await flushIo();
+  await emit(process, { id: '1', result: { userAgent: 'test' } });
+  await emit(process, {
+    id: '2',
+    result: { thread: { id: 'native-delegated' } },
+  });
+  await withTimeout(session, 'start');
+  const turn = adapter.sendTurn({ threadId: 'delegated-session', input: 'go' });
+  await flushIo();
+  await emit(process, { id: '3', result: { turn: { id: 'turn-delegated' } } });
+  await withTimeout(turn, 'turn');
+  await emit(process, {
+    id: 42,
+    method: 'item/tool/call',
+    params: {
+      threadId: 'native-delegated',
+      turnId: 'turn-delegated',
+      callId: 'call-delegated',
+      tool: 'browser_status',
+      arguments: {},
+    },
+  });
+  expect(repliesTo(process, 42)[0]?.error).toBeDefined();
+  expect(events.some((event) => event.method === 'request.opened')).toBe(false);
+  expect(execute).not.toHaveBeenCalled();
+  await adapter.stopSession('delegated-session');
   await iterator.return?.();
 });

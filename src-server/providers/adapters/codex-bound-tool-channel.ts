@@ -16,7 +16,7 @@ export class CodexBoundToolChannel {
 
   async invoke<T>(
     call: { threadId: string; turnId: string; callId: string; name: string },
-    approve: () => Promise<boolean>,
+    approve: (current: () => boolean) => Promise<boolean>,
     execute: (current: () => boolean) => Promise<T>,
     invocationCurrent: () => boolean,
   ): Promise<T> {
@@ -42,7 +42,8 @@ export class CodexBoundToolChannel {
     )
       throw new Error('bound-tool-refused');
     this.calls.add(call.callId);
-    if (!(await approve()) || !current()) throw new Error('bound-tool-refused');
+    if (!(await approve(current)) || !current())
+      throw new Error('bound-tool-refused');
     const result = await execute(current);
     if (!current()) throw new Error('bound-tool-refused');
     return result;

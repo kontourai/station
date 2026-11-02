@@ -1000,6 +1000,8 @@ export class StationRuntime {
     },
   });
   private codexAdapter = new CodexAdapter({
+    resolveBoundToolPolicy: (input) =>
+      this.resolveExternalPreToolPolicy(input, 'authentic'),
     boundToolsEpoch: () =>
       this.featurePreviews.generation('codex-bound-browser-device-tools'),
     boundToolsEnabled: () =>

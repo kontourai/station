@@ -122,12 +122,13 @@ New and recovered sessions both recheck authored tools against current Project
 permissions. Missing Agent definitions or unreadable Project policy refuse
 engine startup; the conversation stays recoverable after the cause is fixed.
 
-**Browser access** is a separate Agent capability. The current delivery path
-connects Claude Code to the Project's Station browser; other engines disclose
-that this delivery is unavailable. **Workflow files** holds the workflow editor.
-Browser access is independent of attaching MCP sources. See the
-[browser and computer capability proposal](../design/agent-interaction-capabilities.md)
-for the proposed cross-engine behavior; it is not implemented.
+**Browser access** is a separate Agent capability. Claude Code receives the
+Project's Station browser in process. Codex can use the same browser through
+the default-off **Codex browser and device tools** Feature Preview; ACP remains
+unavailable. The editor's engine status may not reflect that preview. **Workflow
+files** holds the workflow editor. Browser access is independent of attaching
+MCP sources. See the [bound-channel decision](../decisions/browser-agent-actions-and-bound-channel.md)
+and the [broader capability proposal](../design/agent-interaction-capabilities.md).
 
 On Claude Code, an authentic built-in Station browser request can offer **Allow the Station browser for this session** beside the per-tool choice. It covers later plain calls from that same in-process server while the session record lives. An explicit Ask rule, an escalation, a question or a plan exit still requires its own decision. Station offers and honors this grant only after the engine reports exactly one `station-browser` server with SDK provenance; a matching name alone is insufficient. Stopping or restarting the session drops the grant.
 
