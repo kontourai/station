@@ -52,7 +52,9 @@ The recorder pins a clean Task workspace and its commit, consumes Browser
 screencast frames, and encodes a silent WebM. It checks the workspace, Browser
 generation, caller, Task and preview again before publication. Dirty workspaces,
 unobservable submodules, changed authority, unavailable media tools, excess
-bytes or exhausted recording capacity refuse the operation. A commit pin does
+bytes or exhausted recording capacity refuse the operation. The shared recorder
+admits at most four active Browser and Device clips, with at most two per Task
+and author. A commit pin does
 not prove the displayed page was built from that commit. The manifest retains
 the commit, recording digest and byte length, and up to ten selected frames;
 audio and transcript coverage are absent.
