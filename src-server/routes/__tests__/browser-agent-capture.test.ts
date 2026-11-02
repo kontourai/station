@@ -1009,7 +1009,7 @@ test.skipIf(!mediaReady)(
 test.skipIf(!mediaReady)(
   'Device recording refuses per-frame revocation and rotation',
   async () => {
-    for (const mode of ['current', 'authorize', 'rotation'] as const) {
+    for (const mode of ['authorize', 'current', 'rotation'] as const) {
       let allowed = true;
       let consumed = 0;
       const h = await harness({
