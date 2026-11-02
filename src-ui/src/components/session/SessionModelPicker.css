@@ -125,7 +125,7 @@
   padding: 0 var(--k-space-3) var(--k-space-2);
 }
 .session-model-picker__filters button {
-  min-height: 36px;
+  min-height: 44px;
   padding: var(--k-space-1) var(--k-space-2);
   border: 1px solid var(--k-line);
   border-radius: var(--k-radius-control);
@@ -386,9 +386,6 @@
     min-height: 100px;
     height: 220px;
     max-height: 30dvh;
-  }
-  .session-model-picker__filters button {
-    min-height: 44px;
   }
   .session-model-picker__settings {
     overflow: visible;
