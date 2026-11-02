@@ -444,14 +444,12 @@ describe('Station-owned MCP manager', () => {
       'agent-one',
       { tools: { mcpServers: ['external'], available: ['*'] } } as any,
       {
-        loadIntegration: vi
-          .fn()
-          .mockResolvedValue({
-            id: 'external',
-            kind: 'mcp',
-            transport: 'stdio',
-            command: 'external-mcp',
-          }),
+        loadIntegration: vi.fn().mockResolvedValue({
+          id: 'external',
+          kind: 'mcp',
+          transport: 'stdio',
+          command: 'external-mcp',
+        }),
       } as any,
       new Map(),
       new Map(),
