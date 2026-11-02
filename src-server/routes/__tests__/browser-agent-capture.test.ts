@@ -45,6 +45,7 @@ import {
   locateExecutable,
   runBoundedToolCapture,
 } from '../../services/devices/device-host-tools.js';
+import { jpegSize } from '../../services/live-surface/jpeg-size.js';
 import { LiveSurfaceRegistry } from '../../services/live-surface/registry.js';
 import {
   ActionOperationService,
@@ -108,7 +109,7 @@ const PNG = Buffer.from(
   'base64',
 );
 const PNG_64 = Buffer.from(
-  'iVBORw0KGgoAAAANSUhEUgAAAEAAAABACAIAAAAlC+aJAAAACXBIWXMAAAABAAAAAQBPJcTWAAAAYElEQVR4nO3PwQkAIBDAMAX3H/lwCB9BaCZo96y/HR3wqgGtAa0BrQGtAa0BrQGtAa0BrQGtAa0BrQGtAa0BrQGtAa0BrQGtAa0BrQGtAa0BrQGtAa0BrQGtAa0BrQHtAgK6AfwYG1VIAAAAAElFTkSuQmCC',
+  'iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAIAAAD8GO2jAAAACXBIWXMAAAABAAAAAQBPJcTWAAAAKklEQVR4nO3NQQ0AAAjEMEjwL5lggvt1AtbeyjbhPwAAAAAAAAAAAHjrAA+jAXywnK1EAAAAAElFTkSuQmCC',
   'base64',
 );
 const FRAME_RED = Buffer.from(
@@ -601,7 +602,12 @@ async function harness(
         rotation?: 90;
         onFrameConsumed?: () => void;
         pngFallback?: boolean;
-        onAttach?: (codec: string | undefined) => void;
+        onAttach?: (
+          codec: string | undefined,
+          freshOnly: boolean | undefined,
+        ) => void;
+        pngBurst?: Buffer;
+        durationMs?: number;
       } = {},
     ) => {
       const access = await room.sessionTaskReviewAccess('agent-a');
@@ -614,16 +620,36 @@ async function harness(
         options.rotation ||
         options.onFrameConsumed ||
         options.pngFallback ||
-        options.onAttach
+        options.onAttach ||
+        options.pngBurst
           ? (Object.assign(Object.create(entry.hub), {
               attach: (...args: Parameters<typeof entry.hub.attach>) => {
-                options.onAttach?.(args[2]?.codec);
+                options.onAttach?.(args[2]?.codec, args[2]?.freshOnly);
                 const viewer = entry.hub.attach(...args);
+                let burstFrame: Awaited<ReturnType<typeof viewer.next>>;
+                let burstCount = 0;
                 return {
                   ...viewer,
                   close: () => viewer.close(),
                   next: async (...nextArgs: Parameters<typeof viewer.next>) => {
-                    const record = await viewer.next(...nextArgs);
+                    const record =
+                      burstFrame && burstCount < 8
+                        ? burstFrame
+                        : await viewer.next(...nextArgs);
+                    if (
+                      record?.kind === 'frame' &&
+                      options.pngBurst &&
+                      burstCount < 8
+                    ) {
+                      burstFrame = {
+                        ...record,
+                        header: { ...record.header, codec: 'png' },
+                        body: options.pngBurst,
+                      };
+                      burstCount++;
+                      options.onFrameConsumed?.();
+                      return burstFrame;
+                    }
                     if (record?.kind === 'frame') options.onFrameConsumed?.();
                     if (
                       record?.kind === 'frame' &&
@@ -652,7 +678,7 @@ async function harness(
       return recordings.recordSource(
         access,
         {
-          durationMs: 500,
+          durationMs: options.durationMs ?? 500,
           stopSignal: options.stopSignal,
           onStarted: options.onStarted,
         },
@@ -1031,17 +1057,20 @@ test.skipIf(!mediaReady)(
   async () => {
     const h = await harness({ recording: true });
     let codec: string | undefined;
+    let freshOnly: boolean | undefined;
     let count = 0;
     const clip = await h.recordSyntheticDevice({
       pngFallback: true,
-      onAttach: (value) => {
+      onAttach: (value, fresh) => {
         codec = value;
+        freshOnly = fresh;
       },
       onFrameConsumed: () => {
         count++;
       },
     });
     expect(codec).toBe('image');
+    expect(freshOnly).toBe(true);
     expect(count).toBeGreaterThanOrEqual(2);
     const frames = clip.events.filter((item) => item.kind === 'frame');
     expect(frames.length).toBeGreaterThanOrEqual(2);
@@ -1054,9 +1083,30 @@ test.skipIf(!mediaReady)(
       `task-a/review/walkthroughs/${clip.id}/frames/${frames[1]!.frameId}`,
     );
     expect(response.status).toBe(200);
-    expect(Buffer.from(await response.arrayBuffer()).subarray(0, 2)).toEqual(
-      Buffer.from([0xff, 0xd8]),
-    );
+    const converted = Buffer.from(await response.arrayBuffer());
+    expect(converted.subarray(0, 2)).toEqual(Buffer.from([0xff, 0xd8]));
+    expect(jpegSize(converted)).toEqual({ width: 64, height: 64 });
+  },
+);
+
+test.skipIf(!mediaReady)(
+  'many PNG frames below the byte cap remain recordable after conversion',
+  async () => {
+    const h = await harness({ recording: true });
+    const padded = Buffer.alloc(8 * 1024 * 1024 - 1);
+    PNG_64.copy(padded);
+    const stop = new AbortController();
+    let count = 0;
+    const clip = await h.recordSyntheticDevice({
+      pngBurst: padded,
+      durationMs: 5000,
+      stopSignal: stop.signal,
+      onFrameConsumed: () => {
+        if (++count === 8) stop.abort();
+      },
+    });
+    expect(clip.frameSelection?.candidates).toBe(8);
+    expect(clip.source.recording?.mediaType).toBe('video/webm');
   },
 );
 

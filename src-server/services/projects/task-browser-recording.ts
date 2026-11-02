@@ -78,6 +78,8 @@ async function convertPngFrame(
   ffmpeg: string,
   input: string,
   output: string,
+  width: number,
+  height: number,
   signal: AbortSignal,
 ): Promise<number> {
   try {
@@ -90,6 +92,8 @@ async function convertPngFrame(
         'error',
         '-i',
         input,
+        '-vf',
+        `scale=${width}:${height}`,
         '-frames:v',
         '1',
         '-threads',
@@ -473,7 +477,7 @@ export class TaskBrowserRecording {
             maxHeight: 1280,
           },
           undefined,
-          { codec: 'image' },
+          { codec: 'image', freshOnly: true },
         );
         const duration = new AbortController();
         const captureSignal = AbortSignal.any([signal, duration.signal]);
@@ -581,13 +585,16 @@ export class TaskBrowserRecording {
         for (const frame of frames) {
           if (!frame.png) continue;
           const jpeg = frame.file.replace(/\.png$/, '.jpg');
-          frame.bytes = await convertPngFrame(
+          const converted = await convertPngFrame(
             resolution.paths.ffmpeg,
             join(stage.path, frame.file),
             join(stage.path, jpeg),
+            frame.width,
+            frame.height,
             conversionSignal,
           );
-          rawBytes += frame.bytes;
+          rawBytes += converted - frame.bytes;
+          frame.bytes = converted;
           if (rawBytes > MAX_RAW_FRAME_BYTES)
             throw new TaskBrowserRecordingError(
               'recording-too-large',

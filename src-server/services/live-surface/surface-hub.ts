@@ -134,6 +134,7 @@ export const KEYFRAME_REQUEST_MIN_INTERVAL_MS = 500;
 
 class HubViewer implements LiveSurfaceViewer {
   slot: HubFrame | null = null;
+  skipFrame: HubFrame | null = null;
   private readonly videoQueue: HubFrame[] = [];
   private videoBytes = 0;
   private awaitingKeyframe = true;
@@ -272,6 +273,7 @@ class HubViewer implements LiveSurfaceViewer {
     this.closed = true;
     const frame = this.slot;
     this.slot = null;
+    this.skipFrame = null;
     this.videoQueue.length = 0;
     this.videoBytes = 0;
     this.notify();
@@ -352,6 +354,8 @@ export class LiveSurfaceHub {
       agentActions?: () => boolean;
       /** `h264`: take access units in order (#4418). Default: images. */
       codec?: LiveSurfaceViewerCodec;
+      /** Ignore cached and queued images captured before this viewer attached. */
+      freshOnly?: boolean;
     },
   ): LiveSurfaceViewer {
     if (this.disposed) throw new Error('live surface hub is disposed');
@@ -363,7 +367,13 @@ export class LiveSurfaceHub {
       options?.agentActions,
       codec,
     );
-    if (codec === 'image' && this.running && this.lastPublished)
+    if (options?.freshOnly) viewer.skipFrame = this.pending;
+    if (
+      codec === 'image' &&
+      !options?.freshOnly &&
+      this.running &&
+      this.lastPublished
+    )
       viewer.slot = this.lastPublished;
     this.viewers.add(viewer);
     if (this.idleTimer) {
@@ -739,6 +749,11 @@ export class LiveSurfaceHub {
     this.lastPublished = frame;
     for (const viewer of this.viewers) {
       if (viewer.codec !== 'image') continue;
+      if (viewer.skipFrame === frame) {
+        viewer.skipFrame = null;
+        continue;
+      }
+      viewer.skipFrame = null;
       const previous = viewer.slot;
       if (previous && previous !== frame) {
         // Superseded undelivered: this viewer skips it. Latest frame wins.

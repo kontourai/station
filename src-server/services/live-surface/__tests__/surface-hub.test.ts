@@ -680,3 +680,37 @@ describe('live surface hub: H.264 viewers (#4418)', () => {
     await hub.dispose();
   });
 });
+
+test('fresh-only image viewer skips both cached and pre-attachment pending frames', async () => {
+  const { hub, producer } = build();
+  const existing = hub.attach(PARAMS);
+  await hub.settled();
+  await existing.next();
+  expect(producer.emit()).toBe(true);
+  expect(await frameCounter(existing)).toBe(1);
+  expect(producer.emit()).toBe(true);
+  const fresh = hub.attach(PARAMS, undefined, {
+    codec: 'image',
+    freshOnly: true,
+  });
+  await fresh.next();
+  let delivered = false;
+  const next = fresh.next().then((record) => {
+    delivered = true;
+    return record;
+  });
+  vi.advanceTimersByTime(100);
+  await Promise.resolve();
+  expect(delivered).toBe(false);
+  expect((await existing.next())?.kind).toBe('state');
+  expect(await frameCounter(existing)).toBe(2);
+  expect(producer.emit()).toBe(true);
+  vi.advanceTimersByTime(100);
+  const record = await next;
+  expect(record?.kind).toBe('frame');
+  if (record?.kind !== 'frame') throw new Error('expected frame');
+  expect(syntheticFrameCounter(record.body)).toBe(3);
+  fresh.close();
+  existing.close();
+  await hub.dispose();
+});
