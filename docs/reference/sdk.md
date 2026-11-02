@@ -28,6 +28,9 @@ native shell's host-owned transport), and `requestTicket`, `createSocket` and
   server-resolved program (`{kind: 'shell'}` or `{kind: 'agent', connectionId,
   mode}`); no executable, argument or directory is sent. `legacyTerminalId`
   imports a pre-socket Coding terminal's owned history once.
+
+Station has no `port + 1` terminal listener; the SDK no longer exports
+`fetchTerminalPort`, and `GET /api/system/terminal-port` is not served.
 - `attach(target, terminalId)` views an existing session; repeated calls share
   one view until it is detached.
 - `list(target)` returns the binding's session records, oldest first.

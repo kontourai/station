@@ -1365,7 +1365,6 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // real child node.exe; it runs only on win32, in the Windows PR job.
   'packages/cli/src/__tests__/windows-process-identity.process.test.ts',
   'src-server/services/ssh/__tests__/openssh-worker-probe.test.ts',
-  'src-server/services/terminal/__tests__/terminal-subprocess-state.test.ts',
   // Timing-sensitive responsive-UI suites: no child_process import, kept out
   // of the ordinary pool so a loaded host cannot turn their waits into flakes.
   'src-ui/src/contexts/__tests__/ApiBaseContext.test.tsx',

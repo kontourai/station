@@ -6295,12 +6295,12 @@ its journal live in the supervisor's workload host
 [TerminalJournal](../../src-server/services/terminal/terminal-journal.ts) owns
 serialized sanitized records, bounded memory and append-only disk segments.
 The [operator control routes](../../src-server/routes/projects/terminal-session-routes.ts)
-are composed by runtime routes and disposed through TerminalService. They admit
+are composed by runtime routes and disposed at runtime shutdown. They admit
 the operator in person and the operator's own paired devices
 ([`isTerminalOperator`](../../src-server/security/coding-authority.ts)); hosted,
 account, member, agent and plugin admission is withheld. Engine sign-in, the
-Project terminal close and the process projections reach TerminalSessions for
-socket session ids; the legacy listener keeps its own sessions until removal.
+Project terminal close and the process projections reach TerminalSessions; no
+other terminal service or listener remains.
 
 The [design boundary](../design/terminal.md#first-implementation-boundary-3994-part-a)
 separates this foundation from retention Settings and Ghostty. The

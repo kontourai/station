@@ -210,24 +210,8 @@ export async function fetchCodingFileContent(
   return result.data?.content ?? '';
 }
 
-export async function fetchTerminalPort(apiBase?: string): Promise<number> {
-  const resolvedApiBase = await resolveApiBase(apiBase);
-  const response = await authenticatedFetch(
-    `${resolvedApiBase}/api/system/terminal-port`,
-  );
-  const result = (await response.json()) as {
-    port?: number;
-    data?: { port?: number };
-  };
-  const port = result.port ?? result.data?.port;
-  if (!port) {
-    throw new Error('Terminal port unavailable');
-  }
-  return port;
-}
-
 /**
- * Mirrors {@link fetchTerminalPort}: the Voice WebSocket server binds a
+ * The Voice WebSocket server binds a
  * dedicated port (`serverPort + 2`) that is independent of `apiBase`'s own
  * port (the client's resolved API base may be the UI's same-origin port,
  * not the server's — see #198), so it must be queried from the backend

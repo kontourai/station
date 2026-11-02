@@ -2887,7 +2887,7 @@ Detached processes are tracked per instance in `.station/instances/<instance-id>
 **The server runs under the [process supervisor](../design/process-supervisor.md).**
 `start` launches `station-supervisor.js` from the instance's build directory,
 and the supervisor runs the core server as a supervised generation and holds
-its four listeners. The instance record, the home registry entry, and the
+its three listeners. The instance record, the home registry entry, and the
 active-local-station record name the supervisor's pid (`"supervised": true`
 in the record): the supervisor owns the instance while core server generations
 come and go beneath it. `station restart` hands off to a new generation in
@@ -2980,16 +2980,17 @@ set, it is the **only** case where the UI server injects an absolute
 `window.__API_BASE__` value into `index.html`, and that override always wins
 over the same-origin default. Leave it unset for the common case above.
 
-**Voice and Terminal** connect directly to their own dedicated WS ports
-(`GET /api/system/voice-port` and `GET /api/system/terminal-port` return the
-real, backend-authoritative port — the UI client queries these rather than
-assuming a fixed offset from its own resolved API base), not through the
-UI-server's HTTP/SSE reverse proxy. This resolves correctly on `localhost`, a
-LAN/tailnet host, and any setup where the dedicated WS port itself is
-reachable from the client. It remains a real, pre-existing limitation only
-under a single-origin HTTPS reverse proxy that forwards *just* the UI port
-and does not also separately expose the dedicated Voice/Terminal ports —
-in that specific case, Voice/Terminal will not be reachable.
+**Voice** connects directly to its own dedicated WS port
+(`GET /api/system/voice-port` returns the real, backend-authoritative port —
+the UI client queries it rather than assuming a fixed offset from its own
+resolved API base), not through the UI-server's HTTP/SSE reverse proxy. This
+resolves correctly on `localhost`, a LAN/tailnet host, and any setup where the
+dedicated WS port itself is reachable from the client. It remains a real,
+pre-existing limitation only under a single-origin HTTPS reverse proxy that
+forwards *just* the UI port and does not also separately expose the voice
+port — in that specific case, Voice will not be reachable. The **Coding
+terminal** uses `/api/terminal/socket` on the API origin, which the UI server
+forwards, so it needs no extra port.
 
 The **MCP Apps** sandbox proxy uses an ephemeral `127.0.0.1` port by default.
 `MCP_UI_FRAME_PORT` pins a nonzero port when a deployment needs a stable value.

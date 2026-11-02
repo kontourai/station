@@ -5758,14 +5758,8 @@ ticket and subprotocol constants, launch profiles and the scope predicate.
 `terminal:observe` is explicitly promotable and read-only; existing
 scopes/defaults/presets are unchanged. The SDK's `TerminalSessionStore` is the
 client for this protocol. A browser broker (DataChannel) route has no socket
-path yet. The legacy endpoint remains available for older clients; see the
+path yet. Station has no other terminal listener; see the
 [operator devices boundary](../design/terminal.md#operator-devices-and-coding-cutover-3994-part-b2).
-
-### Get Terminal Port
-
-`GET /api/system/terminal-port` returns `{success: true, port}` with the runtime
-base port plus 1. It reports the configured number, not proof the listener is
-bound or that this caller can open a terminal.
 
 ### Get Voice Port
 
