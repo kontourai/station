@@ -6,7 +6,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { TerminalController } from '../../terminal-view/controller';
 import type { EnginePort } from '../../terminal-view/engine/engine-client';
 import { EngineHost } from '../../terminal-view/engine/engine-host';
-import type { CellMetrics, FontSpec } from '../../terminal-view/render/glyph-atlas';
+import type {
+  CellMetrics,
+  FontSpec,
+} from '../../terminal-view/render/glyph-atlas';
 import type { TerminalRenderer } from '../../terminal-view/render/renderer';
 import type { TerminalTheme } from '../../terminal-view/render/screen-model';
 import type {
@@ -15,7 +18,10 @@ import type {
 } from '../../terminal-view/session';
 
 const WASM_PATH = fileURLToPath(
-  new URL('../../terminal-view/vendor/ghostty-vt/ghostty-vt.wasm', import.meta.url),
+  new URL(
+    '../../terminal-view/vendor/ghostty-vt/ghostty-vt.wasm',
+    import.meta.url,
+  ),
 );
 
 /** Draws nothing; records what the controller asked of it. */
@@ -147,9 +153,7 @@ async function startController() {
   const { session, output } = fakeSession();
   controller.setSession(session);
   await controller.start();
-  await vi.waitFor(() =>
-    expect(controller.getSnapshot().status).toBe('ready'),
-  );
+  await vi.waitFor(() => expect(controller.getSnapshot().status).toBe('ready'));
   return { controller, renderer, session, output, root };
 }
 
