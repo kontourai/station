@@ -5538,7 +5538,11 @@ accounts, agents and plugins cannot use it. The Coding UI uses the
 [terminal socket](#terminal-socket-operator-transport) instead.
 
 - `POST` creates a session with `{cols, rows, bindingKey?, subdirectory?,
-  legacyTerminalId?}`. `bindingKey` defaults to `project`; `thread:<id>` resolves
+  legacyTerminalId?, adopt?}`. With `adopt: true` it answers with the binding's
+  running shell, marked `adopted: true`, when it has one. Opens are serialized,
+  so concurrent `adopt` requests on an empty binding share one new shell; an
+  older host answers 400. Each shell record carries `ordinal`, its stable
+  "Shell N" within the binding. `bindingKey` defaults to `project`; `thread:<id>` resolves
   through the request-authorized session workspace. Absolute directories,
   traversal and symlink escapes are refused. There is no caller-selected cwd,
   executable or environment. `legacyTerminalId` imports the route Project's
@@ -5574,17 +5578,26 @@ it cannot preserve the shell across a server restart. Under a process supervisor
 that grants `workloads` (protocol 1.3), the shell and its journal live in the
 supervisor's workload host instead. A session recorded as running is reattached,
 with the same pid and its whole journal, by the next core generation after a
-restart or handoff (see [Shell host](../design/terminal.md#shell-host)). Journal persistence and
-line/byte retention are configured at service construction. Settings and age-based
-retention remain pending. See the
-[implementation boundary](../design/terminal.md#first-implementation-boundary-3994-part-a).
+restart or handoff (see [Shell host](../design/terminal.md#shell-host)). A shell
+that ended because its host restarted reopens on start under the same id, in its
+directory, after a "restored after restart" divider, without re-running anything
+(`restoredAt` is set). History persistence, location, maximum age and the
+per-terminal and total sizes are the `terminalHistory*`
+[settings](config.md); see [Journal](../design/terminal.md#journal).
 
-Core session retention also has whole-store constructor budgets: 1 GiB disk,
-64 MiB of raw tail payload and 32 retained records by default, reserving each
-record's configured per-journal limits. Ended/failed sessions eligible for the
-caller's operate authority expire when a new slot is needed; active sessions
-are pinned. Startup enforces the fixed retention policy on restored metadata.
-Expired session ids are refused. This does not add Settings or clear-history UI.
+Core session retention reserves each record's per-terminal history against the
+total, with 64 MiB of raw tail payload and 32 retained records as constructor
+budgets. Ended/failed sessions eligible for the caller's operate authority
+expire when a new slot is needed or once older than the maximum age; active
+sessions are pinned. Expired session ids are refused.
+
+`GET /api/terminal/history` (`terminal:observe`, operator only) returns
+`{enabled, directory, projects: [{projectId, terminals, running, bytes}],
+terminals, bytes}` for the sessions the caller may observe.
+`DELETE /api/terminal/history[?projectId=]` (`terminal:operate`) deletes the
+history of ended sessions in that Project, or everywhere, and returns
+`{cleared, running}`; running sessions keep theirs. Both are absent (404) on
+hosted Stations.
 The scoped service's POSIX node-pty close terminates discovered owned process groups; it does
 not merely send HUP to the shell pid. See the
 [retention and custody limits](../design/terminal.md#whole-store-retention-and-process-custody).

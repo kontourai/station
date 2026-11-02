@@ -205,9 +205,13 @@ records the admission and its residual risks.
   panel, a dock region, another device) shows the same tabs; only a tab whose
   session is not open yet is a view's own. An empty panel opens a shell only
   after that list says the binding has none, so a new browser tab or device
-  adopts the running shells. A shell's default name is its place among the
-  binding's listed shells, ended ones included, so views agree on it and
-  closing one renames no other. The Coding layout's lower panel yields to a
+  adopts the running shells. That first shell is opened through
+  `POST /api/projects/:slug/terminal-sessions` with `adopt`, which answers
+  with the binding's running shell when it has one; opens are serialized, so
+  two clients opening an empty binding at once get one shell. A shell's
+  default name is the `ordinal` the server stored when it opened ("Shell N",
+  never reused while any record of the binding remains), so views agree on it
+  and neither closing one nor evicting the oldest ended ones renames another. The Coding layout's lower panel yields to a
   dock region showing `coding:terminal`, and opening it there moves the
   Terminal back: one view of the shells at a time. Saved
   `coding-terminal-tabs` are migrated once into the first Project that opens:
@@ -226,13 +230,14 @@ stays refused at the client. The legacy listener, port discovery and
 
 ### Whole-store retention and process custody
 
-The service reserves each retained record's configured journal disk limit and
+The service reserves each retained record's per-terminal history limit and
 raw in-memory tail limit against whole-store budgets (defaults: 1 GiB disk,
 64 MiB of raw tail payload and 32 records). The smallest budget-derived slot
-count governs admission; a single journal that cannot fit is refused. These
-are core constructor controls, not shipped Settings controls or a measured
-process-RSS bound. With the default per-journal limits, at most 32 journal
-instances/tails and 512 MiB of journal files can be retained.
+count governs admission; a single journal that cannot fit is refused. The
+disk limits are the [retention settings](#journal); the record and tail
+budgets remain core constructor controls, not a measured process-RSS bound.
+With the default settings, at most 32 journal instances/tails and 512 MiB of
+journal files can be retained.
 
 When a slot is needed, the oldest ended or failed record eligible for the
 caller's operate authority expires: its journal and cache entry are discarded
@@ -425,10 +430,22 @@ escalation and the evidence. Windows job objects per workload, Settings
 controls for the host, and the UI for command sessions are not implemented.
 
 The supervisor survives a core server restart or upgrade, not a machine
-reboot. After a reboot, Station restores instead: the server record reopens
-the same terminals, groups, and splits, and the pane workspace restores where
-they are shown. The terminals reopen in the same working directories with their journals shown
-above a "restored after restart" divider. Nothing is re-run automatically.
+reboot. After a reboot, Station restores instead.
+
+**Implemented (#3994).** On start, `TerminalSessions` reopens a shell that
+ended only because its host went away: a record still `running` whose host
+no longer knows it (the supervisor restarted, or the machine rebooted), or a
+shell the in-process host stopped with its core (`hostStopped`). It keeps the
+same `terminalId`, appends a "restored after restart" divider to the same
+journal, and starts a fresh shell in the recorded directory, so the earlier
+output stays above the divider and nothing is re-run. A shell the supervisor
+still runs is reattached, never restored over (#4412); one that ended by
+itself while its host kept running (`attach` answers `'ended'`) stays ended.
+Only shells restore: agent and server-owned launches are programs, so they
+stay ended. A shell restores only while its Project exists and its directory
+still resolves to the same path. There is no group or split record (owner
+decision, 2026-10-31); tabs come back because the binding's session list
+does.
 
 #### Session kinds
 
@@ -471,20 +488,24 @@ and bytes) and appends segments to disk; compaction trims segments past the
 retention limit. Attach asks for `fromSeq`: served from the tail when
 covered, from disk when not, and a fresh snapshot otherwise.
 
-Retention is configurable in Settings, with these controls:
+Retention is configurable in Settings › Host options (implemented, #3994):
 
-| Setting | Default | Notes |
-| --- | --- | --- |
-| Keep terminal history | On | Off keeps only the in-memory tail; nothing is written to disk |
-| Storage location | `<home>/terminal-journals` | Any local directory; moving it migrates existing journals |
-| Maximum age | 30 days | Journals of closed terminals older than this are deleted |
-| Maximum size per terminal | 16 MiB | Oldest segments are compacted away first |
-| Maximum total size | 1 GiB | Least recently attached terminals are trimmed first |
+| Setting (`AppConfig` key) | Default | Range | Notes |
+| --- | --- | --- | --- |
+| Keep terminal history (`terminalHistoryEnabled`) | On | | Off: terminals opened afterwards keep only the in-memory tail and write nothing to disk |
+| Terminal history location (`terminalHistoryDirectory`) | `<home>/terminal-journals` | absolute path | Ended terminals' journals move there; a running one moves after it ends |
+| Terminal history maximum age (`terminalHistoryMaxAgeDays`) | 30 days | 1–3650 | An ended terminal's journal is deleted this long after it ended |
+| Terminal history per terminal (`terminalHistoryMaxTerminalMiB`) | 16 MiB | 1–1024 | Oldest segments are compacted away first |
+| Terminal history total (`terminalHistoryMaxTotalMiB`) | 1024 MiB | 16–1048576, at least the per-terminal size | The oldest ended terminals are expired first; running ones are pinned |
 
-Settings shows current usage and a clear-history action per project and for
-everything. Each limit has a rejection path: a value outside its allowed
-range is refused, not clamped. Defaults are starting points to tune once real
-usage is measured.
+The service reads them before each open and each usage read, and on start,
+so a change applies without a restart. Settings shows usage per Project
+(`GET /api/terminal/history`, observe) and clears ended terminals' history
+for one Project or everything (`DELETE /api/terminal/history[?projectId=]`,
+operate); running terminals keep theirs and are counted. Each value outside
+its range, a relative location and a total below the per-terminal size are
+refused with the setting's name, not clamped; an agent cannot move the
+location. Defaults are starting points to tune once real usage is measured.
 
 ### Transport
 
@@ -671,7 +692,7 @@ plugin-supplied key:
 | `coding-terminal-*` sessionStorage keys | Content (tabs, active terminal) migrated once into the server record; presentation (open, height) imported once by Coding's panel writer; then ignored |
 | `terminal-history/<id>.txt` | Imported as a first journal segment on first attach |
 | `pane:builtin:coding:terminal` | Kept as an alias of the new terminal pane |
-| `station.terminal.operations` metric, `station doctor` PTY probe | Kept; doctor also reports shell hosts |
+| `station.terminal.operations` metric, `station doctor` PTY probe | Kept; doctor also reports each running instance's shell host (the supervisor's `workloads` grant, from its status) and the `station-pty-host.js` bundle (#3994) |
 | ACP agent interactive tabs | Interactive supervisor workloads |
 | ACP agent terminal commands | Command supervisor workloads |
 
@@ -717,6 +738,13 @@ verification.
   merges.
 - End to end: open, reload, restart the server, and confirm the same shell
   (same PID) and no lost output; repeat on the mobile webview and Windows.
+- Retention and restore (#3994): the
+  [retention suite](../../src-server/services/terminal/__tests__/terminal-retention.process.test.ts)
+  runs real POSIX PTYs for restore after a host restart (new PID, same
+  directory, divider, no re-run), no restore over a reattached or
+  self-ended shell, age expiry, location migration, history off, the total
+  budget, usage and clearing, stable ordinals, and a two-client race on a
+  real loopback server that yields one shell. ConPTY is not qualified there.
 - Fault injection for each isolation check and for the query stripping.
 
 ## Open questions
