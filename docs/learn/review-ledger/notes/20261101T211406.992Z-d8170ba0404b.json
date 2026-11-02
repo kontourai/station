@@ -1,0 +1,13 @@
+{
+  "revision": "86a475fee17f30bfe24b272ed08e6bf2699fc531",
+
+  "notes": [
+    {"path":"docs/design/conduit-runtime-integration.md","note":"Reviewed the typed Station memory facade replacing three inherited Strands assertions: it delegates identified durable writes and reads, normalizes absent conversation title/metadata and discards the storage-only update return. Hook ordering and policy decisions are unchanged. Native conformance, native history and temporary-agent gates passed 28 tests.","inputs":["docs/design/conduit-runtime-integration.md","src-server/runtime/frameworks/strands-adapter.ts"]},
+
+    {"path":"docs/guides/agent-configuration.md","note":"Reviewed the Strands memory-port adaptation against lifecycle and storage guidance. The same configured store supplies history and identified writes; optional conversation inputs receive ordinary defaults. Durable approval, model/tool ownership and the opt-in preview scope are unchanged; 28 native/history/gate tests passed.","inputs":["docs/guides/agent-configuration.md","src-server/runtime/frameworks/strands-adapter.ts"]},
+
+    {"path":"docs/design/strands-migration.md","note":"Reviewed the typed memory facade against the historical migration assessment and its preview exception. It preserves current native-history synchronization while eliminating the three legacy type assertions. Ordinary and durable native-history tests passed; no live-provider or broader migration completion is inferred.","inputs":["docs/design/strands-migration.md","src-server/runtime/frameworks/strands-adapter.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Reviewed the Strands adapter delta for configuration impact: the typed memory facade supplies absent title/metadata defaults and delegates the configured store; it adds no configuration key, provider setting or new guardrail enforcement. Existing configuration defaults remain accurate.","inputs":["docs/reference/config.md","src-server/runtime/frameworks/strands-adapter.ts"]}
+  ]
+}

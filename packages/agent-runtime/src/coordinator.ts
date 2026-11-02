@@ -576,6 +576,8 @@ export function guardedModel(input: {
         } catch {
           answer = await callBegin();
         }
+        if (answer.kind === 'refused' && answer.reason === 'indeterminate')
+          throw new RuntimeError('DURABLE_MODEL_INDETERMINATE');
         if (answer.kind !== 'execute' && answer.kind !== 'replay')
           throw new RuntimeError('DURABLE_NO_EXECUTION_GRANT');
         session.fence = answer.fence;

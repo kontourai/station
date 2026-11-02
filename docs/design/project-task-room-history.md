@@ -187,9 +187,16 @@ until restart and logs a warning with the error, database path and recovery
 action.
 
 Background follower and search-backfill writes yield between contention
-attempts instead of busy-waiting on the main thread. Every other main-thread
-writer remains synchronous, including constructor migrations, foreground/provider event and
-Session updates, command/turn/delivery receipts and checkpoints, adoption and
+attempts instead of busy-waiting on the main thread. Observed provider-event
+publication also uses immediate write attempts and a yielding availability
+probe before retries, preserving the same event identity and bounded retry
+budget. This lets a room worker receive authorization while holding its write
+transaction. The image-reply overlap regression in
+`task-room-conversation-module.test.ts` exercises this ordering through the
+continuation route and checks durable room history.
+
+Other main-thread writers remain synchronous, including constructor migrations,
+foreground event and Session updates, command/turn/delivery receipts and checkpoints, adoption and
 recovery/credential ledgers, native/voice run transitions, attachment quota and
 reference writes, operational-event journals, conversation history and lineage,
 steer inputs, native session bindings, declared outputs, Session work-item

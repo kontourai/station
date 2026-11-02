@@ -90,6 +90,41 @@ afterEach(() => {
   events.close();
 });
 
+test.each(['success', 'contention', 'non-busy error'] as const)(
+  'immediate publication restores the prior shared timeout after %s',
+  (outcome) => {
+    const database = events['db'];
+    database.exec('PRAGMA busy_timeout = 137');
+    if (outcome === 'contention') peer.exec('BEGIN IMMEDIATE');
+    if (outcome === 'non-busy error')
+      database.exec(`CREATE TRIGGER reject_immediate_event
+        BEFORE INSERT ON orchestration_events
+        BEGIN SELECT RAISE(ABORT, 'immediate event rejected'); END`);
+    const publish = () =>
+      events.withImmediateWriteAttempt(() => {
+        expect(database.prepare('PRAGMA busy_timeout').get()).toMatchObject({
+          timeout: 0,
+        });
+        return events.appendEventIfAbsent(event('immediate-timeout')) === 1;
+      });
+    if (outcome === 'success') {
+      expect(publish()).toBe(true);
+      expect(events.listEvents(threadId)).toHaveLength(1);
+    } else {
+      expect(publish).toThrow(
+        outcome === 'contention'
+          ? /database is locked|SQLITE_BUSY/
+          : 'immediate event rejected',
+      );
+      expect(events.listEvents(threadId)).toEqual([]);
+    }
+    expect(database.prepare('PRAGMA busy_timeout').get()).toMatchObject({
+      timeout: 137,
+    });
+    events.assertNoOuterTransactionForPublication();
+  },
+);
+
 test.each([
   'success',
   'contended-then-successful retry',

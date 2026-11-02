@@ -1,8 +1,8 @@
 # Model runtime context
 
-This experimental model-only package owns pinned framework entry/request bytes,
+This experimental package owns pinned framework entry/request bytes,
 one-shot dispatch grants, completed normalized tapes, aborted partial audit,
-and output projection readiness. Station remains a future consumer. It imports
+and output projection readiness. Station consumes the agent-turn protocol behind an off-by-default preview. It imports
 only public Monument contracts and pinned optional framework APIs.
 
 `types.ts` owns the model protocol. `decisions.ts` owns transitions, revision
@@ -119,3 +119,28 @@ operationally unavailable SQL and incomplete enumeration. These are local owner
 checks at their source pins; independent delta review and workload admission
 remain separate. Strict new admission parses all selected active payloads;
 these checks establish no active-set cost or physical table-page I/O proof.
+
+The agent-turn writer is `agent-steps/10`. It adds cancellation requests,
+terminal timestamps and journaled transport frames without replacing the older
+model journal. Station's off-by-default durable preview consumes the root contract and explicit `/internal` integration entry
+at its real framework/model/tool/approval boundaries. Its native adapter suite
+is `src-server/runtime/agents/__tests__/durable-agent-conformance.test.ts`;
+`chat-primary-stream.durable-disconnect.test.ts` owns the route handoff control.
+These local scripted boundaries do not establish provider or release qualification.
+
+Writer 7 retains immutable payload bodies behind indexed effect headers. The owner retains a connection with peer/local/schema change detection; prefix commits batch at 16 ms, 64 KiB or 128 parts. New durable approval waits default to ten minutes and accept `STATION_DURABLE_APPROVAL_TIMEOUT_MS`; recorded deadlines do not change on restart.
+
+Writer 8 adds immutable effect/approval change tracking and per-turn validation cursors. It validates changed records and cross-links without decoding unchanged history, while schema changes and recovery keep full validation. A cursor for one turn never acknowledges another turn’s unchecked writes.
+
+Writer 9 groups partial wire values into immutable bodies of at most 128 entries. Its migration preserves logical partial/input/result bytes and existing turn records while rewriting effect control headers to physical version 2. Previous body rows remain retained. The old writer refuses the new metadata.
+
+
+Writer 10 stores only complete 128-entry partial groups as immutable bodies. An in-progress tail of at most 127 wire values is overwritten in its effect header and checked against its digest. The model stream flush limit is **128 parts**, 64 KiB or 16 ms; the storage group size is also 128. The separate foreground frame transaction limit is **1024 frames**, 64 KiB or 16 ms. These are different limits.
+
+Large request/result bodies share immutable fragments of at most 16,384 UTF-16 code units behind a physical `agent-body/2` descriptor. The reconstructed logical wire keeps its original digest and byte length, including Unicode across fragment boundaries. Migration validates the frozen writer-9 schema and records before creating the chunk table and physical version-3 effect headers. Existing bodies and turn records remain retained; migration does not reclaim historical garbage.
+
+Change tracking keeps the newest receipt for every turn/kind/id. A receipt can be deleted only when a newer receipt for that same key exists. Sequence numbers never decrease, and any connection whose cursor predates a change still sees the newer receipt. The final receipt, including a deletion tombstone, remains protected. Pure custom clocks take the incremental path; clock callbacks that write rows are refused and rolled back.
+
+The chat projection commits bounded batches before displaying any frame. Each frame keeps its own ID, wire and position; transaction grouping does not merge identities. Control and terminal events flush pending text first, and cleanup waits for both the publication drain and owner completion. The frame ceiling is 1,048,576 per turn, leaving margin above the default 200-step workload at 400 chunks per answer. Text processing retains provider chunk boundaries. New turns record `input-chunks/1`; recovery of older descriptors retains their original character-frame layout.
+
+The benchmark includes the actual in-process chat/SSE route and `projectFrame`/`projectFrameBatch`, with 0, 5 and 20 ms token pacing. It reports total home bytes divided by emitted text bytes, journal/body/frame bytes, transient WAL peak, elapsed ratio, command and amortized projection costs, and event-loop stall. The fresh-journal workload budget is 128 KiB fixed + 512 KiB per model step + twice emitted text bytes; immutable body storage has a separate 128 KiB per-step + twice-text budget. These allowances include indexed frame/change metadata; they are not a claim that total disk usage is twice text, or that retained raw disk is bounded. TCP and the outer EventStore relay remain outside this benchmark. SDK tracing stays active; fixture traces and garbage are cleared between measurements, never within a measured turn.
