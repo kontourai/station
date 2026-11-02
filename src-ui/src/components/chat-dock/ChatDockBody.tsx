@@ -117,7 +117,10 @@ import type { ChatInputArea } from '../chat/ChatInputArea';
 import { ComposerStopButton } from '../chat/ComposerStopButton';
 import { durableMentionAuthority } from '../chat/composer-mentions';
 import { EphemeralMessage } from '../chat/EphemeralMessage';
-import type { ForkTurnSource } from '../chat/fork-turn-source';
+import type {
+  ForkTurnSource,
+  MessageResendRequest,
+} from '../chat/fork-turn-source';
 import { preloadMarkdownRenderer } from '../chat/LazyMarkdown';
 import { outboxNeedsReview } from '../chat/pendingMessages';
 import type { OutboxRows } from '../chat/QueuedMessages';
@@ -383,6 +386,8 @@ interface ChatDockBodyProps {
    */
   loadingEscapeDelayMs?: number;
   onForkFromTurn?: (source: ForkTurnSource) => void;
+  /** #4406: Regenerate and Edit and resend, gated with the fork. */
+  onResendFromMessage?: (request: MessageResendRequest) => void;
   onComposerEnabledChange?: (element: HTMLTextAreaElement | null) => void;
   chatInput: ReturnType<typeof useChatInput>;
   setShowStatsPanel: (show: boolean) => void;
@@ -595,6 +600,7 @@ export function ChatDockBody({
   onRetryConversationOpen,
   loadingEscapeDelayMs = LOADING_ESCAPE_DELAY_MS,
   onForkFromTurn,
+  onResendFromMessage,
   setShowStatsPanel,
 }: ChatDockBodyProps) {
   const [scrollControlsTarget, setScrollControlsTarget] =
@@ -906,10 +912,12 @@ export function ChatDockBody({
    * unconditional stayed green — a guard nothing can reach reads as a
    * guarantee and is not one.
    */
-  const forkFromTurn =
-    activeSession.replay && activeSession.replay.mode !== 'timeline'
-      ? undefined
-      : onForkFromTurn;
+  const forkableTranscript =
+    !activeSession.replay || activeSession.replay.mode === 'timeline';
+  const forkFromTurn = forkableTranscript ? onForkFromTurn : undefined;
+  const resendFromMessage = forkableTranscript
+    ? onResendFromMessage
+    : undefined;
   const renderedSession = useMemo(
     () =>
       transcript.enabled
@@ -1980,6 +1988,7 @@ export function ChatDockBody({
             onQuote: quoteMessage,
             onForkFromTurn: forkFromTurn,
             onNewChatFromMessage: onNewChat ? newChatFromMessage : undefined,
+            onResendFromMessage: resendFromMessage,
             // The dock's header gear opens ChatSettingsPanel, which carries the
             // Summarize entry point (#3310).
             hasSettingsEntryPoint: true,

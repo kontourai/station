@@ -52,6 +52,7 @@ const MODEL_BRAVO = 'claude-haiku-mid-switch';
 const SWITCH_CONVERSATION = 'dd-switch-model';
 const HANDOFF_CONVERSATION = 'dd-agent-handoff';
 const FORK_CONVERSATION = 'dd-fork-source';
+const RESEND_CONVERSATION = 'dd-resend-source';
 const HANDOFF_SESSION = 'dd-agent-handoff:session:1';
 const OBSERVATION_DIR_ENV = 'STATION_DAILY_DRIVER_SCENARIO_OBSERVATION_DIR';
 const WRAPPER_ENV = 'STATION_DAILY_DRIVER_SCENARIO_OBSERVATION_WRAPPER';
@@ -690,4 +691,138 @@ test.describe('daily-driver mid-conversation switching (station#3307)', () => {
       markerExactlyOnce: true,
     });
   });
+
+  for (const action of ['Regenerate', 'Edit and resend'] as const) {
+    test(`${action} forks before the asking message and keeps the original answer (#4406)`, async ({
+      page,
+    }) => {
+      test.setTimeout(120_000);
+      const childId = `dd-resend-child-${action === 'Regenerate' ? 'regenerate' : 'edit'}`;
+      const forkBodies: Array<Record<string, unknown>> = [];
+      const shell = await seedDailyDriverShell(page, {
+        agents: SHELL_AGENTS,
+        conversations: [
+          ...SHELL_CONVERSATIONS,
+          {
+            id: RESEND_CONVERSATION,
+            title: 'Resend source chat',
+            agentSlug: 'claude',
+          },
+        ],
+        extraRoutes: async (path, route) => {
+          if (
+            path !==
+              `/api/agents/claude/conversations/${RESEND_CONVERSATION}/fork` ||
+            route.request().method() !== 'POST'
+          )
+            return false;
+          forkBodies.push(route.request().postDataJSON());
+          shell.recordFork(
+            RESEND_CONVERSATION,
+            { id: childId, title: 'Resend child', agentSlug: 'claude' },
+            'dd-resend-turn-1',
+          );
+          await route.fulfill({
+            status: 200,
+            contentType: 'application/json',
+            body: JSON.stringify({
+              success: true,
+              data: {
+                conversationId: childId,
+                branchPointTurnId: 'dd-resend-turn-1',
+                continuation: 'replay-seed',
+                disclosure:
+                  'Station replay carries the selected transcript only. Engine cursor, tool state, and approval state do not carry.',
+                idempotent: false,
+              },
+            }),
+          });
+          return true;
+        },
+      });
+      await seedDailyDriverChats(page, [
+        {
+          conversationId: RESEND_CONVERSATION,
+          agentSlug: 'claude',
+          connectionId: 'claude',
+          title: 'Resend source chat',
+          model: MODEL_ALPHA,
+        },
+      ]);
+      await openChat(page, RESEND_CONVERSATION);
+      const textarea = page.locator('textarea[placeholder*="Type a message"]');
+      const transcript = transcriptLocator(page);
+      await textarea.fill('First prompt.');
+      await textarea.press('Enter');
+      await expect.poll(() => shell.executionRequests.length).toBe(1);
+      await completeDispatchedTurn(page, {
+        threadId: RESEND_CONVERSATION,
+        turnId: 'dd-resend-turn-1',
+        provider: 'claude',
+        userText: 'First prompt.',
+        reply: 'First reply.',
+      });
+      await expectSettled(page);
+      await shell.markCurrentSessionTerminal(RESEND_CONVERSATION);
+      await textarea.fill('Second prompt.');
+      await textarea.press('Enter');
+      await expect.poll(() => shell.executionRequests.length).toBe(2);
+      const secondSessionId = shell.sessionIds(RESEND_CONVERSATION).at(-1);
+      if (!secondSessionId) throw new Error('second dispatch has no Session');
+      await completeDispatchedTurn(page, {
+        threadId: secondSessionId,
+        turnId: 'dd-resend-turn-2',
+        provider: 'claude',
+        userText: 'Second prompt.',
+        reply: 'Second reply.',
+      });
+      await expect(
+        transcript.getByText('Second reply.', { exact: true }),
+      ).toBeVisible({ timeout: 5_000 });
+      await expectSettled(page);
+
+      // The bubble's right-click opens its own ⋯ menu.
+      await transcript
+        .getByText(
+          action === 'Regenerate' ? 'Second reply.' : 'Second prompt.',
+          {
+            exact: true,
+          },
+        )
+        .click({ button: 'right' });
+      await page.getByRole('menuitem', { name: action }).click();
+
+      await expect
+        .poll(() => new URL(page.url()).searchParams.get('chat'))
+        .toBe(childId);
+      expect(forkBodies).toHaveLength(1);
+      // Forked just before "Second prompt.": the first exchange carries over.
+      expect(forkBodies[0]).toMatchObject({
+        targetAgent: 'claude',
+        branchPointTurnId: 'dd-resend-turn-1',
+      });
+      await expect(
+        transcript.getByText('First reply.', { exact: true }),
+      ).toBeVisible({ timeout: 10_000 });
+      if (action === 'Regenerate') {
+        await expect.poll(() => shell.executionRequests.length).toBe(3);
+        expect(shell.executionRequests[2]).toMatchObject({
+          conversationId: childId,
+          message: 'Second prompt.',
+        });
+      } else {
+        await expect(textarea).toHaveValue('Second prompt.');
+        await expect(textarea).toBeFocused();
+        expect(shell.executionRequests).toHaveLength(2);
+      }
+      await expect(
+        transcript.getByText('Second reply.', { exact: true }),
+      ).toHaveCount(0);
+
+      await page.goto(`/?dock=open&maximize=true&chat=${RESEND_CONVERSATION}`);
+      await expect(
+        transcript.getByText('Second reply.', { exact: true }),
+      ).toBeVisible({ timeout: 10_000 });
+    });
+  }
 });

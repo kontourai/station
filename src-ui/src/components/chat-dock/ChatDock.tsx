@@ -143,8 +143,13 @@ import { useOptionalObservedWorkStatus } from '../../views/home/useObservedWorkS
 import { useWorkFacts } from '../../views/home/useWorkFacts';
 import type { ConversationOpenResult } from '../../views/home/work-item-open-policy';
 import { workStatusText } from '../../views/home/work-status';
+import { agentRunnability } from '../agent-runnability';
 import { durableMentionAuthority } from '../chat/composer-mentions';
 import { publishReferenceableConversations } from '../chat/conversationReferenceDrag';
+import type {
+  ForkTurnSource,
+  MessageResendRequest,
+} from '../chat/fork-turn-source';
 import { MarkdownLinkContext } from '../chat/MarkdownLinkContext';
 import { pendingMessageCount } from '../chat/pendingMessages';
 import { ShareIntakeController } from '../chat/ShareIntakeController';
@@ -209,7 +214,10 @@ import { useAcknowledgeVisibleConversation } from './useAcknowledgeVisibleConver
 import { useChatDockActiveChatSync } from './useChatDockActiveChatSync';
 import { useChatDockOverlays } from './useChatDockOverlays';
 import { useChatDockViewModel } from './useChatDockViewModel';
-import { useConversationBoundaryDialogs } from './useConversationBoundaryDialogs';
+import {
+  type ForkFollowUp,
+  useConversationBoundaryDialogs,
+} from './useConversationBoundaryDialogs';
 import { useCoordinatorDockActions } from './useCoordinatorDockActions';
 import { useDockCopyActions } from './useDockCopyActions';
 import { useFirstRunDockNudge } from './useFirstRunDockNudge';
@@ -222,6 +230,19 @@ import { useTaskStartedNotice } from './useTaskStartedNotice';
  * session can vouch only for its agent identity, and resolveAgentExecution
  * already degrades an identity-only agent to honest unknown execution data.
  */
+/** What the fork draft's Agent pick chose; absent, the source's own. */
+type ForkAgentChoice = Pick<
+  OpenConversationOptions,
+  | 'modelSource'
+  | 'defaultModel'
+  | 'defaultModelSource'
+  | 'providerId'
+  | 'providerType'
+> & {
+  modelOverride?: string;
+  providerOptions?: Record<string, unknown>;
+};
+
 function agentIdentityFromSession(
   session: Pick<ChatSession, 'agentSlug' | 'agentName'>,
 ): Pick<AgentData, 'slug' | 'name'> | null {
@@ -559,6 +580,8 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
     files?: File[];
     /** `staging` while the intake reads them, `staged` once it has. */
     filesPhase?: 'staging' | 'staged';
+    /** #4406: a re-sent message's own attachments, sent with its prompt. */
+    attachments?: FileAttachment[];
   } | null>(null);
   const { captureCredentialEvidence } = useConnections();
   const mentionCredentialEvidence = captureCredentialEvidence();
@@ -1200,7 +1223,11 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
   }, [newChatRequestEpoch]);
   // What the dock's title slot calls an open draft, as the draft names itself.
   const newChatDraftTitle = forkSource
-    ? 'Fork from here'
+    ? forkSource.followUp?.mode === 'regenerate'
+      ? 'Regenerate'
+      : forkSource.followUp
+        ? 'Edit and resend'
+        : 'Fork from here'
     : newChatTaskShaping
       ? 'New Task'
       : 'New chat';
@@ -1537,9 +1564,11 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
     if (chatInput.sendBlockedReason) return;
     setPendingGoalSend(null);
     if (chatInput.input !== pendingGoalSend.prompt) return;
-    void chatInput.handleSend(pendingGoalSend.prompt, undefined, {
-      ambientContext: pendingGoalSend.ambientContext,
-    });
+    void chatInput.handleSend(
+      pendingGoalSend.prompt,
+      pendingGoalSend.attachments,
+      { ambientContext: pendingGoalSend.ambientContext },
+    );
   }, [
     activeSessionId,
     activeSessionForHook?.id,
@@ -3134,6 +3163,243 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
     ],
   );
 
+  /**
+   * The fork draft for a historical turn: its Agent list, and the fork's
+   * pending and error states. Returns the source it opened with, or `null`
+   * when a newer fork request or a missing conversation stood it down.
+   */
+  const openForkDraft = async (
+    source: ForkTurnSource,
+    followUp?: ForkFollowUp,
+  ) => {
+    const generation = ++forkGenerationRef.current;
+    const [
+      { getOrCreateForkAttemptKey },
+      { resolveHistoricalForkExecution },
+      { getConversationTimelineContext, returnToLatestConversation },
+    ] = await Promise.all([
+      import('./forkAttemptKey'),
+      import('./forkSourceExecution'),
+      import('../../hooks/orchestration/replay/controller'),
+    ]);
+    if (generation !== forkGenerationRef.current) return null;
+    const timeline = getConversationTimelineContext();
+    const conversationId =
+      activeSession?.conversationId ?? timeline?.sourceConversationId;
+    if (!conversationId) return null;
+    const sourceExecution = resolveHistoricalForkExecution(
+      source.sessionId,
+      orchestrationSessions,
+    );
+    const next: NonNullable<typeof forkSource> = {
+      id: conversationId,
+      agentSlug: source.agentSlug,
+      turnId: source.turnId,
+      projectSlug: activeSession?.projectSlug ?? timeline?.sourceProjectSlug,
+      projectName: activeSession?.projectName ?? timeline?.sourceProjectName,
+      model: source.model,
+      modelSource: source.model ? 'runtime' : undefined,
+      defaultModel: source.model,
+      defaultModelSource: source.model ? 'runtime' : undefined,
+      providerType: source.provider ?? sourceExecution.providerType,
+      providerId: sourceExecution.providerId,
+      providerOptions: sourceExecution.providerOptions,
+      sourceSessionId: source.sessionId,
+      idempotencyKey: getOrCreateForkAttemptKey(conversationId, source.turnId),
+      followUp,
+    };
+    setForkSource(next);
+    setForkOperation({ pending: false, error: null });
+    if (timeline) returnToLatestConversation();
+    setShowNewChatModal(true);
+    return next;
+  };
+
+  /** #4406: the fork's own chat, once open, gets the message back. */
+  const applyForkFollowUp = (
+    conversationId: string,
+    followUp: ForkFollowUp,
+  ) => {
+    const sessionId = Object.entries(activeChatsStore.getSnapshot()).find(
+      ([, chat]) => chat.conversationId === conversationId,
+    )?.[0];
+    if (!sessionId) return;
+    updateChat(sessionId, {
+      input: followUp.text,
+      ...(followUp.mode === 'edit' && followUp.attachments.length
+        ? { attachments: followUp.attachments }
+        : {}),
+    });
+    if (followUp.mode === 'regenerate')
+      setPendingGoalSend({
+        sessionId,
+        prompt: followUp.text,
+        authority: requestAuthority,
+        attachments: followUp.attachments.length
+          ? followUp.attachments
+          : undefined,
+      });
+    requestComposerFocus(sessionId, { whileBusy: true });
+  };
+
+  const runFork = async (
+    source: NonNullable<typeof forkSource>,
+    agent: AgentData,
+    targetProjectSlug: string | undefined,
+    targetProjectName: string | undefined,
+    choice?: ForkAgentChoice,
+  ) => {
+    const generation = ++forkGenerationRef.current;
+    const controller = new AbortController();
+    forkAbortRef.current = controller;
+    setForkOperation({ pending: true, error: null });
+    try {
+      const sameAgent = agent.slug === source.agentSlug;
+      const { forkConversation } = await import('@kontourai/station-sdk');
+      if (generation !== forkGenerationRef.current) return;
+      const result = await forkConversation(
+        source.agentSlug,
+        source.id,
+        agent.slug,
+        {
+          branchPointTurnId: source.turnId,
+          targetProjectSlug,
+          idempotencyKey: source.idempotencyKey,
+          signal: controller.signal,
+        },
+      );
+      if (generation !== forkGenerationRef.current) return;
+      const { completeForkAttempt } = await import('./forkAttemptKey');
+      completeForkAttempt(source.id, source.turnId, source.idempotencyKey);
+      const inherited = <T,>(chosen: T | undefined, recorded: T | undefined) =>
+        chosen ?? (sameAgent ? recorded : undefined);
+      const opened = await openConversation(result.conversationId, agent.slug, {
+        projectSlug: targetProjectSlug,
+        projectName: targetProjectName,
+        model: inherited(choice?.modelOverride, source.model),
+        requestedModel: inherited(choice?.modelOverride, source.model),
+        modelSource: inherited(choice?.modelSource, source.modelSource),
+        defaultModel: inherited(choice?.defaultModel, source.defaultModel),
+        defaultModelSource: inherited(
+          choice?.defaultModelSource,
+          source.defaultModelSource,
+        ),
+        providerOptions: inherited(
+          choice?.providerOptions,
+          source.providerOptions,
+        ),
+        requestedProviderOptions: inherited(
+          choice?.providerOptions,
+          source.providerOptions,
+        ),
+        providerId: inherited(choice?.providerId, source.providerId),
+        providerType: inherited(choice?.providerType, source.providerType),
+        hydrateMessages: true,
+        signal: controller.signal,
+        revealDock: !isFullscreenPlacement,
+        beforeFocus: () => {
+          // The fork's open navigates, which dismisses the draft's Back
+          // entry: settle first.
+          settleDockForStartedDraft();
+          return commitForkOpenBoundary({
+            signal: controller.signal,
+            generation,
+            currentGeneration: () => forkGenerationRef.current,
+            route: () => routeToScopedChatProject(targetProjectSlug),
+          });
+        },
+      });
+      if (generation !== forkGenerationRef.current) return;
+      if (!opened)
+        throw new Error('The fork was created but could not be opened.');
+      if (source.followUp)
+        applyForkFollowUp(result.conversationId, source.followUp);
+      invalidate(conversationQueries.inventory().queryKey);
+      invalidate(orchestrationQueries.sessions().queryKey);
+      cancelFork();
+      setShowNewChatModal(false);
+    } catch (error) {
+      if (generation !== forkGenerationRef.current || controller.signal.aborted)
+        return;
+      setForkOperation({
+        pending: false,
+        error:
+          error instanceof Error
+            ? userFacingErrorMessage(error)
+            : 'Could not create the fork. Try again.',
+      });
+    } finally {
+      if (forkAbortRef.current === controller) forkAbortRef.current = null;
+    }
+  };
+
+  /**
+   * #4406: Regenerate and Edit and resend. Both fork just before the
+   * person's message, so the original answer stays, and run with the
+   * message's own Agent; the fork draft shows the pending fork and any error,
+   * and stays on its Agent list when that Agent cannot run now.
+   */
+  const resendFromMessage = async (request: MessageResendRequest) => {
+    let attachments: FileAttachment[];
+    try {
+      const { resolveRetryAttachments, retryAttachmentsFromParts } =
+        await import('./retry-attachments');
+      attachments = await resolveRetryAttachments(
+        retryAttachmentsFromParts(request.parts, 'resend'),
+        apiBase,
+      );
+    } catch (error) {
+      showToast(userFacingErrorMessage(error), 'error');
+      return;
+    }
+    const followUp: ForkFollowUp = {
+      mode: request.mode,
+      text: request.text,
+      attachments,
+    };
+    if (!request.fork) {
+      // The message opened the conversation, so a fork before it would be
+      // empty: a new chat with the same Agent and Project is that fork.
+      const agent = activeSession
+        ? agents.find((entry) => entry.slug === activeSession.agentSlug)
+        : undefined;
+      if (!activeSession || !agent) {
+        showToast('This chat’s Agent is no longer available.', 'error');
+        return;
+      }
+      const sessionId = openChatForAgentInScopedPane(
+        agent,
+        activeSession.projectSlug,
+        activeSession.projectName,
+        request.text,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        request.mode === 'edit' ? attachments : undefined,
+      );
+      if (!sessionId) return;
+      if (request.mode === 'regenerate')
+        setPendingGoalSend({
+          sessionId,
+          prompt: request.text,
+          authority: requestAuthority,
+          attachments: attachments.length ? attachments : undefined,
+        });
+      requestComposerFocus(sessionId, { whileBusy: true });
+      return;
+    }
+    const source = await openForkDraft(request.fork, followUp);
+    if (!source) return;
+    const agent = agents.find(
+      (entry) =>
+        entry.slug === source.agentSlug && agentRunnability(entry).runnable,
+    );
+    if (agent)
+      await runFork(source, agent, source.projectSlug, source.projectName);
+  };
+
   return (
     <MarkdownLinkContext.Provider value={markdownLinkContext}>
       <SkillShortcutRegistrar
@@ -3850,7 +4116,7 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                                 error: forkOperation.error,
                               }
                             : undefined,
-                          onForkAgentSelect: async (
+                          onForkAgentSelect: (
                             agent,
                             projectSlug,
                             projectName,
@@ -3864,135 +4130,21 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                             providerType,
                           ) => {
                             if (!forkSource || forkOperation.pending) return;
-                            const generation = ++forkGenerationRef.current;
-                            const controller = new AbortController();
-                            forkAbortRef.current = controller;
-                            setForkOperation({ pending: true, error: null });
-                            try {
-                              const sameAgent =
-                                agent.slug === forkSource.agentSlug;
-                              const { forkConversation } = await import(
-                                '@kontourai/station-sdk'
-                              );
-                              if (generation !== forkGenerationRef.current)
-                                return;
-                              const result = await forkConversation(
-                                forkSource.agentSlug,
-                                forkSource.id,
-                                agent.slug,
-                                {
-                                  branchPointTurnId: forkSource.turnId,
-                                  targetProjectSlug: projectSlug,
-                                  idempotencyKey: forkSource.idempotencyKey,
-                                  signal: controller.signal,
-                                },
-                              );
-                              if (generation !== forkGenerationRef.current)
-                                return;
-                              const { completeForkAttempt } = await import(
-                                './forkAttemptKey'
-                              );
-                              completeForkAttempt(
-                                forkSource.id,
-                                forkSource.turnId,
-                                forkSource.idempotencyKey,
-                              );
-                              const opened = await openConversation(
-                                result.conversationId,
-                                agent.slug,
-                                {
-                                  projectSlug,
-                                  projectName,
-                                  model:
-                                    modelOverride ??
-                                    (sameAgent ? forkSource.model : undefined),
-                                  requestedModel:
-                                    modelOverride ??
-                                    (sameAgent ? forkSource.model : undefined),
-                                  modelSource:
-                                    modelSource ??
-                                    (sameAgent
-                                      ? forkSource.modelSource
-                                      : undefined),
-                                  defaultModel:
-                                    defaultModel ??
-                                    (sameAgent
-                                      ? forkSource.defaultModel
-                                      : undefined),
-                                  defaultModelSource:
-                                    defaultModelSource ??
-                                    (sameAgent
-                                      ? forkSource.defaultModelSource
-                                      : undefined),
-                                  providerOptions:
-                                    providerOptions ??
-                                    (sameAgent
-                                      ? forkSource.providerOptions
-                                      : undefined),
-                                  requestedProviderOptions:
-                                    providerOptions ??
-                                    (sameAgent
-                                      ? forkSource.providerOptions
-                                      : undefined),
-                                  providerId:
-                                    providerId ??
-                                    (sameAgent
-                                      ? forkSource.providerId
-                                      : undefined),
-                                  providerType:
-                                    providerType ??
-                                    (sameAgent
-                                      ? forkSource.providerType
-                                      : undefined),
-                                  hydrateMessages: true,
-                                  signal: controller.signal,
-                                  revealDock: !isFullscreenPlacement,
-                                  beforeFocus: () => {
-                                    // The fork's open navigates, which dismisses
-                                    // the draft's Back entry: settle first.
-                                    settleDockForStartedDraft();
-                                    return commitForkOpenBoundary({
-                                      signal: controller.signal,
-                                      generation,
-                                      currentGeneration: () =>
-                                        forkGenerationRef.current,
-                                      route: () =>
-                                        routeToScopedChatProject(projectSlug),
-                                    });
-                                  },
-                                },
-                              );
-                              if (generation !== forkGenerationRef.current)
-                                return;
-                              if (!opened)
-                                throw new Error(
-                                  'The fork was created but could not be opened.',
-                                );
-                              invalidate(
-                                conversationQueries.inventory().queryKey,
-                              );
-                              invalidate(
-                                orchestrationQueries.sessions().queryKey,
-                              );
-                              cancelFork();
-                              setShowNewChatModal(false);
-                            } catch (error) {
-                              if (
-                                generation !== forkGenerationRef.current ||
-                                controller.signal.aborted
-                              )
-                                return;
-                              setForkOperation({
-                                pending: false,
-                                error:
-                                  error instanceof Error
-                                    ? userFacingErrorMessage(error)
-                                    : 'Could not create the fork. Try again.',
-                              });
-                            } finally {
-                              if (forkAbortRef.current === controller)
-                                forkAbortRef.current = null;
-                            }
+                            return runFork(
+                              forkSource,
+                              agent,
+                              projectSlug,
+                              projectName,
+                              {
+                                modelOverride,
+                                modelSource,
+                                defaultModel,
+                                defaultModelSource,
+                                providerOptions,
+                                providerId,
+                                providerType,
+                              },
+                            );
                           },
                           onTaskStarted: (task, stationName) => {
                             setShowNewChatModal(false, undefined, 'started');
@@ -4135,73 +4287,10 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                             openUserSelectedConversationInScopedPane
                           }
                           onForkFromTurn={(source) => {
-                            const generation = ++forkGenerationRef.current;
-                            void Promise.all([
-                              import('./forkAttemptKey'),
-                              import('./forkSourceExecution'),
-                              import(
-                                '../../hooks/orchestration/replay/controller'
-                              ),
-                            ]).then(
-                              ([
-                                { getOrCreateForkAttemptKey },
-                                { resolveHistoricalForkExecution },
-                                {
-                                  getConversationTimelineContext,
-                                  returnToLatestConversation,
-                                },
-                              ]) => {
-                                if (generation !== forkGenerationRef.current)
-                                  return;
-                                const timeline =
-                                  getConversationTimelineContext();
-                                const conversationId =
-                                  activeSession?.conversationId ??
-                                  timeline?.sourceConversationId;
-                                if (!conversationId) return;
-                                const sourceExecution =
-                                  resolveHistoricalForkExecution(
-                                    source.sessionId,
-                                    orchestrationSessions,
-                                  );
-                                setForkSource({
-                                  id: conversationId,
-                                  agentSlug: source.agentSlug,
-                                  turnId: source.turnId,
-                                  projectSlug:
-                                    activeSession?.projectSlug ??
-                                    timeline?.sourceProjectSlug,
-                                  projectName:
-                                    activeSession?.projectName ??
-                                    timeline?.sourceProjectName,
-                                  model: source.model,
-                                  modelSource: source.model
-                                    ? 'runtime'
-                                    : undefined,
-                                  defaultModel: source.model,
-                                  defaultModelSource: source.model
-                                    ? 'runtime'
-                                    : undefined,
-                                  providerType:
-                                    source.provider ??
-                                    sourceExecution.providerType,
-                                  providerId: sourceExecution.providerId,
-                                  providerOptions:
-                                    sourceExecution.providerOptions,
-                                  sourceSessionId: source.sessionId,
-                                  idempotencyKey: getOrCreateForkAttemptKey(
-                                    conversationId,
-                                    source.turnId,
-                                  ),
-                                });
-                                setForkOperation({
-                                  pending: false,
-                                  error: null,
-                                });
-                                if (timeline) returnToLatestConversation();
-                                setShowNewChatModal(true);
-                              },
-                            );
+                            void openForkDraft(source);
+                          }}
+                          onResendFromMessage={(request) => {
+                            void resendFromMessage(request);
                           }}
                           onOpenBackgroundTasks={showBackgroundTasks}
                         />

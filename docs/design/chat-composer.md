@@ -136,8 +136,9 @@ of the chat on screen, in any dock region or placement (full screen on a phone):
   and the composer scroll together. Otherwise the composer stays pinned and, in
   a short dock, a plain New chat's text box shrinks toward one line.
 - **Header.** The dock's title slot (and the phone header) reads **New chat**,
-  **New Task** or **Fork from here**, and the header's project controls stand
-  down so the draft's Project chip is the one destination.
+  **New Task** or **Fork from here** (**Regenerate** or **Edit and resend**
+  for a fork a message action started), and the header's project controls
+  stand down so the draft's Project chip is the one destination.
 - **Leaving.** Escape, Back, **Cancel return** or Cancel fork dismisses the
   draft and hands back its text; on a phone this restores the dock size the
   draft replaced. Start (and a fork's open) closes it as started before
@@ -450,8 +451,9 @@ that cannot take another message (`terminalSession`) offers Send again to no
 caller. A failed retry from the picker keeps the last answer for that
 conversation. Not gated: the app-wide New chat entry points (toolbar,
 shortcut, inbox, task switcher), because the answer is per conversation, and
-Fork from turn, which posts `POST /agents/:slug/conversations/:id/fork`, a
-route the answer does not cover. The client does not re-derive scopes; when
+Fork from turn (and Regenerate and Edit and resend, which fork the same way),
+which posts `POST /agents/:slug/conversations/:id/fork`, a route the answer
+does not cover. The client does not re-derive scopes; when
 the server sent no answer, everything shows and the server still enforces.
 The answer is as of the last open read, so a scope changed mid-session shows
 on the next one. The agent-turn

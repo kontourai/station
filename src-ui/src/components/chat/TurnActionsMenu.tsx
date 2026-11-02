@@ -4,6 +4,7 @@ import {
   type Ref,
   type RefObject,
   useCallback,
+  useContext,
   useEffect,
   useImperativeHandle,
   useRef,
@@ -17,6 +18,7 @@ import type { OverflowMenuHandle } from '../ActionOverflowMenu';
 import { Dialog } from '../Dialog';
 import { LazyBoundary } from '../LazyBoundary';
 import type { ForkTurnSource } from './fork-turn-source';
+import { MessageDetailsCloseContext } from './MessageDetails';
 import { MoreActionsGlyph } from './MoreActionsGlyph';
 import type { TurnProvenanceStatedInRow } from './TurnProvenanceCard';
 import { TurnProvenanceCard } from './TurnProvenanceCard';
@@ -134,6 +136,11 @@ export interface TurnActionsMenuProps {
   forkSource?: ForkTurnSource | null;
   onForkFromTurn?: (source: ForkTurnSource) => void;
   /**
+   * #4406: send the message that produced this answer again, in a fork that
+   * keeps this answer where it is.
+   */
+  onRegenerate?: () => void;
+  /**
    * #2211: the per-turn record surfaces. The transcript stays focused on the
    * answer; provenance and reasoning open as dialogs from this menu instead
    * of occupying disclosure rows inside the bubble.
@@ -163,6 +170,7 @@ export default function TurnActionsMenu({
   taskTarget,
   forkSource,
   onForkFromTurn,
+  onRegenerate,
   provenance,
   reasoning,
   handleRef,
@@ -177,12 +185,16 @@ export default function TurnActionsMenu({
     setView((current) => (current === 'menu' ? 'closed' : current));
   const closeDialog = () => setView('closed');
   const menuRef = useMenuFocus<HTMLDivElement>(open, close);
+  // Inside the phone's answer sheet: Regenerate leaves the chat, so it
+  // closes the sheet too.
+  const closeSheet = useContext(MessageDetailsCloseContext);
 
   const reasoningWordCount = reasoning ? countWords(reasoning.content) : 0;
   const rowCount =
     (provenance ? 1 : 0) +
     (reasoning && reasoningWordCount > 0 ? 1 : 0) +
     (taskTarget ? 1 : 0) +
+    (onRegenerate ? 1 : 0) +
     (forkSource && onForkFromTurn ? 1 : 0);
   const { position, place } = useFixedMenuPlacement(triggerRef, open, rowCount);
 
@@ -249,6 +261,13 @@ export default function TurnActionsMenu({
           )}
         />
       ) : null,
+      onRegenerate
+        ? item('regenerate', 'Regenerate', () => {
+            close();
+            closeSheet();
+            onRegenerate();
+          })
+        : null,
       forkSource && onForkFromTurn
         ? item('fork', 'Fork from here…', () => {
             close();
@@ -367,6 +386,12 @@ export interface UserMessageActionsMenuProps {
   onForkFromTurn?: (source: ForkTurnSource) => void;
   onNewChatFromMessage?: () => void;
   /**
+   * #4406: a fork before this message, opened with it in the composer. It
+   * stands in for "New chat from this message" on a message that opened the
+   * conversation, where the fork would be that same empty chat.
+   */
+  onEditAndResend?: () => void;
+  /**
    * The message was not sent: its Discard lives here, beside the bubble's
    * other actions, rather than in a second overflow on the bubble.
    */
@@ -397,6 +422,7 @@ export function UserMessageActionsMenu({
   forkSource,
   onForkFromTurn,
   onNewChatFromMessage,
+  onEditAndResend,
   onDiscardUnsent,
   taskTarget,
   inline = false,
@@ -410,11 +436,16 @@ export function UserMessageActionsMenu({
   const close = () =>
     setView((current) => (current === 'menu' ? 'closed' : current));
   const menuRef = useMenuFocus<HTMLDivElement>(open, close);
+  const closeSheet = useContext(MessageDetailsCloseContext);
   const canFork = Boolean(forkSource && onForkFromTurn);
   const pinsToTask = Boolean(taskTarget) && !inline;
+  const newChatFromMessage =
+    !canFork && !onEditAndResend ? onNewChatFromMessage : undefined;
   const rowCount =
     (pinsToTask ? 1 : 0) +
-    (canFork ? 1 : onNewChatFromMessage ? 1 : 0) +
+    (onEditAndResend ? 1 : 0) +
+    (canFork ? 1 : 0) +
+    (newChatFromMessage ? 1 : 0) +
     (onDiscardUnsent ? 1 : 0);
   const { position, place } = useFixedMenuPlacement(triggerRef, open, rowCount);
   const triggerProps = useMenuTriggerToggle(
@@ -453,6 +484,20 @@ export function UserMessageActionsMenu({
           )}
         />
       )}
+      {onEditAndResend && (
+        <button
+          type="button"
+          role={itemRole}
+          onClick={() => {
+            close();
+            // In the phone sheet the fork's draft replaces the chat.
+            closeSheet();
+            onEditAndResend();
+          }}
+        >
+          Edit and resend
+        </button>
+      )}
       {canFork && forkSource && onForkFromTurn && (
         <button
           type="button"
@@ -465,13 +510,13 @@ export function UserMessageActionsMenu({
           Fork from here…
         </button>
       )}
-      {!canFork && onNewChatFromMessage && (
+      {newChatFromMessage && (
         <button
           type="button"
           role={itemRole}
           onClick={() => {
             close();
-            onNewChatFromMessage();
+            newChatFromMessage();
           }}
         >
           New chat from this message
