@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { type HttpBindings, serve } from '@hono/node-server';
 import { DEFAULT_GRANT_PAIRING_SCOPE } from '@kontourai/station-contracts';
 import { CHAT_ATTACHMENT_MAX_COMMAND_JSON_BYTES } from '@kontourai/station-contracts/chat-attachment';
+import { DEVICE_ARTIFACT_UPLOAD_MAX_BYTES } from '@kontourai/station-contracts/device-tools';
 import {
   MAX_TRANSCRIPTION_UPLOAD_BYTES,
   WALKTHROUGH_LIMITS,
@@ -888,6 +889,10 @@ it('allows bounded Task image uploads above the standard body ceiling while keep
 it.each([
   ['/api/projects/alpha/walkthroughs/import', WALKTHROUGH_LIMITS.uploadBytes],
   ['/api/transcription', MAX_TRANSCRIPTION_UPLOAD_BYTES],
+  [
+    '/api/mobile-devices/projects/alpha/device-artifacts/upload',
+    DEVICE_ARTIFACT_UPLOAD_MAX_BYTES,
+  ],
 ])(
   'HTTP budget for %s accepts its larger ceiling, rejects limit+1 and counts rate admission',
   async (path, limit) => {

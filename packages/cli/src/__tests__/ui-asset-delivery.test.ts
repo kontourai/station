@@ -216,6 +216,17 @@ describe('built UI asset delivery', () => {
           })
         ).status,
       ).toBe(200);
+      expect(
+        (
+          await fetch(
+            `http://127.0.0.1:${port}/api/mobile-devices/projects/alpha/device-artifacts/upload?platform=android`,
+            {
+              method: 'POST',
+              body: 'apk',
+            },
+          )
+        ).status,
+      ).toBe(200);
       let tail: ReturnType<typeof setTimeout> | undefined;
       const body = new ReadableStream<Uint8Array>({
         start(controller) {

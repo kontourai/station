@@ -256,7 +256,7 @@ function wipe(payload: Payload): void {
   else for (const file of payload.files) file.bytes.fill(0);
 }
 
-/** UNWIRED(#1970): bounded staging awaiting the authorized install route and host protocol. */
+/** Bounded staging; UNWIRED(#1970): install still needs the host protocol. */
 export class DeviceArtifactStaging {
   private readonly entries = new Map<string, Entry>();
   private readonly shutdown = new AbortController();

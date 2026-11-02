@@ -38,6 +38,7 @@ import {
 import { createBrowserRoutes } from '../../routes/browser.js';
 import { createBrowserAgentRoutes } from '../../routes/browser-agent.js';
 import { createDeviceAgentRoutes } from '../../routes/device-agent.js';
+import { createDeviceArtifactRoutes } from '../../routes/device-artifacts.js';
 import { createDeviceHostRoutes } from '../../routes/device-hosts.js';
 import { createDeviceToolchainRoutes } from '../../routes/device-toolchain.js';
 import { createDeviceToolsRoutes } from '../../routes/device-tools.js';
@@ -132,6 +133,7 @@ import {
   deviceAccessFromShares,
   failClosedDeviceAccess,
 } from '../../services/devices/device-access.js';
+import { DeviceArtifactStaging } from '../../services/devices/device-app-artifacts.js';
 import { DeviceAutomation } from '../../services/devices/device-automation.js';
 import {
   createDeviceHostResolver,
@@ -1747,6 +1749,10 @@ export function configureRuntimeRoutes(
   let deviceSessions: DeviceSessionService | undefined;
   let localDeviceHost: LocalMobileDeviceHost | undefined;
   let localDeviceTools: DeviceToolsService | undefined;
+  let deviceArtifacts: DeviceArtifactStaging | undefined;
+  let deviceArtifactRoutes:
+    | ReturnType<typeof createDeviceArtifactRoutes>
+    | undefined;
   let deviceLoopEnabled = () => false;
   let deviceHostRegistry: DeviceHostRegistry | undefined;
   let remoteDeviceHosts: RemoteDeviceHostServices | undefined;
@@ -4809,6 +4815,34 @@ export function configureRuntimeRoutes(
           ? localAvd(serial)
           : hostRegistry.resolveAndroidAvd(hostId, serial),
     };
+    const artifacts = new DeviceArtifactStaging();
+    deviceArtifacts = artifacts;
+    const authorizeArtifactProject = createBrowserProjectAuthorizer(
+      deviceMembershipAccess,
+    );
+    const artifactRoutes = createDeviceArtifactRoutes({
+      staging: artifacts,
+      enabled: deviceLoopEnabled,
+      current: isRequestPrincipalCurrent,
+      human: (c) => resolveLiveSurfaceHumanCaller?.(c) != null,
+      project: (slug) => {
+        const project = context.projectService
+          .listProjects()
+          .find((candidate) => candidate.slug === slug);
+        return project
+          ? {
+              id: project.id,
+              root: project.workingDirectory
+                ? resolve(expandTilde(project.workingDirectory))
+                : null,
+            }
+          : undefined;
+      },
+      authorize: async (request, projectId) =>
+        !!(await authorizeArtifactProject(request, projectId, 'drive')),
+    });
+    deviceArtifactRoutes = artifactRoutes;
+    context.app.route('/api/mobile-devices', artifactRoutes);
     // The live Device pane asks one predicate (per device, per purpose);
     // the share store answers it.
     deviceAccessImpl = deviceAccessFromShares(deviceShareAccess);
@@ -11824,10 +11858,11 @@ export function configureRuntimeRoutes(
     deviceSessions,
     browserProjectAuthorizer,
     ...(pluginDraftService ? { pluginDraftService } : {}),
-    ...(remoteDeviceHosts || deviceHostRegistry
+    ...(remoteDeviceHosts || deviceHostRegistry || deviceArtifacts
       ? {
           deviceHosts: {
             dispose: async () => {
+              await deviceArtifactRoutes?.dispose();
               // Sessions first: their producers read the hubs that stop next.
               await remoteDeviceHosts?.dispose();
               await deviceHostRegistry?.shutdown();

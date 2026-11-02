@@ -113,6 +113,9 @@ export interface DeviceToolsSnapshot {
 /** APNs caps a notification payload at 4 KB; `simctl push` inherits it. */
 export const DEVICE_PUSH_PAYLOAD_MAX_BYTES = 4096;
 
+/** Maximum uploaded simulator app archive or Android APK. */
+export const DEVICE_ARTIFACT_UPLOAD_MAX_BYTES = 128 * 1024 * 1024;
+
 /** An iOS bundle id or Android package name: dotted, no shell characters. */
 export const DEVICE_APP_ID_MAX_LENGTH = 255;
 

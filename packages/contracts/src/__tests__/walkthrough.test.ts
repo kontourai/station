@@ -1,10 +1,30 @@
 import { describe, expect, test } from 'vitest';
 import {
+  MEDIA_UPLOAD_POLICIES,
+  mediaUploadPolicy,
   parseWalkthrough,
   WALKTHROUGH_CHANNELS,
   WALKTHROUGH_LIMITS,
   type Walkthrough,
 } from '../walkthrough.js';
+
+test('device artifact upload policy applies only to the exact upload route', () => {
+  const path = '/api/mobile-devices/projects/demo/device-artifacts/upload';
+  expect(mediaUploadPolicy('POST', path, MEDIA_UPLOAD_POLICIES)?.bytes).toBe(
+    128 * 1024 * 1024,
+  );
+  expect(mediaUploadPolicy('GET', path, MEDIA_UPLOAD_POLICIES)).toBeUndefined();
+  expect(
+    mediaUploadPolicy('POST', `${path}/extra`, MEDIA_UPLOAD_POLICIES),
+  ).toBeUndefined();
+  expect(
+    mediaUploadPolicy(
+      'POST',
+      '/api/mobile-devices/projects/demo/device-artifacts/workspace',
+      MEDIA_UPLOAD_POLICIES,
+    ),
+  ).toBeUndefined();
+});
 
 function manifest(): Walkthrough {
   return {
