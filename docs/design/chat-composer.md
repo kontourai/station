@@ -822,24 +822,35 @@ After a device's full access is revoked, a turn that started unconfined is not
 steerable: the server refuses with `confinement-changed` before claiming the
 input, and the message stays for the next turn, which runs confined (#2898).
 
-For other engines, Steer holds the message for a supported safe boundary before
-stopping and sending. Current adapters expose no such safe-boundary receipt, so
-this fallback conservatively waits for turn completion, even after tools settle.
-Native steering uses a persisted `clientInputId` for each intent. The server
-accepts the protected `steerTurnOnce` wire command and claims its ID before invoking the adapter and records the confirmed turn after the
-adapter returns. Same-ID acknowledgement retries return that stored result;
-an unresolved claim returns **Delivery not confirmed** and never replays the
-engine invocation. The pending row retains its original Session and turn,
-remains visible across reload, and cannot be edited or sent as a new turn while
-its delivery is uncertain. Retry steering first inspects that original identity. It retires a confirmed
-receipt, holds unknown or unsupported inspection, and makes a protected first
-attempt only when the new server reports no claim. Older servers reject the
-protected wire command before invoking an engine. The pending marker must save
-successfully before any native mutation; failed storage keeps the message held. The server journal
-retains digests rather than message bodies, and Session deletion removes it.
+Station-owned steering waits durably for the next post-tool boundary the loop
+observes, otherwise the next turn boundary. Its wording says **Steer when safe**.
+Claude and Codex retain engine-defined native placement. The composer reads the
+current adapter declaration sent by session snapshots and conversation-open
+responses. A missing declaration is unknown; the client does not infer it from
+provider names. Without it, the mode picker and pending list disclose that
+steering is unavailable, and neither Send-as-steer nor Retry-steering is offered.
+Follow-up Retry remains available. A queued steer whose adapter declares no
+steering is refused with `unsupported-engine` before any handoff.
+ACP's cancel-and-reprompt extension does not become an additive
+native composer action. Profile observations are not persisted in browser session
+state. After post-tool injection the entry remains claimed until model dispatch,
+memory storage and the canonical steer event have been acknowledged. A request
+error or the turn ending first surfaces **May have been sent** immediately;
+reviewing and dismissing it releases following input without a restart. Its
+position stays after the triggering tool result and before later model replies,
+rather than moving to the newest position on every step.
+
+Named-conversation steers first save text, the observed `expectedHead` and an
+authority-scoped key in IndexedDB, then submit to the server inbox. Missing
+conversation identity or an unobserved offline head keeps the draft. The server
+persists the text and head before claiming a handoff. Before-claim restart can
+place it once; a confirmed acknowledgement is not repeated; the claim/ack gap
+is **May have been sent**, without automatic replay. Engine receipts can settle
+it. **Review and resend** restores text only into an empty composer and requires
+a new explicit Send; dismissing the old claim never makes its key reusable.
 
 Follow-ups Station holds in the open conversation's server inbox share the
-pending-message list with this browser's queued follow-ups
+pending-message list with this browser's outbox and retained legacy input
 ([wrapper](../../src-ui/src/components/chat/ConversationInboxMessages.tsx)).
 It reads the existing [inbox API](../reference/session-api.md#let-station-hold-a-follow-up)
 for that conversation and verified Station identity, including messages submitted
@@ -853,10 +864,11 @@ list renders nothing. Reads are silent: polling (every 2s while the
 conversation is working or holds messages, every 15s otherwise), turn-fact
 invalidation and focus/reconnect change the list only when the answer changes.
 A failed read after held rows were shown replaces them with a
-**Couldn't load held messages** line and its **Retry**, never a zero count.
+**Couldn't load inbox entries** line and its **Retry**, never a zero count.
 **Remove** or **Dismiss** uses the original message key and the server's
 authorization and placement checks; rows without a permitted key are
-read-only. Held rows offer no local edit, reorder, send-now or steer action.
+read-only. Held rows offer no local edit, reorder, send-now or steer action; an
+owned unconfirmed steer offers explicit Review and resend.
 A busy-composer Queue submission requests inbox admission. Eligible submissions
 may be held; Station may instead return a started-turn receipt if the turn has
 ended or the request takes the live path. Apply a pending approval choice before
@@ -866,8 +878,8 @@ This browser's durable outbox for
 the chat (a send that failed or got no answer, and copies queued in another
 window or one that closed) leads the same list, not a second list, and its rows
 keep their own Send, Retry, Check and Discard actions. Order numbers follow the
-order messages send, 1 at the bottom: what Station holds goes as the turn ends,
-then this window's queued follow-ups, one per turn. Outbox rows carry no
+order Station sends its eligible held entries, 1 at the bottom. Legacy
+review records do not authorize a send. Outbox rows carry no
 number: reconnect may hand one to Station while the turn is busy, and the
 relative delivery order is not known ahead. Needs review marks a row only the person can settle: a send that failed
 or may have reached the agent, unconfirmed delivery, or a copy from a window
@@ -875,10 +887,12 @@ proven closed (its Web Lock is gone; liveness that cannot be read is not
 closed). A failed send marks it **Not sent** instead. A copy another open
 window holds reads **Queued in another window.** (that window sends it), one
 from a closed window **From a closed window. Not sent.**; both offer **Send**.
-Send on a closed window's copy, while a turn runs or this window's queue holds
-follow-ups, queues it here under its own key, so it sends in that order and
-takes its number; otherwise it goes now. A key already in the queue is not
-queued again, so a repeat Send adds no second row.
+Send on a closed window's copy releases its original durable outbox key for
+server handoff. It never moves into a new per-tab automatic queue. Restored
+sessionStorage input has no originating Station/authority and is held for
+**Review destination**; it cannot drain, interrupt or steer automatically.
+Review and resend transfers its text into an empty composer before removing
+the retained row, preserving any existing draft.
 Rows, and the list itself, grow in and collapse out (height and opacity) rather
 than popping.
 In a dock too short for the list and the draft, the list yields before the

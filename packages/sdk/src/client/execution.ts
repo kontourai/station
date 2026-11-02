@@ -61,6 +61,8 @@ export type ForegroundMessageInput = ForegroundMessageFields &
   ApprovalPickCarry & { skillExperience?: SkillExperienceStartInputV1 };
 
 interface ForegroundMessageFields {
+  /** Hold an eligible follow-up in the server inbox if the conversation is busy. */
+  whenBusy?: 'queue';
   expectedInputRequest?: AttentionRequestReference;
   /**
    * The person's personal per-engine approval default on a chat's first
@@ -410,9 +412,9 @@ export async function queueExecutionMessage(
   },
   opts?: ClientRequestOptions,
 ): Promise<QueuedFollowUpResult> {
-  const { automaticBackground: _background, ...body } = input;
+  const { automaticBackground, ...body } = input;
   const response = await mutateJson(
-    `${apiBase}/api/orchestration/chat`,
+    `${apiBase}/api/orchestration/chat${automaticBackground ? '/background' : ''}`,
     'POST',
     opts,
     { ...body, whenBusy: 'queue' },
@@ -443,7 +445,7 @@ export async function queueExecutionMessage(
 export async function listConversationInbox(
   apiBase: string,
   conversationId: string,
-  opts?: ClientRequestOptions,
+  opts?: ClientRequestOptions & { onHead?: (head: string) => void },
 ): Promise<ConversationInboxEntry[]> {
   const response = await getJson(
     `${apiBase}/api/orchestration/conversations/${encodeURIComponent(conversationId)}/inbox`,
@@ -451,7 +453,7 @@ export async function listConversationInbox(
   );
   const result = (await readExecutionBody(response)) as {
     success?: boolean;
-    data?: { entries?: ConversationInboxEntry[] };
+    data?: { entries?: ConversationInboxEntry[]; currentHead?: unknown };
     error?: string;
     code?: string;
   };
@@ -461,7 +463,87 @@ export async function listConversationInbox(
       result,
       'The conversation inbox is unavailable.',
     );
+  if (
+    typeof result.data.currentHead === 'string' &&
+    result.data.currentHead.length > 0 &&
+    result.data.currentHead.length <= 4096
+  )
+    opts?.onHead?.(result.data.currentHead);
   return result.data.entries;
+}
+
+/** Read the current execution head before preparing a keyed steer. */
+export async function readConversationInboxHead(
+  apiBase: string,
+  conversationId: string,
+  opts?: ClientRequestOptions,
+): Promise<string> {
+  const url = `${apiBase}/api/orchestration/conversations/${encodeURIComponent(conversationId)}/inbox`;
+  const read = await getJson(url, opts);
+  const snapshot = (await readExecutionBody(read)) as {
+    success?: boolean;
+    data?: { currentHead?: unknown };
+    error?: string;
+    code?: string;
+  };
+  const head = snapshot.data?.currentHead;
+  if (
+    !read.ok ||
+    !snapshot.success ||
+    typeof head !== 'string' ||
+    !head ||
+    head.length > 4096
+  )
+    throw chatRefusal(
+      read,
+      snapshot,
+      'This Station cannot safely queue steering.',
+    );
+  return head;
+}
+
+/** Submit a steer against the original observed head. */
+export async function submitConversationSteer(
+  apiBase: string,
+  conversationId: string,
+  input: { key: string; message: string; expectedHead?: string },
+  opts?: ClientRequestOptions,
+): Promise<ConversationInboxEntry> {
+  const url = `${apiBase}/api/orchestration/conversations/${encodeURIComponent(conversationId)}/inbox`;
+  const head =
+    input.expectedHead ??
+    (await readConversationInboxHead(apiBase, conversationId, opts));
+  const response = await mutateJson(url, 'POST', opts, {
+    kind: 'steer',
+    key: input.key,
+    message: input.message,
+    expectedHead: head,
+  });
+  const result = (await readExecutionBody(response)) as {
+    success?: boolean;
+    data?: ConversationInboxEntry;
+    error?: string;
+    code?: string;
+  };
+  if (
+    response.status !== 202 ||
+    !result.success ||
+    result.data?.kind !== 'steer' ||
+    result.data.clientTurnId !== input.key ||
+    result.data.conversationId !== conversationId ||
+    result.data.message !== input.message ||
+    result.data.expectedHead !== head ||
+    ![
+      'queued',
+      'sending',
+      'sent',
+      'unconfirmed',
+      'refused',
+      'cancelled',
+    ].includes(result.data.state)
+  )
+    throw chatRefusal(response, result, 'Station could not accept this steer.');
+  return result.data;
 }
 
 /**

@@ -20,6 +20,7 @@ const TARGET_FIELDS = [
 ];
 const TEXT_FIELDS = ['message', 'prompt', 'input', 'content'];
 const KEY_FIELDS = [
+  'key',
   'clientTurnId',
   'clientInputId',
   'requestKey',

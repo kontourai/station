@@ -1,4 +1,10 @@
 import { createEngineOAuthProxyRoutes } from '../../../routes/mcp/engine-oauth-proxy-route.js';
+import {
+  ACP_ENGINE_DURABILITY,
+  EXTERNAL_ENGINE_DURABILITY,
+  STATION_ENGINE_DURABILITY,
+  STEERING_ENGINE_DURABILITY,
+} from '@kontourai/station-contracts/engine-capability-matrix';
 import { revokeStationControlMcpToken } from '../../../runtime/mcp/station-control-mcp-token.js';
 import { createEngineMcpOAuthResolver } from '../../plugins/engine-mcp-oauth.js';
 import { ToolServerCredentialStore } from '../../plugins/tool-server-credential-store.js';
@@ -316,6 +322,14 @@ class FakeAdapter implements ProviderAdapterShape {
     this.metadata = {
       displayName: `${provider} Runtime`,
       description: `${provider} adapter for tests`,
+      durability:
+        provider === 'claude' || provider === 'codex'
+          ? STEERING_ENGINE_DURABILITY
+          : provider === 'acp'
+            ? ACP_ENGINE_DURABILITY
+            : provider === 'station-agent'
+              ? STATION_ENGINE_DURABILITY
+              : EXTERNAL_ENGINE_DURABILITY,
       capabilities:
         provider === 'claude'
           ? ['agent-runtime', 'image-input', 'file-input']

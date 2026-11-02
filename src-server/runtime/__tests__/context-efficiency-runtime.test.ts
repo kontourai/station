@@ -1,9 +1,11 @@
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
+import { STATION_ENGINE_DURABILITY } from '@kontourai/station-contracts/engine-capability-matrix';
 import { humanPrincipal } from '@kontourai/station-contracts/principal';
 import { sessionReadAuthorityFromRequest } from '@kontourai/station-contracts/tenancy';
 import { Hono } from 'hono';
 import { afterEach, expect, test, vi } from 'vitest';
+import { GateTestAdapter } from '../../__test-utils__/orchestration-gate-test-harness.js';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import { FileStorageAdapter } from '../../domain/file-storage-adapter.js';
 import { FeaturePreviewRegistry } from '../../services/feature-previews/feature-preview-registry.js';
@@ -64,8 +66,15 @@ test('the actual compaction route confirms only fresh launchable capacity for th
     });
   const bus = new EventBus(),
     logger = createLogger({ name: 'context-runtime-test' });
+  const profile = structuredClone(STATION_ENGINE_DURABILITY);
+  const adapter = new GateTestAdapter();
+  adapter.metadata.durability = profile;
   const service = new OrchestrationService({
-    adapterRegistry: { register() {}, get: () => undefined, list: () => [] },
+    adapterRegistry: {
+      register() {},
+      get: () => adapter,
+      list: () => [adapter],
+    },
     eventStore: store,
     eventBus: bus,
     logger,
@@ -142,6 +151,9 @@ test('the actual compaction route confirms only fresh launchable capacity for th
     expect(response.status, JSON.stringify(body)).toBe(200);
     return body;
   };
+  profile.compaction.owner = 'engine';
+  expect(await read()).toMatchObject({ data: { state: 'engine-owned' } });
+  profile.compaction.owner = 'station';
   expect(await read()).not.toHaveProperty('data.confirmedContext');
   recordManagedModelContext(store, measured);
   expect(await read()).toMatchObject({
@@ -267,8 +279,14 @@ test.each([false, true])(
       logger = createLogger({ name: 'zero-turn-context' }),
       app = new Hono(),
       previews = new FeaturePreviewRegistry(home, logger);
+    const adapter = new GateTestAdapter();
+    adapter.metadata.durability = STATION_ENGINE_DURABILITY;
     const service = new OrchestrationService({
-      adapterRegistry: { register() {}, get: () => undefined, list: () => [] },
+      adapterRegistry: {
+        register() {},
+        get: () => adapter,
+        list: () => [adapter],
+      },
       eventStore: store,
       eventBus: bus,
       logger,

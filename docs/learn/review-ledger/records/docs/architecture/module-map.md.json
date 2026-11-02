@@ -1514,7 +1514,15 @@
 
     "src-server/services/orchestration/__tests__/create-request-claims.test.ts",
 
-    "src-server/services/orchestration/__tests__/create-request-claims.process.test.ts"
+    "src-server/services/orchestration/__tests__/create-request-claims.process.test.ts",
+
+    "src-server/services/orchestration/post-tool-inbox.ts",
+
+    "src-server/runtime/conversation/inbox-model-step.ts",
+
+    "src-ui/src/components/chat/ConversationInboxMessages.css",
+
+    "src-ui/src/__tests__/ConversationInboxMessages.geometry.test.tsx"
   ],
 
   "checks": [

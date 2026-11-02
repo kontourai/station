@@ -152,7 +152,17 @@
 
     "packages/monument/src/turn-dedup.ts",
 
-    "src-server/services/orchestration/station-turn-dedup-bindings.ts"
+    "src-server/services/orchestration/station-turn-dedup-bindings.ts",
+
+    "src-server/services/orchestration/post-tool-inbox.ts",
+
+    "src-server/runtime/conversation/inbox-model-step.ts",
+
+    "src-server/services/orchestration/orchestration-session-state.ts",
+
+    "src-ui/src/hooks/orchestration/snapshotHandlers.ts",
+
+    "src-ui/src/hooks/useDerivedSessions.ts"
   ],
 
   "checks": [
