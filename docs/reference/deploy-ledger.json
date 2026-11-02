@@ -1,5 +1,47 @@
 [
   {
+    "timestampUtc": "2026-11-02T17:38:07Z",
+    "channel": "nightly-npm",
+    "version": "0.11.0-nightly.2497.41491168448",
+    "sha": "b5fa35320b8ff943cacc0e1eaba2d2cf320eb30b",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/41491168448",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.11.0-nightly.2497.41491168448 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "a5fcd6bb2a9ecb72f82e85a0f6239fb7b031937f",
+      "groups": {
+        "feat": [
+          "[#4420](https://github.com/kontourai/station/pull/4420) feat(agent-runtime): durable station-agent model and tool steps",
+          "[#4438](https://github.com/kontourai/station/pull/4438) feat(live-surface): one shared frame stream, guaranteed input headroom, client H.264",
+          "[#4421](https://github.com/kontourai/station/pull/4421) feat(orchestration): add a durable ownership cascade for delegated work",
+          "[#4442](https://github.com/kontourai/station/pull/4442) feat(browser): shortcuts, zoom, appearance, agent cursor and working access",
+          "[#4439](https://github.com/kontourai/station/pull/4439) feat(agents): bound browser and device tools for Codex agents",
+          "[#4423](https://github.com/kontourai/station/pull/4423) feat: durable inbox steering and engine profiles"
+        ],
+        "fix": [
+          "[#4448](https://github.com/kontourai/station/pull/4448) fix(codex): give unbound confined chats private workspaces",
+          "[#4434](https://github.com/kontourai/station/pull/4434) fix(supervisor): give slow hosts time to boot and name the park timeout"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#4452](https://github.com/kontourai/station/pull/4452) test(projects): wait for the Room Agent publication instead of a 1 s poll",
+          "[#4424](https://github.com/kontourai/station/pull/4424) refactor(monument): move recovery admission and the session boundary onto Monument",
+          "[#4430](https://github.com/kontourai/station/pull/4430) refactor(terminal): remove the legacy port+1 terminal listener",
+          "[#4432](https://github.com/kontourai/station/pull/4432) chore: deslop the UX audit fixes and name the engine in an empty save-default label"
+        ]
+      },
+      "note": null,
+      "commitCount": 12
+    }
+  },
+  {
     "timestampUtc": "2026-11-02T00:57:48Z",
     "channel": "nightly-desktop",
     "version": "0.1.11-nightly.2497",
