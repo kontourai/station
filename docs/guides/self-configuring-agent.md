@@ -130,6 +130,11 @@ owns limits, theme variables, Chromium prerequisites and page deletion semantics
   record a bounded Task clip, and `device_logs {deviceSessionId, appId}` to read
   one bounded app log sample. Both claim the device input lease and refuse while
   a person controls it; the lease is held for the operation.
+- `device_install_app {deviceSessionId, workspacePath?, artifactHandle?}` with
+  exactly one Project-relative path or staged upload handle; `device_launch_app`,
+  `device_terminate_app`, and `device_open_url` operate the selected host's app.
+  They claim the device lease and report an unknown install effect if it cannot
+  be confirmed. URL foreground observation does not prove delivery.
 - config and navigation tools for steering the workspace
 - the full scheduler lifecycle: `list_jobs`, `list_scheduler_providers`,
   `get_scheduler_stats`, `get_scheduler_status`, `preview_schedule`,

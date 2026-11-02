@@ -6029,6 +6029,13 @@ The same registrar exposes `device_record_to_task` and `device_logs`. Device
 automation claims the input lease for each operation, refuses a human-held
 lease, and rechecks authority before publication. Recordings use the bounded
 Task clip store; logs run on the selected host through fixed tool vectors.
+The same Device registrar exposes typed app install, launch, terminate and URL
+operations. Project-scoped staging validates bounded workspace snapshots or
+uploads; the fixed host program inspects compatibility, waits for a fresh lease
+and Project admission, installs, and checks the resulting app identity. Session
+history retains bounded action metadata, and a person can publish a diagnostic
+JSON attachment to the Task room after current Task and device checks. Windows
+workspace snapshots currently refuse and authenticated SSH remains unverified.
 
 Evidence owners are
 [Timeline component tests](../../src-ui/src/views/task-workspace/__tests__/TaskOverviewTimeline.test.tsx)

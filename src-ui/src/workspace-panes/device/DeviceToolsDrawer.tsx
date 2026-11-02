@@ -322,7 +322,12 @@ export function DeviceToolsDrawer(props: DeviceToolsDrawerProps) {
           </Row>
           {deviceLoopEnabled ? (
             <AppActions
-              key={targetKey}
+              key={JSON.stringify([
+                targetKey,
+                projectSlug,
+                requestScope.apiBase,
+                requestScope.authorityKey,
+              ])}
               requestScope={requestScope}
               target={target}
               projectSlug={projectSlug}
@@ -669,6 +674,7 @@ function AppActions({
           appId={appId}
           returnFocusTarget={reproductionButton.current}
           onClose={() => setPickingReproduction(false)}
+          onSaved={(title) => setNotice(`Reproduction saved to “${title}”.`)}
         />
       ) : null}
       <div className="device-tools__actions">

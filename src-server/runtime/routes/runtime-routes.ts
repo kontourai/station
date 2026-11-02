@@ -4930,6 +4930,14 @@ export function configureRuntimeRoutes(
     if (agentDeviceSessions && agentDeviceSurfaces && deviceShareAccess) {
       agentDeviceAutomation = new DeviceAutomation({
         artifacts,
+        projectRoot: (projectId) => {
+          const project = context.projectService
+            .listProjects()
+            .find((candidate) => candidate.id === projectId);
+          return project?.workingDirectory
+            ? resolve(expandTilde(project.workingDirectory))
+            : undefined;
+        },
         installApp: (input) =>
           input.hostId === LOCAL_DEVICE_HOST_ID
             ? runDeviceAppInstall({

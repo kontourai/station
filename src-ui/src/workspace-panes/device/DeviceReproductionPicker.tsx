@@ -11,6 +11,7 @@ export function DeviceReproductionPicker({
   appId,
   returnFocusTarget,
   onClose,
+  onSaved,
 }: {
   scope: ApiRequestScope;
   projectSlug: string;
@@ -18,6 +19,7 @@ export function DeviceReproductionPicker({
   appId: string;
   returnFocusTarget: HTMLElement | null;
   onClose(): void;
+  onSaved(taskTitle: string): void;
 }) {
   const projects = useScopedProjectsQuery();
   const projectId = projects.data?.find(
@@ -28,13 +30,19 @@ export function DeviceReproductionPicker({
     enabled: !!projectId,
   });
   const capture = useMutation({
-    mutationFn: async (taskId: string) => {
-      const query = new URLSearchParams({ projectSlug });
+    mutationFn: async ({
+      taskId,
+      target,
+    }: {
+      taskId: string;
+      target: { projectSlug: string; sourceSessionId: string; appId: string };
+    }) => {
+      const query = new URLSearchParams({ projectSlug: target.projectSlug });
       const response = await mutateJson(
         `${scope.apiBase}/api/tasks/${encodeURIComponent(taskId)}/review/device-repro-bundles?${query}`,
         'POST',
         { requestScope: scope, maxResponseBytes: 16 * 1024 },
-        { sourceSessionId, appId },
+        { sourceSessionId: target.sourceSessionId, appId: target.appId },
       );
       const value: unknown = await response.json();
       if (
@@ -42,14 +50,22 @@ export function DeviceReproductionPicker({
         !value ||
         typeof value !== 'object' ||
         !('success' in value) ||
-        value.success !== true
+        value.success !== true ||
+        !('data' in value) ||
+        !value.data ||
+        typeof value.data !== 'object' ||
+        !('attachment' in value.data) ||
+        !value.data.attachment ||
+        typeof value.data.attachment !== 'object' ||
+        !('id' in value.data.attachment) ||
+        typeof value.data.attachment.id !== 'string'
       )
         throw new Error('Reproduction could not be confirmed.');
     },
   });
   return (
     <TaskPicker
-      target={{ sourceSessionId, projectSlug }}
+      target={{ sourceSessionId, projectSlug, appId }}
       projectId={projectId}
       initiallyOpen
       hideTrigger
@@ -58,7 +74,7 @@ export function DeviceReproductionPicker({
       dialogTitle="Save reproduction to Task"
       eyebrow="Includes a screenshot and app logs"
       onClose={onClose}
-      onAttached={onClose}
+      onAttached={(task) => onSaved(task.title)}
       adapter={{
         tasks: tasks.data,
         isLoading: projects.isLoading || (!!projectId && tasks.isLoading),
@@ -71,8 +87,8 @@ export function DeviceReproductionPicker({
         refetch: () => (projectId ? tasks.refetch() : projects.refetch()),
         isPending: capture.isPending,
       }}
-      attach={async (taskId) => {
-        await capture.mutateAsync(taskId);
+      attach={async (taskId, target) => {
+        await capture.mutateAsync({ taskId, target });
       }}
       successMessage={(task) => `Reproduction saved to “${task.title}”.`}
       failureMessage="Check the Task before retrying, or update Station if it is unsupported."

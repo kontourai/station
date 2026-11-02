@@ -125,18 +125,30 @@ export function createDeviceAgentRoutes(deps: DeviceAgentRoutesDeps) {
         });
       if (
         Object.keys(body).some(
-          (key) => !['deviceSessionId', 'artifactHandle'].includes(key),
+          (key) =>
+            !['deviceSessionId', 'artifactHandle', 'workspacePath'].includes(
+              key,
+            ),
         ) ||
-        typeof body.artifactHandle !== 'string' ||
-        !/^[0-9a-f-]{36}$/.test(body.artifactHandle)
+        (typeof body.artifactHandle === 'string'
+          ? !/^[0-9a-f-]{36}$/.test(body.artifactHandle) ||
+            body.workspacePath !== undefined
+          : typeof body.workspacePath !== 'string' ||
+            !body.workspacePath ||
+            body.workspacePath.length > 512 ||
+            body.artifactHandle !== undefined)
       )
         return c.json({ ok: false, code: 'invalid-request' });
+      const source =
+        typeof body.artifactHandle === 'string'
+          ? { artifactHandle: body.artifactHandle }
+          : { workspacePath: body.workspacePath as string };
       return c.json(
         await deps.automation.installApp(
           access,
           authority,
           id,
-          body.artifactHandle,
+          source,
           () => deps.deviceLoopEnabled?.() === true,
           c.req.raw.signal,
         ),

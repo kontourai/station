@@ -304,6 +304,7 @@ describe('opening a device', () => {
       await within(dialog).findByRole('button', { name: /Test Task/ }),
     );
     await click(within(dialog).getByRole('button', { name: 'Save bundle' }));
+    await screen.findByText('Reproduction saved to “Test Task”.');
     await waitFor(() =>
       expect(captures).toEqual([
         {

@@ -18,6 +18,7 @@ import {
   DEVICE_APP_INSTALL_SCRIPT,
   type DeviceAppInstallParams,
 } from '../device-app-install-program.js';
+import { remoteLoaderCommand } from '../ssh-device-target.js';
 
 const homes: string[] = [];
 afterEach(() => {
@@ -222,12 +223,11 @@ test('refuses an escaping artifact path before running host tools', async () => 
   });
 });
 
-test('the Station transport waits for the authority decision before admission', async () => {
-  const { home, bin } = fixture();
-  const bytes = Buffer.from('apk fixture');
-  const { runDeviceAppInstall } = await import('../device-app-install.js');
-  const { remoteLoaderCommand } = await import('../ssh-device-target.js');
-  const transport: import('../ssh-device-session.js').SpawnSsh = () => {
+function localSshTransport(
+  home: string,
+  bin: string,
+): import('../ssh-device-session.js').SpawnSsh {
+  return () => {
     const child = spawn('/bin/sh', ['-c', remoteLoaderCommand().join(' ')], {
       env: {
         ...process.env,
@@ -256,6 +256,13 @@ test('the Station transport waits for the authority decision before admission', 
       release: () => {},
     };
   };
+}
+
+test('the Station transport waits for the authority decision before admission', async () => {
+  const { home, bin } = fixture();
+  const bytes = Buffer.from('apk fixture');
+  const { runDeviceAppInstall } = await import('../device-app-install.js');
+  const transport = localSshTransport(home, bin);
   const target = { host: 'example.invalid' };
   const input = {
     target,
@@ -298,4 +305,66 @@ test('disconnect stops the install child before cleaning its staged files', asyn
   expect(
     readdirSync(home).filter((name) => name.startsWith('station-device-app-')),
   ).toEqual([]);
+});
+
+test('SSH registry enforces host consent and rechecks it before installation', async () => {
+  const { home, bin } = fixture();
+  const stationHome = join(home, 'station');
+  mkdirSync(stationHome, { recursive: true });
+  const { DeviceHostStore } = await import('../device-host-store.js');
+  const { DeviceHostRegistry } = await import('../device-host-registry.js');
+  const store = new DeviceHostStore(stationHome);
+  const host = store.add({
+    label: 'Remote',
+    sshTarget: 'tester@example.invalid',
+  });
+  const transport = localSshTransport(home, bin);
+  let spawns = 0;
+  const registry = new DeviceHostRegistry({
+    stationHome,
+    store,
+    localHub: () => undefined,
+    spawn: (args) => {
+      spawns++;
+      return transport(args);
+    },
+  });
+  const bytes = Buffer.from('apk fixture');
+  const input = {
+    platform: 'android' as const,
+    deviceId: 'emulator-5554',
+    digest: request(bytes).digest,
+    files: [{ path: 'Application.apk', executable: false, bytes }],
+    beforeInstall: async () => true,
+  };
+  try {
+    expect(await registry.installApp(host.hostId, input)).toMatchObject({
+      ok: false,
+      effect: 'none',
+    });
+    expect(spawns).toBe(0);
+    store.setHubEnabled(host.hostId, true);
+    expect(await registry.installApp(host.hostId, input)).toMatchObject({
+      ok: true,
+      metadata: { appId: 'com.example.app' },
+    });
+    const before = readFileSync(join(home, 'calls'), 'utf8')
+      .split('\n')
+      .filter((line) => line.includes('install -r')).length;
+    const stopped = await registry.installApp(host.hostId, {
+      ...input,
+      beforeInstall: async () => {
+        await registry.setHubEnabled(host.hostId, { enabled: false });
+        return true;
+      },
+    });
+    expect(stopped).toMatchObject({ ok: false, effect: 'none' });
+    expect(
+      readFileSync(join(home, 'calls'), 'utf8')
+        .split('\n')
+        .filter((line) => line.includes('install -r')),
+    ).toHaveLength(before);
+  } finally {
+    await registry.shutdown();
+  }
 });

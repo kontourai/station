@@ -21,7 +21,10 @@ import {
   deviceAgentMayAccess,
   mintDeviceAgentGrant,
 } from './device-agent-authority.js';
-import type { DeviceArtifactStaging } from './device-app-artifacts.js';
+import {
+  DeviceArtifactError,
+  type DeviceArtifactStaging,
+} from './device-app-artifacts.js';
 import type {
   DeviceHistoryAction,
   DeviceSessionService,
@@ -41,6 +44,7 @@ interface DeviceAutomationHost {
 interface DeviceAutomationDeps extends DeviceAutomationHost {
   surfaces: Pick<LiveSurfaceRegistry, 'get'>;
   artifacts?: DeviceArtifactStaging;
+  projectRoot?: (projectId: string) => string | undefined;
   installApp?: (input: {
     hostId: string;
     platform: 'ios' | 'android';
@@ -611,7 +615,7 @@ export class DeviceAutomation {
     access: DeviceAgentAccessDeps,
     authority: DeviceAgentAuthority,
     id: string,
-    handle: string,
+    source: { artifactHandle: string } | { workspacePath: string },
     enabled: () => boolean,
     signal?: AbortSignal,
   ) {
@@ -623,6 +627,12 @@ export class DeviceAutomation {
       id,
       'install-app',
       async (selected) => {
+        const root =
+          'workspacePath' in source
+            ? this.deps.projectRoot?.(authority.projectId)
+            : undefined;
+        if ('workspacePath' in source && !root)
+          return refused('invalid-source');
         const abort = new AbortController();
         const combined = signal
           ? AbortSignal.any([signal, abort.signal])
@@ -631,6 +641,7 @@ export class DeviceAutomation {
           const live = this.sessionServices(id);
           return (
             enabled() &&
+            (!root || this.deps.projectRoot?.(authority.projectId) === root) &&
             !combined.aborted &&
             live?.session.surfaceId === selected.session.surfaceId &&
             live.services.sessions === selected.services.sessions &&
@@ -661,6 +672,19 @@ export class DeviceAutomation {
         let started = false;
         let result: DeviceInstallOutcome | undefined;
         try {
+          const handle =
+            'artifactHandle' in source
+              ? source.artifactHandle
+              : (
+                  await artifacts.stageWorkspace(
+                    authority.projectId,
+                    root!,
+                    source.workspacePath,
+                    selected.session.platform,
+                    current,
+                    combined,
+                  )
+                ).handle;
           return await artifacts.withArtifact(
             authority.projectId,
             handle,
@@ -704,14 +728,29 @@ export class DeviceAutomation {
                       ? ('unknown' as const)
                       : ('none' as const),
                 };
-              return result;
+              if (result.ok)
+                selected.services.sessions.noteInstallation(id, {
+                  ...result,
+                  source: receipt.source,
+                });
+              return result.ok
+                ? {
+                    ...result,
+                    source: receipt.source,
+                    hostId: selected.session.hostId,
+                    deviceId: selected.session.deviceId,
+                  }
+                : result;
             },
             combined,
           );
-        } catch {
+        } catch (error) {
           return {
             ok: false as const,
-            code: 'interrupted',
+            code:
+              !started && error instanceof DeviceArtifactError
+                ? error.code
+                : 'interrupted',
             effect:
               started && (!result || result.ok || result.effect === 'unknown')
                 ? ('unknown' as const)

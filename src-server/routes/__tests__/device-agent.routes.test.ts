@@ -1,4 +1,7 @@
 import { EventEmitter } from 'node:events';
+import { mkdtemp, realpath, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import type { MobileDeviceInventory } from '@kontourai/station-contracts/mobile-device';
 import { McpServer } from '@modelcontextprotocol/server';
 import { afterEach, expect, test, vi } from 'vitest';
@@ -61,6 +64,7 @@ function harness(
     idleEndMs?: number;
     remote?: boolean;
     taskCapture?: 'unbound' | 'mismatch';
+    projectRoot?: string;
   } = {},
 ) {
   const sessionId = `device-test-${Math.random()}`;
@@ -291,6 +295,7 @@ function harness(
   const automation = new DeviceAutomation({
     artifacts,
     installApp,
+    projectRoot: () => options.projectRoot,
     host,
     sessions,
     surfaces,
@@ -1602,3 +1607,58 @@ test('human takeover cancels installation and reports an unknown effect', async 
     effect: 'unknown',
   });
 });
+
+test.skipIf(process.platform === 'win32')(
+  'install tool stages only the bound Project workspace while holding the device lease',
+  async () => {
+    const root = await realpath(
+      await mkdtemp(join(tmpdir(), 'station-device-agent-app-')),
+    );
+    try {
+      await writeFile(join(root, 'sample.apk'), await apkFixture());
+      const h = harness('sdk-in-process', { projectRoot: root });
+      const deviceSessionId = await h.open();
+      const refused = parsed(
+        await h.run('device_install_app', {
+          deviceSessionId,
+          workspacePath: '../sample.apk',
+        }),
+      );
+      expect(refused).toMatchObject({
+        ok: false,
+        code: 'invalid-source',
+        effect: 'none',
+      });
+      expect(h.installApp).not.toHaveBeenCalled();
+      const installed = parsed(
+        await h.run('device_install_app', {
+          deviceSessionId,
+          workspacePath: 'sample.apk',
+        }),
+      );
+      expect(installed).toMatchObject({
+        ok: true,
+        source: 'workspace',
+        hostId: 'local',
+        metadata: { appId: 'com.example.app', revision: null },
+      });
+      expect(h.sessions.latestInstallation(deviceSessionId)).toMatchObject({
+        source: 'workspace',
+        digest: installed.digest,
+        metadata: { build: '1', revision: null },
+      });
+      await h.take(deviceSessionId);
+      expect(
+        parsed(
+          await h.run('device_install_app', {
+            deviceSessionId,
+            workspacePath: 'sample.apk',
+          }),
+        ),
+      ).toMatchObject({ ok: false });
+      expect(h.installApp).toHaveBeenCalledOnce();
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  },
+);

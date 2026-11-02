@@ -115,8 +115,12 @@ export function registerDeviceTools(registry: StationControlToolRegistry) {
   );
   registry.tool(
     'device_install_app',
-    'Install a Project-scoped staged artifact on this device host, after checking compatibility and the device lease. The receipt states when the outcome is unknown.',
-    { deviceSessionId, artifactHandle: z.string().uuid() },
+    'Install a Project workspace-relative app path or a staged upload handle on this device host. Exactly one source is required. The receipt states when the outcome is unknown.',
+    {
+      deviceSessionId,
+      workspacePath: z.string().min(1).max(512).optional(),
+      artifactHandle: z.string().uuid().optional(),
+    },
     async (args) => callDevice('install-app', args),
   );
   registry.tool(

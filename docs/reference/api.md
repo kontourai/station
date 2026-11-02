@@ -6784,6 +6784,11 @@ Project authority:
 - `GET /api/tasks/:taskId/review/device-recordings/:jobId?projectSlug=...` reads its state.
 - `POST /api/tasks/:taskId/review/device-recordings/:jobId/stop?projectSlug=...` requests a stop.
 - `GET /api/mobile-devices/hosts/:hostId/devices/:platform/:deviceId/tools/logs?appId=...` reads one bounded app log sample.
+- `POST /api/mobile-devices/projects/:slug/device-artifacts/workspace` stages a Project-relative app path; `/upload?platform=...` accepts bounded app bytes. A staged handle is not an installation receipt.
+- `POST /api/mobile-devices/hosts/:hostId/devices/:platform/:deviceId/tools/install?projectSlug=...` installs a staged handle on that host. The result reports an unknown effect if installation may have started but cannot be confirmed.
+- `POST /api/mobile-devices/hosts/:hostId/devices/:platform/:deviceId/tools/app-actions?projectSlug=...` performs a typed launch, terminate or open-URL action and reports its observed postcondition.
+- `GET /api/mobile-devices/hosts/:hostId/devices/:platform/:deviceId/tools/history?projectSlug=...` reads bounded session action metadata.
+- `POST /api/tasks/:taskId/review/device-repro-bundles?projectSlug=...` captures a screenshot, app logs and session action metadata as a JSON attachment in the Task room. It requires current Task, Project and device authority and `terminal:operate`; the attachment may contain private screen and log data.
 
 See
 [device capture](../guides/mobile-device-workspace.md#capture-a-device-screen-to-a-task)

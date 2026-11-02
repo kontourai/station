@@ -193,6 +193,48 @@ exit signal, and an unavailable inventory is not proof that a device stopped.
 Browser sessions have different lifetime rules, so do not apply this
 device idle timeout to a Browser pane.
 
+## Install and inspect an app
+
+With **Device developer loop** enabled, the Tools drawer accepts an iOS
+simulator `.app` under the Project workspace, a ZIP containing one `.app`, or
+an Android APK upload or Project-relative path. The workspace root and each
+path component must be free of symlinks; use the canonical Project path (on
+macOS, `/private/tmp` rather than the `/tmp` symlink). Windows workspace
+snapshots currently refuse; an upload is the available intake path there.
+Archive traversal, symlinks, collisions, excess size and incompatible platform,
+ABI or minimum OS are refused. Staging is bounded and its Project-scoped handle
+expires; staging alone does not establish compatibility or installation.
+
+Station checks the artifact on the selected host, rechecks Project and device
+authority immediately before installation, and verifies the installed app ID,
+version and build afterward. The receipt includes the SHA-256 digest, platform,
+ABI and source; revision remains `null` when it cannot be established. A lost
+connection or takeover after installation starts reports an unknown effect:
+check the device before retrying. Local and enabled SSH hosts use fixed
+`simctl` or `adb` vectors on that host, never a generic shell or local fallback.
+
+The App section can launch, terminate, or open a URL. Launch and URL actions
+report only that the requested app was observed in the foreground; they do not
+prove URL delivery. iOS can show a first-use confirmation, in which case Station
+reports the unconfirmed postcondition until the person acts. Termination checks
+that the app process is absent. The agent equivalents are `device_install_app`
+(with exactly one of `workspacePath` or a staged `artifactHandle`),
+`device_launch_app`, `device_terminate_app`, and `device_open_url`. Each claims
+the input lease for its operation and refuses while a person controls it.
+
+**Action history** shows at most 100 entries for the open session. It records
+agent operations and person-initiated Tools actions as action names and outcomes,
+without input text, URLs or notification payloads. It is in memory and ends with
+the session; it is not a complete device audit or a record of every human touch.
+**Save reproduction to Task** stores a JSON attachment in the Task room with the
+selected app's bounded log sample, screenshot, device identity, available install
+receipt and session history. The screenshot and logs may contain private data.
+If publication cannot be confirmed, check the Task before retrying.
+
+With the preview on and a chat floater available, closing the Device stage,
+closing its tab, or hiding its visible region requests a host-qualified float.
+The floater still checks current access and session availability.
+
 ## Capture a device Screen to a Task
 
 In Task Review, **Capture** lists accessible Device sessions alongside Browser

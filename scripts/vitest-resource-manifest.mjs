@@ -1589,6 +1589,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'src-server/services/devices/hosts/__tests__/ssh-device-tools.process.test.ts',
   // Fixed app installer and its admission/cleanup protocol in a private HOME.
   'src-server/services/devices/hosts/__tests__/device-app-install-program.test.ts',
+  // Agent workspace intake invokes the bounded snapshot child against a private fixture.
+  'src-server/routes/__tests__/device-agent.routes.test.ts',
   // SSH device hosts over REAL ssh to this machine's sshd: one `ssh
   // localhost true` probe at load, then (only with key auth and a known host
   // key, never on CI) Test connection and, with STATION_DEVICE_HUB_TEST_HOME,

@@ -29,7 +29,7 @@ describe('authenticated client transport', () => {
     let current = false;
     let reply!: (response: Response) => void;
     const transport = vi.fn(
-      (_url: string, _init: RequestInit) =>
+      (_url: RequestInfo | URL, _init?: RequestInit) =>
         new Promise<Response>((resolve) => {
           reply = resolve;
         }),
@@ -58,6 +58,7 @@ describe('authenticated client transport', () => {
     );
     await vi.waitFor(() => expect(transport).toHaveBeenCalledOnce());
     const init = transport.mock.calls[0]![1];
+    if (!init) throw new Error('Missing upload request');
     expect(init.body).toBe(body);
     expect(new Headers(init.headers).get('content-type')).toBe(
       'application/octet-stream',
