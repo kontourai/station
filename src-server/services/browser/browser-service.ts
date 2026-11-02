@@ -14,6 +14,7 @@ import {
 } from './browser-host.js';
 import { BrowserLiveSurfaces } from './browser-live-surfaces.js';
 import { LocalTargetStore } from './browser-local-targets.js';
+import type { BrowserNetworkLog } from './browser-network-log.js';
 import { BrowserProjectSettingsStore } from './browser-project-settings.js';
 import {
   type BrowserProfile,
@@ -50,6 +51,7 @@ export interface BrowserServiceOptions {
   consentPort?: number;
   /** The resolved allowed-origin list (`resolveConfiguredRuntimeOrigins`). */
   configuredOrigins: readonly string[];
+  networkPreviewEnabled?: () => boolean;
   /**
    * More Station-owned listener ports, read LIVE on every check and never
    * cached: the managed device hub and its stream helpers (#1970), whose
@@ -92,6 +94,13 @@ export interface BrowserService {
     browserSessionId: string,
     after?: number,
   ): (BrowserConsoleSnapshot & { generation: number }) | undefined;
+  networkFor(
+    browserSessionId: string,
+    after?: number,
+    limit?: number,
+  ): Promise<
+    (ReturnType<BrowserNetworkLog['read']> & { generation: number }) | undefined
+  >;
   shutdown(): Promise<void>;
 }
 
@@ -190,6 +199,7 @@ export function createBrowserService(
         sessions: registry,
         surfaces: options.liveSurfaces.registry,
         authorizeProject: options.liveSurfaces.authorizeProject,
+        networkPreviewEnabled: options.networkPreviewEnabled,
         onError: (message, error) =>
           logger.warn(`browser: ${message}`, {
             error: error instanceof Error ? error.message : String(error),
@@ -213,6 +223,8 @@ export function createBrowserService(
         : { ok: false, code: 'no-dialog' },
     consoleFor: (browserSessionId, after) =>
       surfaces?.consoleFor(browserSessionId, after),
+    networkFor: async (browserSessionId, after, limit) =>
+      surfaces?.networkFor(browserSessionId, after, limit),
     shutdown: async () => {
       // Surfaces first: no viewer keeps streaming from a browser being shut.
       await surfaces?.dispose();

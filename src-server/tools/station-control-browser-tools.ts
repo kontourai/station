@@ -141,7 +141,7 @@ async function callBrowser(
   operation: string,
   body: Record<string, unknown>,
   signal?: AbortSignal,
-): Promise<{ content: ToolContent[] }> {
+): Promise<{ content: ToolContent[]; isError?: boolean }> {
   let caller: StationControlCaller | null;
   try {
     caller = await requireStationControlCaller();
@@ -206,7 +206,9 @@ async function callBrowser(
       ],
     };
   }
-  return jsonToolResult(result);
+  return result.code === 'feature_preview_disabled'
+    ? { ...jsonToolResult(result), isError: true }
+    : jsonToolResult(result);
 }
 
 export function registerBrowserTools(registry: StationControlToolRegistry) {
@@ -355,6 +357,22 @@ export function registerBrowserTools(registry: StationControlToolRegistry) {
         },
         context?.mcpReq.signal,
       ),
+  );
+
+  registry.tool(
+    'browser_network',
+    'Read a bounded page of redacted network metadata for a Browser session. Requires page diagnostics permission.',
+    {
+      browserSessionId: sessionId,
+      after: z.number().int().min(0).optional(),
+      limit: z.number().int().min(1).max(100).optional(),
+    },
+    async (args) =>
+      callBrowser('network', {
+        browserSessionId: args.browserSessionId,
+        ...(args.after !== undefined ? { after: args.after } : {}),
+        ...(args.limit !== undefined ? { limit: args.limit } : {}),
+      }),
   );
 
   registry.tool(

@@ -154,12 +154,14 @@ function harness(
     dispatchTimeoutMs?: number;
     /** The Project's `browserEvaluate` (D4); absent: no settings store. */
     browserEvaluate?: boolean;
+    networkPreview?: boolean;
     /** The live-surface lease's clock and holds (test seam). */
     lease?: { now: () => number; humanHoldMs?: number };
   } = {},
 ) {
   const stationHome = makeTempDir('station-browser-page-');
   const fake = fakeHost();
+  let networkPreview = options.networkPreview === true;
   let ids = 0;
   const sessions = new BrowserSessionRegistry({
     stationHome,
@@ -182,6 +184,7 @@ function harness(
     sessions,
     surfaces,
     authorizeProject,
+    networkPreviewEnabled: () => networkPreview,
     ...(options.dispatchTimeoutMs !== undefined
       ? { dispatchTimeoutMs: options.dispatchTimeoutMs }
       : {}),
@@ -209,6 +212,8 @@ function harness(
     answerDialog: (id, dialogId, answer, actor) =>
       binder.answerDialog(id, dialogId, answer, actor),
     consoleFor: (id, after) => binder.consoleFor(id, after),
+    networkFor: (id, after, limit) => binder.networkFor(id, after, limit),
+    networkPreviewEnabled: () => networkPreview,
     ...(options.browserEvaluate !== undefined
       ? {
           projectSettings: {
@@ -308,8 +313,82 @@ function harness(
     clickResponse,
     surfaceRoutes,
     open,
+    setNetworkPreview: (enabled: boolean) => {
+      networkPreview = enabled;
+    },
   };
 }
+
+describe('Browser pane: network diagnostics', () => {
+  test('requires preview and viewing authority, captures redacted metadata and stops when disabled', async () => {
+    const h = harness();
+    try {
+      const { browserSessionId: id } = await h.open();
+      expect((await h.browser('GET', `/sessions/${id}/network`)).status).toBe(
+        404,
+      );
+      expect(h.fake.sent.map((item) => item.method)).not.toContain(
+        'Network.enable',
+      );
+      h.setNetworkPreview(true);
+      expect(
+        (await h.browser('GET', `/sessions/${id}/network`, { role: 'nobody' }))
+          .status,
+      ).toBe(403);
+      expect((await h.browser('GET', `/sessions/${id}/network`)).status).toBe(
+        200,
+      );
+      h.fake.emit('Network.requestWillBeSent', {
+        requestId: '1',
+        request: {
+          method: 'GET',
+          url: 'https://example.com/?token=secret',
+          postData: 'private',
+        },
+        type: 'XHR',
+        timestamp: 1,
+      });
+      h.fake.emit('Network.responseReceived', {
+        requestId: '1',
+        response: { status: 503, headers: { cookie: 'private' } },
+        type: 'XHR',
+      });
+      h.fake.emit('Network.loadingFinished', {
+        requestId: '1',
+        timestamp: 1.1,
+        encodedDataLength: 42,
+      });
+      const result = await (
+        await h.browser('GET', `/sessions/${id}/network`)
+      ).json();
+      expect(result.data.entries).toEqual([
+        expect.objectContaining({
+          method: 'GET',
+          status: 503,
+          bytes: 42,
+          type: 'XHR',
+        }),
+      ]);
+      expect(JSON.stringify(result)).not.toMatch(/secret|private/);
+      h.setNetworkPreview(false);
+      expect((await h.browser('GET', `/sessions/${id}/network`)).status).toBe(
+        404,
+      );
+      h.fake.emit('Network.requestWillBeSent', {
+        requestId: '2',
+        request: { url: 'https://example.com/' },
+      });
+      h.setNetworkPreview(true);
+      const after = await (
+        await h.browser('GET', `/sessions/${id}/network`)
+      ).json();
+      expect(after.data.entries).toEqual([]);
+    } finally {
+      await h.binder.dispose();
+      await h.sessions.shutdown();
+    }
+  });
+});
 
 describe('Browser pane: page dialogs a person answers', () => {
   test('a confirm the page opens while a person is in control is shown to them, not answered, and their answer reaches the page', async () => {

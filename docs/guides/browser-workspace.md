@@ -335,6 +335,17 @@ internal principal, an Agent-tool marker, a delegation device) reads it only
 where the Project allows **Let agents run JavaScript in this Project's pages**;
 otherwise it is refused `403`. Agents have no console tool.
 
+With the **Browser artifacts** Feature Preview enabled, the **Network**
+drawer shows requests for the current browser generation, starting when the
+drawer or agent tool first reads it. Filter it to failed requests or XHR and
+Fetch requests. Station keeps at most 500 entries
+in memory and discards them when capture stops. It records request method,
+redacted URL, resource type, status, transfer size and duration; it does not
+retain request or response bodies or headers. URL credentials, query values
+and fragments are removed. The read-only `browser_network` agent tool uses
+the existing Browser authority and diagnostics permissions, and returns
+bounded pages of the same metadata.
+
 **Screenshot** (in **⋯**) captures the page's viewport as PNG (JPEG over
 16 MiB, refused beyond that) with view standing, one capture at a time per
 session (a second request joins the one in flight), and offers **Save image**

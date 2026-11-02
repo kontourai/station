@@ -25,6 +25,8 @@ import {
   LocalTargetError,
   type LocalTargetStore,
 } from '../services/browser/browser-local-targets.js';
+import type { BrowserNetworkLog } from '../services/browser/browser-network-log.js';
+import { pickBrowserElement } from '../services/browser/browser-pick.js';
 import type { BrowserProjectSettingsStore } from '../services/browser/browser-project-settings.js';
 import {
   actorOwnsSessionProfile,
@@ -82,7 +84,8 @@ export interface BrowserRoutesDeps {
     | 'setViewport'
     | 'getSessionSummary'
     | 'captureScreenshot'
-  >;
+  > &
+    Partial<Pick<BrowserSessionRegistry, 'liveTarget'>>;
   /**
    * The live-surface id of a live session (its screencast), when live
    * surfaces are wired. Session responses carry it as `surfaceId`.
@@ -116,6 +119,14 @@ export interface BrowserRoutesDeps {
     browserSessionId: string,
     after?: number,
   ): (BrowserConsoleSnapshot & { generation: number }) | undefined;
+  networkFor?(
+    browserSessionId: string,
+    after?: number,
+    limit?: number,
+  ): Promise<
+    (ReturnType<BrowserNetworkLog['read']> & { generation: number }) | undefined
+  >;
+  networkPreviewEnabled?: () => boolean;
   acquisition: Pick<ChromiumAcquisition, 'status' | 'startDownload'>;
   localTargets: Pick<LocalTargetStore, 'list' | 'add' | 'remove'>;
   /** Per-Project browser permissions (D4). Absent: the routes are not served. */
@@ -703,6 +714,145 @@ export function createBrowserRoutes(deps: BrowserRoutesDeps) {
             capturing: false,
           },
     });
+  });
+
+  app.get('/sessions/:browserSessionId/network', async (c) => {
+    const after = c.req.query('after');
+    if (after !== undefined && !CONSOLE_AFTER.test(after))
+      return c.json(invalid, 400);
+    const found = await sessionFor(
+      c.req.raw,
+      c.req.param('browserSessionId'),
+      'view',
+    );
+    if (found.status !== 200) return c.json(refuse(found.status), found.status);
+    if (!deps.isRequestPrincipalCurrent(c.req.raw)) return c.json(denied, 403);
+    if (!deps.networkPreviewEnabled?.())
+      return c.json(
+        {
+          success: false,
+          error: 'Enable Browser artifacts in Feature previews.',
+          code: 'feature_preview_disabled',
+          previewId: 'browser-artifacts',
+          settingsPath:
+            '/settings?view=feature-previews&highlight=feature-previews',
+        },
+        404,
+      );
+    if (
+      (!deps.isAgentRequest || deps.isAgentRequest(c.req.raw)) &&
+      deps.projectSettings?.get(found.session.projectId).browserEvaluate !==
+        true
+    )
+      return c.json(denied, 403);
+    if (found.session.state !== 'live')
+      return c.json({ success: false, code: 'not-live' }, 409);
+    const snapshot = await deps.networkFor?.(
+      found.session.browserSessionId,
+      after === undefined ? undefined : Number(after),
+    );
+    if (
+      !deps.isRequestPrincipalCurrent(c.req.raw) ||
+      !deps.networkPreviewEnabled?.()
+    )
+      return c.json(denied, 403);
+    const current = await sessionFor(
+      c.req.raw,
+      c.req.param('browserSessionId'),
+      'view',
+    );
+    if (current.status !== 200)
+      return c.json(refuse(current.status), current.status);
+    if (!snapshot)
+      return c.json({ success: false, code: 'network-unavailable' }, 503);
+    if (
+      current.session.generation !== found.session.generation ||
+      snapshot.generation !== current.session.generation
+    )
+      return c.json({ success: false, code: 'network-unavailable' }, 409);
+    return c.json({ success: true, data: snapshot });
+  });
+
+  app.post('/sessions/:browserSessionId/pick', async (c) => {
+    const found = await sessionFor(
+      c.req.raw,
+      c.req.param('browserSessionId'),
+      'view',
+    );
+    if (found.status !== 200) return c.json(refuse(found.status), found.status);
+    if (!deps.isRequestPrincipalCurrent(c.req.raw)) return c.json(denied, 403);
+    if (!deps.networkPreviewEnabled?.())
+      return c.json(
+        {
+          success: false,
+          error: 'Enable Browser artifacts in Feature previews.',
+          code: 'feature_preview_disabled',
+          previewId: 'browser-artifacts',
+          settingsPath:
+            '/settings?view=feature-previews&highlight=feature-previews',
+        },
+        404,
+      );
+    const body = await readJsonObject(c.req.raw, [
+      'x',
+      'y',
+      'generation',
+      'screenshot',
+    ]);
+    if (
+      !body ||
+      typeof body.x !== 'number' ||
+      typeof body.y !== 'number' ||
+      typeof body.generation !== 'number' ||
+      !Number.isSafeInteger(body.generation) ||
+      (body.screenshot !== undefined && typeof body.screenshot !== 'boolean')
+    )
+      return c.json(invalid, 400);
+    if (found.session.generation !== body.generation)
+      return c.json({ success: false, code: 'stale-generation' }, 409);
+    const live = deps.registry.liveTarget?.(found.session.browserSessionId);
+    if (!live || live.generation !== body.generation)
+      return c.json({ success: false, code: 'not-live' }, 409);
+    try {
+      const picked = await pickBrowserElement(
+        live,
+        found.session.viewport,
+        { x: body.x, y: body.y },
+        body.screenshot !== false,
+      );
+      const current = await sessionFor(
+        c.req.raw,
+        c.req.param('browserSessionId'),
+        'view',
+      );
+      if (current.status !== 200)
+        return c.json(refuse(current.status), current.status);
+      const target = deps.registry.liveTarget?.(found.session.browserSessionId);
+      if (
+        !deps.isRequestPrincipalCurrent(c.req.raw) ||
+        !deps.networkPreviewEnabled?.() ||
+        !target ||
+        target.generation !== live.generation ||
+        target.target.targetId !== live.target.targetId ||
+        target.target.cdpSessionId !== live.target.cdpSessionId ||
+        current.session.generation !== body.generation ||
+        current.session.viewport.width !== found.session.viewport.width ||
+        current.session.viewport.height !== found.session.viewport.height
+      )
+        return c.json({ success: false, code: 'stale-generation' }, 409);
+      return c.json({
+        success: true,
+        data: {
+          ...picked,
+          browserSessionId: found.session.browserSessionId,
+          targetId: live.target.targetId,
+          generation: live.generation,
+          viewport: found.session.viewport,
+        },
+      });
+    } catch {
+      return c.json({ success: false, code: 'pick-unavailable' }, 409);
+    }
   });
 
   // A still of the page for a person to save or copy. The same standing as

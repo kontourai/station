@@ -1090,6 +1090,10 @@
       "exempt": "agent-ui",
       "reason": "Drives the person's Browser pane for the bound agent."
     },
+    "browser_network": {
+      "exempt": "agent-ui",
+      "reason": "Reads the person's Browser diagnostics for the bound agent."
+    },
     "browser_open": {
       "exempt": "agent-ui",
       "reason": "Drives the person's Browser pane for the bound agent."

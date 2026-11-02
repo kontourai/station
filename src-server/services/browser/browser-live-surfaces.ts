@@ -39,6 +39,8 @@ import {
   BrowserConsoleLog,
   type BrowserConsoleSnapshot,
 } from './browser-console-log.js';
+import type { CdpTransport } from './browser-host.js';
+import { BrowserNetworkLog } from './browser-network-log.js';
 import {
   actorOwnsSessionProfile,
   type BrowserSessionActor,
@@ -64,6 +66,9 @@ interface Binding {
   generation: number;
   producer: ChromiumScreencastProducer;
   console: BrowserConsoleLog;
+  network?: BrowserNetworkLog;
+  networkCdp: CdpTransport;
+  networkSessionId: string;
   unregister: () => Promise<void>;
   offNavigated: () => void;
   offLease: () => void;
@@ -83,6 +88,7 @@ export interface BrowserLiveSurfacesOptions {
   >;
   surfaces: Pick<LiveSurfaceRegistry, 'register' | 'get'>;
   authorizeProject: BrowserProjectAuthorizer;
+  networkPreviewEnabled?: () => boolean;
   dispatchTimeoutMs?: number;
   /** How long a dialog held for a person waits before its automatic answer. */
   dialogHoldMs?: number;
@@ -234,6 +240,28 @@ export class BrowserLiveSurfaces {
       : undefined;
   }
 
+  async networkFor(browserSessionId: string, after?: number, limit?: number) {
+    const binding = this.bindings.get(browserSessionId);
+    if (!binding || !this.options.networkPreviewEnabled?.()) return undefined;
+    const network = (binding.network ??= new BrowserNetworkLog(
+      binding.networkCdp,
+      binding.networkSessionId,
+      () => this.options.networkPreviewEnabled?.() === true,
+    ));
+    await network.enable();
+    if (
+      this.bindings.get(browserSessionId) !== binding ||
+      !this.options.networkPreviewEnabled?.()
+    )
+      return undefined;
+    return network.capturing
+      ? {
+          ...network.read(after, limit),
+          generation: binding.generation,
+        }
+      : undefined;
+  }
+
   async dispose(): Promise<void> {
     this.disposed = true;
     this.offChange();
@@ -264,9 +292,10 @@ export class BrowserLiveSurfaces {
     const generation = live.generation;
     let producer: ChromiumScreencastProducer;
     let consoleLog: BrowserConsoleLog | undefined;
+    let cdp: CdpTransport;
     let offNavigated: () => void;
     try {
-      const cdp = live.host.cdp();
+      cdp = live.host.cdp();
       producer = new ChromiumScreencastProducer({
         surfaceId,
         cdp,
@@ -425,6 +454,8 @@ export class BrowserLiveSurfaces {
       generation,
       producer,
       console: consoleLog,
+      networkCdp: cdp,
+      networkSessionId: live.target.cdpSessionId,
       unregister,
       offNavigated,
       offLease,
@@ -436,6 +467,7 @@ export class BrowserLiveSurfaces {
     binding.offNavigated();
     binding.producer.dispose();
     binding.console.dispose();
+    binding.network?.dispose();
     try {
       await binding.unregister();
     } catch (error) {

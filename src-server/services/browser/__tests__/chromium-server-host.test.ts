@@ -750,6 +750,7 @@ describe('ChromiumServerHost with a fake browser', () => {
       'Emulation.setEmulatedMedia',
       'Emulation.setTouchEmulationEnabled',
       'Network.enable',
+      'Network.disable',
       'Log.enable',
     ]);
     expect(

@@ -277,6 +277,44 @@ export interface BrowserPendingDialogView {
   openedAt: string;
 }
 
+export interface BrowserNetworkEntryView {
+  seq: number;
+  method: string;
+  url: string;
+  type: string;
+  status?: number;
+  bytes?: number;
+  durationMs?: number;
+  failed?: boolean;
+}
+
+export interface BrowserNetworkView {
+  entries: BrowserNetworkEntryView[];
+  dropped: number;
+  latestSeq: number;
+  generation: number;
+}
+
+/** A target-viewport element inspection and optional cropped PNG. */
+export interface BrowserPickedElementView {
+  browserSessionId: string;
+  targetId: string;
+  generation: number;
+  viewport: BrowserViewportView;
+  url: string;
+  capturedAt: string;
+  selector: string;
+  locator: string;
+  tagName: string;
+  role: string;
+  name: string;
+  html: string;
+  styles: Record<string, string>;
+  rect: { x: number; y: number; width: number; height: number };
+  screenshot?: string;
+  digest?: string;
+}
+
 export type BrowserConsoleLevelView = 'error' | 'warning' | 'info' | 'debug';
 
 /** One console line: page text, untrusted, shown as text only. */

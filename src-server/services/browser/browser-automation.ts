@@ -597,6 +597,17 @@ export interface BrowserAutomationDeps {
   >;
   surfaces: Pick<LiveSurfaceRegistry, 'get'>;
   surfaceIdFor(browserSessionId: string): string | undefined;
+  networkFor?(
+    browserSessionId: string,
+    after?: number,
+    limit?: number,
+  ): Promise<
+    | (ReturnType<
+        import('./browser-network-log.js').BrowserNetworkLog['read']
+      > & { generation: number })
+    | undefined
+  >;
+  networkPreviewEnabled?: () => boolean;
   /**
    * Whether the session's page holds a dialog for a PERSON to answer. While
    * it does, every action on the page is refused `dialog-open`: the page is
@@ -1707,6 +1718,54 @@ export class BrowserAutomation {
   }
 
   /** A bounded accessibility snapshot with element refs, and a screenshot. */
+  async network(
+    authority: BrowserAgentAuthority,
+    browserSessionId: unknown,
+    after = 0,
+    limit = 100,
+  ) {
+    if (!this.deps.networkPreviewEnabled?.())
+      return {
+        ok: false as const,
+        code: 'feature_preview_disabled' as const,
+        message: 'Enable Browser artifacts in Feature previews.',
+        previewId: 'browser-artifacts',
+        settingsPath:
+          '/settings?view=feature-previews&highlight=feature-previews',
+      };
+    if (!this.deps.settings.evaluateAllowed(authority.projectId)) {
+      const owned = this.select(authority, browserSessionId);
+      return 'ok' in owned
+        ? owned
+        : refuse('not-permitted', EVALUATE_NOT_PERMITTED, {
+            setting: 'browserEvaluate',
+          });
+    }
+    if (
+      !Number.isSafeInteger(after) ||
+      after < 0 ||
+      !Number.isSafeInteger(limit) ||
+      limit < 1 ||
+      limit > 100
+    )
+      return refuse('invalid-request', 'Network page bounds are invalid.');
+    return this.withLive(authority, browserSessionId, async (selected) => {
+      const result = await this.deps.networkFor?.(
+        selected.record.browserSessionId,
+        after,
+        limit,
+      );
+      if (!this.deps.networkPreviewEnabled?.())
+        return refuse(
+          'not-permitted',
+          'Browser artifacts preview is disabled.',
+        );
+      if (!result || result.generation !== selected.live.generation)
+        return refuse('not-live', 'Network diagnostics are unavailable.');
+      return { ok: true as const, ...result };
+    });
+  }
+
   async snapshot(
     authority: BrowserAgentAuthority,
     browserSessionId: unknown,

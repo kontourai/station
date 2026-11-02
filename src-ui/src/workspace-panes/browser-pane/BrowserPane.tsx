@@ -42,6 +42,7 @@ import { useAnnounceShownSource } from '../../float-over-chat/shownSources';
 import { useCoarsePointer } from '../../hooks/useCoarsePointer';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import { useMenuFocus } from '../../hooks/useMenuFocus';
+import { useSurfaceVisibilityFlags } from '../../hooks/useSurfaceVisibilityFlags';
 import {
   LiveSurfaceCanvas,
   type LiveSurfaceControllerTone,
@@ -54,6 +55,7 @@ import {
   useBrowserConsole,
 } from './BrowserConsoleDrawer';
 import { BrowserLocalTargetsPanel } from './BrowserLocalTargetsPanel';
+import { BrowserNetworkDrawer } from './BrowserNetworkDrawer';
 import {
   type BrowserMenuItem,
   BrowserOverflowMenu,
@@ -582,9 +584,10 @@ function BrowserSessionPane({
     },
   });
   const [panel, setPanel] = useState<
-    'none' | 'sessions' | 'targets' | 'agents' | 'console'
+    'none' | 'sessions' | 'targets' | 'agents' | 'console' | 'network'
   >('none');
   const [addressFocused, setAddressFocused] = useState(false);
+  const artifactsEnabled = useSurfaceVisibilityFlags().has('browser-artifacts');
   const paneRef = useRef<HTMLDivElement>(null);
   const coarsePointer = useCoarsePointer();
   const narrow = useIsMobile();
@@ -768,8 +771,9 @@ function BrowserSessionPane({
     if (preset) viewport.mutate(preset.viewport);
   };
 
-  const togglePanel = (next: 'sessions' | 'targets' | 'agents' | 'console') =>
-    setPanel((current) => (current === next ? 'none' : next));
+  const togglePanel = (
+    next: 'sessions' | 'targets' | 'agents' | 'console' | 'network',
+  ) => setPanel((current) => (current === next ? 'none' : next));
 
   let body: ReactNode;
   if (session.isPending) {
@@ -1120,12 +1124,28 @@ function BrowserSessionPane({
             </span>
           ) : null}
         </IconButton>
+        {artifactsEnabled ? (
+          <Button
+            size="sm"
+            disabled={!live}
+            onClick={() => togglePanel('network')}
+          >
+            Network
+          </Button>
+        ) : null}
         <BrowserOverflowMenu label="More browser actions" items={menuItems}>
           <MoreGlyph />
         </BrowserOverflowMenu>
       </form>
       {panel === 'console' ? (
         <BrowserConsoleDrawer read={consoleState.read} live={live} />
+      ) : null}
+      {panel === 'network' && artifactsEnabled ? (
+        <BrowserNetworkDrawer
+          api={api}
+          apiBase={apiBase}
+          browserSessionId={browserSessionId}
+        />
       ) : null}
       {panel === 'sessions' ? (
         <BrowserSessionList
