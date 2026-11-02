@@ -5485,13 +5485,14 @@ export class OrchestrationService {
       this.threadProviders.get(threadId) ??
       this.sessionReadModel.get(threadId)?.provider ??
       this.options.eventStore?.readSessionByThread(threadId)?.provider;
-    const declared = this.durabilityProfileForProvider(provider);
-    if (declared) return declared.steerPlacement.state;
-    if (provider && this.options.adapterRegistry.get(provider)) return 'none';
-    return this.startingSessionThreads.has(threadId) ||
-      this.materializingSessions.has(threadId)
-      ? 'pending'
-      : 'none';
+    return (
+      this.durabilityProfileForProvider(provider)?.steerPlacement.state ??
+      ((!provider || !this.options.adapterRegistry.get(provider)) &&
+      (this.startingSessionThreads.has(threadId) ||
+        this.materializingSessions.has(threadId))
+        ? 'pending'
+        : 'none')
+    );
   }
 
   async readSession(
