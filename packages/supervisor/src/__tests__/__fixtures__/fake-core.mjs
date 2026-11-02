@@ -15,6 +15,8 @@
  *   FAKE_CORE_NO_ADOPT=1            ignore adopted handles and bind FAKE_CORE_PORT itself
  *   FAKE_CORE_VOICE_SESSIONS=<n>    report n live voice sessions while draining (never ends them)
  *   FAKE_CORE_EXIT_ON_BOOT=1        exit(1) before parking
+ *   FAKE_CORE_PARK_DELAY_MS=<n>    report parked n ms after starting, as a slow host loads its code
+ *   FAKE_CORE_NEVER_PARK=1          run but never report parked
  *   FAKE_CORE_REQUEST_HANDOFF=1     generation 1 sends handoff.request once ready
  *   FAKE_CORE_SEND_SERVER=1         send the net.Server itself with listener.bound (a protocol violation)
  *   FAKE_CORE_EXIT_AFTER_READY=1    exit(1) in the same tick as reporting ready
@@ -349,12 +351,19 @@ process.on('disconnect', () => {
   if (process.env.FAKE_CORE_IGNORE_DISCONNECT !== '1') process.exit(0);
 });
 
-send(
-  protocol10
-    ? { type: 'parked' }
-    : {
-        type: 'parked',
-        adoptsConnections: true,
-        ...(announcesWorkloads ? { capabilities: ['workloads'] } : {}),
-      },
-);
+function park() {
+  send(
+    protocol10
+      ? { type: 'parked' }
+      : {
+          type: 'parked',
+          adoptsConnections: true,
+          ...(announcesWorkloads ? { capabilities: ['workloads'] } : {}),
+        },
+  );
+}
+const parkDelayMs = Number(process.env.FAKE_CORE_PARK_DELAY_MS ?? 0);
+if (process.env.FAKE_CORE_NEVER_PARK !== '1') {
+  if (parkDelayMs > 0) setTimeout(park, parkDelayMs);
+  else park();
+}

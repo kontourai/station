@@ -95,7 +95,6 @@
   "scripts/__tests__/station-dogfood-reconcile.recovery-locking.test.ts > station dogfood reconcile > starts an initial candidate without attempting to stop a missing active release",
   "scripts/__tests__/station-dogfood-reconcile.recovery-locking.test.ts > station dogfood reconcile > stops and records a failed first-install candidate without inventing an active release",
   "scripts/__tests__/station-dogfood-reconcile.recovery-locking.test.ts > station dogfood reconcile > treats a missing api listener as an unavailable service unit and recovers the exact active SHA",
-  "scripts/__tests__/station-dogfood-reconcile.recovery-locking.test.ts > station dogfood reconcile > treats a missing terminal listener as an unavailable service unit and recovers the exact active SHA",
   "scripts/__tests__/station-dogfood-reconcile.recovery-locking.test.ts > station dogfood reconcile > treats a missing ui listener as an unavailable service unit and recovers the exact active SHA",
   "scripts/__tests__/station-dogfood-reconcile.recovery-locking.test.ts > station dogfood reconcile > treats a missing voice listener as an unavailable service unit and recovers the exact active SHA",
   "scripts/__tests__/station-dogfood-reconcile.recovery-locking.test.ts > station dogfood reconcile > unwinds a fresh installer transaction to no process and no state",

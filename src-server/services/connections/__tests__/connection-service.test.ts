@@ -3220,8 +3220,8 @@ describe('ConnectionService', () => {
       resolvedSmokeCwd,
     );
     // Not inside the server's directory (a cross-drive path is absolute).
-    expect(!fromServerCwd.startsWith('..') && !isAbsolute(fromServerCwd)).toBe(
-      false,
+    expect(fromServerCwd.startsWith('..') || isAbsolute(fromServerCwd)).toBe(
+      true,
     );
     expect(resolvedSmokeCwd.split(/[\\/]/).slice(-4)).toEqual([
       'runtime',
