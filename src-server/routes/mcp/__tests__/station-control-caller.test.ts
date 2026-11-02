@@ -118,6 +118,7 @@ vi.mock('../../../tools/station-control-delegation.js', async (original) => ({
 const OPERATOR_CREDENTIAL = 'test-only-operator-credential-caller-suite';
 const coordinatorTemp = trackTempDirs();
 const DELEGATION_BODY = {
+  clientTurnId: 'caller-delegation',
   prompt: 'child work',
   target: { environment: { kind: 'current' }, agent: 'planner' },
   userId: 'human:test:mallory',
@@ -237,7 +238,13 @@ function createProbeServer(): McpServer {
       if (args.continueTask) {
         const continued = await api(
           '/api/orchestration/delegations/task:1/continue',
-          { method: 'POST', body: JSON.stringify({ message: 'follow up' }) },
+          {
+            method: 'POST',
+            body: JSON.stringify({
+              clientTurnId: 'fixture-turn-key',
+              message: 'follow up',
+            }),
+          },
         );
         return jsonToolResult({ continued });
       }
