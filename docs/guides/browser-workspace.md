@@ -278,7 +278,8 @@ commit. The duration is 1–30,000 ms and the encoded-video limit is at most
 16 MiB. FFmpeg and the **Walkthroughs** preview are required. The caller,
 Browser, Task and workspace are rechecked before publication. The returned
 Walkthrough ID and commit identify the retained clip, not proof that the page
-was built from the commit.
+was built from the commit. If no fresh image arrives, the clip uses the last
+image cached when recording began; that image may predate the clip.
 
 Cancelling the tool call, closing its Browser or stopping Station cancels an
 in-progress recording and removes its staged files. No clip is published.
