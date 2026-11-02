@@ -39,7 +39,7 @@ const makeTempDir = trackTempDirs();
 // The server-only mint stamps/auth-boundary setters below are explicit test
 // setup, not proof of a native local-grant ingress or user-authorized mint.
 async function setup(
-  mintKind: 'local-grant' | 'ui-bootstrap' = 'local-grant',
+  mintKind: 'local-grant' | 'ui-bootstrap' | null = 'local-grant',
   scope?: string,
 ) {
   const home = realpathSync(makeTempDir('environment-observation-owner-'));
@@ -69,7 +69,7 @@ async function setup(
     proof: offer.challenge,
     requestId: requested.requestId,
     locality: 'home-possession',
-    mintKind,
+    ...(mintKind ? { mintKind } : {}),
   });
   const request = new Request('http://127.0.0.1:43979/api/orchestration/chat', {
     method: 'POST',
@@ -80,7 +80,7 @@ async function setup(
     credential: paired.credential,
     source: 'bearer' as const,
     locality: 'home-possession' as const,
-    mintKind,
+    ...(mintKind ? { mintKind } : {}),
   };
   setRuntimeAuthenticatedRequestPrincipal(request, principal);
   bindRuntimeLocalOperator(request);
@@ -257,6 +257,10 @@ test.each(['revoke', 'narrow'] as const)(
   'another registry owner can %s a captured grant without a stale observer restoring it',
   async (change) => {
     const h = await setup();
+    assert.equal(
+      isRuntimeRequestPrincipalCurrent(h.request, h.environment),
+      true,
+    );
     const owner = await captureEnvironmentLocalGrantObservationOwner(
       h.request,
       h.environment,
@@ -273,6 +277,10 @@ test.each(['revoke', 'narrow'] as const)(
       other.setDeviceScope(h.paired.device.id, ['orchestration:read'], {
         kind: 'presented-credential',
       });
+    assert.equal(
+      isRuntimeRequestPrincipalCurrent(h.request, h.environment),
+      false,
+    );
     const path = join(h.home, 'security', 'paired-devices.json');
     const persisted = readFileSync(path);
     denied(lease.assertCurrent);
@@ -773,15 +781,34 @@ test.each([
   'local-grant',
   'ui-bootstrap',
   'read-only',
+  'alias',
+  'approver',
   'unknown',
   'revoked',
 ] as const)(
   'route assessment preserves legacy policy and fixed outcomes for %s',
   async (kind) => {
     const h = await setup(
-      kind === 'ui-bootstrap' ? kind : 'local-grant',
+      kind === 'approver'
+        ? null
+        : kind === 'ui-bootstrap'
+          ? kind
+          : 'local-grant',
       kind === 'read-only' ? 'orchestration:read' : undefined,
     );
+    if (kind === 'approver')
+      h.environment.devicePairing.setDeviceApprovalAuthority(
+        h.paired.device.id,
+        true,
+        { kind: 'presented-credential' },
+      );
+    const alias =
+      kind === 'alias'
+        ? h.environment.devicePairing.issueRelayCredentialAlias(
+            h.paired.credential,
+            h.paired.device.id,
+          )
+        : undefined;
     const request = new Request(h.request.url, { method: 'POST' });
     setRuntimeAuthenticatedRequestPrincipal(request, {
       ...h.principal,
@@ -790,7 +817,7 @@ test.each([
           ? h.record.credential
           : kind === 'unknown'
             ? 'unknown'
-            : h.paired.credential,
+            : (alias?.credential ?? h.paired.credential),
     });
     if (kind === 'revoked')
       h.environment.devicePairing.revokeDevice(
@@ -801,7 +828,7 @@ test.each([
       {
         method: 'POST',
         path: '/api/orchestration/chat',
-        allowed: ['operator', 'local-grant', 'ui-bootstrap'],
+        allowed: ['operator', 'local-grant', 'ui-bootstrap', 'approver'],
       },
       {
         method: 'POST',
@@ -821,7 +848,24 @@ test.each([
       {
         method: 'GET',
         path: '/api/operator/telemetry-companion',
-        allowed: ['operator', 'local-grant', 'ui-bootstrap', 'read-only'],
+        allowed: [
+          'operator',
+          'local-grant',
+          'ui-bootstrap',
+          'read-only',
+          'alias',
+          'approver',
+        ],
+      },
+      {
+        method: 'POST',
+        path: '/api/pairing/requests/example/confirm',
+        allowed: ['operator', 'local-grant', 'ui-bootstrap', 'approver'],
+      },
+      {
+        method: 'DELETE',
+        path: '/api/pairing/devices/example',
+        allowed: ['operator', 'local-grant', 'ui-bootstrap'],
       },
       { method: 'POST', path: '/unmapped-authority-route', allowed: [] },
     ];
@@ -938,7 +982,9 @@ test('route assessment strips activity while ingress authorization counts the re
     path: '/api/orchestration/chat',
     activity: { lastSeenFrom: 'tailnet' as const },
   };
-  assert.ok(h.environment.assessCredentialRoute(h.paired.credential, route));
+  h.environment.withCurrentAuthority(() =>
+    assert.ok(h.environment.assessCredentialRoute(h.paired.credential, route)),
+  );
   const after = h.environment.devicePairing
     .listDevices()
     .find((device) => device.id === h.paired.device.id);

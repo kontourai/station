@@ -143,6 +143,7 @@ describe('configureRuntimeRoutes: focus and in-app liveness reach delivery', () 
       taskGraphService: { listTasks: () => [] },
       projectService: { listProjects: () => [] },
       environmentSecurityService: deepStub({
+        assessCredentialRoute: undefined,
         verifyCredential: (credential: string) =>
           credential === OPERATOR_SECRET ||
           pairing.verifyCredential(credential),

@@ -176,6 +176,7 @@ describe('no HTTP route returns an outbound peer bearer (#2377 C2b)', () => {
         list: () => [],
       }),
       environmentSecurityService: deepStub({
+        assessCredentialRoute: undefined,
         verifyCredential: (credential: string) =>
           credential === OPERATOR_SECRET ||
           pairing.verifyCredential(credential),

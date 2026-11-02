@@ -263,6 +263,10 @@ describe("a done Task's lessons are promoted by a person, never by an agent", ()
       taskGraphService: taskGraph,
       projectService,
       environmentSecurityService: deepStub({
+        assessCredentialRoute: undefined,
+        devicePairing: deepStub({
+          withCurrentRegistry: <T>(read: () => T): T => read(),
+        }),
         verifyCredential: (credential: string) =>
           credential === OPERATOR_CREDENTIAL,
         authorizeCredential: (credential: string) =>

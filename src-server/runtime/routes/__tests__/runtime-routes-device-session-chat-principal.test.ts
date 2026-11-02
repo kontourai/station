@@ -342,6 +342,7 @@ describe('device-session chat principal resolution over the REAL auth path (stat
    * credential belongs to this device". */
   function environmentSecurityServiceFor(pairing: DevicePairingService) {
     return deepStub({
+      assessCredentialRoute: undefined,
       verifyCredential: (credential: string) =>
         credential === OPERATOR_SECRET || pairing.verifyCredential(credential),
       authorizeCredential: (credential: string) =>

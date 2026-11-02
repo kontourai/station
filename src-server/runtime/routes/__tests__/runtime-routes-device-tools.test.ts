@@ -255,6 +255,7 @@ describe('device tools lease rule in the runtime composition (S3)', () => {
       taskGraphService: { listTasks: () => [] },
       projectService: { listProjects: () => [] },
       environmentSecurityService: deepStub({
+        assessCredentialRoute: undefined,
         verifyCredential: (credential: string) =>
           isOperatorSecret(credential) || pairing.verifyCredential(credential),
         authorizeCredential: (credential: string) =>

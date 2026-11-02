@@ -161,6 +161,7 @@ describe('live surface routes in the runtime composition', () => {
       taskGraphService: { listTasks: () => [] },
       projectService: { listProjects: () => [] },
       environmentSecurityService: deepStub({
+        assessCredentialRoute: undefined,
         verifyCredential: (credential: string) =>
           credential === OPERATOR_SECRET ||
           pairing.verifyCredential(credential),

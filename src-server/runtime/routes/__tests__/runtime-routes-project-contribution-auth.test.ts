@@ -183,6 +183,7 @@ describe('project contribution routes over the REAL auth path (execution offers 
 
   function environmentSecurityServiceFor(pairing: DevicePairingService) {
     return deepStub({
+      assessCredentialRoute: undefined,
       verifyCredential: (credential: string) =>
         credential === OPERATOR_CREDENTIAL ||
         pairing.verifyCredential(credential),

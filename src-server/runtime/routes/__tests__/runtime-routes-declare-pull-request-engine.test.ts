@@ -339,6 +339,7 @@ describe('an external engine declares a pull request: the Task shows it, a merge
       taskGraphService: taskGraph,
       projectService,
       environmentSecurityService: deepStub({
+        assessCredentialRoute: undefined,
         verifyCredential: (credential: string) =>
           credential === OPERATOR_CREDENTIAL ||
           pairing.verifyCredential(credential),

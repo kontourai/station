@@ -176,6 +176,7 @@ describe('configureRuntimeRoutes: the server update seams (#3851 F10)', () => {
       taskGraphService: { listTasks: () => [] },
       projectService: { listProjects: () => [] },
       environmentSecurityService: deepStub({
+        assessCredentialRoute: undefined,
         verifyCredential: (credential: string) =>
           pairing.verifyCredential(credential),
         authorizeCredential: (credential: string) =>

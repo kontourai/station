@@ -1,13 +1,5 @@
 import assert from 'node:assert/strict';
-import {
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from 'node:fs';
-import { tmpdir } from 'node:os';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { DelegationRoundsTransactionUncertainError } from '@kontourai/flow-agents/delegation-group-rounds';
 import { RESERVED_SOURCE_EXECUTION_METADATA_KEY } from '@kontourai/station-contracts/provider';
@@ -15,6 +7,7 @@ import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
 import { prepareFileMutationOwner } from '@kontourai/station-shared/lifecycle-events';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/client';
 import { onTestFinished, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { isRuntimePublicationParticipant } from '../../../runtime/bootstrap/runtime-publication-participant.js';
 import { StationRuntime } from '../../../runtime/bootstrap/station-runtime.js';
 import { createReportInputRuntime } from '../../../runtime/mcp/report-input-runtime.js';
@@ -35,6 +28,8 @@ import { publicFenceFixture } from './delegation-source-fixtures/fence.js';
 import { sdkFixture } from './delegation-source-fixtures/sdk-source.js';
 import { subject } from './delegation-source-fixtures/source.js';
 import { controlledInputStream } from './delegation-source-fixtures/streamed-text.js';
+
+const makeTempDir = trackTempDirs();
 
 const handlerObserver = vi.hoisted(() => {
   const state: { onFetch?: () => void } = {};
@@ -532,11 +527,10 @@ test.each([
 );
 
 test('publication synchronous checks hold Home, refuse queued withdrawal and fence their return', async () => {
-  const home = mkdtempSync(join(tmpdir(), 'report-publication-check-'));
+  const home = makeTempDir('report-publication-check-');
   const runtime = new StationRuntime({ projectHomeDir: home });
   onTestFinished(async () => {
     await runtime.shutdown();
-    rmSync(home, { recursive: true, force: true });
   });
   const participant = Reflect.get(runtime, 'runtimePublicationParticipant');
   assert.ok(isRuntimePublicationParticipant(participant));

@@ -286,13 +286,16 @@ async function composeOver(
       getProject: (slug: string) => ({ slug }),
     },
     environmentSecurityService: deepStub({
+      assessCredentialRoute: undefined,
       verifyCredential: () => false,
       authorizeCredential: () => false,
       verifyOperatorCredential: () => false,
       resolveGrantedScope: () => undefined,
       identifyDevice: () => undefined,
       deviceMaySendChat: (deviceId: string) => support.devices.has(deviceId),
-      devicePairing: deepStub({}),
+      devicePairing: deepStub({
+        withCurrentRegistry: <T>(read: () => T): T => read(),
+      }),
     }),
   });
   Reflect.set(context as object, 'buildRuntimeContext', () => context);
