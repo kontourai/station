@@ -3750,3 +3750,127 @@ test('refuses an HTTP LAN pairing code before posting an offer and preserves exp
     ).endpoint,
   ).toBe('https://computer.example.test');
 });
+
+describe('Pair phone quick flow (owner-device standing, 2026-11-02)', () => {
+  function quickPairRequest(
+    routes: unknown = {
+      environmentId: 'env-1',
+      routes: [
+        { kind: 'lan', url: 'http://192.168.50.16:3774' },
+        { kind: 'tailscale-https', url: 'https://kontour.example.ts.net' },
+      ],
+    },
+  ) {
+    let offers = 0;
+    const deleted: string[] = [];
+    const created: { endpoint: string; approval: string }[] = [];
+    const request = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = new URL(String(input));
+        if (url.pathname === '/api/system/routes') return response(routes);
+        if (url.pathname === '/api/pairing/requests')
+          return response({ requests: [] });
+        if (url.pathname === '/api/pairing/devices')
+          return response({ devices: [] });
+        if (url.pathname === '/api/pairing/offers' && init?.method === 'POST') {
+          const body = JSON.parse(String(init.body)) as {
+            endpoint: string;
+            scope: string;
+            approval: string;
+          };
+          created.push({ endpoint: body.endpoint, approval: body.approval });
+          offers += 1;
+          return response(
+            {
+              protocolVersion: 1,
+              environmentId: 'env-1',
+              offerId: `offer-${offers}`,
+              challenge: 'challenge',
+              manualCode: `CODE${offers}`,
+              endpoint: body.endpoint,
+              scope: body.scope,
+              expiresAt: Date.now() + 5 * 60_000,
+            },
+            201,
+          );
+        }
+        if (
+          url.pathname.startsWith('/api/pairing/offers/') &&
+          init?.method === 'DELETE'
+        ) {
+          deleted.push(decodeURIComponent(url.pathname.split('/').pop()!));
+          return new Response(null, { status: 204 });
+        }
+        return response({ error: 'unexpected' }, 404);
+      },
+    );
+    return { request, created, deleted };
+  }
+
+  test('opens straight to a pairing code on the best reachable route', async () => {
+    const { request, created } = quickPairRequest();
+    render(
+      <HostDevicePairingPanel
+        quickPair
+        apiBase="http://127.0.0.1:3774"
+        publicEndpoint="http://127.0.0.1:3774"
+        getCredential={() => 'device'}
+        request={request}
+        onCancel={vi.fn()}
+      />,
+    );
+    expect(await screen.findByTestId('pairing-qr')).toBeTruthy();
+    // Tailscale HTTPS outranks the LAN; loopback is never offered.
+    expect(created).toEqual([
+      { endpoint: 'https://kontour.example.ts.net', approval: 'on-create' },
+    ]);
+    expect(screen.getByText('CODE1')).toBeTruthy();
+    expect(
+      (screen.getByRole('radio', { name: /Tailscale HTTPS/ }) as HTMLInputElement)
+        .checked,
+    ).toBe(true);
+    expect(screen.queryByRole('radio', { name: /127\.0\.0\.1/ })).toBeNull();
+  });
+
+  test('switching route replaces the code and cancels the old one', async () => {
+    const { request, created, deleted } = quickPairRequest();
+    render(
+      <HostDevicePairingPanel
+        quickPair
+        apiBase="http://127.0.0.1:3774"
+        publicEndpoint="http://127.0.0.1:3774"
+        getCredential={() => 'device'}
+        request={request}
+        onCancel={vi.fn()}
+      />,
+    );
+    await screen.findByText('CODE1');
+    fireEvent.click(screen.getByRole('radio', { name: /Local network/ }));
+    expect(await screen.findByText('CODE2')).toBeTruthy();
+    expect(created.map((offer) => offer.endpoint)).toEqual([
+      'https://kontour.example.ts.net',
+      'http://192.168.50.16:3774',
+    ]);
+    await waitFor(() => expect(deleted).toEqual(['offer-1']));
+  });
+
+  test('with no reachable route, it explains and shows the address form', async () => {
+    const { request, created } = quickPairRequest({
+      environmentId: 'env-1',
+      routes: [],
+    });
+    render(
+      <HostDevicePairingPanel
+        quickPair
+        apiBase="http://127.0.0.1:3774"
+        publicEndpoint="http://127.0.0.1:3774"
+        getCredential={() => 'device'}
+        request={request}
+        onCancel={vi.fn()}
+      />,
+    );
+    expect(await screen.findByLabelText('Pairing endpoint')).toBeTruthy();
+    expect(created).toEqual([]);
+    expect(screen.queryByTestId('pairing-qr')).toBeNull();
+  });
+});

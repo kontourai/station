@@ -13,6 +13,11 @@
 > [threat model](../security/remote-access-threat-model.md). The dated body below retains the original
 > design assumptions and line citations; it is not a complete current-state inventory.
 
+**Owner-device standing (D14, 2026-11-02)** now lets the owner's own paired
+devices that already have a host shell act as the owner on a personal
+Station; see section 9. The passkey design below still governs everything
+D14 does not grant.
+
 The later pairing approval flow also permits an operator session to request a
 passkey review for an ordinary Device request. It does not enable the remote
 CLI or native-app scenarios excluded by the historical D9 decision below.
@@ -1008,6 +1013,23 @@ cookie; the cookie adds only the exact session reads when that admission fails. 
 |---|---|
 | D12 | People sit in a Station group, Admin or Member (the default). A group caps what any device tied to the person may use; it never grants `access:manage`, so a paired device still never becomes an administrator. Devices tied to no person, peer Station delegations and home-possession credentials are not capped. Only the operator changes a group (`PUT /api/pairing/people/:principalId/group`). That route's raw operator-credential use is observed like the four device-admin routes (S1); S1b and S4 list only those four, so they must add it when they land. |
 | D13 | Anyone may mint personal access tokens for themselves, within their own access, from a device tied to them; the operator may mint and revoke them for anyone. v1 tokens carry Read and optionally Operate only. The operator's token routes (`POST`/`DELETE /api/pairing/people/:principalId/tokens…`) are observed like D12's route, and S1b and S4 must add them too. |
+
+### Decided (owner, 2026-11-02): owner-device standing
+
+| # | Decision |
+|---|---|
+| D14 | On a personal Station, the owner's own paired devices act as the owner by default. "Own" is the #3994 rule (a current `device` credential tied to no person, not a delegation or personal token), narrowed to a device whose effective scope already carries `orchestration:operate` and `terminal:operate`, which is to say a device that already has a shell on the host. It gets exactly the standing of the host launcher browser (`ui-bootstrap`): the operator principal, the home-operator checks, the `access:manage` route tier (derived per request, never stored), and device administration with that browser's limits. It gets no mint-time possession proof, so native consent custody and every other `local-grant` surface stay host-only, and the S4 passkey step-up still guards operator passkeys, people, groups and tokens. Hosted tenants never grant it. |
+
+D14 supersedes, for these devices only, rejected alternative B and the D12
+phrase "a paired device still never becomes an administrator". The reasoning:
+B was rejected because a stolen device would become an administrator, but a
+device holding `terminal:operate` already has a shell as the Station account,
+which is strictly more than device administration. Refusing it the owner's
+API standing protected nothing and made the product feel broken to its only
+user. Devices without a shell, devices tied to people, and delegations keep
+every refusal in this document. The
+[threat model](../security/remote-access-threat-model.md#owner-device-standing-2026-11-02)
+records the exact grant and its residual.
 
 ## Browser and Device reveal view standing
 

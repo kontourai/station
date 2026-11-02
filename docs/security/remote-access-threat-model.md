@@ -1113,6 +1113,66 @@ non-operator members is a separate program and is not widened here.
   before minting a ticket. That egress stays closed until a broker transport
   for the socket exists and this model is updated.
 
+### Owner-device standing (2026-11-02)
+
+Owner decision (2026-11-02): on a personal Station, the owner's own paired
+devices act as the owner by default, so a single developer never meets an
+"operator required" refusal from their own laptop or phone. Multiplayer
+authority (people, groups, sharing) starts mattering only once the owner
+shares a Project or invites someone.
+
+**Who holds it.** Server-derived on every request by
+[`DevicePairingService.credentialHasOwnerStanding`](../../src-server/services/ssh/device-pairing-service.ts)
+and bound once at the auth boundary as `standing: 'owner-device'`: a current
+`device` credential that is tied to no person, is not a delegation, a
+personal access token, a relay alias, a home-possession credential or a
+device still finishing relay enrollment, **and whose effective scope already
+carries `orchestration:operate` and `terminal:operate`**. A hosted tenant
+never grants it. Read-only and single-purpose grants (`read-only`,
+`delegation`, `inference`, `home-transfer`) never hold it. Revoking,
+rebinding or narrowing the device removes it on the next request.
+
+**Why it adds little reach.** A device holding `terminal:operate` already
+has an interactive shell on the host as the Station account (#3994). Anything
+the operator in person can do through the API, that shell can already do.
+The standing removes refusals rather than granting a new capability.
+
+**What it grants.** Exactly the standing of Station's own launcher browser
+on the host (`ui-bootstrap`):
+
+- it resolves to `human:local:operator`, so operator-principal gates pass;
+  every act still carries the device's id in its client origin (principals.md
+  R1);
+- it satisfies the home-operator checks (`isBoundRuntimeOwner`, the
+  Project-membership `operator()` check, the telemetry-companion,
+  relay-management and engine sign-in leaves), and "the operator in person"
+  for commands, working folders and full access. A full-access grant still
+  names the device as grantor, so revoking it resets what it granted (#1796);
+- `resolveGrantedScope` reports `access:manage` for it, derived per request
+  and never stored, so the `access:manage` route tier admits it. No other
+  tier widens;
+- `credentialMayManagePairing` admits it, so it can pair a phone (a
+  pre-approved single-use offer), read pending requests and the device
+  inventory, approve requests, and change or revoke ordinary devices, with
+  the host browser's limits: device grants only, never a delegation, never a
+  protected administration or consent scope
+  (`isProtectedPairingPromotionScope`, and the existing `access:devices` and
+  `home:control` refusals).
+
+**What it does not grant.** No mint-time possession proof: everything keyed
+on `isBoundLocalGrantMintedOperator` (native consent custody, outside-agent
+host proof, Station-control external clients, plugin host approval while the
+consent listener is down, binding a verified person at approval) stays
+host-only or passkey step-up. The raw operator credential's device-admin
+routes, operator passkeys, people, groups and tokens keep their S4 passkey
+step-up. It never becomes an `operator-session`.
+
+**Residual.** A stolen, unlocked owner device is the owner until it is
+revoked, as it already was through its terminal. Same-origin plugin code on
+an owner device's app origin can reach the same API the device can; that
+residual is the host launcher browser's, now extended to the owner's other
+devices. Revoke a lost device from any other owner device or from the host.
+
 The voice WebSocket requires `orchestration:operate` and refuses an
 account-bound device and any personal access token whatever its scope (#3586). The terminal socket ticket
 requires `terminal:observe` or `terminal:operate` and refuses the same callers. Pairing-family routes

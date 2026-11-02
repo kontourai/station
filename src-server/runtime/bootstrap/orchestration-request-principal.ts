@@ -21,6 +21,7 @@ import type { RuntimeAuthenticatedRequestPrincipal } from '../../security/runtim
 import {
   getRuntimeAuthenticatedRequestPrincipal,
   getRuntimeNativeDeviceProofPrincipal,
+  hasOwnerDeviceStanding,
 } from '../../security/runtime-request-security.js';
 import { stationControlRequestAuthority } from '../../security/station-control-request-authority.js';
 import { principalForDeviceBinding } from '../../services/access/device-binding-principal.js';
@@ -76,10 +77,16 @@ function deviceIdentity(
 export function pairedDevicePrincipal(
   device: Pick<PairedDevice, 'id' | 'name' | 'principalBinding'>,
   locality: 'home-possession' | undefined,
+  /** Owner standing (`DevicePairingService.deviceHasOwnerStanding`). */
+  ownerDevice = false,
 ): PrincipalRef {
   const binding = device.principalBinding;
   const operatorAuthority =
-    locality === 'home-possession' ? { locality } : undefined;
+    locality === 'home-possession'
+      ? { locality }
+      : ownerDevice && !binding
+        ? ({ ownerDevice: true } as const)
+        : undefined;
   return resolveStationPrincipal(
     binding && !('kind' in binding)
       ? {
@@ -211,15 +218,24 @@ export function createOrchestrationRequestPrincipalResolver(
         });
       }
     }
+    const ownerDevice =
+      hostedTenantRegistry === undefined &&
+      hasOwnerDeviceStanding(runtimePrincipal);
     const operatorAuthority =
       runtimePrincipal?.locality === 'home-possession'
         ? { locality: runtimePrincipal.locality }
         : runtimePrincipal?.authority === 'operator-credential'
           ? ({ verifiedOperatorCredential: true } as const)
-          : undefined;
-    const ingressIdentity = deps.accountSessionOwnsPerson?.(c.req.raw)
-      ? null
-      : identifyIngress(c);
+          : ownerDevice
+            ? ({ ownerDevice: true } as const)
+            : undefined;
+    // An owner device is the owner's own position: a tailnet login seen on
+    // the way in does not re-identify it as someone else. A device tied to a
+    // person never holds owner standing, so its binding checks below apply.
+    const ingressIdentity =
+      deps.accountSessionOwnsPerson?.(c.req.raw) || ownerDevice
+        ? null
+        : identifyIngress(c);
     const device =
       runtimePrincipal?.authority === 'device-credential'
         ? environmentSecurityService.identifyDevice(runtimePrincipal.credential)

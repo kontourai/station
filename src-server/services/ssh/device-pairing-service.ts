@@ -43,7 +43,9 @@ import {
 } from '@kontourai/station-contracts';
 import {
   deviceRequestedExtraScopes,
+  PAIRING_SCOPE_ORCHESTRATION_OPERATE,
   PAIRING_SCOPE_ORCHESTRATION_READ,
+  PAIRING_SCOPE_TERMINAL_OPERATE,
   pairingScopeIncludes,
 } from '@kontourai/station-contracts/environment-security';
 import type { NativePushRegistrationRequest } from '@kontourai/station-contracts/native-push';
@@ -495,6 +497,14 @@ interface DevicePairingServiceOptions {
    * capped. Omitted, a device uses exactly what it was granted.
    */
   capScope?: (device: PairedDevice) => string;
+  /**
+   * Owner standing (owner decision, 2026-11-02): whether this Station's own
+   * paired devices may hold the owner's standing at all. Only a personal
+   * Station passes `true`; a hosted tenant never does, because its devices
+   * do not belong to the person who runs the host. Omitted means no device
+   * ever holds owner standing.
+   */
+  ownerDeviceStanding?: boolean;
 }
 
 export class DevicePairingError extends Error {
@@ -1206,6 +1216,7 @@ export class DevicePairingService {
   readonly #maxActiveCredentialsPerVerifiedIdentity: number;
   readonly #maxActiveCredentialsWithoutVerifiedIdentity: number;
   readonly #capScope: NonNullable<DevicePairingServiceOptions['capScope']>;
+  readonly #ownerDeviceStanding: boolean;
   /** #3557: personal access tokens, resolved as headless devices. */
   readonly #tokens: PersonalTokenStore;
   /**
@@ -1227,6 +1238,7 @@ export class DevicePairingService {
 
   constructor(options: DevicePairingServiceOptions) {
     this.#capScope = options.capScope ?? ((device) => device.scope);
+    this.#ownerDeviceStanding = options.ownerDeviceStanding === true;
     this.#tokens = new PersonalTokenStore({
       securityDir: join(options.homeDir, 'security'),
       ...(options.now ? { now: options.now } : {}),
@@ -3533,14 +3545,67 @@ export class DevicePairingService {
       : undefined;
   }
 
-  /** Host-issued browser sessions may manage device access, never native consent. */
+  /**
+   * Host-issued browser sessions may manage device access, never native
+   * consent. Owner devices ({@link credentialHasOwnerStanding}) hold the same
+   * standing and the same limits: device grants only, never a protected
+   * administration or consent scope, never a delegation.
+   */
   credentialMayManagePairing(candidate: string): boolean {
     return (
-      this.credentialMintKind(candidate) === 'ui-bootstrap' &&
-      pairingScopeIncludes(
-        this.effectiveScope(candidate) ?? '',
-        PAIRING_SCOPE_ACCESS_MANAGE,
-      )
+      (this.credentialMintKind(candidate) === 'ui-bootstrap' &&
+        pairingScopeIncludes(
+          this.effectiveScope(candidate) ?? '',
+          PAIRING_SCOPE_ACCESS_MANAGE,
+        )) ||
+      this.credentialHasOwnerStanding(candidate)
+    );
+  }
+
+  /**
+   * Owner standing (owner decision, 2026-11-02): on a personal Station, a
+   * device the owner paired for themself acts as the owner, with the same
+   * standing as Station's own launcher browser on the host.
+   *
+   * It applies only to a device that ALREADY has a shell on this host
+   * (`terminal:operate`) and may drive work (`orchestration:operate`). Such a
+   * device can already do anything the host account can, so this standing
+   * removes refusals rather than adding reach. Never: a read-only or
+   * single-purpose grant, a peer Station's delegation, a personal access
+   * token, a device tied to a person (#3557, whose group caps it), a relay
+   * alias (read-only by construction), a credential minted with
+   * home-possession (already the operator in person), or a device still
+   * finishing relay enrollment. Re-read from the registry on every call, so
+   * a revoke, rebind or scope change applies to the next request.
+   */
+  credentialHasOwnerStanding(candidate: string): boolean {
+    if (!this.#ownerDeviceStanding) return false;
+    const match = this.#findActiveCredential(this.#registry, candidate);
+    if (!match || match.alias) return false;
+    return this.#storedDeviceHasOwnerStanding(match.device);
+  }
+
+  /** {@link credentialHasOwnerStanding}, by device id, for background work. */
+  deviceHasOwnerStanding(deviceId: string): boolean {
+    if (!this.#ownerDeviceStanding) return false;
+    const device = this.#registry.devices.find((item) => item.id === deviceId);
+    return device !== undefined && this.#storedDeviceHasOwnerStanding(device);
+  }
+
+  #storedDeviceHasOwnerStanding(device: StoredDevice): boolean {
+    if (
+      device.revokedAt !== null ||
+      device.kind !== 'device' ||
+      device.credentialKind === 'personal-token' ||
+      device.principalBinding !== undefined ||
+      device.locality !== undefined ||
+      device.pendingEnrollmentId !== undefined
+    )
+      return false;
+    const scope = this.#capScope(publicDevice(device));
+    return (
+      pairingScopeIncludes(scope, PAIRING_SCOPE_ORCHESTRATION_OPERATE) &&
+      pairingScopeIncludes(scope, PAIRING_SCOPE_TERMINAL_OPERATE)
     );
   }
 
