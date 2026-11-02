@@ -50,8 +50,12 @@ type VideoDecoderConstructor = typeof VideoDecoder;
 
 export class LiveSurfaceH264Decoder {
   private decoder: VideoDecoder | null = null;
+  /**
+   * The stream the decoder is configured for, or null: not yet, or reset
+   * after an error. Only a keyframe configures it, so while it is null no
+   * delta reaches the decoder.
+   */
   private configured: string | null = null;
-  private awaitingKeyframe = true;
   private closed = false;
   /** Units are decoded strictly in order, even across a config check. */
   private chain: Promise<unknown> = Promise.resolve();
@@ -62,11 +66,6 @@ export class LiveSurfaceH264Decoder {
     private readonly callbacks: LiveSurfaceH264DecoderCallbacks,
     private readonly Decoder: VideoDecoderConstructor = globalThis.VideoDecoder,
   ) {}
-
-  /** Units the decoder holds that have not come out yet. */
-  get pending(): number {
-    return this.inFlight.size;
-  }
 
   decode(
     header: LiveSurfaceFrameHeader,
@@ -83,10 +82,12 @@ export class LiveSurfaceH264Decoder {
   ): Promise<LiveSurfaceDecodeOutcome> {
     if (this.closed) return 'awaiting-keyframe';
     if (header.keyframe) {
+      // A keyframe without parameter sets decodes under the current ones.
       const sequence = parseLiveSurfaceH264Sequence(body);
-      if (!sequence) return this.awaitKeyframe();
-      const key = `${sequence.codec}:${sequence.width}x${sequence.height}`;
-      if (key !== this.configured) {
+      if (!sequence && !this.configured) return 'awaiting-keyframe';
+      const key =
+        sequence && `${sequence.codec}:${sequence.width}x${sequence.height}`;
+      if (sequence && key !== this.configured) {
         const config: VideoDecoderConfig = {
           codec: sequence.codec,
           codedWidth: sequence.width,
@@ -105,14 +106,14 @@ export class LiveSurfaceH264Decoder {
         const decoder = this.ensureDecoder();
         try {
           decoder.configure(config);
-        } catch (error) {
-          this.fail(error);
+        } catch {
+          // Claimed supported, refused anyway: images, not a resync loop.
+          this.reset();
           return 'unsupported';
         }
         this.configured = key;
       }
-      this.awaitingKeyframe = false;
-    } else if (this.awaitingKeyframe || !this.decoder) {
+    } else if (!this.configured) {
       return 'awaiting-keyframe';
     }
     const decoder = this.decoder!;
@@ -141,11 +142,6 @@ export class LiveSurfaceH264Decoder {
     if (decoder && decoder.state !== 'closed') decoder.close();
   }
 
-  private awaitKeyframe(): LiveSurfaceDecodeOutcome {
-    this.awaitingKeyframe = true;
-    return 'awaiting-keyframe';
-  }
-
   private ensureDecoder(): VideoDecoder {
     if (this.decoder && this.decoder.state !== 'closed') return this.decoder;
     const decoder: VideoDecoder = new this.Decoder({
@@ -168,7 +164,11 @@ export class LiveSurfaceH264Decoder {
 
   /** Reset after an error: nothing decodes again until a keyframe. */
   private fail(error: unknown): void {
-    this.awaitingKeyframe = true;
+    this.reset();
+    if (!this.closed) this.callbacks.onError(error);
+  }
+
+  private reset(): void {
     this.configured = null;
     this.inFlight.clear();
     const decoder = this.decoder;
@@ -178,6 +178,5 @@ export class LiveSurfaceH264Decoder {
     } catch {
       // already closed by the error
     }
-    if (!this.closed) this.callbacks.onError(error);
   }
 }
