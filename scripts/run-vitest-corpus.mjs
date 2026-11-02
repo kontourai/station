@@ -624,6 +624,13 @@ export function emitResult(result, { diagnosticDirectory } = {}) {
   process.stdout.write(
     `[vitest-corpus] ${result.name}: ${state}; ${result.outputBytes ?? 0} byte(s) captured\n`,
   );
+  if (!cancelled) {
+    const totals = stripVTControlCharacters(result.stdout ?? '')
+      .split('\n')
+      .filter((line) => /^\s*(?:Test Files|Tests)\s/.test(line));
+    for (const line of totals)
+      process.stdout.write(`[vitest-corpus] ${result.name}: ${line.trim()}\n`);
+  }
   if (cancelled)
     process.stdout.write(
       `[vitest-corpus] ${result.name}: no test results were produced — the run did not complete, so the capture below is a partial transcript and names no failing test.\n`,

@@ -60,7 +60,21 @@
 
     "src-server/providers/__tests__/claude-adapter-events.test.ts",
 
-    "src-server/routes/orchestration/__tests__/conversation-fork.qualification.test.ts"
+    "src-server/routes/orchestration/__tests__/conversation-fork.qualification.test.ts",
+
+    "packages/monument/src/session-boundary.ts",
+
+    "src-server/services/orchestration/session-turn-boundary-binding.ts",
+
+    "src-server/services/orchestration/credential-recovery-module.ts",
+
+    "src-server/services/orchestration/session-recovery-coordinator.ts",
+
+    "src-server/telemetry/metrics.ts",
+
+    "packages/contracts/src/connection-recovery.ts",
+
+    "src-ui/src/components/chat-dock/UsageLimitBanner.tsx"
   ],
 
   "checks": [

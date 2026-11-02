@@ -10,6 +10,7 @@ import {
   type KernelResults,
   type OwnerLiveness,
   type SessionStartResult,
+  type SessionTurnBoundaryReadAuthority as SessionTurnBoundaryAuthority,
   startUnlessDelivered,
 } from '@kontourai/monument';
 import {
@@ -57,7 +58,6 @@ import {
   turnIdentityAnchorForEvents,
 } from './session-lifecycle-service.js';
 import type { StartOwnerAttribution } from './session-owner-attribution.js';
-import type { SessionTurnBoundaryAuthority } from './session-turn-boundary.js';
 import {
   evaluateSessionWait,
   type SessionTurnWaitPorts,
