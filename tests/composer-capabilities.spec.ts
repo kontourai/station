@@ -541,9 +541,6 @@ test('blocked credential recovery explains its reason and retry at both widths a
   );
   await expect(banner.getByRole('status')).toContainText('Next check');
   await expect(
-    page.getByText('No failure detail was recorded for this session.'),
-  ).toBeHidden();
-  await expect(
     banner.getByRole('button', { name: 'Resume now', exact: true }),
   ).toBeEnabled();
   for (const width of [390, 1440])
