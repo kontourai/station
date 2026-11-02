@@ -53,13 +53,12 @@ export interface RegionChromeTab {
 const GAP = 4;
 
 /**
- * Below this side-region width (CSS px) the bar's own spacing, the hover-only
- * placement grab and the agent avatar leave too little for the chat title
- * (#4401). Sized so the 280px minimum (`MIN_DOCK_WIDTH`) still shows the
- * title, the ×, the status chip and the region's buttons without overlap;
- * the 400px default keeps the full bar.
+ * A side region narrower than its 400px default (CSS px) compacts its bar
+ * (#4401): the full bar's spacing, the hover-only placement grab and the
+ * agent avatar leave too little for the chat title, down to the 280px
+ * minimum (`MIN_DOCK_WIDTH`), where it vanished under the ×.
  */
-const COMPACT_SIDE_BAR_WIDTH = 360;
+const COMPACT_SIDE_BAR_WIDTH = 400;
 
 const TOGGLE_EXEMPT =
   'a, button, [role="button"], [role="link"], [role="tab"], input, select, textarea, [data-dock-toggle-shield]';

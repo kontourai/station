@@ -2204,17 +2204,12 @@ button:hover {
   overflow: hidden;
 }
 
-/* #4401 A30: this box clips, so without a floor a crowded bar shrank it past
-   its own contents: the title went to nothing and the × slid under the next
-   item (the status chip), where it could not be seen or pressed. The floor is
-   the avatar, three characters of title and the ×, with the gaps between. */
-.chat-dock__header-identity:not(.chat-dock__header-identity--pane) {
-  min-width: calc(20px + 28px + var(--space-2) * 2 + var(--k-text-md) * 3);
-}
-
-/* A narrow side region (`is-compact`, `RegionChromeBar`): tighter spacing, and
-   the hover-only placement grab and the avatar step aside so the title keeps
-   room. Moving the region stays a row of the More menu. */
+/* #4401 A30: a side region narrower than its default (`is-compact`,
+   `RegionChromeBar`). With the full bar's spacing the identity, which clips,
+   was squeezed past its own contents: the title went to nothing and the ×
+   slid under the status chip. Here the spacing tightens, and the hover-only
+   placement grab and the avatar step aside so the title keeps room; moving
+   the region stays a row of the More menu. */
 .chat-dock__header.is-compact {
   gap: var(--space-2);
   padding-inline: var(--space-3);
@@ -2235,11 +2230,6 @@ button:hover {
 .chat-dock__header.is-compact .chat-dock__placement-grab,
 .chat-dock__header.is-compact .chat-dock__active-identity-avatar {
   display: none;
-}
-
-.chat-dock__header.is-compact
-  .chat-dock__header-identity:not(.chat-dock__header-identity--pane) {
-  min-width: calc(28px + var(--space-2) + var(--k-text-md) * 3);
 }
 
 .chat-dock__header.is-compact .session-context-chip {
@@ -3574,8 +3564,7 @@ button:hover {
   display: flex;
   flex: 1 1 auto;
   flex-wrap: wrap;
-  /* The title's own floor (below); at 0 the row gave the title up first. */
-  min-width: calc(var(--k-text-md) * 3);
+  min-width: 0;
   height: calc(var(--k-text-md) * 1.3);
   align-items: baseline;
   gap: 0 var(--k-space-2);
