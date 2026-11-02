@@ -50,13 +50,19 @@ const measureCell = (font: FontSpec): CellMetrics => ({
   font,
 });
 
-/** The engine worker, run in this thread on the real vendored module. */
+/**
+ * The engine worker, run in this thread on the real vendored module. A message
+ * with a transfer list is cloned with it, so its buffers detach on the sending
+ * side exactly as they do when posted to a real Worker.
+ */
 function inThreadPort(): EnginePort {
   const port: EnginePort = {
     onmessage: null,
     onerror: null,
-    postMessage: (message) => {
-      void host.handle(message);
+    postMessage: (message, transfer) => {
+      void host.handle(
+        transfer.length ? structuredClone(message, { transfer }) : message,
+      );
     },
     terminate: () => undefined,
   };
@@ -83,6 +89,34 @@ function fakeSession() {
   const output = (text: string) =>
     listener?.output(new TextEncoder().encode(text), 'live');
   return { session, output };
+}
+
+/**
+ * One session several views share, as the SDK session store does: each chunk
+ * is one array handed to every subscriber and retained for later ones.
+ */
+function sharedSession() {
+  const listeners = new Set<TerminalViewSessionListener>();
+  const retained: Uint8Array[] = [];
+  const session = {
+    state: 'ready' as const,
+    readOnly: false,
+    subscribe(next: TerminalViewSessionListener) {
+      listeners.add(next);
+      for (const chunk of retained) next.output(chunk, 'replay');
+      return () => {
+        listeners.delete(next);
+      };
+    },
+    write: vi.fn((_bytes: Uint8Array) => true),
+    resize: vi.fn((_cols: number, _rows: number) => undefined),
+  } satisfies TerminalViewSession;
+  const output = (text: string) => {
+    const chunk = new TextEncoder().encode(text);
+    retained.push(chunk);
+    for (const listener of listeners) listener.output(chunk, 'live');
+  };
+  return { session, output, retained };
 }
 
 let resizeObservers: (() => void)[] = [];
@@ -129,7 +163,9 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-async function startController() {
+async function startController(
+  shared?: ReturnType<typeof sharedSession>,
+) {
   const root = document.createElement('div');
   root.getBoundingClientRect = () => DOMRect.fromRect(rect);
   const canvas = document.createElement('canvas');
@@ -148,7 +184,7 @@ async function startController() {
       measureCell,
     },
   );
-  const { session, output } = fakeSession();
+  const { session, output } = shared ?? fakeSession();
   controller.setSession(session);
   await controller.start();
   await vi.waitFor(() => expect(controller.getSnapshot().status).toBe('ready'));
@@ -219,6 +255,52 @@ describe('TerminalController', () => {
       expect(session.resize).toHaveBeenCalledWith(120, 30),
     );
     expect(session.resize).toHaveBeenCalledTimes(1);
+    controller.dispose();
+  });
+
+  // Docking a Terminal right and back left a hidden dock view and the lower
+  // panel's view on one session; the first view's transfer detached the
+  // chunk, the second view's post threw, and the store reconnected forever.
+  it('leaves output intact for every other view of the same session', async () => {
+    const writeText = vi.fn(async (_text: string) => undefined);
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText },
+    });
+    const shared = sharedSession();
+    const first = await startController(shared);
+    const second = await startController(shared);
+    expect(() => shared.output('seen by both views')).not.toThrow();
+    expect(shared.retained[0]?.byteLength).toBe('seen by both views'.length);
+    // A view that subscribes later replays the retained chunk.
+    const late = await startController(shared);
+    for (const { controller } of [first, second, late]) {
+      await vi.waitFor(async () => {
+        controller.selectAll();
+        expect(await controller.copy()).toBe(true);
+        expect(writeText).toHaveBeenLastCalledWith('seen by both views');
+      });
+      controller.dispose();
+    }
+  });
+
+  // A dock region put away keeps its view mounted with no box; sizing the
+  // shared shell from it squeezed every other view to two columns.
+  it('never sizes the session from a view with no box', async () => {
+    rect = { width: 0, height: 0 };
+    const { controller, session } = await startController();
+    await new Promise((done) => setTimeout(done, 150));
+    expect(session.resize).not.toHaveBeenCalled();
+    rect = { width: 800, height: 320 };
+    for (const observe of resizeObservers) observe();
+    await vi.waitFor(() =>
+      expect(session.resize).toHaveBeenLastCalledWith(100, 20),
+    );
+    session.resize.mockClear();
+    rect = { width: 0, height: 0 };
+    for (const observe of resizeObservers) observe();
+    await new Promise((done) => setTimeout(done, 150));
+    expect(session.resize).not.toHaveBeenCalled();
     controller.dispose();
   });
 });

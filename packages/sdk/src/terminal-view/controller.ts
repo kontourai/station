@@ -107,6 +107,8 @@ export class TerminalController {
   private metrics: CellMetrics | null = null;
   private theme: TerminalTheme | null = null;
   private size: EngineSize | null = null;
+  /** False while `size` is a placeholder: the view has had no box to measure. */
+  private measured = false;
   private session: TerminalViewSession | null = null;
   private unsubscribeSession: (() => void) | null = null;
   private readonly cleanups: (() => void)[] = [];
@@ -167,7 +169,16 @@ export class TerminalController {
         this.options.font,
         window.devicePixelRatio || 1,
       );
-      this.size = this.measureGrid();
+      const measured = this.measureGrid();
+      this.measured = measured !== null;
+      // A view mounted hidden has no box yet; it starts on a placeholder grid
+      // and sizes the session only once it is laid out.
+      this.size = measured ?? {
+        cols: 80,
+        rows: 24,
+        cellWidth: this.metrics.width,
+        cellHeight: this.metrics.height,
+      };
       this.renderer = this.createRenderer();
       this.renderer.setTheme(this.theme);
       this.renderer.resize(this.size.cols, this.size.rows, this.metrics);
@@ -274,8 +285,15 @@ export class TerminalController {
   private attachSession(session: TerminalViewSession): void {
     this.unsubscribeSession?.();
     this.unsubscribeSession = session.subscribe({
-      output: (bytes, kind) =>
-        this.engine?.send({ type: 'write', bytes, mode: kind }, [bytes.buffer]),
+      output: (bytes, kind) => {
+        // The session owns these bytes: it hands the same array to every view
+        // of the session and keeps it for views that subscribe later.
+        // Transferring it would detach it under them, so the worker gets a copy.
+        const owned = bytes.slice();
+        this.engine?.send({ type: 'write', bytes: owned, mode: kind }, [
+          owned.buffer,
+        ]);
+      },
       reset: () => this.engine?.send({ type: 'clear' }),
       state: (state, detail) => {
         this.update({ session: state });
@@ -285,7 +303,7 @@ export class TerminalController {
           );
       },
     });
-    if (this.size && !session.readOnly)
+    if (this.size && this.measured && !session.readOnly)
       session.resize(this.size.cols, this.size.rows);
   }
 
@@ -300,9 +318,16 @@ export class TerminalController {
 
   // ─── grid and theme ──────────────────────────────────────────────────────
 
-  private measureGrid(): EngineSize {
+  /**
+   * The grid the root's box holds, or null when it has no box: a hidden or
+   * collapsed view (a dock region put away, an inactive tab) measures zero.
+   * Such a view keeps its last grid and never resizes the session, which
+   * other views may be showing at their own size.
+   */
+  private measureGrid(): EngineSize | null {
     const metrics = this.metrics!;
     const rect = this.elements.root.getBoundingClientRect();
+    if (!(rect.width > 0 && rect.height > 0)) return null;
     return {
       cols: Math.max(2, Math.floor(rect.width / metrics.cssWidth)),
       rows: Math.max(1, Math.floor(rect.height / metrics.cssHeight)),
@@ -311,7 +336,7 @@ export class TerminalController {
     };
   }
 
-  private relayout(): void {
+  private relayout(force = false): void {
     if (!this.metrics || !this.engine || !this.renderer) return;
     const dpr = window.devicePixelRatio || 1;
     if (dpr !== this.metrics.dpr)
@@ -320,8 +345,11 @@ export class TerminalController {
         dpr,
       );
     const next = this.measureGrid();
+    if (!next) return;
     const size = this.size;
     if (
+      !force &&
+      this.measured &&
       size &&
       size.cols === next.cols &&
       size.rows === next.rows &&
@@ -330,6 +358,7 @@ export class TerminalController {
     )
       return;
     this.size = next;
+    this.measured = true;
     this.renderer.resize(next.cols, next.rows, this.metrics);
     this.engine.send({ type: 'resize', size: next });
     // Resizes go to the PTY at most every 100ms while a drag is in progress.
@@ -364,8 +393,7 @@ export class TerminalController {
       font,
       window.devicePixelRatio || 1,
     );
-    this.size = null;
-    this.relayout();
+    this.relayout(true);
   }
 
   // ─── frames ──────────────────────────────────────────────────────────────
