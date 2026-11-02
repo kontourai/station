@@ -333,7 +333,7 @@ export function prepareDurableForegroundHandoff(input: {
       state &&
       typeof wire === 'string' &&
       event &&
-      ['text-delta', 'reasoning-delta'].includes(event.type) &&
+      !['finish', 'error'].includes(event.type) &&
       Buffer.byteLength(wire) <= 64 * 1024
     ) {
       const size = Buffer.byteLength(wire);

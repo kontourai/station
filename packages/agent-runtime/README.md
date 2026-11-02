@@ -291,7 +291,7 @@ Large request/result bodies share immutable fragments of at most 16,384 UTF-16 c
 
 Change tracking keeps the newest receipt for every turn/kind/id. A receipt can be deleted only when a newer receipt for that same key exists. Sequence numbers never decrease, and any connection whose cursor predates a change still sees the newer receipt. The final receipt, including a deletion tombstone, remains protected. Pure custom clocks take the incremental path; clock callbacks that write rows are refused and rolled back.
 
-The chat projection commits bounded batches before displaying any frame. Each frame keeps its own ID, wire and position; transaction grouping does not merge identities. Control and terminal events flush pending text first, and cleanup waits for both the publication drain and owner completion. The frame ceiling is 1,048,576 per turn, leaving margin above the default 200-step workload at 400 chunks per answer. Text processing retains provider chunk boundaries. New turns record `input-chunks/1`; recovery of older descriptors retains their original character-frame layout.
+The chat projection commits bounded batches before displaying any frame. Each frame keeps its own ID, wire and position; transaction grouping does not merge identities. Control events share ordered batches with text; error and terminal events flush pending output first, and cleanup waits for both the publication drain and owner completion. The frame ceiling is 1,048,576 per turn, leaving margin above the default 200-step workload at 400 chunks per answer. Text processing retains provider chunk boundaries. New turns record `input-chunks/1`; recovery of older descriptors retains their original character-frame layout.
 
 The benchmark includes the actual in-process chat/SSE route and `projectFrame`/`projectFrameBatch`, with 0, 5 and 20 ms token pacing. It reports total home bytes divided by emitted text bytes, journal/body/frame bytes, transient WAL peak, elapsed ratio, command and amortized projection costs, and event-loop stall. The fresh-journal workload budget is 128 KiB fixed + 16 KiB per model step + three times emitted text bytes; immutable body storage has a separate 8 KiB per-step + twice-text budget. `--delta-bytes=4` measures small deltas independently from the default 64-byte workload, and `dbstat` reports allocated bytes per table and index alongside logical payload bytes. These allowances include indexed frame/change metadata; they are not a claim that total disk usage is twice text, or that retained raw disk is bounded. TCP and the outer EventStore relay remain outside this benchmark. SDK tracing stays active; fixture traces and garbage are cleared between measurements, never within a measured turn.
 
@@ -305,7 +305,7 @@ reduces storage, not logical frame counts. Two reserved positions carry a typed
 the fixed output-limit message and the owner settles the turn blocked.
 
 Body format `agent-body/3` packs adjacent text deltas without changing replay
-boundaries, compresses control data, and shares content-addressed native text
+boundaries, compresses control data and overwritten tails, and shares content-addressed native text
 fragments with later model prompts. Complete model attempts store a checked prefix
 length and digest into their immutable output instead of retaining a second partial
 tape. Running and indeterminate attempts keep their exact committed partials.
@@ -320,7 +320,7 @@ blocked turns retain recovery evidence. Free SQLite pages are reused; cleanup do
 not promise an immediate filesystem shrink or reclaim uncertain effects.
 
 Post-tool steer additions are captured lazily before dispatch. Recovery restores
-the same tool-anchored prompt additions without claiming the inbox again. Starting
+the same tool-anchored prompt additions and the deferred steer memory write without claiming the inbox again. Starting
 a whole new stream clears the prior stream's in-memory additions. Observed-event
 publication retries the actual append asynchronously for at most five seconds;
 SQLite's normal busy timeout is restored before synchronous observers run.

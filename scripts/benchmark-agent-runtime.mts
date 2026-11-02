@@ -434,11 +434,36 @@ async function run(
     const bodyBudgetBytes = steps * 8 * 1024 + 2 * textBytes;
     if (
       durable &&
-      (journalBytes > journalBudgetBytes || bodiesBytes > bodyBudgetBytes)
-    )
-      throw new Error(
-        `Benchmark storage budget exceeded: ${JSON.stringify({ journalBytes, journalBudgetBytes, bodiesBytes, bodyBudgetBytes })}`,
+      (onDiskBytes > journalBudgetBytes || bodiesBytes > bodyBudgetBytes)
+    ) {
+      writeFileSync(
+        `${output}.failure.json`,
+        JSON.stringify(
+          {
+            revision,
+            steps,
+            chunks,
+            paceMs,
+            deltaBytes,
+            storage: {
+              onDiskBytes,
+              journalBytes,
+              bodiesBytes,
+              framesBytes,
+              textBytes,
+              tables,
+              journalBudgetBytes,
+              bodyBudgetBytes,
+            },
+          },
+          null,
+          2,
+        ),
       );
+      throw new Error(
+        `Benchmark storage budget exceeded: ${JSON.stringify({ onDiskBytes, journalBytes, journalBudgetBytes, bodiesBytes, bodyBudgetBytes })}`,
+      );
+    }
     if (
       calls !== steps ||
       tools !== steps - 1 ||

@@ -57,7 +57,9 @@ export function encodeAgentBody(
       let start = 0;
       let rolling = 0;
       for (let index = 0; index < node.length; index++) {
-        rolling = ((rolling << 5) - rolling + node.charCodeAt(index)) >>> 0;
+        rolling =
+          ((rolling << 1) + Math.imul(node.charCodeAt(index), 0x9e3779b1)) >>>
+          0;
         const length = index + 1 - start;
         if (
           length >= 4096 ||

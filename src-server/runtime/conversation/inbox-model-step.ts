@@ -13,7 +13,9 @@ import {
 import { currentAuthorizedTurnCorrelation } from './authorized-turn-correlation.js';
 
 type ModelStep = Parameters<PrepareStepFunction>[0];
+const preparedByInbox = Symbol('station.inbox-preparation');
 interface InsertedSteer {
+  readonly key: string;
   readonly afterToolCallId: string;
   readonly message: ModelMessage;
 }
@@ -86,9 +88,12 @@ export function createInboxStepPreparation(
       inserted.length = 0;
     }
     const prepared = await previous?.(step);
+    if (prepared && Reflect.get(prepared, preparedByInbox) === true)
+      return prepared;
     if (!correlation) return prepared;
     const model = prepared?.model ?? step.model;
     const pending: PostToolSteerInput[] = [];
+    let restoredPending: InsertedSteer[] = [];
     const afterToolCallId = step.steps.at(-1)?.toolResults.at(-1)?.toolCallId;
     const capture = () => {
       if (
@@ -102,6 +107,7 @@ export function createInboxStepPreparation(
           correlation.turnId,
           (input) => {
             inserted.push({
+              key: input.key,
               afterToolCallId,
               message: { role: 'user', content: input.text },
             });
@@ -109,10 +115,14 @@ export function createInboxStepPreparation(
           },
         );
       }
-      return inserted.map((entry) => ({
-        afterToolCallId: entry.afterToolCallId,
-        text: entry.message.content,
-      }));
+      return {
+        entries: inserted.map((entry) => ({
+          key: entry.key,
+          afterToolCallId: entry.afterToolCallId,
+          text: entry.message.content,
+        })),
+        pending: pending.map((input) => input.key),
+      };
     };
     const turn = currentAgentTurn();
     if (turn) {
@@ -122,36 +132,63 @@ export function createInboxStepPreparation(
         `inbox-steers:${streamOrdinal}:${step.stepNumber}`,
         capture,
       );
-      const entries = z
-        .array(
-          z
-            .object({
-              afterToolCallId: z.string().min(1),
-              text: z.string(),
-            })
-            .strict(),
-        )
+      const savedSteers = z
+        .object({
+          entries: z.array(
+            z
+              .object({
+                key: z.string().min(1),
+                afterToolCallId: z.string().min(1),
+                text: z.string(),
+              })
+              .strict(),
+          ),
+          pending: z.array(z.string().min(1)),
+        })
+        .strict()
         .parse(saved);
       inserted.splice(
         0,
         inserted.length,
-        ...entries.map((entry) => ({
+        ...savedSteers.entries.map((entry) => ({
+          key: entry.key,
           afterToolCallId: entry.afterToolCallId,
           message: { role: 'user' as const, content: entry.text },
         })),
       );
+      restoredPending = inserted.filter(
+        (entry) =>
+          savedSteers.pending.includes(entry.key) &&
+          !pending.some((input) => input.key === entry.key),
+      );
     }
     if (!turn) capture();
     if (!inserted.length) return prepared;
+    const remember = async (key: string, text: string) => {
+      if (context?.memory && context.userId && context.conversationId) {
+        await context.memory.addMessages(
+          [
+            {
+              id: `inbox-steer:${correlation.sessionId}:${key}`,
+              role: 'user',
+              parts: [{ type: 'text', text }],
+            },
+          ],
+          context.userId,
+          context.conversationId,
+        );
+      }
+    };
     let attempted = false;
     return {
       ...prepared,
+      [preparedByInbox]: true,
       messages: withInsertedSteers(
         prepared?.messages ?? step.messages,
         step.steps,
         inserted,
       ),
-      ...(pending.length &&
+      ...((pending.length || restoredPending.length) &&
       typeof model !== 'string' &&
       model.specificationVersion === 'v3'
         ? {
@@ -173,25 +210,11 @@ export function createInboxStepPreparation(
                     throw error;
                   }
                   for (const input of pending)
-                    await input.onDispatched(async () => {
-                      if (
-                        context?.memory &&
-                        context.userId &&
-                        context.conversationId
-                      ) {
-                        await context.memory.addMessages(
-                          [
-                            {
-                              id: `inbox-steer:${correlation.sessionId}:${input.key}`,
-                              role: 'user',
-                              parts: [{ type: 'text', text: input.text }],
-                            },
-                          ],
-                          context.userId,
-                          context.conversationId,
-                        );
-                      }
-                    });
+                    await input.onDispatched(() =>
+                      remember(input.key, input.text),
+                    );
+                  for (const entry of restoredPending)
+                    await remember(entry.key, String(entry.message.content));
                   return result;
                 },
               },

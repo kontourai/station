@@ -1,4 +1,5 @@
 import type { DatabaseSync } from 'node:sqlite';
+import { deflateSync, inflateSync } from 'node:zlib';
 import { z } from 'zod';
 import { canonical, fence, hash, runKey, text } from './encoding.js';
 import {
@@ -97,9 +98,7 @@ export function agentEffectHeader(
       ...(format >= 3
         ? {
             tail:
-              format === 4 &&
-              attempt.output !== null &&
-              ['model', 'provider'].includes(effect.intent.kind)
+              format === 4
                 ? []
                 : attempt.partials.slice(
                     attempt.partials.length - (attempt.partials.length % 128),
@@ -119,6 +118,18 @@ export function agentEffectHeader(
         : {}),
       ...(format === 4
         ? {
+            tailTape:
+              attempt.output !== null &&
+              ['model', 'provider'].includes(effect.intent.kind)
+                ? null
+                : deflateSync(
+                    JSON.stringify(
+                      attempt.partials.slice(
+                        attempt.partials.length -
+                          (attempt.partials.length % 128),
+                      ),
+                    ),
+                  ).toString('base64'),
             prefixLength:
               attempt.output !== null &&
               ['model', 'provider'].includes(effect.intent.kind)
@@ -371,6 +382,7 @@ export function readAgentEffect(
             effectSchema.shape.attempts.element.extend({
               tail: z.array(payload).max(127),
               tailDigest: text,
+              tailTape: z.string().nullable().optional(),
               prefixLength: z
                 .number()
                 .int()
@@ -384,10 +396,27 @@ export function readAgentEffect(
       })
       .parse(raw);
     for (const attempt of stored.attempts) {
-      if (hash(canonical(attempt.tail)) !== attempt.tailDigest)
+      const tail =
+        compact && attempt.tailTape !== undefined
+          ? attempt.tailTape === null
+            ? []
+            : z
+                .array(payload)
+                .max(127)
+                .parse(
+                  JSON.parse(
+                    inflateSync(Buffer.from(attempt.tailTape, 'base64'), {
+                      maxOutputLength: 32 * 1024 * 1024,
+                    }).toString('utf8'),
+                  ),
+                )
+          : attempt.tail;
+      if (compact && attempt.tailTape !== undefined && attempt.tail.length)
         throw new Error('DURABLE_AGENT_PARTIAL_TAIL_DAMAGED');
-      for (const part of attempt.tail) readAgentWire(part);
-      tails.push(attempt.tail);
+      if (hash(canonical(tail)) !== attempt.tailDigest)
+        throw new Error('DURABLE_AGENT_PARTIAL_TAIL_DAMAGED');
+      for (const part of tail) readAgentWire(part);
+      tails.push(tail);
       if (
         compact &&
         (attempt.prefixLength === undefined ||
@@ -403,6 +432,7 @@ export function readAgentEffect(
       ({
         tail: _tail,
         tailDigest: _digest,
+        tailTape: _tape,
         prefixLength: _length,
         prefixDigest: _prefix,
         ...attempt

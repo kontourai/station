@@ -48,6 +48,11 @@ import type {
 import { ClientTurnInputConflictError } from '../../../providers/adapter-shape.js';
 import type { IProviderAdapterRegistry } from '../../../providers/provider-interfaces.js';
 import { isForegroundIndeterminateShape } from '../../../routes/orchestration/orchestration.js';
+import {
+  durableAgentMemory,
+  flushDurableAgentMemory,
+  persistDurableAuthoredMessage,
+} from '../../../runtime/agents/durable-agent-memory.js';
 import { runWithAuthorizedTurnCorrelation } from '../../../runtime/conversation/authorized-turn-correlation.js';
 import { createInboxStepPreparation } from '../../../runtime/conversation/inbox-model-step.js';
 import { VoltAgentFramework } from '../../../runtime/frameworks/voltagent-adapter.js';
@@ -697,7 +702,10 @@ describe('thread inbox (#3568)', () => {
         'crash-replay',
         'stream-restart',
       ].includes(mode)
-        ? new Memory({ storage: memory })
+        ? new Memory({
+            storage:
+              mode === 'crash-replay' ? durableAgentMemory(memory) : memory,
+          })
         : undefined;
       const memoryWrites = acknowledgementMemory
         ? vi.spyOn(acknowledgementMemory, 'addMessages')
@@ -739,6 +747,21 @@ describe('thread inbox (#3568)', () => {
           liveness,
           implementation: 'steer-proof/1',
         }).start({ key, input: 'original', implementation: 'steer-proof/1' }));
+      if (lease) {
+        await memory.createConversation({
+          id: THREAD,
+          userId: OWNER,
+          resourceId: 'inbox-proof',
+          title: 'Crash replay',
+          metadata: {},
+        });
+        await persistDurableAuthoredMessage(
+          lease,
+          memory,
+          'read the file',
+          OWNER,
+        );
+      }
       let repeatedModel: LanguageModelV3 | undefined;
       let entered!: () => void;
       let resume!: () => void;
@@ -841,76 +864,74 @@ describe('thread inbox (#3568)', () => {
           },
         ],
       });
-      const run = runWithAuthorizedTurnCorrelation(
-        {
-          accountId: OWNER,
-          sessionId: THREAD,
-          turnId: mode === 'wrong-turn' ? 'old-turn' : 'turn-1',
-          correlationId: 'post-tool-proof',
-        },
-        async () => {
-          const result = await agent.streamText('read the file', {
-            conversationId: THREAD,
-            userId: OWNER,
-            prepareStep: (async (step) => {
-              if (
-                ['duplicate', 'crash-replay', 'stream-restart'].includes(mode)
-              ) {
-                nestedPreparation ??= createInboxStepPreparation(undefined, {
-                  memory: acknowledgementMemory,
-                  userId: OWNER,
-                  conversationId: THREAD,
-                });
-                const prepared = lease
-                  ? await runWithAgentTurn(lease, () =>
-                      nestedPreparation!(step),
-                    )
-                  : await nestedPreparation(step);
-                capturedSteps.push({
-                  step: { ...step, messages: structuredClone(step.messages) },
-                  messages: prepared?.messages ?? step.messages,
-                });
-                const candidate = prepared?.model;
+      const invoke = () =>
+        runWithAuthorizedTurnCorrelation(
+          {
+            accountId: OWNER,
+            sessionId: THREAD,
+            turnId: mode === 'wrong-turn' ? 'old-turn' : 'turn-1',
+            correlationId: 'post-tool-proof',
+          },
+          async () => {
+            const result = await agent.streamText('read the file', {
+              conversationId: THREAD,
+              userId: OWNER,
+              prepareStep: (async (step) => {
                 if (
-                  candidate &&
-                  typeof candidate !== 'string' &&
-                  candidate.specificationVersion === 'v3'
-                )
-                  repeatedModel ??= candidate;
-                return prepared;
-              }
-              if (mode === 'compacted' && step.stepNumber >= 2) {
-                const reply = step.messages.findIndex(
-                  (message) =>
-                    message.role === 'assistant' &&
-                    Array.isArray(message.content) &&
-                    message.content.some(
-                      (part) =>
-                        part.type === 'tool-call' &&
-                        part.toolCallId === 'tool-1',
-                    ),
-                );
-                if (reply < 0)
-                  throw new Error(
-                    'The compaction fixture has no later model reply.',
+                  ['duplicate', 'crash-replay', 'stream-restart'].includes(mode)
+                ) {
+                  nestedPreparation ??= createInboxStepPreparation(undefined, {
+                    memory: acknowledgementMemory,
+                    userId: OWNER,
+                    conversationId: THREAD,
+                  });
+                  const prepared = await nestedPreparation(step);
+                  capturedSteps.push({
+                    step: { ...step, messages: structuredClone(step.messages) },
+                    messages: prepared?.messages ?? step.messages,
+                  });
+                  const candidate = prepared?.model;
+                  if (
+                    candidate &&
+                    typeof candidate !== 'string' &&
+                    candidate.specificationVersion === 'v3'
+                  )
+                    repeatedModel ??= candidate;
+                  return prepared;
+                }
+                if (mode === 'compacted' && step.stepNumber >= 2) {
+                  const reply = step.messages.findIndex(
+                    (message) =>
+                      message.role === 'assistant' &&
+                      Array.isArray(message.content) &&
+                      message.content.some(
+                        (part) =>
+                          part.type === 'tool-call' &&
+                          part.toolCallId === 'tool-1',
+                      ),
                   );
-                return {
-                  messages: [
-                    ...step.messages.filter(
-                      (message) => message.role === 'system',
-                    ),
-                    ...step.messages.slice(reply),
-                  ],
-                };
-              }
-              return undefined;
-            }) satisfies PrepareStepFunction,
-          });
-          for await (const _chunk of result.fullStream) {
-            /* Drain the real loop. */
-          }
-        },
-      );
+                  if (reply < 0)
+                    throw new Error(
+                      'The compaction fixture has no later model reply.',
+                    );
+                  return {
+                    messages: [
+                      ...step.messages.filter(
+                        (message) => message.role === 'system',
+                      ),
+                      ...step.messages.slice(reply),
+                    ],
+                  };
+                }
+                return undefined;
+              }) satisfies PrepareStepFunction,
+            });
+            for await (const _chunk of result.fullStream) {
+              /* Drain the real loop. */
+            }
+          },
+        );
+      const run = lease ? runWithAgentTurn(lease, invoke) : invoke();
       if (ended) {
         await requestEntered;
         try {
@@ -993,25 +1014,30 @@ describe('thread inbox (#3568)', () => {
         if (typeof recovered === 'string')
           throw new Error(`Recovery refused: ${recovered}`);
         try {
-          await runWithAuthorizedTurnCorrelation(
-            {
-              accountId: OWNER,
-              sessionId: THREAD,
-              turnId: 'turn-1',
-              correlationId: 'replay',
-            },
-            async () => {
-              const prepare = createInboxStepPreparation();
-              for (const captured of capturedSteps) {
-                const replayed = await runWithAgentTurn(recovered, () =>
-                  prepare(captured.step),
-                );
-                expect(replayed?.messages ?? captured.step.messages).toEqual(
-                  captured.messages,
-                );
-              }
-            },
+          nestedPreparation = undefined;
+          await persistDurableAuthoredMessage(
+            recovered,
+            memory,
+            'read the file',
+            OWNER,
           );
+          await runWithAgentTurn(recovered, invoke);
+          expect(capturedSteps).toHaveLength(6);
+          expect(
+            capturedSteps.slice(3).map((captured) => captured.messages),
+          ).toEqual(
+            capturedSteps.slice(0, 3).map((captured) => captured.messages),
+          );
+          await flushDurableAgentMemory(recovered);
+          expect(
+            (await memory.getMessages(OWNER, THREAD)).filter(
+              (message) =>
+                message.role === 'user' &&
+                message.parts.some(
+                  (part) => part.type === 'text' && part.text === FOLLOW_UP,
+                ),
+            ),
+          ).toHaveLength(1);
           expect(model.doStreamCalls).toHaveLength(3);
         } finally {
           await journal!.close();

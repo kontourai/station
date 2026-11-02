@@ -828,13 +828,7 @@ const IDLE_SESSION_SWEEP_MS = 5 * 60_000;
 const PARKED_EXIT_WAIT_MS = 10_000;
 /** #2312: most discarded ids the late-event gate remembers at once. */
 const DISCARDED_DRAFT_GATE_MAX = 256;
-/**
- * #3560: the wait before each retry of an observed event whose publish hit
- * store contention. Two retries, so three attempts in all. Each attempt may
- * already have waited out SQLite's busy_timeout, so the bound is what keeps a
- * second Station process from stalling the adapter stream indefinitely before
- * the interruption warning names it.
- */
+/** Bound observation retries while yielding to room-worker authorization. */
 const OBSERVED_EVENT_RETRY_BUDGET_MS = 5_000;
 
 /** What {@link OrchestrationService}'s append half hands its observer half. */
