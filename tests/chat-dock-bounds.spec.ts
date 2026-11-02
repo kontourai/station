@@ -9,7 +9,7 @@ import {
   seedActiveChats,
   seedOrchestrationRoutes,
 } from './helpers/orchestration';
-import { chooseChatRegionRow } from './helpers/region-placement';
+import { dragDockTo } from './helpers/region-placement';
 
 /**
  * #4401: the dock's chrome stays inside its own bounds.
@@ -28,7 +28,7 @@ import { chooseChatRegionRow } from './helpers/region-placement';
  */
 
 const LONG_TITLE =
-  'Triage the inbox and summarize the overnight failures across every project';
+  'Triage the inbox and summarize the overnight failures across every project, then draft a fix plan for each failing check';
 
 async function seed(page: Page) {
   await seedActiveChats(page, [
@@ -122,7 +122,7 @@ async function openDockOnRight(page: Page) {
   await expect(dock.locator('.chat-dock__active-identity-title')).toHaveText(
     LONG_TITLE,
   );
-  await chooseChatRegionRow(page, 'Move to Right');
+  await dragDockTo(page, 'right');
   await expect(dock).toHaveClass(/chat-dock--right/);
   return dock;
 }
@@ -155,8 +155,7 @@ test.describe('Dock bar bounds (#4401)', () => {
     await expect
       .poll(async () => Math.round((await dock.boundingBox())!.width))
       .toBe(280);
-    const bar = dock.locator('.chat-dock__header');
-    await bar.hover({ position: { x: 4, y: 4 } });
+    await dock.locator('.chat-dock__active-identity-title').hover();
 
     const { bar: barBox, items } = await barGeometry(page);
     expect(overlappingPairs(items)).toEqual([]);
@@ -191,9 +190,7 @@ test.describe('Dock bar bounds (#4401)', () => {
     page,
   }) => {
     const dock = await openDockOnRight(page);
-    await dock
-      .locator('.chat-dock__header')
-      .hover({ position: { x: 4, y: 4 } });
+    await dock.locator('.chat-dock__active-identity-title').hover();
     await expect(dock.locator('.chat-dock__header')).not.toHaveClass(
       /is-compact/,
     );
@@ -210,7 +207,7 @@ test.describe('Dock bar bounds (#4401)', () => {
     }) => {
       const dock = await openDockOnRight(page);
       if (region === 'left') {
-        await chooseChatRegionRow(page, 'Move to Left');
+        await dragDockTo(page, 'left');
         await expect(dock).toHaveClass(/chat-dock--left/);
       }
       await dock.getByRole('button', { name: 'Hide Chat' }).click();
@@ -257,7 +254,7 @@ test.describe('Coding bar and rail (#4401)', () => {
     });
   });
 
-  for (const width of [1440, 900]) {
+  for (const width of [1180, 900]) {
     test(`the Inbox crumb is never the one that truncates (${width}px)`, async ({
       page,
     }) => {
@@ -265,19 +262,23 @@ test.describe('Coding bar and rail (#4401)', () => {
       const crumbs = page.getByRole('list', { name: 'Breadcrumb' });
       const inbox = crumbs.getByRole('button', { name: 'Inbox', exact: true });
       await expect(inbox).toBeVisible();
+      // How much of an element's text its box cuts off, in CSS px.
+      const cutOff = (element: Element) => {
+        const range = document.createRange();
+        range.selectNodeContents(element);
+        const text = range.getBoundingClientRect().width;
+        const style = getComputedStyle(element);
+        const room =
+          element.getBoundingClientRect().width -
+          Number.parseFloat(style.paddingLeft) -
+          Number.parseFloat(style.paddingRight);
+        return text - room;
+      };
       // The long title does yield: the bar is crowded enough to test this.
       await expect
-        .poll(() =>
-          crumbs
-            .locator('[aria-current="page"]')
-            .evaluate((element) => element.scrollWidth > element.clientWidth),
-        )
-        .toBe(true);
-      expect(
-        await inbox.evaluate(
-          (element) => element.scrollWidth <= element.clientWidth,
-        ),
-      ).toBe(true);
+        .poll(() => crumbs.locator('[aria-current="page"]').evaluate(cutOff))
+        .toBeGreaterThan(20);
+      expect(await inbox.evaluate(cutOff)).toBeLessThanOrEqual(0.5);
     });
   }
 
