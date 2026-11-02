@@ -10,6 +10,23 @@ const RETRY_MS = 6_000;
 
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+/** The pull request of a same-repository `pull_request_target` event on main. */
+function trustedPullRequest(env) {
+  const pr = JSON.parse(
+    readFileSync(env.GITHUB_EVENT_PATH, 'utf8'),
+  ).pull_request;
+  const trusted =
+    env.GITHUB_EVENT_NAME === 'pull_request_target' &&
+    env.GITHUB_REF === 'refs/heads/main' &&
+    POSITIVE.test(String(pr?.number ?? '')) &&
+    SHA.test(pr?.head?.sha ?? '') &&
+    pr?.base?.ref === 'main' &&
+    pr?.base?.repo?.full_name === env.GITHUB_REPOSITORY &&
+    pr?.head?.repo?.full_name === env.GITHUB_REPOSITORY;
+  if (!trusted) throw new Error('untrusted PR admission event');
+  return pr;
+}
+
 /**
  * Decide whether a same-repository pull request should spend runner time.
  *
@@ -28,18 +45,7 @@ export async function admitPullRequest({
   attempts = ATTEMPTS,
   retryMs = RETRY_MS,
 }) {
-  const event = JSON.parse(readFileSync(env.GITHUB_EVENT_PATH, 'utf8'));
-  const pr = event.pull_request;
-  if (
-    env.GITHUB_EVENT_NAME !== 'pull_request_target' ||
-    env.GITHUB_REF !== 'refs/heads/main' ||
-    !POSITIVE.test(String(pr?.number ?? '')) ||
-    !SHA.test(pr?.head?.sha ?? '') ||
-    pr?.base?.ref !== 'main' ||
-    pr?.base?.repo?.full_name !== env.GITHUB_REPOSITORY ||
-    pr?.head?.repo?.full_name !== env.GITHUB_REPOSITORY
-  )
-    throw new Error('untrusted PR admission event');
+  const pr = trustedPullRequest(env);
   let last = { reason: 'unobserved' };
   let conflicts = 0;
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
