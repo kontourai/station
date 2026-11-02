@@ -41,7 +41,12 @@ import {
 } from './agent-message/IncomingAgentHeader';
 import { ConversationContextBoundary } from './ConversationContextBoundary';
 import { ConversationHandoffBoundary } from './ConversationHandoffBoundary';
-import { type ForkTurnSource, forkTurnSource } from './fork-turn-source';
+import {
+  type ForkTurnSource,
+  forkTurnSource,
+  type MessageResendRequest,
+  type MessageResendSource,
+} from './fork-turn-source';
 import { HostImagesContext, settledHostImages } from './HostImagesContext';
 import { MessageDetails } from './MessageDetails';
 import { MessageAttribution } from './message-bubble/MessageAttribution';
@@ -205,6 +210,13 @@ interface MessageBubbleProps {
   /** #2216: nearest preceding completed assistant turn, if any. */
   userForkSource?: ForkTurnSource | null;
   onNewChatFromMessage?: (text: string) => void;
+  /**
+   * #4406: what Edit and resend (on the person's message) or Regenerate (on
+   * the answer it produced) sends again, and the fork point that keeps the
+   * original. Absent: the row offers neither.
+   */
+  resendSource?: MessageResendSource | null;
+  onResendFromMessage?: (request: MessageResendRequest) => void;
   onToolApproval?: (
     sessionId: string,
     agentSlug: string,
@@ -238,6 +250,8 @@ function MessageBubbleComponent({
   continuesTurn = false,
   userForkSource,
   onNewChatFromMessage,
+  resendSource,
+  onResendFromMessage,
   onToolApproval,
   anchorKey,
   owner,
@@ -462,6 +476,11 @@ function MessageBubbleComponent({
     msg,
     exactCurrentSession ? { agentSlug: activeSession.agentSlug } : undefined,
   );
+  // #4406: an answer still being written has nothing settled to regenerate.
+  const regenerate =
+    isAssistant && !rowIsLiveTurn && resendSource && onResendFromMessage
+      ? () => onResendFromMessage({ ...resendSource, mode: 'regenerate' })
+      : undefined;
   const feedbackConversationId = replaying
     ? undefined
     : (activeSession.conversationId ?? activeSession.id);
@@ -601,10 +620,16 @@ function MessageBubbleComponent({
   // would draw a ⋯ that opens an empty menu.
   // The text actions need text; adding the input to a Task does not (an
   // image-only message is still an input a Task can hold).
+  // #4406: a message that did not send is discarded or kept, not re-sent.
+  const editAndResend =
+    msg.role === 'user' && resendSource && onResendFromMessage && !discardUnsent
+      ? () => onResendFromMessage({ ...resendSource, mode: 'edit' })
+      : undefined;
   const textMenuActions = Boolean(
     textContent &&
       ((userForkSource && onForkFromTurn) ||
         onNewChatFromMessage ||
+        editAndResend ||
         discardUnsent),
   );
   const userMessageMenu =
@@ -618,6 +643,7 @@ function MessageBubbleComponent({
             textContent && onNewChatFromMessage
               ? () => onNewChatFromMessage(textContent)
               : undefined,
+          onEditAndResend: textContent ? editAndResend : undefined,
           onDiscardUnsent: textContent ? discardUnsent : undefined,
           taskTarget: menuTaskTarget,
           handleRef: userMenuHandle,
@@ -832,6 +858,7 @@ function MessageBubbleComponent({
         msg.answerEligible === true &&
         (!isLastMessage || !activeSession.isThinking)) ||
         (turnForkSource && onForkFromTurn) ||
+        regenerate ||
         msg.provenance !== undefined ||
         reasoningContent !== undefined) && (
         <LazyBoundary
@@ -851,6 +878,9 @@ function MessageBubbleComponent({
                 : undefined,
             forkSource: isMobile ? undefined : turnForkSource,
             onForkFromTurn: isMobile ? undefined : onForkFromTurn,
+            // Unlike the fork, the phone keeps Regenerate in this menu: its
+            // inline row holds only Copy and Branch.
+            onRegenerate: regenerate,
             provenance:
               msg.provenance !== undefined
                 ? {

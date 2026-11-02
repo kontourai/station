@@ -2,7 +2,7 @@ import { useConversationContextBoundaryStatusQuery } from '@kontourai/station-sd
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { AgentData } from '../../contexts/AgentsContext';
 import { useOutboundQueueSnapshot } from '../../hooks/useOutboundQueueSnapshot';
-import type { ChatSession } from '../../types';
+import type { ChatSession, FileAttachment } from '../../types';
 import {
   type EffectiveModelSource,
   isSessionExecutionActive,
@@ -13,6 +13,12 @@ import {
   readConversationContextBoundaryUiState,
   writeConversationContextBoundaryUiState,
 } from './conversationContextBoundaryUiState';
+
+export interface ForkFollowUp {
+  mode: 'regenerate' | 'edit';
+  text: string;
+  attachments: FileAttachment[];
+}
 
 /**
  * The three conversation-boundary overlays the dock owns — Agent handoff,
@@ -60,6 +66,11 @@ export function useConversationBoundaryDialogs({
     providerType?: string;
     sourceSessionId?: string;
     idempotencyKey: string;
+    /**
+     * #4406: what the fork does once open — Regenerate sends the message
+     * again, Edit and resend puts it in the composer.
+     */
+    followUp?: ForkFollowUp;
   } | null>(null);
   const [forkOperation, setForkOperation] = useState<{
     pending: boolean;

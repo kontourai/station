@@ -145,8 +145,14 @@ describe('ChatDock project-binding wiring (archive#4525)', () => {
   // `onForkAgentSelect`, chosen by `DockStartComposer` while forking) gets
   // wired to the sync call.
   test('a fork confirmation never syncs the project binding (station#4525 review LOW-1)', () => {
-    const forkBody = extractBalancedBody(source, 'onForkAgentSelect: async (');
+    const forkBody = extractBalancedBody(source, 'onForkAgentSelect: (');
     expect(forkBody).not.toMatch(/setActiveProjectSlug/);
+    // #4406: the draft's pick and Regenerate / Edit and resend share one
+    // fork runner, which must not sync the binding either.
+    expect(forkBody).toMatch(/runFork\(/);
+    const runForkBody = extractBalancedBody(source, 'const runFork = async (');
+    expect(runForkBody).toMatch(/forkConversation\(/);
+    expect(runForkBody).not.toMatch(/setActiveProjectSlug/);
 
     const nonForkBody = extractBalancedBody(source, /onSelect: \(\s*agent,/);
     expect(

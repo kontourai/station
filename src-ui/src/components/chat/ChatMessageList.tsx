@@ -50,7 +50,15 @@ import {
   createResizeReanchorGate,
   restoreChatScrollAnchor,
 } from './chatScrollAnchor';
-import { type ForkTurnSource, precedingForkSource } from './fork-turn-source';
+import {
+  type ForkTurnSource,
+  type MessageResendRequest,
+  type MessageResendSource,
+  messageResendSource,
+  precedingForkSource,
+  regenerateSource,
+  sameMessageResendSource,
+} from './fork-turn-source';
 import { formatFormSubmission } from './formSubmission';
 import { MessageBubble, type MessageBubbleSession } from './MessageBubble';
 import { PendingApprovalStrip } from './PendingApprovalStrip';
@@ -169,6 +177,8 @@ interface ChatMessageListProps {
   hasSettingsEntryPoint?: boolean;
   onForkFromTurn?: (source: ForkTurnSource) => void;
   onNewChatFromMessage?: (text: string) => void;
+  /** #4406: Regenerate an answer, or Edit and resend a message, in a fork. */
+  onResendFromMessage?: (request: MessageResendRequest) => void;
   onQuote?: (quote: SavedAnswerQuote) => void;
   /**
    * #2316: the transcript window's runtime events. Open approvals no rendered
@@ -278,6 +288,7 @@ function ChatMessageListComponent({
   hasSettingsEntryPoint,
   onForkFromTurn,
   onNewChatFromMessage,
+  onResendFromMessage,
   onQuote,
   approvalEvents,
   approvalEventsSettled,
@@ -1514,6 +1525,7 @@ function ChatMessageListComponent({
   type RowPresentation = {
     turn: React.ContextType<typeof TranscriptTurnContext>;
     fork: ForkTurnSource | null | undefined;
+    resend: MessageResendSource | null;
   };
   const previousPresentation = useRef(new Map<string, RowPresentation>());
   const rowPresentation = useMemo(() => {
@@ -1537,6 +1549,14 @@ function ChatMessageListComponent({
         message.role === 'user'
           ? precedingForkSource(messages, row.index)
           : undefined;
+      // Computed only where a handler can use it: the walk is per row.
+      const resend = !onResendFromMessage
+        ? null
+        : message.role === 'user'
+          ? messageResendSource(messages, row.index)
+          : message.role === 'assistant'
+            ? regenerateSource(messages, row.index)
+            : null;
       const previous = previousPresentation.current.get(row.id);
       next.set(row.id, {
         turn: isShallowEqual(previous?.turn, turn) ? previous?.turn : turn,
@@ -1544,11 +1564,15 @@ function ChatMessageListComponent({
           previous && isShallowEqual(previous.fork, fork)
             ? previous.fork
             : fork,
+        resend:
+          previous && sameMessageResendSource(previous.resend, resend)
+            ? previous.resend
+            : resend,
       });
     }
     previousPresentation.current = next;
     return next;
-  }, [transcriptRows, messages]);
+  }, [transcriptRows, messages, onResendFromMessage]);
 
   const renderDefaultMessage = (
     msg: ChatMessage,
@@ -1573,6 +1597,8 @@ function ChatMessageListComponent({
       onNewChatFromMessage={
         msg.role === 'user' ? onNewChatFromMessage : undefined
       }
+      resendSource={rowPresentation.get(rowId)?.resend}
+      onResendFromMessage={onResendFromMessage}
       onToolApproval={activeSession.replay ? undefined : handleToolApproval}
       anchorKey={messageAnchorKey(msg)}
       owner={owner}
