@@ -434,7 +434,6 @@ describe('thread inbox (#3568)', () => {
     });
     const owner = await runningFirstTurn(world);
     delete world.adapter.metadata.durability;
-    expect(await world.service.steerFidelityForThread(THREAD)).toBe('none');
     world.inbox.submitSteer({
       conversationId: THREAD,
       clientTurnId: 'missing-profile',

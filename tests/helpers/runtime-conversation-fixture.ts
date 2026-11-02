@@ -1,6 +1,6 @@
 import { agentId } from '@kontourai/station-contracts/agent-identity';
-import type { ProviderDurabilityProfile } from '@kontourai/station-contracts/engine-capability-matrix';
 import type { ConversationOpenResolution } from '@kontourai/station-contracts/orchestration';
+import type { ProviderDurabilityProfile } from '@kontourai/station-contracts/provider';
 import type { Page } from '@playwright/test';
 import {
   createLongSessionEventWindowHandler,

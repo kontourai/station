@@ -574,6 +574,14 @@ describe('ChatDockBody offline settling (station#2605)', () => {
       ),
     );
 
+    expect(composerProps).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        busyFollowUp: 'queue',
+        busySteeringUnavailableReason:
+          'Steering unavailable: the host did not report a durability profile.',
+      }),
+    );
+
     for (const state of ['emulated', 'none'] as const) {
       queuedMessagesProps.mockClear();
       view.rerender(

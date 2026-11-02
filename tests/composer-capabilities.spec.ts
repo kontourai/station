@@ -1,9 +1,7 @@
 import { copyFile, mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
-import {
-  type ProviderDurabilityProfile,
-  STEERING_ENGINE_DURABILITY,
-} from '@kontourai/station-contracts/engine-capability-matrix';
+import { STEERING_ENGINE_DURABILITY } from '@kontourai/station-contracts/engine-capability-matrix';
+import type { ProviderDurabilityProfile } from '@kontourai/station-contracts/provider';
 import { expect, type Page, type TestInfo } from '@playwright/test';
 import { agentConnectionFixture } from './helpers/connection-fixtures';
 import { foregroundMessageReceiptEnvelope } from './helpers/execution-receipt';
