@@ -10,7 +10,7 @@ function fixture() {
     peer: {
       environmentId: 'desktop-win',
       apiBase: 'https://desktop.test',
-      credential: 'receiver-secret-123456',
+      credential: 'test-peer',
       scope: 'orchestration:read orchestration:operate projects:read',
       label: 'desktop-win',
       createdAt: 1,
@@ -81,7 +81,7 @@ describe('paired Station foreground chat bridge', () => {
     const [url, init] = fetch.mock.calls[1]!;
     expect(url).toBe('https://desktop.test/api/orchestration/chat');
     expect(new Headers(init?.headers).get('Authorization')).toBe(
-      'Bearer receiver-secret-123456',
+      'Bearer test-peer',
     );
     expect(new Headers(init?.headers).get('Cookie')).toBeNull();
     expect(JSON.parse(String(init?.body))).toEqual({
@@ -96,7 +96,7 @@ describe('paired Station foreground chat bridge', () => {
     });
     expect(response.headers.get('Set-Cookie')).toBeNull();
     expect(response.headers.get('Location')).toBeNull();
-    expect(await response.text()).not.toContain('receiver-secret');
+    expect(await response.text()).not.toContain('test-peer');
   });
 
   test('rechecks preview and request authority on the same composed route before any peer read', async () => {
