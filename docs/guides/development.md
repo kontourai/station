@@ -27,6 +27,28 @@ Inspect the provider's own evidence before changing credentials or model
 selection. See the [provider failure reference](../reference/contracts.md#engine-neutral-failures)
 for the public classifications.
 
+On Windows, desktop automation needs an interactive user session. Test sandbox
+commands and desktop control from the scheduled task's actual session: an
+engine login check does not verify either capability. A headless service can
+have different runner-pipe and desktop access.
+
+### Unbound Codex workspaces
+
+A confined [Codex chat](../../src-server/providers/adapters/codex-adapter.ts)
+with no explicit working directory uses a private folder under
+`<Station home>/runtime/codex-workspaces/session/`. Its connection and session
+identity select the same folder after a restart. A Project directory,
+an explicit caller directory, an adopted session's directory, or an operator
+(host) session keeps its chosen location.
+
+The user home is too broad a writable sandbox root: Windows sandbox setup can
+recursively change ACLs throughout it, delaying commands and granting sandbox
+accounts access to unrelated launchers.
+[Workspace preparation](../../src-server/services/infra/managed-engine-workspace.ts)
+fails the session before starting Codex if the private directory cannot be
+created safely; it does not fall back to the user home or the server's install
+directory. This changes the writable workspace, not the sandbox's existing read policy.
+
 ### Build prerequisites
 
 Working from source needs Node.js 24.x, npm for the script/bootstrap interface,
