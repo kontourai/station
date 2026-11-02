@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { describe, expect, test } from 'vitest';
 import {
   encodeLiveSurfaceRecord,
@@ -8,6 +10,7 @@ import {
   LiveSurfaceRecordError,
   parseLiveSurfaceControlLease,
   parseLiveSurfaceFrameHeader,
+  parseLiveSurfaceH264Sequence,
   parseLiveSurfaceInput,
   parseLiveSurfaceInputBatch,
   parseLiveSurfaceLeaseRequest,
@@ -170,7 +173,9 @@ describe('live surface wire parsers', () => {
   test('an H.264 frame must say whether it is a keyframe; an image frame must not', () => {
     const h264 = { ...frame.header, codec: 'h264' } as Record<string, unknown>;
     expect(parseLiveSurfaceFrameHeader(h264)).toBeNull();
-    expect(parseLiveSurfaceFrameHeader({ ...h264, keyframe: 'yes' })).toBeNull();
+    expect(
+      parseLiveSurfaceFrameHeader({ ...h264, keyframe: 'yes' }),
+    ).toBeNull();
     expect(parseLiveSurfaceFrameHeader({ ...h264, keyframe: true })).toEqual({
       ...h264,
       keyframe: true,
@@ -320,6 +325,52 @@ describe('live surface wire parsers', () => {
         ...(lease as object),
         holder: { kind: 'agent', principal: 'a' },
       }),
+    ).toBeNull();
+  });
+});
+
+describe('live surface H.264 sequence parameters (#4418)', () => {
+  // SPS, PPS, IDR and two deltas cut from a recorded Android emulator stream.
+  const sample = new Uint8Array(
+    readFileSync(
+      resolve(
+        import.meta.dirname,
+        '../../../../tests/fixtures/live-surface/android-emulator-1080x2400-baseline.h264',
+      ),
+    ),
+  );
+
+  test('reads the codec string and cropped size from a recorded emulator SPS', () => {
+    // ffprobe: h264 (Constrained Baseline), 1080x2400.
+    expect(parseLiveSurfaceH264Sequence(sample)).toEqual({
+      codec: 'avc1.42c032',
+      profileIdc: 66,
+      width: 1080,
+      height: 2400,
+    });
+  });
+
+  test('reads a High-profile SPS with cropping (1920x1080 coded as 1088 rows)', () => {
+    // libx264 (ffmpeg 9.0.2) -profile:v high -level 4.0, 1920x1080 yuv420p:
+    // 68 macroblock rows (1088) cropped by 8.
+    const sps = Uint8Array.from([
+      0, 0, 0, 1, 0x67, 0x64, 0x00, 0x28, 0xac, 0xd9, 0x40, 0x78, 0x02, 0x27,
+      0xe5, 0xc0, 0x44, 0x00, 0x00, 0x03, 0x00, 0x04, 0x00, 0x00, 0x03, 0x00,
+      0x08, 0x3c, 0x60, 0xc6, 0x58,
+    ]);
+    expect(parseLiveSurfaceH264Sequence(sps)).toEqual({
+      codec: 'avc1.640028',
+      profileIdc: 100,
+      width: 1920,
+      height: 1080,
+    });
+  });
+
+  test('a unit without an SPS, or a truncated SPS, yields nothing', () => {
+    const deltaOnly = sample.subarray(sample.length - 100);
+    expect(parseLiveSurfaceH264Sequence(deltaOnly)).toBeNull();
+    expect(
+      parseLiveSurfaceH264Sequence(Uint8Array.from([0, 0, 1, 0x67, 0x42])),
     ).toBeNull();
   });
 });

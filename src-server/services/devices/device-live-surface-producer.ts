@@ -1,14 +1,17 @@
-import type {
-  LiveSurfaceCodec,
-  LiveSurfaceFrameHeader,
-  LiveSurfaceFrameRotation,
-  LiveSurfaceInput,
-  LiveSurfaceInputChannelState,
-  LiveSurfaceOrientation,
-  LiveSurfaceProducerStatus,
-  LiveSurfaceStreamParams,
-  LiveSurfaceVideoDegradedReason,
-  LiveSurfaceVideoMode,
+import {
+  type LiveSurfaceCodec,
+  type LiveSurfaceFrameHeader,
+  type LiveSurfaceFrameRotation,
+  type LiveSurfaceH264Sequence,
+  type LiveSurfaceInput,
+  type LiveSurfaceInputChannelState,
+  type LiveSurfaceOrientation,
+  type LiveSurfaceProducerStatus,
+  type LiveSurfaceStreamParams,
+  type LiveSurfaceVideoDegradedReason,
+  type LiveSurfaceVideoMode,
+  parseLiveSurfaceH264Sequence,
+  splitAnnexB,
 } from '@kontourai/station-contracts/live-surface';
 import type { MobileDevicePlatform } from '@kontourai/station-contracts/mobile-device';
 import { jpegSize } from '../live-surface/jpeg-size.js';
@@ -18,7 +21,6 @@ import type {
   LiveSurfaceProducer,
 } from '../live-surface/producer.js';
 import {
-  annexBHasIdr,
   annexBNalTypes,
   MjpegMultipartParser,
   multipartBoundary,
@@ -62,16 +64,20 @@ import type {
  * VIDEO and INPUT are separate channels, with separate liveness:
  * - Video runs only while viewers watch (`start`/`stop`). iOS: the helper's
  *   MJPEG stream, each part passed through as a `jpeg` frame. Android: the
- *   hub's H.264 (SEMU-framed over a WebSocket) decoded on this server by a
- *   supervised ffmpeg into `jpeg` frames; with no decoder, polled PNG
- *   screenshots at a low rate, reported as `videoMode: 'snapshot-poll'`.
+ *   hub's H.264 (SEMU-framed over a WebSocket). Viewers that decode H.264
+ *   themselves (#4418) get the access units as `h264` frames; for image
+ *   viewers a supervised ffmpeg decodes them into `jpeg` frames, and runs
+ *   only while an image viewer is attached (`setCodecDemand`). With no
+ *   decoder, image viewers get polled PNG screenshots at a low rate,
+ *   reported as `videoMode: 'snapshot-poll'`; H.264 viewers still get video.
  * - Input has its own socket, opened with the session (`open`) and kept
  *   (reconnecting) for its whole life, so an agent can drive a device nobody
  *   watches (D6). Its state is published as `inputChannel`.
  *
- * Backpressure: latest frame wins. While a published frame is unacked, newer
- * frames REPLACE the one held; on ack the held one is published. Nothing
- * queues.
+ * Backpressure for images: latest frame wins. While a published image is
+ * unacked, newer images REPLACE the one held; on ack the held one is
+ * published. H.264 units are published as they arrive and never acked: the
+ * hub queues them per viewer, bounded, and resynchronizes on keyframes.
  *
  * The producer contract's REQUIRED items:
  * - Dialogs: device dialogs never block input delivery — the hub's socket
@@ -206,6 +212,75 @@ interface VideoRun {
   timers: Set<ReturnType<typeof setTimeout>>;
   decoder: DeviceVideoDecoder | null;
   socket: DeviceSocket | null;
+  android: AndroidVideo | null;
+}
+
+/** Android's video paths for one run, reconciled against codec demand. */
+interface AndroidVideo {
+  provider: DeviceVideoDecoderProvider | null;
+  /** The decoder binary, or null when none is available (never started). */
+  decoderPath: string | null;
+  /** The decoder failed twice in a row: image viewers get polled stills. */
+  decoderFailed: boolean;
+  decoderRestarts: number;
+  /** A decoder restart is scheduled; do not start another meanwhile. */
+  decoderRestartPending: boolean;
+  /** The decoder needs a keyframe before it can take deltas. */
+  decoderAwaitingKey: boolean;
+  /** H.264 viewers need a keyframe of the current encoder session. */
+  videoAwaitingKey: boolean;
+  connecting: boolean;
+  polling: boolean;
+  /** The last unit carried a non-IDR slice: the screen changed. */
+  lastUnitHadContent: boolean;
+  requestKeyframe: (() => void) | null;
+  /** The latest parameter sets, prepended to an IDR that lacks them. */
+  sps: Uint8Array | null;
+  pps: Uint8Array | null;
+  sequence: LiveSurfaceH264Sequence | null;
+}
+
+export interface LiveSurfaceCodecDemand {
+  image: boolean;
+  h264: boolean;
+}
+
+const ANNEX_B_START = Uint8Array.from([0, 0, 0, 1]);
+
+function withParameterSets(
+  unit: Uint8Array,
+  sps: Uint8Array,
+  pps: Uint8Array,
+): Uint8Array {
+  const out = new Uint8Array(
+    ANNEX_B_START.length * 2 + sps.length + pps.length + unit.length,
+  );
+  let at = 0;
+  for (const part of [ANNEX_B_START, sps, ANNEX_B_START, pps, unit]) {
+    out.set(part, at);
+    at += part.length;
+  }
+  return out;
+}
+
+/**
+ * The size an H.264 frame is shown at: the picture fitted inside the
+ * stream's max size, never upscaled, even dimensions. It matches what the
+ * ffmpeg image path scales to, so input maps to the same unit square
+ * whichever path a viewer takes.
+ */
+export function fittedVideoSize(
+  sequence: { width: number; height: number },
+  params: Pick<LiveSurfaceStreamParams, 'maxWidth' | 'maxHeight'>,
+): { width: number; height: number } {
+  const scale = Math.min(
+    1,
+    params.maxWidth / sequence.width,
+    params.maxHeight / sequence.height,
+  );
+  const even = (value: number) =>
+    Math.max(2, Math.floor((value * scale) / 2) * 2);
+  return { width: even(sequence.width), height: even(sequence.height) };
 }
 
 const DEFAULT_RECONNECT_DELAYS_MS = [500, 1_000, 2_000, 4_000, 8_000];
@@ -219,15 +294,9 @@ function bytesOf(data: Buffer | ArrayBuffer | Buffer[]): Uint8Array {
 
 export class DeviceLiveSurfaceProducer implements LiveSurfaceProducer {
   readonly surfaceId: string;
-  readonly capabilities = {
-    codecs: ['jpeg', 'png'] as const satisfies readonly LiveSurfaceCodec[],
-    input: [
-      'pointer',
-      'key',
-      'text',
-      'device-button',
-      'rotate',
-    ] as const satisfies readonly LiveSurfaceInput['kind'][],
+  readonly capabilities: {
+    codecs: readonly LiveSurfaceCodec[];
+    input: readonly LiveSurfaceInput['kind'][];
   };
 
   private readonly options: DeviceLiveSurfaceProducerOptions;
@@ -264,10 +333,20 @@ export class DeviceLiveSurfaceProducer implements LiveSurfaceProducer {
   private seq = 0;
   private awaitingAck: number | null = null;
   private pending: PendingFrame | null = null;
+  /** Until the hub says otherwise, every viewer takes images. */
+  private demand: LiveSurfaceCodecDemand = { image: true, h264: false };
 
   constructor(options: DeviceLiveSurfaceProducerOptions) {
     this.options = options;
     this.surfaceId = options.surfaceId;
+    this.capabilities = {
+      // Only Android's hub offers H.264; iOS is MJPEG.
+      codecs:
+        options.platform === 'android'
+          ? ['jpeg', 'png', 'h264']
+          : ['jpeg', 'png'],
+      input: ['pointer', 'key', 'text', 'device-button', 'rotate'],
+    };
     this.now = options.now ?? Date.now;
     this.dispatchTimeoutMs = options.dispatchTimeoutMs ?? 3_000;
     this.reconnectDelays =
@@ -539,6 +618,7 @@ export class DeviceLiveSurfaceProducer implements LiveSurfaceProducer {
       timers: new Set(),
       decoder: null,
       socket: null,
+      android: null,
     };
     this.run = run;
     this.awaitingAck = null;
@@ -549,18 +629,80 @@ export class DeviceLiveSurfaceProducer implements LiveSurfaceProducer {
       void this.readMjpeg(run, 0);
       return;
     }
-    const provider = this.options.decoder;
+    const provider = this.options.decoder ?? null;
     const availability = provider
       ? await provider.availability()
       : ({ available: false } as const);
     if (this.run !== run) return;
-    if (!provider || !availability.available) {
-      this.setVideoMode('snapshot-poll', 'decoder-unavailable');
-      void this.pollSnapshots(run);
-      return;
+    run.android = {
+      provider,
+      decoderPath: availability.available ? availability.path : null,
+      decoderFailed: false,
+      decoderRestarts: 0,
+      decoderRestartPending: false,
+      decoderAwaitingKey: true,
+      videoAwaitingKey: true,
+      connecting: false,
+      polling: false,
+      lastUnitHadContent: false,
+      requestKeyframe: null,
+      sps: null,
+      pps: null,
+      sequence: null,
+    };
+    this.reconcileAndroid(run);
+  }
+
+  setCodecDemand(demand: LiveSurfaceCodecDemand): void {
+    this.demand = { image: demand.image, h264: demand.h264 };
+    if (this.run) this.reconcileAndroid(this.run);
+  }
+
+  requestKeyframe(): void {
+    this.run?.android?.requestKeyframe?.();
+  }
+
+  /**
+   * Bring Android's three video paths in line with what viewers take: the
+   * hub socket (for H.264 viewers, or to feed the decoder), the ffmpeg
+   * decoder (image viewers, when a decoder is available and has not failed),
+   * and screenshot polling (image viewers otherwise).
+   */
+  private reconcileAndroid(run: VideoRun): void {
+    const android = run.android;
+    if (!android || this.run !== run) return;
+    const decode =
+      this.demand.image &&
+      android.decoderPath !== null &&
+      !android.decoderFailed;
+    const poll = this.demand.image && !decode;
+    if (!decode && run.decoder) {
+      const decoder = run.decoder;
+      run.decoder = null;
+      void decoder.close();
     }
-    this.setVideoMode('live', undefined);
-    this.startAndroidVideo(run, provider, availability.path, 0);
+    const wantSocket = this.demand.h264 || decode;
+    if (!wantSocket && run.socket) {
+      const socket = run.socket;
+      run.socket = null;
+      android.requestKeyframe = null;
+      try {
+        socket.close();
+      } catch {
+        // already closing
+      }
+    }
+    if (wantSocket && !run.socket && !android.connecting)
+      void this.connectAndroidVideo(run, 0);
+    if (decode && !run.decoder && !android.decoderRestartPending)
+      this.startDecoder(run);
+    if (poll && !android.polling) void this.pollSnapshots(run);
+    if (poll)
+      this.setVideoMode(
+        'snapshot-poll',
+        android.decoderPath === null ? 'decoder-unavailable' : 'decoder-failed',
+      );
+    else this.setVideoMode('live', undefined);
   }
 
   async updateParams(params: LiveSurfaceStreamParams): Promise<void> {
@@ -637,155 +779,255 @@ export class DeviceLiveSurfaceProducer implements LiveSurfaceProducer {
     );
   }
 
-  private startAndroidVideo(
-    run: VideoRun,
-    provider: DeviceVideoDecoderProvider,
-    decoderPath: string,
-    decoderRestarts: number,
-  ): void {
-    let awaitingKeyframe = true;
+  private startDecoder(run: VideoRun): void {
+    const android = run.android!;
     const startedAt = this.now();
-    const createDecoder = () =>
-      provider.create(decoderPath, run.params, {
+    let decoder: DeviceVideoDecoder | null = null;
+    try {
+      decoder = android.provider!.create(android.decoderPath!, run.params, {
         onImage: (jpeg) => {
+          if (run.decoder !== decoder) return;
           const size = jpegSize(jpeg);
           if (size) this.offer(run, { codec: 'jpeg', body: jpeg, ...size });
         },
         onExit: (reason) => {
-          if (this.run !== run) return;
+          if (this.run !== run || run.decoder !== decoder) return;
           this.reportError('device video decoder exited', reason);
           run.decoder = null;
-          run.socket?.close();
-          run.socket = null;
           // A decoder that ran stably before dying is a fresh failure, not
           // the second of a pattern.
           const restarts =
             this.now() - startedAt >= (this.options.decoderStableMs ?? 60_000)
               ? 0
-              : decoderRestarts;
+              : android.decoderRestarts;
           if (restarts >= 1) {
-            // Twice is a pattern, not a blip: fall back, and say so.
-            this.setVideoMode('snapshot-poll', 'decoder-failed');
-            void this.pollSnapshots(run);
+            // Twice is a pattern, not a blip: image viewers fall back to
+            // polled stills, and the state says so.
+            android.decoderFailed = true;
+            this.reconcileAndroid(run);
             return;
           }
-          this.later(run, this.delay(0), () =>
-            this.startAndroidVideo(run, provider, decoderPath, restarts + 1),
-          );
+          android.decoderRestarts = restarts + 1;
+          android.decoderRestartPending = true;
+          this.later(run, this.delay(0), () => {
+            android.decoderRestartPending = false;
+            this.reconcileAndroid(run);
+          });
         },
       });
-    try {
-      run.decoder = createDecoder();
     } catch (error) {
       this.reportError('device video decoder could not start', error);
-      this.setVideoMode('snapshot-poll', 'decoder-failed');
-      void this.pollSnapshots(run);
+      android.decoderFailed = true;
+      this.reconcileAndroid(run);
       return;
     }
-    const connect = async (attempt: number) => {
-      const resolution = await this.options.hub.connect();
-      if (this.run !== run || !run.decoder) return;
-      if (!resolution.ok) {
-        this.later(run, this.delay(attempt), () => void connect(attempt + 1));
-        return;
-      }
-      let socket: DeviceSocket;
-      try {
-        socket = resolution.connection.openWebSocket(
-          `/vendor/serve-emu/ws?device=${encodeURIComponent(this.options.deviceId)}&frame-meta=1`,
-        ) as unknown as DeviceSocket;
-      } catch (error) {
-        this.reportError('device video socket could not be opened', error);
-        this.later(run, this.delay(attempt), () => void connect(attempt + 1));
-        return;
-      }
-      run.socket = socket;
-      awaitingKeyframe = true;
-      const requestKeyframe = () =>
-        socket.send(
-          JSON.stringify({ type: 'reset-video', ack: false }),
-          () => {},
-        );
-      // Idle keyframes (see `keyframeIdleMs`): re-armed on every access
-      // unit; only a content slice starts a new quiet period (below).
-      let idleTimer: ReturnType<typeof setTimeout> | null = null;
-      let idleRequests = 0;
-      const armIdle = () => {
-        if (idleTimer) {
-          clearTimeout(idleTimer);
-          run.timers.delete(idleTimer);
-        }
-        idleTimer = null;
-        if (idleRequests >= MAX_IDLE_KEYFRAMES) return;
-        const timer = setTimeout(() => {
-          run.timers.delete(timer);
-          idleTimer = null;
-          if (run.socket !== socket || this.run !== run) return;
-          idleRequests += 1;
-          requestKeyframe();
-        }, this.options.keyframeIdleMs ?? 300);
-        idleTimer = timer;
-        run.timers.add(timer);
-      };
-      socket.on('open', () => {
-        if (run.socket === socket) requestKeyframe();
-      });
-      socket.on('message', (data, isBinary) => {
-        if (run.socket !== socket || this.run !== run) return;
-        if (!isBinary) {
-          // The encoder restarts at a new size when the device rotates; the
-          // next keyframe carries the new SPS.
-          const text = bytesOf(data);
-          if (new TextDecoder().decode(text).includes('"video-session"')) {
-            awaitingKeyframe = true;
-            requestKeyframe();
-          }
-          return;
-        }
-        const packet = parseSemuPacket(bytesOf(data));
-        const isKey = packet.isKey ?? annexBHasIdr(packet.data);
-        // Only CONTENT resets the idle budget: a non-IDR slice means the
-        // screen changed. Keyframes and parameter sets are what our own
-        // requests produce (a reply can be several units — SPS/PPS, then
-        // the IDR), so they never reset it; a still screen gets at most
-        // MAX_IDLE_KEYFRAMES requests, however its replies are split.
-        if (annexBNalTypes(packet.data).has(1)) idleRequests = 0;
-        armIdle();
-        if (awaitingKeyframe) {
-          if (!isKey) return;
-          awaitingKeyframe = false;
-        }
-        if (run.decoder && !run.decoder.write(packet.data)) {
-          // The decoder fell behind and dropped this unit: resynchronize on
-          // a keyframe instead of decoding deltas against a missing base.
-          awaitingKeyframe = true;
-          requestKeyframe();
-        }
-      });
-      let lost = false;
-      const onLost = () => {
-        if (lost) return;
-        lost = true;
-        if (run.socket !== socket || this.run !== run) return;
-        run.socket = null;
-        this.later(run, this.delay(attempt), () => void connect(attempt + 1));
-      };
-      socket.on('close', onLost);
-      socket.on('error', () => {
-        try {
-          socket.close();
-        } catch {
-          // already closing
-        }
-        onLost();
+    run.decoder = decoder;
+    android.decoderAwaitingKey = true;
+    android.requestKeyframe?.();
+  }
+
+  private async connectAndroidVideo(
+    run: VideoRun,
+    attempt: number,
+  ): Promise<void> {
+    const android = run.android!;
+    android.connecting = true;
+    const resolution = await this.options.hub.connect();
+    android.connecting = false;
+    const wanted = () =>
+      this.run === run &&
+      !run.socket &&
+      (this.demand.h264 || run.decoder !== null);
+    if (!wanted()) return;
+    const retry = () => {
+      android.connecting = true;
+      this.later(run, this.delay(attempt), () => {
+        android.connecting = false;
+        if (wanted()) void this.connectAndroidVideo(run, attempt + 1);
       });
     };
-    void connect(0);
+    if (!resolution.ok) {
+      retry();
+      return;
+    }
+    let socket: DeviceSocket;
+    try {
+      socket = resolution.connection.openWebSocket(
+        `/vendor/serve-emu/ws?device=${encodeURIComponent(this.options.deviceId)}&frame-meta=1`,
+      ) as unknown as DeviceSocket;
+    } catch (error) {
+      this.reportError('device video socket could not be opened', error);
+      retry();
+      return;
+    }
+    run.socket = socket;
+    android.decoderAwaitingKey = true;
+    android.videoAwaitingKey = true;
+    const requestKeyframe = () =>
+      socket.send(
+        JSON.stringify({ type: 'reset-video', ack: false }),
+        () => {},
+      );
+    android.requestKeyframe = requestKeyframe;
+    // Idle keyframes (see `keyframeIdleMs`): re-armed on every access unit;
+    // only a content slice starts a new quiet period (below).
+    let idleTimer: ReturnType<typeof setTimeout> | null = null;
+    let idleRequests = 0;
+    const armIdle = () => {
+      if (idleTimer) {
+        clearTimeout(idleTimer);
+        run.timers.delete(idleTimer);
+      }
+      idleTimer = null;
+      if (idleRequests >= MAX_IDLE_KEYFRAMES) return;
+      const timer = setTimeout(() => {
+        run.timers.delete(timer);
+        idleTimer = null;
+        if (run.socket !== socket || this.run !== run) return;
+        idleRequests += 1;
+        requestKeyframe();
+      }, this.options.keyframeIdleMs ?? 300);
+      idleTimer = timer;
+      run.timers.add(timer);
+    };
+    socket.on('open', () => {
+      if (run.socket === socket) requestKeyframe();
+    });
+    socket.on('message', (data, isBinary) => {
+      if (run.socket !== socket || this.run !== run) return;
+      if (!isBinary) {
+        // The encoder restarts at a new size when the device rotates; the
+        // next keyframe carries the new SPS.
+        const text = bytesOf(data);
+        if (new TextDecoder().decode(text).includes('"video-session"')) {
+          android.decoderAwaitingKey = true;
+          android.videoAwaitingKey = true;
+          requestKeyframe();
+        }
+        return;
+      }
+      this.onAndroidUnit(run, parseSemuPacket(bytesOf(data)));
+      // Only CONTENT resets the idle budget: a non-IDR slice means the
+      // screen changed. Keyframes and parameter sets are what our own
+      // requests produce (a reply can be several units — SPS/PPS, then the
+      // IDR), so they never reset it; a still screen gets at most
+      // MAX_IDLE_KEYFRAMES requests, however its replies are split.
+      if (android.lastUnitHadContent) idleRequests = 0;
+      armIdle();
+    });
+    let lost = false;
+    const onLost = () => {
+      if (lost) return;
+      lost = true;
+      if (run.socket !== socket || this.run !== run) return;
+      run.socket = null;
+      android.requestKeyframe = null;
+      retry();
+    };
+    socket.on('close', onLost);
+    socket.on('error', () => {
+      try {
+        socket.close();
+      } catch {
+        // already closing
+      }
+      onLost();
+    });
+  }
+
+  /** One access unit from the hub: to H.264 viewers, and to the decoder. */
+  private onAndroidUnit(
+    run: VideoRun,
+    packet: { data: Uint8Array; isKey: boolean | null },
+  ): void {
+    const android = run.android!;
+    const types = annexBNalTypes(packet.data);
+    android.lastUnitHadContent = types.has(1);
+    if (types.has(7) || types.has(8)) {
+      for (const nal of splitAnnexB(packet.data)) {
+        const type = nal[0]! & 0x1f;
+        if (type === 8) android.pps = nal.slice();
+        if (type !== 7) continue;
+        android.sps = nal.slice();
+        const sequence = parseLiveSurfaceH264Sequence(
+          withParameterSets(new Uint8Array(0), nal, new Uint8Array(0)),
+        );
+        if (sequence) android.sequence = sequence;
+      }
+    }
+    const idr = types.has(5);
+    const unit =
+      idr && !types.has(7) && android.sps && android.pps
+        ? withParameterSets(packet.data, android.sps, android.pps)
+        : packet.data;
+    if (this.demand.h264 && android.sequence && (idr || types.has(1))) {
+      if (idr) android.videoAwaitingKey = false;
+      if (!android.videoAwaitingKey) this.publishVideo(run, unit, idr);
+    }
+    const decoder = run.decoder;
+    if (!decoder) return;
+    if (android.decoderAwaitingKey) {
+      if (!(packet.isKey ?? idr)) return;
+      android.decoderAwaitingKey = false;
+    }
+    if (!decoder.write(unit)) {
+      // The decoder fell behind and dropped this unit: resynchronize on a
+      // keyframe instead of decoding deltas against a missing base.
+      android.decoderAwaitingKey = true;
+      android.requestKeyframe?.();
+    }
+  }
+
+  /** An H.264 access unit, published as it arrives: the hub queues it. */
+  private publishVideo(run: VideoRun, unit: Uint8Array, keyframe: boolean) {
+    const sequence = run.android!.sequence!;
+    const size = fittedVideoSize(sequence, run.params);
+    const rotation = frameRotationFor(
+      this.options.platform,
+      this.orientation,
+      size,
+    );
+    this.lastFrame = { ...size, rotation };
+    run.onFrame(
+      {
+        surfaceId: this.surfaceId,
+        seq: ++this.seq,
+        epoch: 0,
+        codec: 'h264',
+        keyframe,
+        width: size.width,
+        height: size.height,
+        deviceScaleFactor: 1,
+        capturedAt: this.now(),
+        ...(rotation === 0 ? {} : { rotation }),
+      },
+      unit,
+    );
   }
 
   private async pollSnapshots(run: VideoRun): Promise<void> {
     const interval = this.options.snapshotPollIntervalMs ?? 1_000;
-    while (this.run === run) {
+    const android = run.android;
+    if (android) android.polling = true;
+    // Android polls only for image viewers the decoder cannot serve.
+    const wanted = () =>
+      this.run === run &&
+      (!android ||
+        (this.demand.image &&
+          (android.decoderPath === null || android.decoderFailed)));
+    try {
+      await this.pollWhile(run, interval, wanted);
+    } finally {
+      if (android) android.polling = false;
+    }
+  }
+
+  private async pollWhile(
+    run: VideoRun,
+    interval: number,
+    wanted: () => boolean,
+  ): Promise<void> {
+    while (wanted()) {
       try {
         const shot = await this.options.hub.screenshot(this.target());
         if (this.run !== run) return;
@@ -800,8 +1042,6 @@ export class DeviceLiveSurfaceProducer implements LiveSurfaceProducer {
           this.reportError('device screenshot poll failed', error);
       }
       await new Promise<void>((resolve) => this.later(run, interval, resolve));
-      // `later` never fires for a stopped run; bail out of the wait too.
-      if (this.run !== run) return;
     }
   }
 

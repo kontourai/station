@@ -1,4 +1,6 @@
 import { EventEmitter } from 'node:events';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import type {
   LiveSurfaceFrameHeader,
   LiveSurfaceStreamParams,
@@ -531,19 +533,22 @@ describe('Android', () => {
 
   function fakeDecoder() {
     const writes: Uint8Array[] = [];
-    const state = { dropping: false };
+    const state = { dropping: false, created: 0, closed: 0 };
     let callbacks: DeviceVideoDecoderCallbacks | null = null;
     const provider: DeviceVideoDecoderProvider = {
       availability: async () => ({ available: true, path: '/usr/bin/ffmpeg' }),
       create: (_path, _params, cb) => {
         callbacks = cb;
+        state.created += 1;
         return {
           write: (unit) => {
             if (state.dropping) return false;
             writes.push(unit);
             return true;
           },
-          close: async () => {},
+          close: async () => {
+            state.closed += 1;
+          },
         };
       },
     };
@@ -693,9 +698,9 @@ describe('Android', () => {
     const h = android({ decoder: decoder.provider, decoderStableMs: 0 });
     await h.producer.start(PARAMS, () => {});
     decoder.exit('crash after a long run');
-    await until(() => h.sockets.length >= 2, 'first restart');
+    await until(() => decoder.state.created >= 2, 'first restart');
     decoder.exit('another crash after a long run');
-    await until(() => h.sockets.length >= 3, 'second restart');
+    await until(() => decoder.state.created >= 3, 'second restart');
     expect(h.producer.status()).toMatchObject({ videoMode: 'live' });
   });
 
@@ -732,12 +737,164 @@ describe('Android', () => {
       h.producer.ack(header.seq);
     });
     decoder.exit('crash 1');
-    await until(() => h.sockets.length >= 2, 'restart');
+    await until(() => decoder.state.created >= 2, 'restart');
     decoder.exit('crash 2');
     await until(() => h.frames.length >= 1, 'polled frame');
     expect(h.producer.status()).toMatchObject({
       videoMode: 'snapshot-poll',
       videoDegradedReason: 'decoder-failed',
+    });
+  });
+
+  describe('H.264 passthrough (#4418)', () => {
+    // SPS, PPS, IDR and two deltas cut from a recorded Android emulator stream.
+    const sample = new Uint8Array(
+      readFileSync(
+        resolve(
+          import.meta.dirname,
+          '../../../../tests/fixtures/live-surface/android-emulator-1080x2400-baseline.h264',
+        ),
+      ),
+    );
+    /** The sample's NAL units, each with its 4-byte start code. */
+    const nals = (() => {
+      const out: Uint8Array[] = [];
+      let start = -1;
+      for (let i = 0; i + 3 < sample.length; i += 1) {
+        if (sample[i] === 0 && sample[i + 1] === 0 && sample[i + 2] === 1) {
+          const at = i > 0 && sample[i - 1] === 0 ? i - 1 : i;
+          if (start >= 0) out.push(sample.subarray(start, at));
+          start = at;
+          i += 2;
+        }
+      }
+      out.push(sample.subarray(start));
+      return out;
+    })();
+    const [sps, pps, idr, delta1, delta2] = nals as [
+      Uint8Array,
+      Uint8Array,
+      Uint8Array,
+      Uint8Array,
+      Uint8Array,
+    ];
+    function semuUnit(key: boolean, ...parts: Uint8Array[]): Buffer {
+      const body = Buffer.concat(parts);
+      const out = Buffer.alloc(24 + body.length);
+      out.writeUInt32BE(0x53454d55, 0);
+      out.writeUInt8(2, 4);
+      out.writeUInt8(key ? 1 : 0, 5);
+      out.set(body, 24);
+      return out;
+    }
+
+    test('an H.264-only audience gets ordered access units and runs no decoder', async () => {
+      const decoder = fakeDecoder();
+      const h = android({ decoder: decoder.provider });
+      h.producer.setCodecDemand({ image: false, h264: true });
+      await h.producer.start(PARAMS, (header, body) =>
+        h.frames.push({ header, body }),
+      );
+      await until(() => h.sockets.length === 1, 'video socket');
+      const video = h.sockets[0]!;
+      video.opened();
+      // A delta before any keyframe has nothing to decode against.
+      video.emit('message', semuUnit(false, delta1), true);
+      // The encoder's keyframe reply split in two: parameter sets, then IDR.
+      video.emit('message', semuUnit(false, sps, pps), true);
+      video.emit('message', semuUnit(true, idr), true);
+      video.emit('message', semuUnit(false, delta1), true);
+      video.emit('message', semuUnit(false, delta2), true);
+      expect(decoder.state.created).toBe(0);
+      expect(h.frames.map((frame) => frame.header.codec)).toEqual([
+        'h264',
+        'h264',
+        'h264',
+      ]);
+      expect(h.frames.map((frame) => frame.header.keyframe)).toEqual([
+        true,
+        false,
+        false,
+      ]);
+      // The keyframe carries its parameter sets, so a decoder joining here
+      // can configure; the size is the picture fitted to the stream params,
+      // the same box the JPEG path scales to.
+      const first = h.frames[0]!;
+      expect(Buffer.from(first.body)).toEqual(Buffer.concat([sps, pps, idr]));
+      expect(first.header).toMatchObject({ width: 576, height: 1280 });
+      expect(Buffer.from(h.frames[2]!.body)).toEqual(Buffer.from(delta2));
+      expect(h.producer.status()).toMatchObject({ videoMode: 'live' });
+    });
+
+    test('H.264 viewers keep video when there is no decoder; image viewers are polled', async () => {
+      const h = android();
+      h.producer.setCodecDemand({ image: true, h264: true });
+      await h.producer.start(PARAMS, (header, body) => {
+        h.frames.push({ header, body });
+        if (header.codec !== 'h264') h.producer.ack(header.seq);
+      });
+      await until(() => h.sockets.length === 1, 'video socket');
+      const video = h.sockets[0]!;
+      video.opened();
+      video.emit('message', semuUnit(true, sps, pps, idr), true);
+      await until(
+        () => h.frames.some((frame) => frame.header.codec === 'png'),
+        'a polled still',
+      );
+      expect(
+        h.frames.filter((frame) => frame.header.codec === 'h264'),
+      ).toHaveLength(1);
+      expect(h.producer.status()).toMatchObject({
+        videoMode: 'snapshot-poll',
+        videoDegradedReason: 'decoder-unavailable',
+      });
+      // The image viewer leaves: polling stops, the video goes on.
+      h.producer.setCodecDemand({ image: false, h264: true });
+      expect(h.producer.status()).toMatchObject({ videoMode: 'live' });
+      const shots = h.screenshots;
+      await new Promise((resolve) => setTimeout(resolve, 40));
+      expect(h.screenshots - shots).toBeLessThanOrEqual(1);
+      video.emit('message', semuUnit(false, delta1), true);
+      expect(h.frames.at(-1)!.header).toMatchObject({
+        codec: 'h264',
+        keyframe: false,
+      });
+    });
+
+    test('the decoder starts when an image viewer joins and stops when it leaves', async () => {
+      const decoder = fakeDecoder();
+      const h = android({ decoder: decoder.provider });
+      h.producer.setCodecDemand({ image: false, h264: true });
+      await h.producer.start(PARAMS, () => {});
+      await until(() => h.sockets.length === 1, 'video socket');
+      const video = h.sockets[0]!;
+      video.opened();
+      expect(decoder.state.created).toBe(0);
+      h.producer.setCodecDemand({ image: true, h264: true });
+      expect(decoder.state.created).toBe(1);
+      // A decoder joining mid-stream asks for a keyframe and waits for it.
+      expect(resets(video)).toBe(2);
+      video.emit('message', semuUnit(false, delta1), true);
+      expect(decoder.writes).toHaveLength(0);
+      video.emit('message', semuUnit(true, sps, pps, idr), true);
+      expect(decoder.writes).toHaveLength(1);
+      h.producer.setCodecDemand({ image: false, h264: true });
+      expect(decoder.state.closed).toBe(1);
+      // The socket stays for the H.264 viewers.
+      expect(h.sockets).toHaveLength(1);
+      h.producer.setCodecDemand({ image: false, h264: false });
+      expect(video.readyState).toBe(3);
+    });
+
+    test('the hub keyframe request reaches the encoder', async () => {
+      const h = android();
+      h.producer.setCodecDemand({ image: false, h264: true });
+      await h.producer.start(PARAMS, () => {});
+      await until(() => h.sockets.length === 1, 'video socket');
+      const video = h.sockets[0]!;
+      video.opened();
+      h.producer.requestKeyframe();
+      expect(resets(video)).toBe(2);
     });
   });
 

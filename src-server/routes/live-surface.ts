@@ -32,6 +32,11 @@ import {
  * - `GET  /:surfaceId/frames` — a streaming, length-prefixed binary body of
  *   state and frame records (`LiveSurfaceRecordDecoder` reads it). One
  *   viewer per request; the producer runs while at least one is attached.
+ *   `?codec=h264` (#4418) asks for H.264 access units instead of images.
+ *   It is a request, not a guarantee: a producer that offers no H.264 sends
+ *   images, and the frames' own `codec` says which the viewer got. A host
+ *   older than the key refuses it as an unknown query key (400), and the
+ *   client then asks again without it.
  * - `POST /:surfaceId/input` — a bounded batch of human input carrying the
  *   epoch the viewer last observed. Human input auto-claims the lease.
  * - `GET  /:surfaceId/lease` / `POST /:surfaceId/lease` — read the lease, or
@@ -99,6 +104,7 @@ export interface LiveSurfaceRouteOptions {
  * request names it). It never grants anything by itself.
  */
 const AUTHORIZATION_CONTEXT_QUERY_KEY = 'projectSlug';
+const CODEC_QUERY_KEY = 'codec';
 
 const STREAM_QUERY_KEYS: readonly (keyof LiveSurfaceStreamParams)[] = [
   'maxFps',
@@ -208,7 +214,8 @@ export function createLiveSurfaceRoutes(
       queryKeys.some(
         (key) =>
           (!STREAM_QUERY_KEYS.includes(key as keyof LiveSurfaceStreamParams) &&
-            key !== AUTHORIZATION_CONTEXT_QUERY_KEY) ||
+            key !== AUTHORIZATION_CONTEXT_QUERY_KEY &&
+            key !== CODEC_QUERY_KEY) ||
           (c.req.queries(key)?.length ?? 0) > 1,
       )
     )
@@ -220,12 +227,19 @@ export function createLiveSurfaceRoutes(
       maxHeight: c.req.query('maxHeight'),
     });
     if (!parsed.ok) return failure(c, 'invalid-request', 400);
+    const codec = c.req.query(CODEC_QUERY_KEY);
+    if (codec !== undefined && codec !== 'h264')
+      return failure(c, 'invalid-request', 400);
 
     const request = c.req.raw;
-    const viewer = entry.hub.attach(parsed.params, {
-      principal: human.principal,
-      device: human.device,
-    });
+    const viewer = entry.hub.attach(
+      parsed.params,
+      { principal: human.principal, device: human.device },
+      codec === 'h264' &&
+        entry.hub.producer.capabilities.codecs.includes('h264')
+        ? 'h264'
+        : 'image',
+    );
     const abort = new AbortController();
     const end = () => {
       abort.abort();

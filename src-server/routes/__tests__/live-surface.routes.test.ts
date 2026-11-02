@@ -281,6 +281,8 @@ describe('live surface routes through runtime authentication', () => {
       'maxWidth=99999',
       'fps=10',
       'maxFps=5&maxFps=6',
+      'codec=vp9',
+      'codec=h264&codec=h264',
     ]) {
       const response = await h.request(`${base}/frames?${query}`, 'operator');
       expect(response.status, query).toBe(400);
@@ -290,6 +292,30 @@ describe('live surface routes through runtime authentication', () => {
       });
     }
     expect(h.registry.get(SURFACE)!.hub.viewerCount).toBe(0);
+  });
+
+  test('codec=h264 attaches an H.264 viewer only where the producer offers H.264 (#4418)', async () => {
+    const h = harness();
+    const hub = h.registry.get(SURFACE)!.hub;
+    const attach = hub.attach.bind(hub);
+    const codecs: string[] = [];
+    hub.attach = (params, identity, codec) => {
+      codecs.push(codec ?? 'image');
+      return attach(params, identity, codec);
+    };
+    // The synthetic producer offers images only: the request falls back.
+    const imageOnly = await h.request(`${base}/frames?codec=h264`, 'operator');
+    expect(imageOnly.status).toBe(200);
+    await imageOnly.body!.cancel();
+    Object.assign(h.producer.capabilities, {
+      codecs: [...h.producer.capabilities.codecs, 'h264'],
+    });
+    const video = await h.request(`${base}/frames?codec=h264`, 'operator');
+    expect(video.status).toBe(200);
+    await video.body!.cancel();
+    const plain = await h.request(`${base}/frames`, 'operator');
+    await plain.body!.cancel();
+    expect(codecs).toEqual(['image', 'h264', 'image']);
   });
 
   test('narrowing the credential scope ends a running frames stream', async () => {
