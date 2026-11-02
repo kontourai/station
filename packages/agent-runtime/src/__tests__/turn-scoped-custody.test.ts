@@ -105,6 +105,7 @@ for (const change of ['format', 'state'] as const) {
       database: f.database,
       participants: [
         {
+          name: 'effect-receipt-control',
           commit({ command }, database) {
             if (command.type !== 'effectPlan') return;
             const row = database
