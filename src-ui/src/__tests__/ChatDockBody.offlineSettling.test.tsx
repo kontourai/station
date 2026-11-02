@@ -536,11 +536,11 @@ describe('ChatDockBody offline settling (station#2605)', () => {
   });
 
   test('steering support stays loading until the Session projection arrives', async () => {
-    const active = {
+    const active: ChatSession = {
       ...session(0),
       status: 'sending',
       orchestrationDurability: undefined,
-    } as ChatSession;
+    };
     const view = render(<DockFixture current={active} read="pending" />);
     await waitFor(() =>
       expect(composerProps).toHaveBeenLastCalledWith(

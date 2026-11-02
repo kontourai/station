@@ -2261,7 +2261,9 @@ Commit observers supply no binding authority. Append performs no process probe
 in the writer transaction.
 Delivery probes outside that transaction, rereads the boundary afterward, and
 compares its snapshot again while recording custody. Completion and release recheck durable facts
-under the writer lock.
+under the writer lock. The health tick starts at most one owned-work
+maintenance pass without waiting for adapter Stop before other health work or
+future ticks.
 
 Open reconstructs edges through the naming index and derives stop obligations
 from retained request and terminal events. Completed, permanently fenced
@@ -2285,7 +2287,8 @@ closes an at-rest parent's retained adapter and removes its unknown cleanup with
 the parent record. It preserves cancellation fences against replay, child history and independent stop
 intents. Known child owners, changed custody snapshots, and observations not refreshed
 after the release recheck refuse release. An unbound store cannot infer that a
-terminal child has no local adapter. This
+terminal child has no local adapter. Custody reads without a binding or an
+explicit adapter observation remain unknown. This
 is untracking, not a claim that the child's process stopped.
 Lifecycle transition validation and the completed-session send guard use the
 own fold, preserving those execution boundaries while the aggregate is busy.

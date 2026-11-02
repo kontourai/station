@@ -57,15 +57,20 @@ describe('runtime-health', () => {
       finish = resolve;
     });
     const runHealthChecks = vi.fn(async () => {});
+    const maintainOwnedWork = vi.fn(() => delivery);
     const timers: NodeJS.Timeout[] = [];
     const starting = startRuntimeHealthChecks({
       timers,
       logger: { debug: vi.fn(), warn: vi.fn() },
-      maintainOwnedWork: () => delivery,
+      maintainOwnedWork,
+      interval: 1000,
       runHealthChecks,
     });
     try {
       expect(runHealthChecks).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(runHealthChecks).toHaveBeenCalledTimes(2);
+      expect(maintainOwnedWork).toHaveBeenCalledTimes(1);
     } finally {
       finish();
       await starting;

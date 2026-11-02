@@ -364,7 +364,11 @@ test('the composed binding is single-shot and reports current local custody', ()
       method: 'session.exited',
       createdAt: '2026-01-01T00:00:00Z',
     });
-    expect(store.cascadeStopOwner('child').custody).toBe('settled');
+    expect(store.cascadeStopOwner('child')).toMatchObject({
+      custody: 'unknown',
+      reason: 'binding-unavailable',
+    });
+    expect(store.cascadeStopOwner('child', false).custody).toBe('settled');
     let held = false;
     store.bindSessionActivity(() => held);
     expect(store.cascadeStopOwner('child').custody).toBe('settled');
