@@ -1,8 +1,30 @@
 import { join } from 'node:path';
 import type { WorkingMemoryScope } from '@voltagent/core';
 
+/**
+ * Characters Windows refuses in a file name. Native engine conversation ids
+ * carry a colon (`codex:<id>`), which NTFS reads as an alternate data stream,
+ * so writing those conversations failed with ENOENT and every fork of an
+ * engine chat failed on Windows. They are percent-encoded there, `%` first so
+ * the encoding stays reversible. Other platforms keep the plain id: they
+ * could always write it, and existing files must keep their names.
+ */
+const WINDOWS_RESERVED_FILE_NAME_CHARS = /[%<>:"|?*]/g;
+
 export class MemoryAdapterPaths {
-  constructor(private readonly projectHomeDir: string) {}
+  constructor(
+    private readonly projectHomeDir: string,
+    private readonly platform: NodeJS.Platform = process.platform,
+  ) {}
+
+  private fileName(id: string): string {
+    return this.platform === 'win32'
+      ? id.replace(
+          WINDOWS_RESERVED_FILE_NAME_CHARS,
+          (char) => `%${char.charCodeAt(0).toString(16).toUpperCase()}`,
+        )
+      : id;
+  }
 
   getAgentsDir(): string {
     return join(this.projectHomeDir, 'agents');
@@ -17,7 +39,10 @@ export class MemoryAdapterPaths {
   }
 
   getConversationPath(resourceId: string, conversationId: string): string {
-    return join(this.getConversationsDir(resourceId), `${conversationId}.json`);
+    return join(
+      this.getConversationsDir(resourceId),
+      `${this.fileName(conversationId)}.json`,
+    );
   }
 
   getSessionsDir(resourceId: string): string {
@@ -25,7 +50,10 @@ export class MemoryAdapterPaths {
   }
 
   getMessagesPath(resourceId: string, conversationId: string): string {
-    return join(this.getSessionsDir(resourceId), `${conversationId}.ndjson`);
+    return join(
+      this.getSessionsDir(resourceId),
+      `${this.fileName(conversationId)}.ndjson`,
+    );
   }
 
   getWorkingMemoryDir(resourceId: string, scope: WorkingMemoryScope): string {
@@ -38,7 +66,7 @@ export class MemoryAdapterPaths {
   ): string {
     return join(
       this.getWorkingMemoryDir(resourceId, 'conversation'),
-      `${conversationId}.json`,
+      `${this.fileName(conversationId)}.json`,
     );
   }
 
