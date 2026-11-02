@@ -1,5 +1,35 @@
 [
   {
+    "timestampUtc": "2026-11-02T21:40:13Z",
+    "channel": "nightly-npm",
+    "version": "0.11.0-nightly.2497.41527424497",
+    "sha": "e25d1380eab3fc15e53985952ee72091b30c3364",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/41527424497",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.11.0-nightly.2497.41527424497 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "b5fa35320b8ff943cacc0e1eaba2d2cf320eb30b",
+      "groups": {
+        "feat": [
+          "[#4451](https://github.com/kontourai/station/pull/4451) feat: UX audit follow-ups — private no-project folders, phone chat, 12px text, Regenerate and Windows forks",
+          "[#4444](https://github.com/kontourai/station/pull/4444) feat(devices): screenshot, recording, logs and Task capture for the Device pane"
+        ],
+        "fix": [],
+        "ci": [],
+        "docs": [],
+        "other": []
+      },
+      "note": null,
+      "commitCount": 2
+    }
+  },
+  {
     "timestampUtc": "2026-11-02T19:22:58Z",
     "channel": "nightly-desktop",
     "version": "0.1.11-nightly.2497.1",
