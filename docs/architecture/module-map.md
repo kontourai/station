@@ -2291,8 +2291,10 @@ Delivery probes outside that transaction, rereads the boundary afterward, and
 compares its snapshot again while recording custody. Completion and release recheck durable facts
 under the writer lock. The health tick starts at most one owned-work
 maintenance pass without waiting for adapter Stop before other health work or
-future ticks. Shutdown stops future passes and awaits the in-flight maintenance
-before closing orchestration services.
+future ticks. Shutdown first stops cascade delivery and aborts an in-flight custody
+probe, then stops future health passes and drains maintenance with a five-second
+deadline before closing orchestration services. A late probe cannot write custody
+or deliver further stops.
 
 Open reconstructs edges through the naming index and derives stop obligations
 from retained request and terminal events. Constructor backfill and append-time
