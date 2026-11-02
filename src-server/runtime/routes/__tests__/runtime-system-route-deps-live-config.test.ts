@@ -171,3 +171,21 @@ test('runtime status reads restored-home provenance and never exposes backup pat
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+test('reports the terminal capability from the runtime PTY adapter (#1244)', async () => {
+  const { context } = contextWithConfig({});
+  const degraded = {
+    state: 'unavailable',
+    reason: 'node-pty did not build',
+  } as const;
+  (context as { ptyAdapter: unknown }).ptyAdapter = {
+    probeCapability: async () => degraded,
+  };
+  expect(
+    await createRuntimeSystemRouteDeps(context).probeTerminalCapability(),
+  ).toEqual(degraded);
+  (context as { ptyAdapter: unknown }).ptyAdapter = {};
+  expect(
+    await createRuntimeSystemRouteDeps(context).probeTerminalCapability(),
+  ).toEqual({ state: 'available' });
+});

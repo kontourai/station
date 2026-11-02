@@ -42,7 +42,6 @@ import {
 /** Stable listeners the supervisor holds across generations. */
 const SUPERVISOR_LISTENER_NAMES = Object.freeze([
   'api',
-  'terminal',
   'voice',
   'consent',
 ] as const);

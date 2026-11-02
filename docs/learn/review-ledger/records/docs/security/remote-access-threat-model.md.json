@@ -104,8 +104,6 @@
 
     "src-server/services/ssh/ssh-probe-admission.ts",
 
-    "src-server/services/terminal/terminal-ws-server.ts",
-
     "src-server/utils/private-sqlite.ts",
 
     "src-ui/src/views/account/AccountEntryView.tsx",

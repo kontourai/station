@@ -1,0 +1,51 @@
+{
+  "revision": "b32ef0802b50f18eab8392cc8715cec3dec79ed5",
+
+  "notes": [
+    {"path":"README.md","note":"lifecycle.ts changed only in a code comment above the home schema gate (dropped a repeated mkdir rationale; the #1570/#1567 references remain). No code, command, flag or output changed, so this document's claims about start/stop and the CLI lifecycle are unaffected.","inputs":["README.md","packages/cli/src/commands/lifecycle.ts"]},
+
+    {"path":"deploy/public-ingress/README.md","note":"lifecycle.ts changed only in a code comment above the home schema gate (dropped a repeated mkdir rationale; the #1570/#1567 references remain). No code, command, flag or output changed, so this document's claims about start/stop and the CLI lifecycle are unaffected.","inputs":["deploy/public-ingress/README.md","packages/cli/src/commands/lifecycle.ts"]},
+
+    {"path":"docs/adr/0020-distribution-two-trains-channels-as-pointers.md","note":"lifecycle.ts changed only in a code comment above the home schema gate (dropped a repeated mkdir rationale; the #1570/#1567 references remain). No code, command, flag or output changed, so this document's claims about start/stop and the CLI lifecycle are unaffected.","inputs":["docs/adr/0020-distribution-two-trains-channels-as-pointers.md","packages/cli/src/commands/lifecycle.ts"]},
+
+    {"path":"docs/architecture/module-map.md","note":"lifecycle.ts changed only in a code comment above the home schema gate (dropped a repeated mkdir rationale; the #1570/#1567 references remain). No code, command, flag or output changed, so this document's claims about start/stop and the CLI lifecycle are unaffected.","inputs":["docs/architecture/module-map.md","packages/cli/src/commands/lifecycle.ts"]},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"ComposerModeSheet.tsx only changes the save-as-default label: it drops an as-never cast on engineConnectionId and falls back to \"engine\" for an empty id instead of rendering an empty name. Checked this doc: it describes approval delivery and policy, not that checkbox label; no claim changed.","inputs":["docs/conformance/tool-policy-delivery.md","src-ui/src/components/badges/ComposerModeSheet.tsx"]},
+
+    {"path":"docs/design/cli-product.md","note":"lifecycle.ts changed only in a code comment above the home schema gate (dropped a repeated mkdir rationale; the #1570/#1567 references remain). No code, command, flag or output changed, so this document's claims about start/stop and the CLI lifecycle are unaffected.","inputs":["docs/design/cli-product.md","packages/cli/src/commands/lifecycle.ts"]},
+
+    {"path":"docs/design/instance-registry.md","note":"lifecycle.ts changed only in a code comment above the home schema gate (dropped a repeated mkdir rationale; the #1570/#1567 references remain). No code, command, flag or output changed, so this document's claims about start/stop and the CLI lifecycle are unaffected.","inputs":["docs/design/instance-registry.md","packages/cli/src/commands/lifecycle.ts"]},
+
+    {"path":"docs/design/operator-device-access.md","note":"lifecycle.ts changed only in a code comment above the home schema gate (dropped a repeated mkdir rationale; the #1570/#1567 references remain). No code, command, flag or output changed, so this document's claims about start/stop and the CLI lifecycle are unaffected.","inputs":["docs/design/operator-device-access.md","packages/cli/src/commands/lifecycle.ts"]},
+
+    {"path":"docs/design/outside-agent-mcp-r3-evidence.md","note":"lifecycle.ts changed only in a code comment above the home schema gate (dropped a repeated mkdir rationale; the #1570/#1567 references remain). No code, command, flag or output changed, so this document's claims about start/stop and the CLI lifecycle are unaffected.","inputs":["docs/design/outside-agent-mcp-r3-evidence.md","packages/cli/src/commands/lifecycle.ts"]},
+
+    {"path":"docs/guides/deployment.md","note":"lifecycle.ts changed only in a code comment above the home schema gate (dropped a repeated mkdir rationale; the #1570/#1567 references remain). No code, command, flag or output changed, so this document's claims about start/stop and the CLI lifecycle are unaffected.","inputs":["docs/guides/deployment.md","packages/cli/src/commands/lifecycle.ts"]},
+
+    {"path":"docs/guides/local-speech.md","note":"lifecycle.ts changed only in a code comment above the home schema gate (dropped a repeated mkdir rationale; the #1570/#1567 references remain). No code, command, flag or output changed, so this document's claims about start/stop and the CLI lifecycle are unaffected.","inputs":["docs/guides/local-speech.md","packages/cli/src/commands/lifecycle.ts"]},
+
+    {"path":"docs/guides/native-releases.md","note":"lifecycle.ts changed only in a code comment above the home schema gate (dropped a repeated mkdir rationale; the #1570/#1567 references remain). No code, command, flag or output changed, so this document's claims about start/stop and the CLI lifecycle are unaffected.","inputs":["docs/guides/native-releases.md","packages/cli/src/commands/lifecycle.ts"]},
+
+    {"path":"docs/guides/native-shell-verification.md","note":"lifecycle.ts changed only in a code comment above the home schema gate (dropped a repeated mkdir rationale; the #1570/#1567 references remain). No code, command, flag or output changed, so this document's claims about start/stop and the CLI lifecycle are unaffected.","inputs":["docs/guides/native-shell-verification.md","packages/cli/src/commands/lifecycle.ts"]},
+
+    {"path":"docs/guides/nightly.md","note":"lifecycle.ts changed only in a code comment above the home schema gate (dropped a repeated mkdir rationale; the #1570/#1567 references remain). No code, command, flag or output changed, so this document's claims about start/stop and the CLI lifecycle are unaffected.","inputs":["docs/guides/nightly.md","packages/cli/src/commands/lifecycle.ts"]},
+
+    {"path":"docs/guides/release-channel-ports.md","note":"lifecycle.ts changed only in a code comment above the home schema gate (dropped a repeated mkdir rationale; the #1570/#1567 references remain). No code, command, flag or output changed, so this document's claims about start/stop and the CLI lifecycle are unaffected.","inputs":["docs/guides/release-channel-ports.md","packages/cli/src/commands/lifecycle.ts"]},
+
+    {"path":"docs/guides/walkthroughs.md","note":"lifecycle.ts changed only in a code comment above the home schema gate (dropped a repeated mkdir rationale; the #1570/#1567 references remain). No code, command, flag or output changed, so this document's claims about start/stop and the CLI lifecycle are unaffected.","inputs":["docs/guides/walkthroughs.md","packages/cli/src/commands/lifecycle.ts"]},
+
+    {"path":"docs/reference/api.md","note":"lifecycle.ts changed only in a code comment above the home schema gate (dropped a repeated mkdir rationale; the #1570/#1567 references remain). No code, command, flag or output changed, so this document's claims about start/stop and the CLI lifecycle are unaffected.","inputs":["docs/reference/api.md","packages/cli/src/commands/lifecycle.ts"]},
+
+    {"path":"docs/reference/cli.md","note":"lifecycle.ts changed only in a code comment above the home schema gate (dropped a repeated mkdir rationale; the #1570/#1567 references remain). No code, command, flag or output changed, so this document's claims about start/stop and the CLI lifecycle are unaffected.","inputs":["docs/reference/cli.md","packages/cli/src/commands/lifecycle.ts"]},
+
+    {"path":"docs/reference/env-vars.md","note":"lifecycle.ts changed only in a code comment above the home schema gate (dropped a repeated mkdir rationale; the #1570/#1567 references remain). No code, command, flag or output changed, so this document's claims about start/stop and the CLI lifecycle are unaffected.","inputs":["docs/reference/env-vars.md","packages/cli/src/commands/lifecycle.ts"]},
+
+    {"path":"docs/reference/outside-agent-oauth.md","note":"lifecycle.ts changed only in a code comment above the home schema gate (dropped a repeated mkdir rationale; the #1570/#1567 references remain). No code, command, flag or output changed, so this document's claims about start/stop and the CLI lifecycle are unaffected.","inputs":["docs/reference/outside-agent-oauth.md","packages/cli/src/commands/lifecycle.ts"]},
+
+    {"path":"docs/reference/usage-telemetry.md","note":"lifecycle.ts changed only in a code comment above the home schema gate (dropped a repeated mkdir rationale; the #1570/#1567 references remain). No code, command, flag or output changed, so this document's claims about start/stop and the CLI lifecycle are unaffected.","inputs":["docs/reference/usage-telemetry.md","packages/cli/src/commands/lifecycle.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"lifecycle.ts changed only in a code comment above the home schema gate (dropped a repeated mkdir rationale; the #1570/#1567 references remain). No code, command, flag or output changed, so this document's claims about start/stop and the CLI lifecycle are unaffected.","inputs":["docs/security/remote-access-threat-model.md","packages/cli/src/commands/lifecycle.ts"]},
+
+    {"path":"docs/user/getting-started.md","note":"lifecycle.ts changed only in a code comment above the home schema gate (dropped a repeated mkdir rationale; the #1570/#1567 references remain). No code, command, flag or output changed, so this document's claims about start/stop and the CLI lifecycle are unaffected.","inputs":["docs/user/getting-started.md","packages/cli/src/commands/lifecycle.ts"]}
+  ]
+}

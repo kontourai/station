@@ -35,19 +35,13 @@ const api = http.createServer((req, res) => {
   }
   res.end(JSON.stringify({ data: { build: { ...current, fullSha: sha } } }));
 });
-const terminal = new WebSocketServer({
-  port: serverPort + 1,
-  host: '127.0.0.1',
-});
 const voice = new WebSocketServer({
   port: serverPort + 2,
   host: '127.0.0.1',
 });
-for (const server of [terminal, voice]) {
-  server.on('connection', (socket, request) => {
-    if (request.url === '/__station/health') socket.close(1000, 'healthy');
-  });
-}
+voice.on('connection', (socket, request) => {
+  if (request.url === '/__station/health') socket.close(1000, 'healthy');
+});
 api.listen(serverPort, '127.0.0.1');
 // station#3677: the consent listener occupies serverPort + 3; health asserts
 // its ownership like every other listener in the block.

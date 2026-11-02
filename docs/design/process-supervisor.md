@@ -56,8 +56,8 @@ Every way Station restarts interrupts running work.
 - Three supervisors exist with three behaviors: a Rust thread in Desktop, a
   Node loop in `service run`, and the archive launcher's update transaction.
   None of them keeps work alive.
-- One instance binds four ports (API, terminal `+1`, voice `+2`, consent
-  `+3`), and `station start` adds a separate UI server process.
+- One instance binds three ports (API, voice `+2`, consent `+3`), and
+  `station start` adds a separate UI server process.
 
 ## Goals
 
@@ -116,7 +116,8 @@ product decisions.
   boot consumes interrupted-turn boundaries, runs the schema gate, and opens
   single-writer stores. A handoff from generation N to N+1:
   1. Start N+1, which loads its code and reports `parked` before touching
-     the home. If it fails to park, N was never disturbed and keeps serving.
+     the home. If it fails to park within 30 seconds, N was never disturbed
+     and keeps serving.
   2. Send `drain` to N. N closes its copies of the listeners, finishes
      in-flight requests, and exits. A drain deadline then escalates to
      SIGTERM and SIGKILL. An active voice call extends the deadline up to a
@@ -151,8 +152,8 @@ product decisions.
   `STATION_SUPERVISOR_IPC=1` parks before its temp and orphan sweeps, the
   home schema gate, and its log sink, which touch the home or the live
   generation's processes. Telemetry registers at import as usual, but its
-  home writes (schema gate, installation identity) wait for promotion. Its four listeners (API,
-  terminal, voice, consent) bind through one link: adopted handles when the
+  home writes (schema gate, installation identity) wait for promotion. Its three listeners (API,
+  voice, consent) bind through one link: adopted handles when the
   supervisor holds them, otherwise a normal bind reported with
   `listener.bound`. A later generation takes its base port from the held API
   socket, so `PORT=0` keeps one block across generations. `ready` carries a
@@ -179,8 +180,16 @@ product decisions.
   A crash of the active generation, outside a drain, restarts it with
   exponential backoff: 1s doubling to a 30s cap, reset after 60s of stable
   serving. A crash during a handoff counts toward the same failure budget.
-  After five failures within five minutes the supervisor gives up and exits
-  nonzero, so its launcher's restart policy takes over. Stopping the
+  A generation started while none serves (first boot, crash restart, or a
+  rollback's relaunch) has 120 seconds to park rather than a handoff's 30: it
+  loads its code cold, often on a busy host, and there is no serving
+  generation to fall back on. A generation that misses its park or readiness
+  deadline is logged by name (`did not park within …ms (park deadline)`)
+  before it is ended, and counts as a failure. After five failures within
+  five minutes, or five in a row with no generation serving between them, the
+  supervisor gives up and exits nonzero, so its launcher's restart policy
+  takes over. The second rule keeps a core that never parks from retrying
+  forever once long boot deadlines spread its failures past the window. Stopping the
   supervisor (SIGTERM, SIGINT, SIGHUP, or the `stop` request) drains the
   active generation and exits zero. That drain, voice calls included, is capped at 30 seconds
   by default, below service managers' stop timeouts; the long voice cap
@@ -697,9 +706,8 @@ verification, and fault injection.
   ([`supervised-core.real.test.ts`](../../src-server/runtime/bootstrap/__tests__/supervised-core.real.test.ts))
   hands generation 1 to 2 under keep-alive, fresh-connection, and
   slow-header HTTP load (requests whose headers are still arriving when
-  generation 1 drains) with no refused or reset connection, on the same four
-  ports, and checks the terminal, voice, and consent listeners on the new
-  generation. It also checks that a parked generation leaves the home, the
+  generation 1 drains) with no refused or reset connection, on the same three
+  ports, and checks the voice and consent listeners on the new generation. It also checks that a parked generation leaves the home, the
   temp root, and the engine registry untouched, and that the supervisor
   keeps its socket, token, and lock through a home schema migration. These
   are the cases tested, not a guarantee for every request: one still running

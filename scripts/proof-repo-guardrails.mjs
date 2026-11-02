@@ -148,24 +148,6 @@ for (const relativePath of [
   }
 }
 
-const terminalSubprocessState = readRequiredSource(
-  '../src-server/services/terminal/terminal-subprocess-state.ts',
-);
-if (
-  !/\bexecFile\s*\(\s*['"]pgrep['"]\s*,\s*\[\s*['"]-P['"]\s*,\s*String\s*\(\s*pid\s*\)\s*\]/.test(
-    terminalSubprocessState,
-  )
-) {
-  errors.push(
-    "terminal-subprocess-state.ts must probe Unix children asynchronously with execFile('pgrep', ['-P', String(pid)]).",
-  );
-}
-if (/\bexecSync\s*\(\s*['"`]\s*pgrep\b/.test(terminalSubprocessState)) {
-  errors.push(
-    'terminal-subprocess-state.ts must not synchronously probe Unix children with execSync.',
-  );
-}
-
 const systemRuntime = readRequiredSource(
   '../packages/sdk/src/query-domains/systemRuntime.ts',
 );
@@ -1401,15 +1383,10 @@ const terminalPanel = readRequiredSource(
   '../src-ui/src/components/coding-layout/TerminalPanel.tsx',
 );
 // #3994: the Coding terminal reaches the same-origin terminal socket only
-// through the SDK session store. The second listener on port + 1 is never
-// dialled: proxies, the relay and tailnet names forward only the main port.
-if (
-  terminalPanel.includes('/api/system/terminal-port') ||
-  terminalPanel.includes('fetchTerminalPort') ||
-  /new WebSocket\(/.test(terminalPanel)
-) {
+// through the SDK session store.
+if (/new WebSocket\(/.test(terminalPanel)) {
   errors.push(
-    'TerminalPanel must reach terminals through the SDK session store, never port discovery or a raw WebSocket.',
+    'TerminalPanel must reach terminals through the SDK session store, never a raw WebSocket.',
   );
 }
 if (terminalPanel.includes('/api/coding/exec')) {

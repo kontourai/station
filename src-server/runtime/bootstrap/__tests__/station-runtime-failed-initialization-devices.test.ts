@@ -113,8 +113,6 @@ function failingRuntime() {
       initialize: async () => {},
       shutdown: async () => {},
     },
-    terminalWsStarted: true,
-    terminalWsServer: { stop() {} },
     connectionService: {
       migrateLegacyCredentialApplicationsAtStartup: async () => {},
       createCredentialProfileRecoveryAdapter: () => ({}),

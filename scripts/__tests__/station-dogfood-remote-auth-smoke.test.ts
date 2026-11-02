@@ -51,7 +51,6 @@ describe('remote authenticated dogfood smoke', () => {
         localOrigin: 'http://127.0.0.1:3141',
         expectedSha: SHA,
         websocketUrls: {
-          terminal: 'wss://terminal.remote.test',
           voice: 'wss://voice.remote.test/?agent=station-voice',
         },
       },
@@ -71,7 +70,7 @@ describe('remote authenticated dogfood smoke', () => {
     expect(requests[1].authorization).toBeUndefined();
     expect(requests.at(-1)?.authorization).toBeUndefined();
     expect(requests.filter((request) => request.authorization)).toHaveLength(3);
-    expect(websocketProbe).toHaveBeenCalledTimes(4);
+    expect(websocketProbe).toHaveBeenCalledTimes(2);
     expect(JSON.stringify(result)).not.toContain(TEST_CREDENTIAL);
   });
 

@@ -5,7 +5,6 @@ import type { EngineConnectionId } from '@kontourai/station-contracts/agent-iden
 import type { AppConfig } from '@kontourai/station-contracts/config';
 import type { MCPLocalConnectionCustody } from '@kontourai/station-shared/mcp';
 import type { FileMemoryAdapter } from '../../adapters/file/memory-adapter.js';
-import { FileTerminalHistoryStore } from '../../adapters/file-terminal-history-store.js';
 import { NodePtyAdapter } from '../../adapters/node-pty-adapter.js';
 import {
   loadOrCreateAgentRegistry,
@@ -21,10 +20,6 @@ import {
   createProviderAdapterRegistry,
   providerAdapterLaunchabilitySource,
 } from '../../providers/registries/registry.js';
-import {
-  credentialAuthorizedForScope,
-  PAIRING_WS_SCOPES,
-} from '../../security/pairing-route-scopes.js';
 import { ACPManager } from '../../services/acp/acp-bridge.js';
 import {
   EngineCredentials,
@@ -56,11 +51,6 @@ import {
 } from '../../services/secrets/secret-binding-administration.js';
 import type { EnvironmentSecurityService } from '../../services/ssh/environment-security-service.js';
 import { SshEnvironmentService } from '../../services/ssh/ssh-environment-service.js';
-import { TerminalService } from '../../services/terminal/terminal-service.js';
-import {
-  type TerminalWebSocketSecurityAuditRecord,
-  TerminalWebSocketServer,
-} from '../../services/terminal/terminal-ws-server.js';
 import { NovaSonicProvider } from '../../voice/providers/nova-sonic.js';
 import { VoiceSessionService } from '../../voice/voice-session.js';
 import type { IAgentHooks } from '../types.js';
@@ -112,7 +102,6 @@ interface RuntimeServiceBootstrapContext {
   toolNameMapping: ToolNameMapping;
   resetAllRuntimeProjections: (reset: () => void) => Promise<void>;
   usageAggregatorRef: { get: () => any };
-  getTerminalShell: () => string | undefined;
   persistEvent: (event: any) => Promise<void>;
   bootstrapVoiceAgent: () => Promise<void>;
   resolveVectorDbProvider: () => any;
@@ -132,9 +121,6 @@ interface RuntimeServiceBootstrapFactories {
   createKnowledgeStoreProvider?: (storageAdapter: any) => any;
   createFileTreeService?: () => any;
   createPtyAdapter?: () => any;
-  createHistoryStore?: () => any;
-  createTerminalService?: (...args: any[]) => any;
-  createTerminalWsServer?: (terminalService: any, auth: any) => any;
   createVoiceService?: (options: any) => any;
   createMonitoringEmitter?: (
     events: EventEmitter,
@@ -342,45 +328,6 @@ export function createRuntimeServiceBundle(
   const fileTreeService =
     factories.createFileTreeService?.() ?? new FileTreeService();
   const ptyAdapter = factories.createPtyAdapter?.() ?? new NodePtyAdapter();
-  const historyStore =
-    factories.createHistoryStore?.() ?? new FileTerminalHistoryStore();
-  const terminalService =
-    factories.createTerminalService?.(
-      ptyAdapter,
-      historyStore,
-      context.getTerminalShell,
-    ) ??
-    new TerminalService(
-      ptyAdapter,
-      historyStore,
-      context.getTerminalShell,
-      (slug) => {
-        try {
-          return storageAdapter.getProject(slug).id;
-        } catch {
-          return undefined;
-        }
-      },
-    );
-
-  const terminalAuth = {
-    // Scoped pairing (archive#1098): a valid credential must ALSO carry
-    // terminal:operate — a read-only paired device authenticates fine but
-    // never reaches an open terminal session. Shared with voice's identical
-    // gate (`runtime-initialize.ts`) via `credentialAuthorizedForScope`.
-    verifyCredential: (credential: string) =>
-      credentialAuthorizedForScope(
-        context.environmentSecurityService,
-        PAIRING_WS_SCOPES.terminal,
-        credential,
-      ),
-    audit: (record: TerminalWebSocketSecurityAuditRecord) =>
-      context.logger.warn('Terminal authentication denied', record),
-  };
-  const terminalWsServer =
-    factories.createTerminalWsServer?.(terminalService, terminalAuth) ??
-    new TerminalWebSocketServer(terminalService, terminalAuth);
-
   const voiceService =
     factories.createVoiceService?.({
       providerFactory: () => new NovaSonicProvider({ region: 'us-east-1' }),
@@ -511,8 +458,7 @@ export function createRuntimeServiceBundle(
     knowledgeService,
     knowledgeStoreProvider,
     fileTreeService,
-    terminalService,
-    terminalWsServer,
+    ptyAdapter,
     voiceService,
     monitoringEmitter,
     acpBridge,

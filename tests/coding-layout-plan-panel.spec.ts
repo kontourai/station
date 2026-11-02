@@ -405,21 +405,11 @@ test.describe('Coding Layout — mobile single-panel workspace', () => {
       .getByRole('dialog', { name: 'New terminal' })
       .getByRole('button', { name: /Shell/ })
       .click();
-    const fallbackTerminal = terminal.locator('.coding-terminal-fallback');
-    const fallbackInput =
-      fallbackTerminal.getByPlaceholder('Type a command...');
-    if ((await fallbackTerminal.count()) > 0) {
-      await expect(fallbackInput).not.toBeFocused();
-      await expect(fallbackInput).toHaveCSS('font-size', '16px');
-      await fallbackTerminal.click({ position: { x: 20, y: 20 } });
-      await expect(fallbackInput).toBeFocused();
-    } else {
-      const view = terminal.getByRole('group', { name: 'Terminal' });
-      const viewInput = view.getByRole('textbox', { name: 'Terminal input' });
-      await expect(viewInput).not.toBeFocused();
-      await view.click({ position: { x: 20, y: 20 } });
-      await expect(viewInput).toBeFocused();
-    }
+    const view = terminal.getByRole('group', { name: 'Terminal' });
+    const viewInput = view.getByRole('textbox', { name: 'Terminal input' });
+    await expect(viewInput).not.toBeFocused();
+    await view.click({ position: { x: 20, y: 20 } });
+    await expect(viewInput).toBeFocused();
     await page.evaluate(() =>
       (
         window as typeof window & {

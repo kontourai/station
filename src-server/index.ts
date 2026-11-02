@@ -207,9 +207,8 @@ async function main() {
   const displayHost = host.includes(':') ? `[${host}]` : host;
 
   // PORT=0 / STATION_PORT_MODE=auto: reserve a contiguous free block for the
-  // HTTP, terminal (port+1), voice (port+2), and consent (port+3) listeners
-  // before the runtime binds them, then report the resolved base back to a
-  // supervising parent.
+  // HTTP, voice (port+2), and consent (port+3) listeners before the runtime
+  // binds them, then report the resolved base back to a supervising parent.
   if (port === AUTO_ALLOCATE_PORT) {
     port = await allocateFreePortBlock(host);
   }
