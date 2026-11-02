@@ -330,3 +330,7 @@ SQLite's normal busy timeout is restored before synchronous observers run.
 New empty agent journals use 2 KiB SQLite pages to bound cold metadata overhead.
 Initialization restores WAL before creating turn tables; existing journal page geometry
 is retained. Control nodes use ordinary rowid tables to avoid index-page overflow.
+
+Private control-node keys store all 32 SHA-256 bytes; public wire digests and
+identities retain their original textual representation. The offline audit
+checks the binary keys against reconstructed node bytes and declared references.

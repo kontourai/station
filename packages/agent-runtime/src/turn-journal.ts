@@ -609,8 +609,11 @@ export function auditSqliteAgentJournal({
     for (const row of agentStatement(
       database,
       'SELECT digest FROM agent_steps_body_nodes',
-    ).all())
-      readAgentBodyNode(database, String(row.digest));
+    ).all()) {
+      if (!(row.digest instanceof Uint8Array))
+        throw new Error('DURABLE_AGENT_BODY_DAMAGED');
+      readAgentBodyNode(database, row.digest);
+    }
     for (const row of agentStatement(
       database,
       'SELECT seq,turn_id,kind,id FROM agent_steps_changes',

@@ -929,6 +929,7 @@ describe('thread inbox (#3568)', () => {
             for await (const _chunk of result.fullStream) {
               /* Drain the real loop. */
             }
+            await Promise.all([result.text, result.usage, result.finishReason]);
           },
         );
       const run = lease ? runWithAgentTurn(lease, invoke) : invoke();
@@ -1004,8 +1005,10 @@ describe('thread inbox (#3568)', () => {
         expect(journal).toBeDefined();
         lease!.pause();
         dead = true;
+        await journal!.close();
+        const reopened = openSqliteAgentJournal({ database: database! });
         const successor = createAgentRuntime({
-          journal: journal!,
+          journal: reopened,
           owner: { ...identity, id: 'steer-successor', birth: 'successor' },
           liveness,
           implementation: 'steer-proof/1',
@@ -1040,7 +1043,7 @@ describe('thread inbox (#3568)', () => {
           ).toHaveLength(1);
           expect(model.doStreamCalls).toHaveLength(3);
         } finally {
-          await journal!.close();
+          await reopened.close();
           database!.close();
         }
       }
