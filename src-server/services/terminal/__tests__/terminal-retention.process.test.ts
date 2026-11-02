@@ -405,6 +405,59 @@ describe.skipIf(process.platform === 'win32')(
       ).toEqual([1, 2, 3]);
     });
 
+    test('agent commands are retained in their own pool: they never expire user shells, get no number and are not restored', async () => {
+      retention.maxTerminalBytes = MIB;
+      retention.maxTotalBytes = 2 * MIB;
+      const shell = await sessions.open(request(), scope, dimensions);
+      await sessions.close(request(), scope, shell.terminalId);
+      await sessions.dispose();
+      // As #4453 writes an agent's ACP terminal: `kind: 'command'`, no launch.
+      const file = join(home, 'terminal-sessions.json');
+      const records = JSON.parse(await readFile(file, 'utf8')) as Record<
+        string,
+        unknown
+      >[];
+      const command = (n: number, status: string) => ({
+        projectId: 'project-a',
+        bindingKey: 'project',
+        terminalId: `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`,
+        cwd: records[0]!.cwd,
+        cols: 80,
+        rows: 24,
+        status,
+        journalUnavailable: false,
+        createdAt: Date.now() + n,
+        kind: 'command',
+      });
+      for (let n = 1; n <= 20; n++) records.push(command(n, 'exited'));
+      // One recorded running when its host went away: a command, not a shell.
+      records.push(command(21, 'running'));
+      await writeFile(file, JSON.stringify(records));
+      spawned = 0;
+      create();
+      const listed = await sessions.list(request(), scope);
+      const commands = listed.filter((r) => r.kind === 'command');
+      // The command pool keeps its newest 16; the older user shell survives.
+      expect(commands).toHaveLength(16);
+      expect(commands.map((r) => r.terminalId).at(-1)).toMatch(/0021$/);
+      expect(
+        listed.find((r) => r.terminalId === shell.terminalId),
+      ).toMatchObject({ ordinal: 1, status: 'exited' });
+      expect(commands.every((r) => r.ordinal === undefined)).toBe(true);
+      expect(commands.find((r) => r.terminalId.endsWith('0021'))?.status).toBe(
+        'exited',
+      );
+      expect(spawned).toBe(0);
+      // User shells fill and expire within their own pool; commands stay.
+      const second = await sessions.open(request(), scope, dimensions);
+      expect(second.ordinal).toBe(2);
+      await sessions.close(request(), scope, second.terminalId);
+      await sessions.open(request(), scope, dimensions);
+      const after = await sessions.list(request(), scope);
+      expect(after.filter((r) => r.kind === 'command')).toHaveLength(16);
+      expect(after.some((r) => r.terminalId === shell.terminalId)).toBe(false);
+    });
+
     test('two clients opening an empty binding at the same moment get one shell', async () => {
       const app = new Hono();
       app.route(

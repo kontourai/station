@@ -94,6 +94,12 @@ const recordSchema = scopeSchema
         imported: z.boolean(),
       })
       .optional(),
+    /**
+     * `command`: a server-launched program without a PTY (an agent's ACP
+     * terminal, #4453). It is never a user shell: no ordinal, no restore,
+     * and it is retained in its own pool.
+     */
+    kind: z.literal('command').optional(),
     /** A shell's stable "Shell N" number within its binding. */
     ordinal: z.number().int().positive().optional(),
     /** The journal's parent directory; absent is `<home>/terminal-journals`. */
@@ -150,7 +156,20 @@ interface TerminalSessionAuthority<Principal> {
 }
 
 function isShell(record: SessionRecord): boolean {
-  return !record.launch || record.launch.kind === 'shell';
+  return (
+    record.kind !== 'command' &&
+    (!record.launch || record.launch.kind === 'shell')
+  );
+}
+
+/**
+ * Agent commands are retained apart from everything else, so a busy agent
+ * can only expire its own ended commands, never a person's shell history.
+ */
+const COMMAND_SESSION_SLOTS = 16;
+type RetentionPool = 'command' | 'session';
+function poolOf(record: SessionRecord): RetentionPool {
+  return record.kind === 'command' ? 'command' : 'session';
 }
 
 function sameScope(a: TerminalSessionScope, b: TerminalSessionScope) {
@@ -342,7 +361,7 @@ export class TerminalSessions<Principal> {
         ...(shellRequested && { ordinal: this.nextOrdinal(scope) }),
         ...this.storage(),
       });
-      await this.makeRoom(1, principal);
+      await this.makeRoom(record, principal);
       this.records.set(record.terminalId, record);
       await this.persist();
       try {
@@ -413,7 +432,7 @@ export class TerminalSessions<Principal> {
         launch: { kind: 'server' },
         ...this.storage(),
       });
-      await this.makeRoom(1);
+      await this.makeRoom(record);
       this.records.set(record.terminalId, record);
       await this.persist();
       const exited = new Promise<TerminalExit>((done) =>
@@ -853,7 +872,7 @@ export class TerminalSessions<Principal> {
         await this.relocate(record);
     }
     try {
-      await this.makeRoom(0);
+      await this.makeRoom(null);
     } catch (error) {
       // Every retained terminal is running; the next open is refused instead.
       if (!(error instanceof TerminalSessionRefusal)) throw error;
@@ -1043,7 +1062,7 @@ export class TerminalSessions<Principal> {
     } catch (error) {
       if (!this.notFound(error)) throw error;
     }
-    await this.makeRoom(0);
+    await this.makeRoom(null);
     await this.retireOversized();
     await this.maintain();
     await this.restoreAll(restoring);
@@ -1127,33 +1146,49 @@ export class TerminalSessions<Principal> {
     }
   }
 
+  /**
+   * Expires the oldest ended records until `incoming` fits its pool, or, for
+   * null, until every pool is within its capacity. A pool only expires its
+   * own records.
+   */
   private async makeRoom(
-    additional: number,
+    incoming: SessionRecord | null,
     principal?: Principal,
   ): Promise<void> {
-    while (this.records.size + additional > this.capacity()) {
-      let victim: SessionRecord | undefined;
-      for (const record of [...this.records.values()].sort(
-        (a, b) => a.createdAt - b.createdAt,
-      )) {
-        if (
-          this.live.has(record.terminalId) ||
-          this.stopping.has(record.terminalId)
-        )
-          continue;
-        if (
-          principal !== undefined &&
-          !(await this.authority.authorize(principal, record, 'operate'))
-        )
-          continue;
-        victim = record;
-        break;
+    const pools: RetentionPool[] = incoming
+      ? [poolOf(incoming)]
+      : ['session', 'command'];
+    for (const pool of pools) {
+      const capacity =
+        pool === 'command' ? COMMAND_SESSION_SLOTS : this.capacity();
+      const members = () =>
+        [...this.records.values()].filter(
+          (record) => record !== incoming && poolOf(record) === pool,
+        );
+      while (members().length + (incoming ? 1 : 0) > capacity) {
+        let victim: SessionRecord | undefined;
+        for (const record of members().sort(
+          (a, b) => a.createdAt - b.createdAt,
+        )) {
+          if (
+            this.live.has(record.terminalId) ||
+            this.stopping.has(record.terminalId)
+          )
+            continue;
+          if (
+            principal !== undefined &&
+            !(await this.authority.authorize(principal, record, 'operate'))
+          )
+            continue;
+          victim = record;
+          break;
+        }
+        if (!victim)
+          throw new TerminalSessionRefusal('Terminal session capacity reached');
+        if (principal !== undefined)
+          await this.check(principal, victim, 'operate');
+        await this.retire(victim);
       }
-      if (!victim)
-        throw new TerminalSessionRefusal('Terminal session capacity reached');
-      if (principal !== undefined)
-        await this.check(principal, victim, 'operate');
-      await this.retire(victim);
     }
   }
 
