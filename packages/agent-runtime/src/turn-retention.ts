@@ -1,6 +1,5 @@
 import type { DatabaseSync } from 'node:sqlite';
 import { canonical } from './encoding.js';
-import { projectAgentFrames } from './turn-projection.js';
 import { agentStatement } from './turn-statements.js';
 
 const liveBodies =
@@ -13,81 +12,102 @@ export const retentionDefinitions = [
   'CREATE TABLE agent_steps_retained(turn_id TEXT PRIMARY KEY REFERENCES agent_steps_turns(id), expired_at INTEGER NOT NULL CHECK(expired_at>0)) STRICT, WITHOUT ROWID',
   'CREATE INDEX agent_steps_terminal_age ON agent_steps_terminal(state,settled_at)',
 ];
-/** Reclaim unreachable payloads; live recovery roots remain protected by triggers. */
-export function compactAgentBodies(database: DatabaseSync) {
-  agentStatement(
-    database,
-    `DELETE FROM agent_steps_bodies WHERE digest NOT IN (${liveBodies})`,
-  ).run();
-  for (;;) {
-    const removed = agentStatement(
+export const incrementalRetentionDefinitions = [
+  'CREATE TABLE agent_steps_reclaimable(turn_id TEXT PRIMARY KEY REFERENCES agent_steps_turns(id), settled_at INTEGER NOT NULL) STRICT, WITHOUT ROWID',
+  'CREATE INDEX agent_steps_reclaimable_age ON agent_steps_reclaimable(settled_at)',
+  'CREATE TABLE agent_steps_retained_cleanup(turn_id TEXT PRIMARY KEY REFERENCES agent_steps_turns(id)) STRICT, WITHOUT ROWID',
+  'CREATE TRIGGER agent_steps_reclaimable_insert AFTER INSERT ON agent_steps_terminal BEGIN INSERT INTO agent_steps_reclaimable VALUES(NEW.turn_id,NEW.settled_at); END',
+];
+function compactAgentBodies(database: DatabaseSync, deadline: number) {
+  let removed = 0;
+  for (let i = 0; i < 32 && performance.now() < deadline; i++) {
+    const row = agentStatement(
       database,
-      "DELETE FROM agent_steps_body_nodes WHERE digest NOT IN (SELECT unhex(substr(c.value,8)) FROM agent_steps_bodies b,json_each(b.wire,'$.chunks') c UNION SELECT unhex(r.value) FROM agent_steps_body_nodes n,json_each(n.refs) r)",
-    ).run();
-    if (!removed.changes) break;
+      'SELECT kind,digest FROM agent_steps_body_counts WHERE n=0 LIMIT 1',
+    ).get();
+    if (!row || !(row.digest instanceof Uint8Array)) break;
+    const digest = Buffer.from(row.digest);
+    const text = `sha256:${digest.toString('hex')}`;
+    const table =
+      Number(row.kind) === 0
+        ? 'bodies'
+        : Number(row.kind) === 1
+          ? 'body_nodes'
+          : 'body_chunks';
+    agentStatement(
+      database,
+      `DELETE FROM agent_steps_${table} WHERE digest=?`,
+    ).run(Number(row.kind) === 1 ? digest : text);
+    agentStatement(
+      database,
+      'DELETE FROM agent_steps_body_counts WHERE kind=? AND digest=? AND n=0',
+    ).run(Number(row.kind), digest);
+    removed++;
   }
-  agentStatement(
-    database,
-    "DELETE FROM agent_steps_body_chunks WHERE digest NOT IN (SELECT c.value FROM agent_steps_bodies b,json_each(b.wire,'$.chunks') c UNION SELECT 'sha256:'||r.value FROM agent_steps_body_nodes n,json_each(n.refs) r)",
-  ).run();
+  return removed;
 }
 
-/** Seven-day replay window; retain a small refusing tombstone, never an uncertain turn. */
+/** Retire one terminal identity, then reclaim bounded batches across later commands. */
 export function retainAgentTurns(database: DatabaseSync, now: number) {
-  const expired = agentStatement(
+  const deadline = performance.now() + 8;
+  let pending = agentStatement(
     database,
-    "SELECT t.id,t.record FROM agent_steps_terminal s JOIN agent_steps_turns t ON t.id=s.turn_id WHERE s.state='completed' AND s.settled_at<=? AND NOT EXISTS(SELECT 1 FROM agent_steps_retained r WHERE r.turn_id=t.id) ORDER BY s.settled_at LIMIT 16",
-  ).all(now - 7 * 24 * 60 * 60 * 1000);
-  for (const row of expired) {
-    const id = String(row.id);
-    const turn = JSON.parse(String(row.record));
-    turn.retired = true;
-    turn.spec.input = '[expired]';
-    agentStatement(
+    'SELECT turn_id FROM agent_steps_retained_cleanup LIMIT 1',
+  ).get();
+  if (!pending) {
+    const expired = agentStatement(
       database,
-      'INSERT INTO agent_steps_retained VALUES(?,?)',
-    ).run(id, now);
-    agentStatement(
-      database,
-      'UPDATE agent_steps_turns SET record=? WHERE id=?',
-    ).run(canonical(turn), id);
-    agentStatement(
-      database,
-      'DELETE FROM agent_steps_approvals WHERE turn_id=?',
-    ).run(id);
-    agentStatement(
-      database,
-      'DELETE FROM agent_steps_effects WHERE turn_id=?',
-    ).run(id);
-    agentStatement(
-      database,
-      'DELETE FROM agent_steps_changes WHERE turn_id=?',
-    ).run(id);
-    agentStatement(
-      database,
-      'DELETE FROM agent_steps_frame_blocks WHERE turn_id=?',
-    ).run(id);
-    projectAgentFrames(
-      database,
-      id,
-      [
-        {
-          type: 'projectFrame',
-          key: turn.spec.key,
-          expected: turn.fence,
-          id: 'retained:error',
-          wire: `data: ${JSON.stringify({ type: 'error', code: 'DURABLE_AGENT_REPLAY_EXPIRED', errorText: 'The saved output for this turn has expired. The turn will not be run again.' })}\n\n`,
-        },
-        {
-          type: 'projectFrame',
-          key: turn.spec.key,
-          expected: turn.fence,
-          id: 'retained:done',
-          wire: 'data: [DONE]\n\n',
-        },
-      ],
-      now,
-    );
+      'SELECT t.id,t.record FROM agent_steps_reclaimable r JOIN agent_steps_turns t ON t.id=r.turn_id WHERE r.settled_at<=? ORDER BY r.settled_at LIMIT 1',
+    ).get(now - 7 * 24 * 60 * 60 * 1000);
+    if (expired) {
+      const id = String(expired.id);
+      const turn = JSON.parse(String(expired.record));
+      turn.retired = true;
+      turn.spec.input = '[expired]';
+      agentStatement(
+        database,
+        'INSERT INTO agent_steps_retained VALUES(?,?)',
+      ).run(id, now);
+      agentStatement(
+        database,
+        'INSERT INTO agent_steps_retained_cleanup VALUES(?)',
+      ).run(id);
+      agentStatement(
+        database,
+        'DELETE FROM agent_steps_reclaimable WHERE turn_id=?',
+      ).run(id);
+      agentStatement(
+        database,
+        'UPDATE agent_steps_turns SET record=? WHERE id=?',
+      ).run(canonical(turn), id);
+      pending = { turn_id: id };
+    }
   }
-  return expired.length;
+  if (pending) {
+    const id = String(pending.turn_id);
+    for (const table of ['approvals', 'effects', 'changes', 'frame_blocks']) {
+      if (performance.now() >= deadline) break;
+      const eligible =
+        table === 'effects'
+          ? ' AND NOT EXISTS(SELECT 1 FROM agent_steps_approvals a WHERE a.turn_id=agent_steps_effects.turn_id AND a.tool_id=agent_steps_effects.id)'
+          : '';
+      agentStatement(
+        database,
+        `DELETE FROM agent_steps_${table} WHERE rowid IN (SELECT rowid FROM agent_steps_${table} WHERE turn_id=?${eligible} LIMIT 16)`,
+      ).run(id);
+    }
+    if (
+      !['approvals', 'effects', 'changes', 'frame_blocks'].some((table) =>
+        agentStatement(
+          database,
+          `SELECT 1 FROM agent_steps_${table} WHERE turn_id=? LIMIT 1`,
+        ).get(id),
+      )
+    )
+      agentStatement(
+        database,
+        'DELETE FROM agent_steps_retained_cleanup WHERE turn_id=?',
+      ).run(id);
+  }
+  return compactAgentBodies(database, deadline) > 0 || pending !== undefined;
 }

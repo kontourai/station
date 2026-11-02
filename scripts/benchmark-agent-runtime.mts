@@ -72,7 +72,7 @@ const pacing = (
 if (
   pacing.some((n) => ![0, 5, 20].includes(n)) ||
   sizes.some((n) => !Number.isSafeInteger(n) || n < 1 || n > 200) ||
-  chunkCounts.some((n) => !Number.isSafeInteger(n) || n < 100 || n > 400)
+  chunkCounts.some((n) => !Number.isSafeInteger(n) || n < 1 || n > 16384)
 )
   throw new Error('Invalid bounded workload');
 const deltaBytes = Number(

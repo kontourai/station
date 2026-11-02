@@ -995,11 +995,12 @@ describe('thread inbox (#3568)', () => {
       expect(calls).toBe(3);
       if (mode === 'stream-restart') {
         expect(nestedPreparation).toBeDefined();
-        const first = capturedSteps[0]!.step;
-        const restarted = await nestedPreparation!(first);
-        expect(
-          JSON.stringify(restarted?.messages ?? first.messages),
-        ).not.toContain(FOLLOW_UP);
+        const beforeRestart = capturedSteps.length;
+        await invoke();
+        expect(calls).toBe(4);
+        const restarted = capturedSteps[beforeRestart]!;
+        expect(restarted.step.stepNumber).toBe(0);
+        expect(restarted.messages).toEqual(restarted.step.messages);
       }
       if (mode === 'crash-replay') {
         expect(journal).toBeDefined();

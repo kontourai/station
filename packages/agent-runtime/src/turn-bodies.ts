@@ -197,8 +197,8 @@ function putChunk(database: DatabaseSync, value: string): string {
     packed.length < encoded.length &&
     agentStatement(
       database,
-      'SELECT writer_format FROM agent_steps_meta WHERE id=1',
-    ).get()?.writer_format === 'agent-steps/11'
+      "SELECT writer_format IN ('agent-steps/11','agent-steps/12') AS compact FROM agent_steps_meta WHERE id=1",
+    ).get()?.compact === 1
       ? packed
       : encoded;
   const inserted = agentStatement(
@@ -261,8 +261,8 @@ export function putAgentBody(database: DatabaseSync, wire: string): string {
   const compact =
     agentStatement(
       database,
-      'SELECT writer_format FROM agent_steps_meta WHERE id=1',
-    ).get()?.writer_format === 'agent-steps/11';
+      "SELECT writer_format IN ('agent-steps/11','agent-steps/12') AS compact FROM agent_steps_meta WHERE id=1",
+    ).get()?.compact === 1;
   let stored = wire;
   if (compact)
     stored = encodeAgentBody(

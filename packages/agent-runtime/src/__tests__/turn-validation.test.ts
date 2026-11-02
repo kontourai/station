@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { mkdtempDisposableSync } from 'node:fs';
+import { mkdtempDisposableSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { constants, DatabaseSync } from 'node:sqlite';
@@ -21,10 +21,24 @@ import {
 } from '../turn-bodies.js';
 import { changeDefinitions } from '../turn-changes.js';
 import { framesDefinition } from '../turn-projection.js';
+import {
+  installAgentReferences,
+  withAgentReferences,
+} from '../turn-references.js';
 import { finish, key, owner } from './fixture.js';
 import { turnFixture } from './turn-fixture.js';
 
 function removeChangeTracking(database: DatabaseSync) {
+  for (const row of database
+    .prepare(
+      "SELECT name FROM sqlite_schema WHERE type='trigger' AND (name GLOB 'agent_steps_ref_*' OR name='agent_steps_reclaimable_insert')",
+    )
+    .all())
+    database.exec(`DROP TRIGGER ${String(row.name)}`);
+  database.exec(
+    'DROP TABLE agent_steps_body_counts; DROP TABLE agent_steps_reclaimable; DROP TABLE agent_steps_retained_cleanup',
+  );
+
   const bodies = database
     .prepare('SELECT digest FROM agent_steps_bodies')
     .all()
@@ -102,14 +116,19 @@ for (const peer of [false, true]) {
     const file = f.database.prepare('PRAGMA database_list').get()?.file;
     if (typeof file !== 'string') throw Error('Real database prerequisite');
     const writer = peer ? new DatabaseSync(file) : f.database;
-    if (peer) cleanup.push(() => writer.close());
+    if (peer) {
+      cleanup.push(() => writer.close());
+      installAgentReferences(writer);
+    }
     const wire = agentWire({ value: 'changed' });
     writer.exec('BEGIN IMMEDIATE; DROP TRIGGER agent_steps_bodies_no_update');
-    writer
-      .prepare(
-        "UPDATE agent_steps_bodies SET wire=?,byte_length=? WHERE digest=(SELECT json_extract(record,'$.intent.input') FROM agent_steps_effects WHERE id='tool:verified')",
-      )
-      .run(wire, Buffer.byteLength(wire));
+    withAgentReferences(writer, () =>
+      writer
+        .prepare(
+          "UPDATE agent_steps_bodies SET wire=?,byte_length=? WHERE digest=(SELECT json_extract(record,'$.intent.input') FROM agent_steps_effects WHERE id='tool:verified')",
+        )
+        .run(wire, Buffer.byteLength(wire)),
+    );
     expect(writer.prepare('SELECT changes() AS n').get()?.n).toBe(1);
     writer.exec(bodyDefinitions[1]);
     writer.exec('COMMIT');
@@ -133,9 +152,14 @@ for (const peer of [false, true]) {
     const file = f.database.prepare('PRAGMA database_list').get()?.file;
     if (typeof file !== 'string') throw Error('Real database prerequisite');
     const writer = peer ? new DatabaseSync(file) : f.database;
-    if (peer) cleanup.push(() => writer.close());
-    writer.exec(
-      "UPDATE agent_steps_effects SET record=json_set(record,'$.inputDigest','damaged')",
+    if (peer) {
+      cleanup.push(() => writer.close());
+      installAgentReferences(writer);
+    }
+    withAgentReferences(writer, () =>
+      writer.exec(
+        "UPDATE agent_steps_effects SET record=json_set(record,'$.inputDigest','damaged')",
+      ),
     );
     let ran = false;
     await expect(
@@ -162,9 +186,11 @@ it('writer 6 migration keeps the logical request/result bytes and refuses mutabl
     type: 'effectRead',
     id: intent.id,
   });
-  f.database
-    .prepare('UPDATE agent_steps_effects SET record=?')
-    .run(JSON.stringify(effect));
+  withAgentReferences(f.database, () =>
+    f.database
+      .prepare('UPDATE agent_steps_effects SET record=?')
+      .run(JSON.stringify(effect)),
+  );
   removeChangeTracking(f.database);
   f.database.exec(
     "DROP INDEX agent_steps_effect_states; DROP TABLE agent_steps_bodies; DROP TABLE agent_steps_meta; CREATE TABLE agent_steps_meta(id INTEGER PRIMARY KEY CHECK(id=1), writer_format TEXT NOT NULL CHECK(writer_format='agent-steps/6')) STRICT; INSERT INTO agent_steps_meta VALUES(1,'agent-steps/6')",
@@ -188,6 +214,7 @@ it('a foreign write to another turn does not reread the selected turn payload hi
   if (typeof file !== 'string') throw Error('Real database prerequisite');
   const peer = new DatabaseSync(file);
   cleanup.push(() => peer.close());
+  installAgentReferences(peer);
   peer.exec('PRAGMA synchronous=FULL; PRAGMA foreign_keys=ON');
   const journal = openSqliteAgentJournal({ database: peer });
   const runtime = createAgentRuntime({
@@ -229,8 +256,11 @@ it('observing another turn cannot acknowledge an unchecked foreign change to thi
   if (typeof file !== 'string') throw Error('Real database prerequisite');
   const peer = new DatabaseSync(file);
   cleanup.push(() => peer.close());
-  peer.exec(
-    "UPDATE agent_steps_effects SET record=json_set(record,'$.inputDigest','damaged')",
+  installAgentReferences(peer);
+  withAgentReferences(peer, () =>
+    peer.exec(
+      "UPDATE agent_steps_effects SET record=json_set(record,'$.inputDigest','damaged')",
+    ),
   );
   await other.assertCurrent();
   await expect(f.lease.assertCurrent()).rejects.toThrow('EFFECT_DAMAGED');
@@ -242,7 +272,9 @@ it('deleting an old receipt cannot remint an effect after a retained connection 
     { id: 'tool:prior', input: 'shared', replay: 'unsafe' },
     async () => 'shared',
   );
-  f.database.exec('DELETE FROM agent_steps_effects');
+  withAgentReferences(f.database, () =>
+    f.database.exec('DELETE FROM agent_steps_effects'),
+  );
   await expect(f.lease.assertCurrent()).rejects.toThrow(
     'CHANGED_EFFECT_MISSING',
   );
@@ -281,13 +313,23 @@ for (const previous of [8, 9] as const)
         ...attempt,
         partials:
           previous === 9
-            ? [putAgentBody(f.database, agentWire(attempt.partials))]
-            : attempt.partials.map((part) => putAgentBody(f.database, part)),
+            ? [
+                withAgentReferences(f.database, () =>
+                  putAgentBody(f.database, agentWire(attempt.partials)),
+                ),
+              ]
+            : attempt.partials.map((part) =>
+                withAgentReferences(f.database, () =>
+                  putAgentBody(f.database, part),
+                ),
+              ),
       })),
     };
-    f.database
-      .prepare('UPDATE agent_steps_effects SET record=? WHERE id=?')
-      .run(JSON.stringify(header), 'model:old');
+    withAgentReferences(f.database, () =>
+      f.database
+        .prepare('UPDATE agent_steps_effects SET record=? WHERE id=?')
+        .run(JSON.stringify(header), 'model:old'),
+    );
     const changes = f.database
       .prepare('SELECT * FROM agent_steps_changes')
       .all();
@@ -307,7 +349,7 @@ for (const previous of [8, 9] as const)
     expect(
       f.database.prepare('SELECT writer_format FROM agent_steps_meta').get()
         ?.writer_format,
-    ).toBe('agent-steps/11');
+    ).toBe('agent-steps/12');
     expect(
       JSON.parse(
         String(
@@ -573,7 +615,10 @@ it('completed turn retention expires replay payloads while preserving its no-red
       'SELECT count(*) AS n FROM agent_steps_frame_blocks WHERE turn_id IN (SELECT turn_id FROM agent_steps_retained)',
     )
     .get()?.n;
-  expect(frames).toBe(2);
+  expect(frames).toBe(0);
+  expect(
+    readSqliteAgentFrames({ database: f.database, key: f.key }),
+  ).toMatchObject([{ id: 'retained:error' }, { id: 'retained:done' }]);
   expect(
     f.database
       .prepare(
@@ -583,98 +628,273 @@ it('completed turn retention expires replay payloads while preserving its no-red
   ).toBe(0);
 });
 
-it('4-byte deltas share completed text with the next prompt and retain exact frame replay within the raw disk budget', async () => {
+it.each(
+  [100, 400, 1600, 3200].flatMap((chunks) =>
+    [4, 64].map((deltaBytes) => ({ chunks, deltaBytes })),
+  ),
+)(
+  'native delta tape with $chunks chunks of $deltaBytes bytes shares text and retains exact frames within the raw disk budget',
+  async ({ chunks, deltaBytes }) => {
+    const f = await turnFixture();
+    cleanup.push(() => f.close());
+    const deltas = Array.from({ length: chunks }, (_, i) =>
+      createHash('sha512')
+        .update(String(i))
+        .digest('base64url')
+        .slice(0, deltaBytes),
+    );
+    const text = deltas.join('');
+    let calls = 0;
+    const model = durableLanguageModel({
+      specificationVersion: 'v3',
+      provider: 'scripted',
+      modelId: 'storage',
+      supportedUrls: {},
+      doGenerate: async () => {
+        throw new Error('stream required');
+      },
+      doStream: async () => {
+        calls++;
+        return {
+          stream: new ReadableStream({
+            start(controller) {
+              if (calls === 1)
+                for (const delta of deltas)
+                  controller.enqueue({
+                    type: 'text-delta',
+                    id: 'answer',
+                    delta,
+                  });
+              controller.enqueue(finish);
+              controller.close();
+            },
+          }),
+        };
+      },
+    });
+    await f.lease.run(async () => {
+      const first = await runWithAgentTurn(f.lease, () =>
+        model.doStream({ prompt: [] }),
+      );
+      const parts = [];
+      for await (const part of first.stream)
+        if (part.type === 'text-delta') parts.push(part.delta);
+      expect(parts).toEqual(deltas);
+      await f.lease.frameBatch(
+        deltas.map((delta, index) => ({
+          id: `answer:${index}`,
+          wire: `data: ${JSON.stringify({ type: 'text-delta', id: 'answer', delta })}\n\n`,
+        })),
+      );
+      const next = await runWithAgentTurn(f.lease, () =>
+        model.doStream({
+          prompt: Array.from({ length: 60 }, () => ({
+            role: 'assistant' as const,
+            content: [{ type: 'text' as const, text }],
+          })),
+        }),
+      );
+      for await (const _part of next.stream) {
+        /* Complete the next native request. */
+      }
+      const { effect } = await f.lease.effect({
+        type: 'effectRead',
+        id: 'model:0',
+      });
+      expect(
+        effect.attempts[0]?.partials.map((wire) => JSON.parse(wire)),
+      ).toHaveLength(chunks);
+    });
+    await f.crash.reopen();
+    expect(auditSqliteAgentJournal({ database: f.database })).toEqual({
+      turns: 1,
+      effects: 2,
+      approvals: 0,
+    });
+    f.database.exec('PRAGMA wal_checkpoint(TRUNCATE)');
+    const disk =
+      Number(f.database.prepare('PRAGMA page_count').get()?.page_count) *
+      Number(f.database.prepare('PRAGMA page_size').get()?.page_size);
+    expect(disk).toBeLessThanOrEqual(
+      128 * 1024 + 2 * 16 * 1024 + 3 * Buffer.byteLength(text),
+    );
+    const storedText = f.database
+      .prepare('SELECT digest FROM agent_steps_body_chunks')
+      .all()
+      .map((row) => readAgentBodyChunk(f.database, String(row.digest)));
+    expect(storedText.every((value) => typeof value === 'string')).toBe(true);
+    expect(
+      storedText.reduce<number>(
+        (bytes, value) => bytes + Buffer.byteLength(String(value)),
+        0,
+      ),
+    ).toBe(Buffer.byteLength(text));
+    expect(
+      readSqliteAgentFrames({ database: f.database, key: f.key }).map(
+        (frame) => JSON.parse(frame.wire.slice(6)).delta,
+      ),
+    ).toEqual(deltas);
+    expect(calls).toBe(2);
+  },
+);
+
+it('retention bounds open and settle while draining 60 terminal turns with 80 effects each', async () => {
   const f = await turnFixture();
   cleanup.push(() => f.close());
-  const deltas = Array.from({ length: 400 }, (_, i) =>
-    createHash('sha256').update(String(i)).digest('base64url').slice(0, 4),
-  );
-  const text = deltas.join('');
-  let calls = 0;
-  const model = durableLanguageModel({
-    specificationVersion: 'v3',
-    provider: 'scripted',
-    modelId: 'storage',
-    supportedUrls: {},
-    doGenerate: async () => {
-      throw new Error('stream required');
-    },
-    doStream: async () => {
-      calls++;
-      return {
-        stream: new ReadableStream({
-          start(controller) {
-            if (calls === 1)
-              for (const delta of deltas)
-                controller.enqueue({ type: 'text-delta', id: 'answer', delta });
-            controller.enqueue(finish);
-            controller.close();
-          },
+  await f.lease.run(async () => {});
+  for (let turn = 0; turn < 60; turn++) {
+    const lease = await f.runtime.start({
+      key: {
+        ...f.key,
+        conversationId: `backlog-${turn}`,
+        invocationId: `old-${turn}`,
+      },
+      input: `turn-${turn}`,
+      implementation: 'station-agent/1',
+    });
+    for (let effect = 0; effect < 80; effect++) {
+      const text = Array.from({ length: 10 }, (_, i) =>
+        createHash('sha256')
+          .update(`${turn}:${effect}:${i}`)
+          .digest('base64url'),
+      ).join('');
+      await lease.tool(
+        { id: `effect-${effect}`, input: text, replay: 'unsafe' },
+        async () => `${text} result`,
+      );
+    }
+    if (turn % 3 === 1)
+      await expect(
+        lease.run(async () => {
+          throw new Error('terminal failure');
         }),
-      };
-    },
-  });
-  await f.lease.run(async () => {
-    const first = await runWithAgentTurn(f.lease, () =>
-      model.doStream({ prompt: [] }),
+      ).rejects.toThrow('terminal failure');
+    else {
+      if (turn % 3 === 2) {
+        await lease.cancel();
+        await expect(lease.run(async () => {})).rejects.toThrow(
+          'DURABLE_AGENT_CANCELLED',
+        );
+      } else await lease.run(async () => {});
+    }
+  }
+  expect(
+    Number(
+      f.database.prepare('SELECT count(*) AS n FROM agent_steps_effects').get()
+        ?.n,
+    ),
+  ).toBe(4800);
+  expect(() =>
+    f.database.exec('UPDATE agent_steps_body_counts SET n=0'),
+  ).toThrow('DURABLE_AGENT_REFERENCE_WRITE_REFUSED');
+  f.advance(8 * 24 * 60 * 60 * 1000);
+  const opens: number[] = [];
+  const settles: number[] = [];
+  let drained = false;
+  for (let pass = 0; pass < 1200; pass++) {
+    let started = performance.now();
+    const lease = await f.runtime.start({
+      key: {
+        ...f.key,
+        conversationId: `maintenance-${pass}`,
+        invocationId: `fresh-${pass}`,
+      },
+      input: 'maintenance',
+      implementation: 'station-agent/1',
+    });
+    opens.push(performance.now() - started);
+    started = performance.now();
+    await lease.run(async () => {});
+    settles.push(performance.now() - started);
+    const remaining = Number(
+      f.database
+        .prepare(
+          "SELECT count(*) AS n FROM agent_steps_effects WHERE turn_id IN (SELECT id FROM agent_steps_turns WHERE json_extract(record,'$.retired')=1)",
+        )
+        .get()?.n,
     );
-    const parts = [];
-    for await (const part of first.stream)
-      if (part.type === 'text-delta') parts.push(part.delta);
-    expect(parts).toEqual(deltas);
-    await f.lease.frameBatch(
-      deltas.map((delta, index) => ({
-        id: `answer:${index}`,
-        wire: `data: ${JSON.stringify({ type: 'text-delta', id: 'answer', delta })}\n\n`,
-      })),
+    const pending = Number(
+      f.database
+        .prepare('SELECT count(*) AS n FROM agent_steps_retained_cleanup')
+        .get()?.n,
     );
-    const next = await runWithAgentTurn(f.lease, () =>
-      model.doStream({
-        prompt: Array.from({ length: 60 }, () => ({
-          role: 'assistant' as const,
-          content: [{ type: 'text' as const, text }],
-        })),
+    const dead = Number(
+      f.database
+        .prepare('SELECT count(*) AS n FROM agent_steps_body_counts WHERE n=0')
+        .get()?.n,
+    );
+    if (
+      !remaining &&
+      !pending &&
+      !dead &&
+      Number(
+        f.database
+          .prepare(
+            'SELECT (SELECT count(*) FROM agent_steps_bodies)+(SELECT count(*) FROM agent_steps_body_nodes)+(SELECT count(*) FROM agent_steps_body_chunks) AS n',
+          )
+          .get()?.n,
+      ) === 0 &&
+      Number(
+        f.database
+          .prepare('SELECT count(*) AS n FROM agent_steps_retained')
+          .get()?.n,
+      ) === 61
+    ) {
+      drained = true;
+      break;
+    }
+  }
+  if (process.env.STATION_AGENT_RUNTIME_RETENTION_REPORT)
+    writeFileSync(
+      process.env.STATION_AGENT_RUNTIME_RETENTION_REPORT,
+      JSON.stringify({
+        effectRows: 4800,
+        passes: opens.length,
+        maxOpenMs: Math.max(...opens),
+        maxSettleMs: Math.max(...settles),
       }),
     );
-    for await (const _part of next.stream) {
-      /* Complete the next native request. */
-    }
-    const { effect } = await f.lease.effect({
-      type: 'effectRead',
-      id: 'model:0',
-    });
-    expect(
-      effect.attempts[0]?.partials.map((wire) => JSON.parse(wire)),
-    ).toHaveLength(400);
-  });
-  await f.crash.reopen();
-  expect(auditSqliteAgentJournal({ database: f.database })).toEqual({
-    turns: 1,
-    effects: 2,
-    approvals: 0,
-  });
-  f.database.exec('PRAGMA wal_checkpoint(TRUNCATE)');
-  const disk =
-    Number(f.database.prepare('PRAGMA page_count').get()?.page_count) *
-    Number(f.database.prepare('PRAGMA page_size').get()?.page_size);
-  expect(disk).toBeLessThanOrEqual(
-    128 * 1024 + 2 * 16 * 1024 + 3 * Buffer.byteLength(text),
+  console.info(
+    'retention backlog timings',
+    JSON.stringify({
+      effectRows: 4800,
+      passes: opens.length,
+      maxOpenMs: Math.max(...opens),
+      maxSettleMs: Math.max(...settles),
+    }),
   );
-  const storedText = f.database
-    .prepare('SELECT digest FROM agent_steps_body_chunks')
-    .all()
-    .map((row) => readAgentBodyChunk(f.database, String(row.digest)));
-  expect(storedText.every((value) => typeof value === 'string')).toBe(true);
+  expect(drained).toBe(true);
+  expect(Math.max(...opens)).toBeLessThan(50);
+  expect(Math.max(...settles)).toBeLessThan(50);
   expect(
-    storedText.reduce<number>(
-      (bytes, value) => bytes + Buffer.byteLength(String(value)),
-      0,
-    ),
-  ).toBe(Buffer.byteLength(text));
+    f.database
+      .prepare(
+        'SELECT state,count(*) AS n FROM agent_steps_terminal s JOIN agent_steps_retained r ON r.turn_id=s.turn_id GROUP BY state ORDER BY state',
+      )
+      .all(),
+  ).toEqual([
+    { state: 'blocked', n: 20 },
+    { state: 'cancelled', n: 20 },
+    { state: 'completed', n: 21 },
+  ]);
   expect(
-    readSqliteAgentFrames({ database: f.database, key: f.key }).map(
-      (frame) => JSON.parse(frame.wire.slice(6)).delta,
-    ),
-  ).toEqual(deltas);
-  expect(calls).toBe(2);
+    await f.runtime.recover({
+      ...f.key,
+      conversationId: 'backlog-1',
+      invocationId: 'old-1',
+    }),
+  ).toBe('retry');
+}, 300_000);
+
+it('corrupt compressed frames surface a typed damaged-frame outcome', async () => {
+  const f = await turnFixture();
+  cleanup.push(() => f.close());
+  await f.lease.frame(
+    'answer:0',
+    'data: {"type":"text-delta","text":"hello"}\n\n',
+  );
+  f.database.exec('UPDATE agent_steps_frame_blocks SET record=zeroblob(40)');
+  expect(() =>
+    readSqliteAgentFrames({ database: f.database, key: f.key }),
+  ).toThrow(expect.objectContaining({ code: 'DURABLE_AGENT_FRAME_DAMAGED' }));
 });

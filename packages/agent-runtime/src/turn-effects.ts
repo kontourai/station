@@ -89,8 +89,8 @@ export function agentEffectHeader(
   effect: EffectRecord,
   format: 1 | 2 | 3 | 4 | 5 = agentStatement(
     database,
-    'SELECT writer_format FROM agent_steps_meta WHERE id=1',
-  ).get()?.writer_format === 'agent-steps/11'
+    "SELECT writer_format IN ('agent-steps/11','agent-steps/12') AS compact FROM agent_steps_meta WHERE id=1",
+  ).get()?.compact === 1
     ? 5
     : 3,
 ): string {
@@ -478,6 +478,7 @@ export function readAgentEffect(
         'agent-steps/9',
         'agent-steps/10',
         'agent-steps/11',
+        'agent-steps/12',
       ].includes(
         String(
           agentStatement(
@@ -558,8 +559,8 @@ function write(
   effect: EffectRecord,
   format: 1 | 2 | 3 | 4 | 5 = agentStatement(
     database,
-    'SELECT writer_format FROM agent_steps_meta WHERE id=1',
-  ).get()?.writer_format === 'agent-steps/11'
+    "SELECT writer_format IN ('agent-steps/11','agent-steps/12') AS compact FROM agent_steps_meta WHERE id=1",
+  ).get()?.compact === 1
     ? 5
     : 3,
 ) {

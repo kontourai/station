@@ -72,7 +72,14 @@ import {
   readAgentFrames,
 } from './turn-projection.js';
 import {
-  compactAgentBodies,
+  indexedBodyGuards,
+  installAgentReferences,
+  referenceDefinitions,
+  seedAgentReferences,
+  withAgentReferences,
+} from './turn-references.js';
+import {
+  incrementalRetentionDefinitions,
   retainAgentTurns,
   retainedBodyDefinitions,
   retentionDefinitions,
@@ -277,7 +284,7 @@ const writer10Definitions = [
   ...compactChangeDefinitions,
   ...bodyChunkDefinitions,
 ];
-const currentDefinitions = [
+const writer11Definitions = [
   writer10Definitions[0]!.replaceAll('agent-steps/10', 'agent-steps/11'),
   ...writer10Definitions
     .slice(1)
@@ -299,6 +306,20 @@ const currentDefinitions = [
   ...bodyNodeDefinitions,
   ...retentionDefinitions,
 ];
+const currentDefinitions = [
+  writer11Definitions[0]!.replaceAll('agent-steps/11', 'agent-steps/12'),
+  ...writer11Definitions.slice(1).map((sql) => {
+    if (sql.startsWith('CREATE TRIGGER agent_steps_bodies_no_delete'))
+      return indexedBodyGuards[0]!;
+    if (sql.startsWith('CREATE TRIGGER agent_steps_body_chunks_no_delete'))
+      return indexedBodyGuards[1]!;
+    if (sql.startsWith('CREATE TRIGGER agent_steps_body_nodes_no_delete'))
+      return indexedBodyGuards[2]!;
+    return sql;
+  }),
+  ...referenceDefinitions,
+  ...incrementalRetentionDefinitions,
+];
 const idOf = (key: RunKey) => canonical(key);
 const affinityKey = (spec: AgentTurnSpec): RunKey => ({
   ...spec.key,
@@ -312,7 +333,7 @@ function validateRow(row: Record<string, unknown>): AgentTurnRecord {
     row.conversation !== turn.spec.key.conversationId ||
     row.active !== Number(turn.state === 'running') ||
     (turn.retired
-      ? turn.state !== 'completed' || turn.spec.input !== '[expired]'
+      ? turn.state === 'running' || turn.spec.input !== '[expired]'
       : turn.inputDigest !== hash(turn.spec.input)) ||
     (turn.outputLimited === true &&
       !['blocked', 'cancelled'].includes(turn.state)) ||
@@ -340,7 +361,7 @@ function validateAgentJournalSchema(
     agentStatement(
       database,
       'SELECT writer_format FROM agent_steps_meta WHERE id=1',
-    ).get()?.writer_format !== 'agent-steps/11'
+    ).get()?.writer_format !== 'agent-steps/12'
   )
     throw new Error('DURABLE_AGENT_WRITER_UNSUPPORTED');
   const schema = JSON.stringify([
@@ -368,7 +389,7 @@ function validateAgentJournalSchema(
     agentStatement(
       database,
       'SELECT writer_format FROM agent_steps_meta WHERE id=1',
-    ).get()?.writer_format !== 'agent-steps/11'
+    ).get()?.writer_format !== 'agent-steps/12'
   )
     throw new Error('DURABLE_AGENT_WRITER_UNSUPPORTED');
   validatedSchemas.set(database, schema);
@@ -398,7 +419,7 @@ function settledAt(
     agentStatement(
       database,
       'SELECT writer_format FROM agent_steps_meta WHERE id=1',
-    ).get()?.writer_format === 'agent-steps/11'
+    ).get()?.writer_format === 'agent-steps/12'
   ) {
     const expired =
       agentStatement(
@@ -677,6 +698,7 @@ export function openSqliteAgentJournal(options: {
   readonly participants?: readonly AgentJournalParticipant[];
 }): AgentJournal {
   const { database } = options;
+  installAgentReferences(database);
   invalidateAgentValidation(database);
   let closed = false;
   const participants = [...(options.participants ?? [])];
@@ -729,7 +751,7 @@ export function openSqliteAgentJournal(options: {
     database.exec('BEGIN IMMEDIATE');
     try {
       for (const sql of currentDefinitions) database.exec(sql);
-      database.exec("INSERT INTO agent_steps_meta VALUES(1,'agent-steps/11')");
+      database.exec("INSERT INTO agent_steps_meta VALUES(1,'agent-steps/12')");
       database.exec('COMMIT');
     } catch (error) {
       if (database.isTransaction) database.exec('ROLLBACK');
@@ -1084,12 +1106,48 @@ export function openSqliteAgentJournal(options: {
       for (const sql of retainedBodyDefinitions) database.exec(sql);
       database.exec(retainedChangeDelete);
       database.exec('DROP TABLE agent_steps_meta');
-      database.exec(currentDefinitions[0]!);
+      database.exec(writer11Definitions[0]!);
       database.exec("INSERT INTO agent_steps_meta VALUES(1,'agent-steps/11')");
       migrateAgentEffectTails(database);
-      compactAgentBodies(database);
       repackAgentBodies(database);
-      compactAgentBodies(database);
+      database.exec('COMMIT');
+    } catch (error) {
+      if (database.isTransaction) database.exec('ROLLBACK');
+      invalidateAgentValidation(database);
+      throw error;
+    }
+  }
+  if (
+    agentStatement(
+      database,
+      'SELECT writer_format FROM agent_steps_meta WHERE id=1',
+    ).get()?.writer_format === 'agent-steps/11'
+  ) {
+    const actual = agentStatement(
+      database,
+      "SELECT sql FROM main.sqlite_schema WHERE (lower(name) GLOB 'agent_steps_*' OR lower(tbl_name) GLOB 'agent_steps_*') AND sql IS NOT NULL ORDER BY sql",
+    )
+      .all()
+      .map((row) => row.sql);
+    if (canonical(actual) !== canonical([...writer11Definitions].sort()))
+      throw new Error('DURABLE_AGENT_MIGRATION_REFUSED');
+    database.exec('BEGIN IMMEDIATE');
+    try {
+      for (const sql of referenceDefinitions) database.exec(sql);
+      seedAgentReferences(database);
+      for (const name of ['bodies', 'body_chunks', 'body_nodes'])
+        database.exec(`DROP TRIGGER agent_steps_${name}_no_delete`);
+      for (const sql of indexedBodyGuards) database.exec(sql);
+      for (const sql of incrementalRetentionDefinitions) database.exec(sql);
+      database.exec(
+        'INSERT INTO agent_steps_reclaimable SELECT s.turn_id,s.settled_at FROM agent_steps_terminal s WHERE NOT EXISTS(SELECT 1 FROM agent_steps_retained r WHERE r.turn_id=s.turn_id)',
+      );
+      database.exec(
+        'INSERT INTO agent_steps_retained_cleanup SELECT turn_id FROM agent_steps_retained',
+      );
+      database.exec('DROP TABLE agent_steps_meta');
+      database.exec(currentDefinitions[0]!);
+      database.exec("INSERT INTO agent_steps_meta VALUES(1,'agent-steps/12')");
       database.exec('COMMIT');
     } catch (error) {
       if (database.isTransaction) database.exec('ROLLBACK');
@@ -1361,16 +1419,18 @@ export function openSqliteAgentJournal(options: {
           write(turn);
           return owned(turn);
         };
-        const answer = decide();
-        if (
-          (command.type === 'open' || command.type === 'settle') &&
-          answer.kind === 'owned'
-        ) {
-          retainAgentTurns(database, clock());
-          compactAgentBodies(database);
-          database.exec('PRAGMA incremental_vacuum(64)');
-          invalidateAgentValidation(database);
-        }
+        const answer = withAgentReferences(database, () => {
+          const answer = decide();
+          if (
+            (command.type === 'open' || command.type === 'settle') &&
+            answer.kind === 'owned'
+          ) {
+            if (retainAgentTurns(database, clock()))
+              database.exec('PRAGMA incremental_vacuum(8)');
+            invalidateAgentValidation(database);
+          }
+          return answer;
+        });
         if (
           command.type !== 'read' &&
           command.type !== 'effectRead' &&

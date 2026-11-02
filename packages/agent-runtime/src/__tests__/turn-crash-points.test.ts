@@ -7,6 +7,16 @@ import { framesDefinition } from '../turn-projection.js';
 import { turnFixture } from './turn-fixture.js';
 
 function removeChangeTracking(database: DatabaseSync) {
+  for (const row of database
+    .prepare(
+      "SELECT name FROM sqlite_schema WHERE type='trigger' AND (name GLOB 'agent_steps_ref_*' OR name='agent_steps_reclaimable_insert')",
+    )
+    .all())
+    database.exec(`DROP TRIGGER ${String(row.name)}`);
+  database.exec(
+    'DROP TABLE agent_steps_body_counts; DROP TABLE agent_steps_reclaimable; DROP TABLE agent_steps_retained_cleanup',
+  );
+
   const bodies = database
     .prepare('SELECT digest FROM agent_steps_bodies')
     .all()
@@ -66,7 +76,7 @@ it('migration from the ownership writer preserves original turn bytes and future
   expect(
     f.database.prepare('SELECT writer_format FROM agent_steps_meta').get()
       ?.writer_format,
-  ).toBe('agent-steps/11');
+  ).toBe('agent-steps/12');
   f.database.exec(
     "DROP TABLE agent_steps_meta; CREATE TABLE agent_steps_meta(id INTEGER PRIMARY KEY, writer_format TEXT NOT NULL) STRICT; INSERT INTO agent_steps_meta VALUES(1,'agent-steps/99');",
   );
@@ -101,5 +111,5 @@ it('writer-5 migration retains the original turn bytes', async () => {
   expect(
     f.database.prepare('SELECT writer_format FROM agent_steps_meta').get()
       ?.writer_format,
-  ).toBe('agent-steps/11');
+  ).toBe('agent-steps/12');
 });

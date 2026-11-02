@@ -117,7 +117,90 @@ function logicalFrameGroup(value: unknown): string {
     throw new Error('DURABLE_AGENT_FRAME_DAMAGED');
   return group;
 }
+function packWires(wires: string[]) {
+  let prefix = wires[0]!;
+  let suffix = wires[0]!;
+  for (const wire of wires.slice(1)) {
+    let n = 0;
+    while (n < prefix.length && prefix[n] === wire[n]) n++;
+    prefix = prefix.slice(0, n);
+    n = 0;
+    while (
+      n < suffix.length &&
+      n < wire.length - prefix.length &&
+      suffix[suffix.length - 1 - n] === wire[wire.length - 1 - n]
+    )
+      n++;
+    suffix = suffix.slice(suffix.length - n);
+  }
+  if (prefix.length + suffix.length > wires[0]!.length) suffix = '';
+  const pieces = wires.map((wire) =>
+    wire.slice(prefix.length, wire.length - suffix.length),
+  );
+  const lengths: number[] = [];
+  for (const piece of pieces) {
+    let n = piece.length;
+    do {
+      lengths.push((n & 127) | (n >= 128 ? 128 : 0));
+      n = Math.floor(n / 128);
+    } while (n);
+  }
+  return {
+    prefix,
+    suffix,
+    text: pieces.join(''),
+    lengths: Buffer.from(lengths).toString('base64'),
+  };
+}
+function unpackWires(packed: {
+  prefix: string;
+  suffix: string;
+  text: string;
+  lengths: string;
+}) {
+  const bytes = Buffer.from(packed.lengths, 'base64');
+  if (bytes.toString('base64') !== packed.lengths)
+    throw new Error('DURABLE_AGENT_FRAME_DAMAGED');
+  const wires: string[] = [];
+  let offset = 0;
+  let n = 0;
+  let factor = 1;
+  let decodedBytes = 0;
+  for (const byte of bytes) {
+    n += (byte & 127) * factor;
+    if (n > 32 * 1024 * 1024 || factor > 2 ** 28)
+      throw new Error('DURABLE_AGENT_FRAME_DAMAGED');
+    if (byte & 128) {
+      factor *= 128;
+      continue;
+    }
+    if (offset + n > packed.text.length || wires.length >= 1024)
+      throw new Error('DURABLE_AGENT_FRAME_DAMAGED');
+    if (factor > 1 && byte === 0)
+      throw new Error('DURABLE_AGENT_FRAME_DAMAGED');
+    const wire =
+      packed.prefix + packed.text.slice(offset, offset + n) + packed.suffix;
+    const bytes = Buffer.byteLength(wire);
+    decodedBytes += bytes;
+    if (bytes > 32 * 1024 * 1024 || decodedBytes > 256 * 1024 * 1024)
+      throw new Error('DURABLE_AGENT_FRAME_DAMAGED');
+    wires.push(wire);
+    offset += n;
+    n = 0;
+    factor = 1;
+  }
+  if (factor !== 1 || offset !== packed.text.length || !wires.length)
+    throw new Error('DURABLE_AGENT_FRAME_DAMAGED');
+  return wires;
+}
 function parseBlock(row: Record<string, unknown>): AgentFrame[] {
+  try {
+    return parseBlockRecord(row);
+  } catch {
+    throw new RuntimeError('DURABLE_AGENT_FRAME_DAMAGED');
+  }
+}
+function parseBlockRecord(row: Record<string, unknown>): AgentFrame[] {
   const group = logicalFrameGroup(row.group_id);
   if (!(row.record instanceof Uint8Array) || row.record.byteLength <= 32)
     throw new Error('DURABLE_AGENT_FRAME_DAMAGED');
@@ -132,7 +215,17 @@ function parseBlock(row: Record<string, unknown>): AgentFrame[] {
       wires: z
         .array(z.string().max(32 * 1024 * 1024))
         .min(1)
-        .max(1024),
+        .max(1024)
+        .optional(),
+      packed: z
+        .object({
+          prefix: z.string().max(32 * 1024 * 1024),
+          suffix: z.string().max(32 * 1024 * 1024),
+          text: z.string().max(256 * 1024 * 1024),
+          lengths: z.string().max(8192),
+        })
+        .strict()
+        .optional(),
       times: z.array(z.iso.datetime()).max(1024).optional(),
       elapsed: z.array(z.number().int()).max(1024).optional(),
       positions: z.array(z.number().int().nonnegative()).max(1024).optional(),
@@ -145,6 +238,9 @@ function parseBlock(row: Record<string, unknown>): AgentFrame[] {
         }).toString('utf8'),
       ),
     );
+  if ((raw.wires === undefined) === (raw.packed === undefined))
+    throw new Error('DURABLE_AGENT_FRAME_DAMAGED');
+  const wires = raw.wires ?? unpackWires(raw.packed!);
   if (
     hash(
       canonical([
@@ -157,25 +253,24 @@ function parseBlock(row: Record<string, unknown>): AgentFrame[] {
         raw,
       ]),
     ) !== envelope.digest ||
-    (raw.times !== undefined && raw.times.length !== raw.wires.length) ||
+    (raw.times !== undefined && raw.times.length !== wires.length) ||
     (raw.elapsed !== undefined &&
       (raw.times !== undefined ||
-        raw.elapsed.length !== raw.wires.length ||
+        raw.elapsed.length !== wires.length ||
         raw.elapsed[0] !== 0)) ||
     (raw.positions !== undefined &&
-      (raw.positions.length !== raw.wires.length ||
+      (raw.positions.length !== wires.length ||
         raw.positions[0] !== row.position ||
         raw.positions.some(
           (position, index, positions) =>
             index > 0 && position <= positions[index - 1]!,
         ))) ||
     Number(row.last_position) !==
-      (raw.positions?.at(-1) ?? Number(row.position) + raw.wires.length - 1) ||
-    Number(row.last_ordinal) !==
-      Number(row.first_ordinal) + raw.wires.length - 1
+      (raw.positions?.at(-1) ?? Number(row.position) + wires.length - 1) ||
+    Number(row.last_ordinal) !== Number(row.first_ordinal) + wires.length - 1
   )
     throw new Error('DURABLE_AGENT_FRAME_DAMAGED');
-  return raw.wires.map((wire, index) =>
+  return wires.map((wire, index) =>
     frameSchema.parse({
       version: 1,
       id: group.startsWith('ordinal:')
@@ -208,7 +303,7 @@ function putBlock(
       Number(previous.first_ordinal) +
       1 +
       frames.length <=
-      128;
+      1024;
   if (previous && append) {
     const prior = parseBlock(previous);
     if (
@@ -227,7 +322,7 @@ function putBlock(
   const times = frames.map((frame) => frame.createdAt);
   const raw = {
     at: first.createdAt,
-    wires: frames.map((frame) => frame.wire),
+    packed: packWires(frames.map((frame) => frame.wire)),
     ...(times.some((at) => at !== first.createdAt)
       ? times.every((at) => new Date(Date.parse(at)).toISOString() === at)
         ? {
@@ -298,11 +393,42 @@ function parseFrame(row: Record<string, unknown>): AgentFrame {
     throw new Error('DURABLE_AGENT_FRAME_DAMAGED');
   return frame;
 }
+function expiredFrames(
+  database: DatabaseSync,
+  turnId: string,
+): AgentFrame[] | undefined {
+  if (
+    !agentStatement(
+      database,
+      "SELECT 1 FROM sqlite_schema WHERE name='agent_steps_retained'",
+    ).get()
+  )
+    return;
+  const row = agentStatement(
+    database,
+    'SELECT expired_at FROM agent_steps_retained WHERE turn_id=?',
+  ).get(turnId);
+  if (!row) return;
+  const wires = [
+    `data: ${JSON.stringify({ type: 'error', code: 'DURABLE_AGENT_REPLAY_EXPIRED', errorText: 'The saved output for this turn has expired. The turn will not be run again.' })}\n\n`,
+    'data: [DONE]\n\n',
+  ];
+  return wires.map((wire, position) => ({
+    version: 1,
+    id: position === 0 ? 'retained:error' : 'retained:done',
+    position,
+    wire,
+    digest: hash(wire),
+    createdAt: new Date(Number(row.expired_at)).toISOString(),
+  }));
+}
 export function readAgentFrame(
   database: DatabaseSync,
   turnId: string,
   id: string,
 ) {
+  const expired = expiredFrames(database, turnId);
+  if (expired) return expired.find((frame) => frame.id === id);
   if (!blockFormat(database)) {
     const row = agentStatement(
       database,
@@ -323,6 +449,8 @@ export function readAgentFrames(
   database: DatabaseSync,
   turnId: string,
 ): AgentFrame[] {
+  const expired = expiredFrames(database, turnId);
+  if (expired) return expired;
   const frames: AgentFrame[] = blockFormat(database)
     ? []
     : agentStatement(
@@ -374,9 +502,11 @@ export function projectAgentFrames(
     );
   const result: AgentFrame[] = [];
   let pending: AgentFrame[] = [];
+  let pendingBytes = 0;
   const flush = () => {
     if (pending.length) putBlock(database, turnId, pending);
     pending = [];
+    pendingBytes = 0;
   };
   for (const command of commands) {
     const existing = readAgentFrame(database, turnId, command.id);
@@ -414,10 +544,12 @@ export function projectAgentFrames(
         previous &&
         (frameAddress(previous.id).group !== address.group ||
           frameAddress(previous.id).ordinal + 1 !== address.ordinal ||
-          pending.length === 128)
+          pending.length === 1024 ||
+          pendingBytes + Buffer.byteLength(frame.wire) > 64 * 1024)
       )
         flush();
       pending.push(frame);
+      pendingBytes += Buffer.byteLength(frame.wire);
     } else
       agentStatement(
         database,
