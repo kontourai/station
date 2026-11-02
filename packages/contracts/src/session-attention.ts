@@ -140,7 +140,7 @@ export type SessionStateLabel =
  * UI shows and not a second table; station#3413).
  *
  * It starts from {@link sessionAttentionDisposition} and deliberately
- * overrides `lifecycleState` in five places; each override is a fixed defect:
+ * overrides the own `lifecycleState` at these presentation boundaries:
  *
  * | shape | `lifecycleState` says | this says |
  * |---|---|---|
@@ -149,6 +149,7 @@ export type SessionStateLabel =
  * | `status: 'closed'`, `running` | Running | **Completed** (archive#1296) |
  * | `needs_input`, `answerable: false` | Waiting on you | **Unanswerable** (archive#1783) |
  * | `queued`/`running`, `hasActiveTurn: false`, `draft: true` | Queued/Running | **Draft** (#2310) |
+ * | live owned children or pending cleanup, including a closed parent | own turn ended | **Running** aggregate; custody words remain distinct |
  *
  * `answerability` is consulted only inside the awaiting arm (a detached
  * `completed` session takes the finished arm, so an ungated check would
@@ -270,9 +271,9 @@ export const OWNED_WORK_STATUS_WORDS = {
 } as const;
 
 /**
- * The ladder's word for a session summary alone, as `workStatus(item, now)`
- * words it without UI facts: the lane is the same with or without them, and
- * the facts only refine words inside the Running rung.
+ * The ladder's word for a session summary, including owned cleanup custody.
+ * UI facts can additionally refine running work with child counts or the
+ * no-progress observation; custody words are shared by both readers.
  */
 export function sessionLadderWord(
   session: OrchestrationSessionSummary,

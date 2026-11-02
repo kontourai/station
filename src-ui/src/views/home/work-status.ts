@@ -33,7 +33,7 @@ import type { WorkAttentionKind, WorkFacts } from './work-facts';
  *  blocked, interrupted                          (Needs you)
  *  failed, stopped                               (finished)
  *  elsewhere                                     (Idle)
- *  N sub-agents, no progress, running            (Running)
+ *  N sub-agents, owned cleanup, no progress, running (Running)
  *  draft                                         (Drafts)
  *  done                                          (finished)
  *  idle                                          (Idle)
