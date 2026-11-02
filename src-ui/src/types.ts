@@ -20,6 +20,7 @@ import type {
 import type {
   ApprovalMode,
   EngineId,
+  ProviderDurabilityProfile,
 } from '@kontourai/station-contracts/provider';
 import type { RequestDeliveryEvent } from '@kontourai/station-contracts/runtime-events';
 import type { ExecutionMode } from '@kontourai/station-contracts/tool';
@@ -443,6 +444,7 @@ export interface ChatSession {
   defaultModel?: string;
   defaultModelSource?: EffectiveModelSource;
   orchestrationProvider?: EngineId;
+  orchestrationDurability?: ProviderDurabilityProfile;
   orchestrationModel?: string;
   orchestrationStatus?: string;
   /** This tab's transcript is served by the bounded orchestration window. */
