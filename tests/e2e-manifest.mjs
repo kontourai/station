@@ -449,6 +449,7 @@ export const PRODUCT_E2E_EXECUTION_PROFILE = {
     'tests/connections-computers-ssh.spec.ts',
   ],
   sharedInstanceExclusive: [
+    'tests/owned-work-custody.spec.ts',
     // Owns its HTTPS listeners, private home, virtual authenticator and CLI child.
     'tests/operator-sessions.spec.ts',
     // Owns real receiver pairing state and temporary credential files.
@@ -1560,6 +1561,16 @@ export const e2eManifest = [
     primary: true,
     rationale:
       'station#3781 render-storm ceiling: the settled project-layout route must stop committing.',
+    exceptions: [],
+  },
+  {
+    path: 'tests/owned-work-custody.spec.ts',
+    bucket: 'product',
+    surface: 'Owned work custody and removal',
+    tierTarget: 'full',
+    primary: true,
+    rationale:
+      'Real Inbox and Session detail rendering, plain custody reasons and explicit release confirmation at phone/desktop widths in both themes. All HTTP writes are page-scoped fixtures.',
     exceptions: [],
   },
   {

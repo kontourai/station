@@ -186,6 +186,11 @@ export type OrchestrationCommand =
     }
   | { type: 'stopSession'; threadId: string }
   | {
+      type: 'releaseUnknownOwnedWork';
+      threadId: string;
+      confirmation: 'child-process-may-still-be-running';
+    }
+  | {
       /**
        * #2436: record the conversation's approval posture. Ordered by server
        * receipt; applied at the next session start or turn start, whatever
@@ -1142,7 +1147,22 @@ export interface TerminalAttribution {
   detail?: string;
 }
 
+export interface OwnedSessionActivity {
+  runningChildCount: number;
+  pendingStopCount: number;
+  pendingStops: Array<{
+    custody: 'local' | 'peer' | 'unknown';
+    reason: string;
+    count: number;
+  }>;
+}
+
 export interface OrchestrationSessionSummary extends ProviderSession {
+  /** Aggregate owned execution activity; the parent's own event fold is retained. */
+  ownedWork?: OwnedSessionActivity & {
+    state: 'running' | 'stopping' | 'waiting-on-peer' | 'unknown';
+    ownLifecycleState: SessionLifecycleState;
+  };
   /** Current adapter declaration, projected at read time. */
   durability?: ProviderDurabilityProfile;
   controlMode: SessionControlMode;

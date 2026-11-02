@@ -745,6 +745,35 @@ that could adopt it. See the
    Children on an SSH or paired Station, children of Station's own agent, and
    children on a hosted Station are not delivered this way: use `get_task`
    for those.
+   A Session started from a server-derived caller context records its exact
+   initiating Session. Stop, cancel and discard cascade through verified owned
+   Sessions, deepest first, using each child's own stop path. A declared
+   `metadata.backgroundBoundary: true` at start makes that subtree independent.
+   A name or conversation-only lineage remains a claim and grants no cascade
+   authority. See [owned delegation](../architecture/module-map.md#sessionlifecyclemodule).
+
+   A parent Session's aggregate lifecycle stays running while owned work or
+   stop obligations remain live; `ownedWork.ownLifecycleState` retains its own
+   fold. Another live process picks up its pending child stop through existing
+   reconciliation and the runtime health tick even with parking disabled and no
+   further turns. A terminal child is settled only without a held binding, newer
+   admission, or unresolved prepared/invoking/indeterminate boundary.
+   Unknown child custody stays pending for inspection but does not prevent the
+   parent stopping itself. `ownedWork.state` and `pendingStops` distinguish
+   stopping locally, waiting on a peer, and unknown cleanup from running work.
+   Session and Inbox status lines show **Stopping**, **Waiting on another
+   Station process**, or **Unknown** through the shared status ladder.
+   Unknown custody explains why Station cannot assign the stop. In Session
+   detail, **Release and remove** can remove the parent's unknown cleanup after
+   explicit confirmation that child processes may still be running and will no
+   longer be tracked by this Session. Child history stays available; this action
+   never claims that the child stopped. Known owners and changed custody refuse
+   release. Unknown probing backs off for 30 seconds, with at most 64 entries
+   checked per maintenance pass; an explicit command requests a fresh check.
+   Reopening resumes recorded obligations, and
+   repeated delivery is harmless at the adapter. New result request IDs derive
+   from the child execution Session and its terminal event. Historical stored
+   delivery IDs remain stable across upgrade and retry.
 4. Keep child sessions isolated with delegation limits.
 5. Refine successful skills instead of baking everything into one giant system prompt.
 

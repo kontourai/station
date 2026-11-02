@@ -403,6 +403,14 @@ export interface SessionExitedEvent extends CanonicalRuntimeEventBase {
   reason?: string;
 }
 
+/** Durable cancellation intent; it makes no assertion that an engine has stopped. */
+export interface SessionCancellationRequestedEvent
+  extends CanonicalRuntimeEventBase {
+  method: 'session.cancellation-requested';
+  sessionId: string;
+  action: 'stop' | 'cancel';
+}
+
 export interface TurnStartedEvent extends CanonicalRuntimeEventBase {
   method: 'turn.started';
   turnId: string;
@@ -474,7 +482,7 @@ export interface TurnAbortedEvent extends CanonicalRuntimeEventBase {
    * Set ONLY by `InterruptedTurnRecovery.consume()` (station#2235). Marks
    * this abort as synthesized crash recovery, not the engine's own terminal
    * fact for the turn. The boundary-retirement machinery
-   * (`session-turn-boundary.ts`'s `observe()` and the event store's
+   * (the Monument boundary's `observe()` and the event store's
    * `reconcileSessionTurnTerminalsFromEvents`) ignores a marked abort, so
    * the recovery's own boundary row survives until its explicit resolve and
    * the crash-window retry chain (banner, FileMemory marker, explicit
@@ -1317,6 +1325,7 @@ export type CanonicalRuntimeEvent =
   | SessionConfiguredEvent
   | SessionStateChangedEvent
   | SessionExitedEvent
+  | SessionCancellationRequestedEvent
   | TurnStartedEvent
   | TurnCompletedEvent
   | TurnAbortedEvent

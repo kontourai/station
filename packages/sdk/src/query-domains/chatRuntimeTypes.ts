@@ -1,6 +1,7 @@
 import type { ClientOrigin } from '@kontourai/station-contracts/client-origin';
 import type {
   ConversationListItem,
+  OrchestrationCommand,
   OrchestrationSessionDetail,
   OrchestrationSessionSummary,
   RequestAnswerability,
@@ -125,6 +126,7 @@ export interface OrchestrationProviderSummary {
 export type SessionBoardLifecycleState = SessionBoardItem['lifecycleState'];
 
 export type OrchestrationCommandInput =
+  | Extract<OrchestrationCommand, { type: 'releaseUnknownOwnedWork' }>
   | {
       type: 'adoptSession';
       sourceThreadId: string;
