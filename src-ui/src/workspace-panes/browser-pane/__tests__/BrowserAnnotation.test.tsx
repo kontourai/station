@@ -33,6 +33,9 @@ it('maps pointer input through a letterboxed canvas and attaches a box with Ente
   vi.stubGlobal('PointerEvent', MouseEvent);
   const stage = document.createElement('div');
   const canvas = document.createElement('canvas');
+  canvas.dataset.surfaceWidth = '1600';
+  canvas.dataset.surfaceHeight = '800';
+  canvas.dataset.surfaceScale = '2';
   stage.append(canvas);
   document.body.append(stage);
   stage.getBoundingClientRect = () => ({
@@ -123,6 +126,9 @@ it('selects with target viewport coordinates and erases the selected element', a
   vi.stubGlobal('PointerEvent', MouseEvent);
   const stage = document.createElement('div');
   const canvas = document.createElement('canvas');
+  canvas.dataset.surfaceWidth = '1600';
+  canvas.dataset.surfaceHeight = '800';
+  canvas.dataset.surfaceScale = '2';
   stage.append(canvas);
   document.body.append(stage);
   stage.getBoundingClientRect = () => ({
@@ -162,6 +168,13 @@ it('selects with target viewport coordinates and erases the selected element', a
   );
   const surface = await screen.findByLabelText('Annotate browser page');
   Object.defineProperty(surface, 'setPointerCapture', { value: () => {} });
+  canvas.dataset.surfaceScale = '1';
+  fireEvent.pointerDown(surface, { clientX: 60, clientY: 145 });
+  expect(pick).not.toHaveBeenCalled();
+  expect(
+    screen.getByText('The page geometry changed. Close and reopen annotation.'),
+  ).toBeTruthy();
+  canvas.dataset.surfaceScale = '2';
   fireEvent.pointerDown(surface, { clientX: 60, clientY: 145 });
   await waitFor(() =>
     expect(pick).toHaveBeenCalledWith('bs_test', { x: 100, y: 50 }, 7, true, {

@@ -131,10 +131,23 @@ export function BrowserAnnotation({
     const canvas = stageRef.current?.querySelector('canvas');
     if (!canvas) return null;
     const rect = canvas.getBoundingClientRect();
+    const width = Number(canvas.dataset.surfaceWidth);
+    const height = Number(canvas.dataset.surfaceHeight);
+    const deviceScaleFactor = Number(canvas.dataset.surfaceScale);
+    if (
+      !width ||
+      !height ||
+      !deviceScaleFactor ||
+      Math.abs(width / deviceScaleFactor - viewport.width) > 1 ||
+      Math.abs(height / deviceScaleFactor - viewport.height) > 1
+    ) {
+      setError('The page geometry changed. Close and reopen annotation.');
+      return null;
+    }
     return mapClientPointToSurface(
       { x: event.clientX, y: event.clientY },
       rect,
-      { width: viewport.width, height: viewport.height, deviceScaleFactor: 1 },
+      { width, height, deviceScaleFactor },
       { clamp },
     );
   };
