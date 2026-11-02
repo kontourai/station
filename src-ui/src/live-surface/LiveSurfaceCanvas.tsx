@@ -409,11 +409,16 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
     videoDecoderRef.current?.close();
     videoDecoderRef.current = null;
   }, []);
+  const cancelResync = useCallback(() => {
+    if (resyncTimerRef.current) clearTimeout(resyncTimerRef.current);
+    resyncTimerRef.current = null;
+  }, []);
+  // A deferred resync belongs to the target it was asked for: a new target
+  // (or unmount) cancels it rather than reconnecting a healthy stream.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the target props are the change keys.
   useEffect(
-    () => () => {
-      if (resyncTimerRef.current) clearTimeout(resyncTimerRef.current);
-    },
-    [],
+    () => cancelResync,
+    [props.apiBase, props.surfaceId, props.projectSlug, cancelResync],
   );
   const decodeVideo = useCallback(
     async (frame: LiveSurfaceFrame) => {
@@ -434,10 +439,11 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
       const outcome = await decoder.decode(frame.header, frame.body);
       if (outcome === 'unsupported' && videoDecoderRef.current === decoder) {
         closeVideoDecoder();
+        cancelResync();
         surfaceRef.current.declineH264();
       }
     },
-    [paint, closeVideoDecoder, resyncVideo],
+    [paint, closeVideoDecoder, resyncVideo, cancelResync],
   );
   useEffect(() => closeVideoDecoder, [closeVideoDecoder]);
 

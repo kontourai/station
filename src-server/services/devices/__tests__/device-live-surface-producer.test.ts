@@ -949,6 +949,48 @@ describe('Android', () => {
       expect(h.frames[1]!.header.keyframe).toBe(true);
     });
 
+    test('a stray ack of an H.264 unit does not release the image awaiting its own ack', async () => {
+      const decoder = fakeDecoder();
+      const h = android({ decoder: decoder.provider });
+      h.producer.setCodecDemand({ image: true, h264: true });
+      await h.producer.start(PARAMS, (header, body) =>
+        h.frames.push({ header, body }),
+      );
+      await until(() => h.sockets.length === 1, 'video socket');
+      const video = h.sockets[0]!;
+      video.opened();
+      decoder.emit(jpeg(540, 1200, 1));
+      video.emit('message', semuUnit(true, sps, pps, idr), true);
+      decoder.emit(jpeg(540, 1200, 2)); // held: the first image is unacked
+      const [image, unit] = h.frames;
+      expect([image!.header.codec, unit!.header.codec]).toEqual([
+        'jpeg',
+        'h264',
+      ]);
+      // The hub acks a malformed frame's seq; here, the H.264 unit's.
+      h.producer.ack(unit!.header.seq);
+      expect(h.frames).toHaveLength(2);
+      h.producer.ack(image!.header.seq);
+      expect(h.frames).toHaveLength(3);
+    });
+
+    test('an SPS that does not parse stops H.264 frames until one does', async () => {
+      const h = android();
+      h.producer.setCodecDemand({ image: false, h264: true });
+      await h.producer.start(PARAMS, (header, body) =>
+        h.frames.push({ header, body }),
+      );
+      await until(() => h.sockets.length === 1, 'video socket');
+      const video = h.sockets[0]!;
+      video.opened();
+      video.emit('message', semuUnit(true, sps, pps, idr), true);
+      expect(h.frames).toHaveLength(1);
+      const truncated = Uint8Array.from([0, 0, 0, 1, 0x67, 0x42]);
+      video.emit('message', semuUnit(true, truncated, pps, idr), true);
+      video.emit('message', semuUnit(false, delta1), true);
+      expect(h.frames).toHaveLength(1);
+    });
+
     test('the hub keyframe request reaches the encoder', async () => {
       const h = android();
       h.producer.setCodecDemand({ image: false, h264: true });
