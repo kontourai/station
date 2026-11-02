@@ -564,7 +564,10 @@ it.each([65_536, 1_048_576, 1_048_573])(
           'ordinal:prefix',
           start,
           end,
-          `${digest} ${deflateSync(JSON.stringify(raw)).toString('base64')}`,
+          Buffer.concat([
+            Buffer.from(digest, 'hex'),
+            deflateSync(JSON.stringify(raw)),
+          ]),
         );
       }
       db.exec('COMMIT');

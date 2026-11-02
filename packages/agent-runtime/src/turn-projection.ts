@@ -76,7 +76,7 @@ export type FrameBatchResult = {
 export const framesDefinition =
   'CREATE TABLE agent_steps_frames(turn_id TEXT NOT NULL REFERENCES agent_steps_turns(id), id TEXT NOT NULL, position INTEGER NOT NULL CHECK(position>=0), record TEXT NOT NULL, PRIMARY KEY(turn_id,id), UNIQUE(turn_id,position)) STRICT';
 export const frameBlockDefinitions = [
-  'CREATE TABLE agent_steps_frame_blocks(turn_id TEXT NOT NULL REFERENCES agent_steps_turns(id), position INTEGER NOT NULL CHECK(position>=0), last_position INTEGER NOT NULL CHECK(last_position>=position), group_id TEXT NOT NULL, first_ordinal INTEGER NOT NULL, last_ordinal INTEGER NOT NULL, record TEXT NOT NULL, PRIMARY KEY(turn_id,position)) STRICT',
+  'CREATE TABLE agent_steps_frame_blocks(turn_id TEXT NOT NULL REFERENCES agent_steps_turns(id), position INTEGER NOT NULL CHECK(position>=0), last_position INTEGER NOT NULL CHECK(last_position>=position), group_id TEXT NOT NULL, first_ordinal INTEGER NOT NULL, last_ordinal INTEGER NOT NULL, record BLOB NOT NULL, PRIMARY KEY(turn_id,position)) STRICT',
   'CREATE INDEX agent_steps_frame_block_ids ON agent_steps_frame_blocks(turn_id,group_id,first_ordinal,last_ordinal)',
 ];
 function blockFormat(database: DatabaseSync) {
@@ -98,15 +98,13 @@ function frameAddress(id: string) {
     : { group: `literal:${id}`, ordinal: 0 };
 }
 function parseBlock(row: Record<string, unknown>): AgentFrame[] {
-  const record = String(row.record);
-  const envelope = record.startsWith('{')
-    ? z
-        .object({ digest: text, payload: z.string() })
-        .strict()
-        .parse(JSON.parse(record))
-    : { digest: `sha256:${record.slice(0, 64)}`, payload: record.slice(65) };
-  if (!record.startsWith('{') && record[64] !== ' ')
+  if (!(row.record instanceof Uint8Array) || row.record.byteLength <= 32)
     throw new Error('DURABLE_AGENT_FRAME_DAMAGED');
+  const record = Buffer.from(row.record);
+  const envelope = {
+    digest: `sha256:${record.subarray(0, 32).toString('hex')}`,
+    payload: record.subarray(32),
+  };
   const raw = z
     .object({
       at: z.iso.datetime(),
@@ -120,7 +118,7 @@ function parseBlock(row: Record<string, unknown>): AgentFrame[] {
     .strict()
     .parse(
       JSON.parse(
-        inflateSync(Buffer.from(envelope.payload, 'base64'), {
+        inflateSync(envelope.payload, {
           maxOutputLength: 256 * 1024 * 1024,
         }).toString('utf8'),
       ),
@@ -230,7 +228,10 @@ function putBlock(
       address.group,
       address.ordinal,
       frameAddress(last.id).ordinal,
-      `${digest.slice(7)} ${deflateSync(JSON.stringify(raw)).toString('base64')}`,
+      Buffer.concat([
+        Buffer.from(digest.slice(7), 'hex'),
+        deflateSync(JSON.stringify(raw)),
+      ]),
     );
     if (changed.changes !== 1) throw new Error('DURABLE_AGENT_FRAME_DAMAGED');
     return;
@@ -245,7 +246,10 @@ function putBlock(
     address.group,
     address.ordinal,
     frameAddress(last.id).ordinal,
-    `${digest.slice(7)} ${deflateSync(JSON.stringify(raw)).toString('base64')}`,
+    Buffer.concat([
+      Buffer.from(digest.slice(7), 'hex'),
+      deflateSync(JSON.stringify(raw)),
+    ]),
   );
 }
 function parseFrame(row: Record<string, unknown>): AgentFrame {
