@@ -282,3 +282,69 @@ test('account conflict recovery is legible at phone and desktop widths in both t
     await browser.close();
   }
 });
+
+test('invitation setup and its created link remain usable at both widths and themes', async () => {
+  const invitationFixture = `
+    import React from 'react';
+    import {createRoot} from 'react-dom/client';
+    import {humanPrincipal} from '@kontourai/station-contracts/principal';
+    import {PROJECT_MEMBER_ROLES,PROJECT_MEMBERSHIP_VERSION} from '@kontourai/station-contracts/project-membership';
+    import {NavigationProvider} from './src-ui/src/contexts/NavigationContext';
+    import {AccessPanelView} from './src-ui/src/views/project-settings/AccessPanelView';
+    const owner=humanPrincipal('deployment','owner','Station owner');
+    const at='2026-11-02T12:00:00.000Z';
+    const invitation={id:'invite-one',recipientEmail:null,role:'viewer',actions:['view'],invitedBy:owner,status:'pending',expiresAt:'2026-11-09T12:00:00.000Z',createdAt:at};
+    const view={version:PROJECT_MEMBERSHIP_VERSION,actingPrincipal:owner,invitationOrigin:'http://127.0.0.1:45678',scope:{stationId:'station-one',localProjectId:'one',localProjectSlug:'example',portableProjectId:'prj_one'},members:[{principal:owner,role:'owner',actions:PROJECT_MEMBER_ROLES.owner,status:'active',revision:1,grantedBy:owner,updatedAt:at}],invitations:[invitation]};
+    createRoot(document.getElementById('root')).render(<NavigationProvider><main style={{maxWidth:'1000px',margin:'auto',padding:'16px'}}><AccessPanelView view={view} busy={false} apply={async()=>({kind:'invited',token:'k'.repeat(43),invitation})}/></main></NavigationProvider>);
+  `;
+  const { browser, page, errors } =
+    await scrollBrowserFixture(invitationFixture);
+  try {
+    const baseStyles = await page.addStyleTag({
+      content:
+        resolveCssImports(
+          resolve(import.meta.dirname, '../components/editor-controls.css'),
+        ) + resolveCssImports(resolve(import.meta.dirname, '../index.css')),
+    });
+    await baseStyles.evaluate((element) => document.head.prepend(element));
+    const out = resolve('.kontourai/invitation-journey-audit');
+    mkdirSync(out, { recursive: true });
+    await page.getByRole('button', { name: 'Create invitation' }).click();
+    await page.getByRole('region', { name: 'Share this invitation' }).waitFor();
+    await page
+      .locator('summary')
+      .filter({ hasText: 'Invitation link' })
+      .click();
+    for (const theme of ['dark', 'light']) {
+      await page.evaluate(
+        (value) => document.documentElement.setAttribute('data-theme', value),
+        theme,
+      );
+      for (const width of [390, 1440]) {
+        await page.setViewportSize({ width, height: 900 });
+        expect(
+          await page
+            .getByText(/This address only works on this computer/)
+            .isVisible(),
+        ).toBe(true);
+        const copy = await page
+          .getByRole('button', { name: 'Copy invitation', exact: true })
+          .boundingBox();
+        expect(copy!.height).toBeGreaterThanOrEqual(44);
+        expect(
+          await page.evaluate(
+            () => document.documentElement.scrollWidth <= innerWidth,
+          ),
+        ).toBe(true);
+        await page.screenshot({
+          path: `${out}/${width}-${theme}.png`,
+          fullPage: true,
+          animations: 'disabled',
+        });
+      }
+    }
+    expect(errors).toEqual([]);
+  } finally {
+    await browser.close();
+  }
+});

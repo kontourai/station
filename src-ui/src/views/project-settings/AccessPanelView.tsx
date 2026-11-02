@@ -8,7 +8,8 @@ import type {
   ProjectAccessCommand,
   ProjectAccessCommandResult,
 } from '@kontourai/station-sdk/project-access';
-import { useState } from 'react';
+import { Badge } from '@kontourai/ui/react';
+import { type ReactNode, useState } from 'react';
 import { Button } from '../../components/Button';
 import { ConfirmModal } from '../../components/modals/ConfirmModal';
 import { PageSection } from '../../components/PageSection';
@@ -28,54 +29,32 @@ import {
 import { ResponsiveSurfaceActions } from '../../components/ResponsiveDialogSurface';
 import { projectAccessErrorMessage } from './projectAccessErrorText';
 
-/**
- * Shared People-and-access administration body, rendered by both the
- * operator settings surface and the invited-admin guest journey.
- *
- * The panel is deliberately authority-agnostic: it renders one already
- * authorized administration view and submits caller-built commands through
- * the injected `apply`. Connection authority, the enable-sharing bootstrap,
- * query-state branches, and the actor-precondition stamping all belong to
- * the wrappers — this panel never shows an enable-sharing action, so a
- * guest wrapper cannot leak the operator bootstrap after a 403.
- *
- * When `writeDisabledReason` is set, every editing control is disabled and
- * the reason is stated once above them: a read-only admin device can
- * inspect administration but must hear why it cannot submit.
- */
+/** Shares the authorized administration view; enablement stays with the caller. */
 export function AccessPanelView({
   view,
   busy,
   apply,
   writeDisabledReason,
   expectedActor,
+  stationActions,
 }: {
   view: ProjectAccessAdministrationView;
   busy: boolean;
   apply: (command: ProjectAccessCommand) => Promise<ProjectAccessCommandResult>;
   writeDisabledReason?: string;
-  /**
-   * The acting principal this view was rendered for, stamped onto every
-   * command the panel builds so the server can refuse stale intent against
-   * fresh authority (guest HttpOnly-cookie replacement race). The stamp is
-   * captured with the rendered action or the opened confirmation — never
-   * refreshed at submit time. Omit it on paths that never cross that
-   * boundary (the operator console keeps working unchanged).
-   */
+  /** Captured with the rendered action or confirmation; never replaced by a refresh. */
   expectedActor?: string;
+  stationActions?: ReactNode;
 }) {
   const [notice, setNotice] = useState<string>();
-  const [link, setLink] = useState<string>();
+  const [link, setLink] = useState<{ url: string; expiresAt: string }>();
   const [error, setError] = useState<string>();
   const [confirmation, setConfirmation] = useState<{
     title: string;
     message: string;
     command: ProjectAccessCommand;
   }>();
-  // Stamp the caller-captured actor onto a freshly built command. The
-  // caller passes the principal the CURRENT render was proven for; because
-  // this runs while building the action (or opening its confirmation), a
-  // later refresh can never move the stamp onto a newer principal.
+  // Capture the actor with the action; refreshing must not restamp stale intent.
   const stamp = (
     command: Exclude<ProjectAccessCommand, { kind: 'enable' }>,
   ): ProjectAccessCommand => ({
@@ -101,7 +80,10 @@ export function AccessPanelView({
       const outcome = await apply(command);
       if (outcome.kind === 'invited') {
         if (view.invitationOrigin)
-          setLink(invitationLink(view.invitationOrigin, outcome.token));
+          setLink({
+            url: invitationLink(view.invitationOrigin, outcome.token),
+            expiresAt: outcome.invitation.expiresAt,
+          });
         setNotice('Invitation created. Copy the link to share it.');
       } else setNotice('Access updated.');
       setConfirmation(undefined);
@@ -206,6 +188,7 @@ export function AccessPanelView({
   return (
     <PageSection
       id="section-access"
+      className="project-access"
       title="People and access"
       description="Who can participate in this Project."
     >
@@ -214,12 +197,21 @@ export function AccessPanelView({
           {writeDisabledReason}
         </p>
       )}
-      <PersonList
-        items={view.members}
-        itemKey={(member) => member.principal.id}
-        renderItem={memberRow}
-        busy={busy}
-      />
+      <ol className="project-access__journey" aria-label="Invitation steps">
+        <li>
+          <strong>1. Create a link</strong>
+          <span>Choose their Project role.</span>
+        </li>
+        <li>
+          <strong>2. They join</strong>
+          <span>They sign in and accept the invitation.</span>
+        </li>
+        <li>
+          <strong>3. Approve their browser</strong>
+          <span>The Station operator reviews their access request.</span>
+        </li>
+      </ol>
+      {stationActions}
       <InviteFlow
         {...(view.invitationOrigin
           ? { invitationOrigin: view.invitationOrigin }
@@ -241,6 +233,34 @@ export function AccessPanelView({
           )
         }
       />
+      {link && (
+        <InvitationLinkReveal
+          link={link.url}
+          expiresAt={link.expiresAt}
+          onCopied={(copied) =>
+            setNotice(
+              copied ? 'Invitation copied.' : 'Couldn’t copy the invitation.',
+            )
+          }
+        />
+      )}
+      {notice && <p role="status">{notice}</p>}
+      {error && (
+        <p role="alert" className="project-access__error">
+          {error}
+        </p>
+      )}
+      <h3>Project members</h3>
+      <PersonList
+        items={view.members}
+        itemKey={(member) => member.principal.id}
+        renderItem={memberRow}
+        busy={busy}
+      />
+      <p className="project-access__hint">
+        Project roles and browser approval are separate. Joining never grants
+        private work or computer access.
+      </p>
       <h3>Invitations</h3>
       {view.invitations.length === 0 ? (
         <p>No invitations yet.</p>
@@ -252,7 +272,8 @@ export function AccessPanelView({
                 {invitation.recipientEmail ?? 'Single-use invitation link'}
               </strong>
               <p>
-                {ROLE_NAMES[invitation.role]} · {invitation.status} · Expires{' '}
+                {ROLE_NAMES[invitation.role]} ·{' '}
+                <Badge value={invitation.status} /> · Expires{' '}
                 {new Date(invitation.expiresAt).toLocaleString()}
               </p>
             </div>
@@ -275,22 +296,6 @@ export function AccessPanelView({
             )}
           </div>
         ))
-      )}
-      {notice && <p role="status">{notice}</p>}
-      {link && (
-        <InvitationLinkReveal
-          link={link}
-          onCopied={(copied) =>
-            setNotice(
-              copied ? 'Invitation copied.' : 'Couldn’t copy the invitation.',
-            )
-          }
-        />
-      )}
-      {error && (
-        <p role="alert" className="project-access__error">
-          {error}
-        </p>
       )}
       <ConfirmModal
         isOpen={!!confirmation}

@@ -21,6 +21,7 @@ import { Button } from '../../components/Button';
 import { PageSection } from '../../components/PageSection';
 import { Empty, ErrorState, SkeletonList } from '../../components/state';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
+import { useNavigationActions } from '../../contexts/NavigationContext';
 import { AccessPanelView } from './AccessPanelView';
 import {
   ENABLE_SHARING_FORBIDDEN,
@@ -56,6 +57,37 @@ export function AccessSection({
       allowEnableSharing={allowEnableSharing}
       writeDisabledReason={writeDisabledReason}
     />
+  );
+}
+
+function StationSharingActions() {
+  const { navigate } = useNavigationActions();
+  return (
+    <div className="project-access__setup">
+      <div className="project-access__actions">
+        <Button onClick={() => navigate('/settings', { view: 'system' })}>
+          Sharing setup
+        </Button>
+        <Button onClick={() => navigate('/notifications')}>
+          Review browser requests
+        </Button>
+      </div>
+      <p className="project-access__hint">
+        Missing setup? Enable Project sharing setting in{' '}
+        <Button
+          variant="link"
+          onClick={() =>
+            navigate('/settings', {
+              view: 'feature-previews',
+              highlight: 'feature-previews',
+            })
+          }
+        >
+          Feature previews
+        </Button>
+        . Account recovery is in Settings → System.
+      </p>
+    </div>
   );
 }
 
@@ -195,7 +227,14 @@ function AccessPanel({
     if (error instanceof StationHttpError && error.status === 501)
       return (
         <AccessFrame>
-          <Empty label="Project sharing is not enabled on this Station." />
+          <Empty
+            label="Set up this Station for invitations"
+            description="Choose the sign-in address and turn on local accounts in Sharing setup."
+          />
+          <StationSharingActions />
+          <Button disabled={busy} onClick={() => void query.refetch()}>
+            Refresh access
+          </Button>
         </AccessFrame>
       );
     if (refusal?.sharing === 'off')
@@ -331,6 +370,7 @@ function AccessPanel({
       busy={busy}
       apply={apply}
       writeDisabledReason={writeDisabledReason}
+      stationActions={<StationSharingActions />}
     />
   );
 }
