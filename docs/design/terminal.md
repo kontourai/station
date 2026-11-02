@@ -1,6 +1,6 @@
 # Integrated terminal
 
-Status: In progress under #3994. The scoped in-process foundation, the same-origin gateway, operator-device ticket admission, the SDK session store and the Coding cutover (still rendered by xterm.js) are implemented. Supervisor workloads, Ghostty, the layout and removal of the legacy stack remain proposed.
+Status: In progress under #3994. The scoped in-process foundation, the same-origin gateway, operator-device ticket admission, the SDK session store, the Ghostty `TerminalView` and the Coding cutover onto it are implemented. Supervisor workloads, the layout and removal of the legacy stack remain proposed.
 
 > **Reading status: proposal (2026-10-17).** Replaces the current terminal
 > stack end to end. The bounded implementation below precedes that replacement; the current Coding UI behavior is
@@ -201,8 +201,10 @@ records the admission and its residual risks.
   wakes on `online` or visibility. Its `TerminalSession` interface is what a
   renderer consumes; the later Ghostty view uses the same interface.
 - **Coding cutover.** [TerminalPanel](../../src-ui/src/components/coding-layout/TerminalPanel.tsx)
-  keeps xterm.js, the theme, selection hand-off and the mobile key toolbar on
-  the store. Tabs derive from the server's session list for the Project
+  keeps the session lifecycle and selection hand-off on the store and renders
+  through the public `TerminalView` ([emulator boundary](#emulator-implementation-boundary-3994-phase-3)),
+  which owns the theme, input and the mobile key row. Tabs derive from the
+  server's session list for the Project
   binding, read through one shared query, so every view of it (the lower
   panel, a dock region, another device) shows the same tabs; only a tab whose
   session is not open yet is a view's own. An empty panel opens a shell only
@@ -304,6 +306,32 @@ Ghostty adapter needs bounded parsing/rendering work, an explicit reset/title
 contract and detached reply/report writers during replay. This tranche does
 not qualify those emulator behaviors or establish full VT fidelity.
 
+## Emulator implementation boundary (#3994, phase 3)
+
+[`TerminalView`](../reference/sdk.md#terminal-view) is Station's surface over
+Ghostty's `libghostty-vt`, compiled to WebAssembly from the Ghostty v1.4.0 tag
+(`83fb956`) with Zig 0.17.0 by
+[`scripts/ghostty-vt/build-wasm.mjs`](../../scripts/ghostty-vt/build-wasm.mjs).
+The vendored module omits Kitty graphics and state snapshots. Station's adapter
+is written from Ghostty's public headers; its struct offsets and enum values
+are checked against the module's own `ghostty_type_json()` manifest.
+
+The emulator runs in a Web Worker. Only rows the render state marks dirty
+cross to the UI thread, named by stable row ids; one frame is in flight at a
+time and hidden terminals produce none. Replayed journal output updates the
+screen with the reply writer and bell detached, so a reattach cannot type
+query answers at the prompt. Program titles stay untrusted text. Links admit
+only `http:`/`https:` URLs and `path:line[:col]`; OSC 8 targets are read
+through `ghostty_grid_ref_hyperlink_uri` and pass the same scheme check.
+
+Accessibility follows [Accessibility](#accessibility): the mirror is Ghostty's
+plain-text formatting of scrollback and screen (emulator rows, not bytes) and
+is kept only in screen reader mode; announcements are coalesced to one per
+second with a length cap; Escape then Tab leaves the terminal. Browsers expose
+no screen-reader signal, so the mode follows the host's setting or an explicit
+`detectScreenReader` callback. Shell-integration marks, images and ligatures
+remain deferred.
+
 ## Why
 
 The terminal is a core surface, not a Coding-layout accessory. The legacy
@@ -318,7 +346,8 @@ Coding stack motivates the replacement:
   replayed with terminal queries intact, so a reattach can type junk at the
   prompt.
 - The working directory is whatever the client sends.
-- xterm.js runs with only the fit addon and a hard-coded palette.
+- The Coding terminal ran xterm.js with only the fit addon and a hard-coded
+  palette; TerminalView replaces it.
 - Terminals belong to no thread, chat, or worktree, and the agent cannot use
   them.
 
@@ -544,7 +573,9 @@ Station writes its own browser adapter for Ghostty's official
 `libghostty-vt` C ABI, independently and from Ghostty's public headers and
 documentation. The WebAssembly is built from a pinned Ghostty revision by a
 reproducible Zig script, committed as a vendored asset with Ghostty's MIT
-license, and its revision is checked by a test. The adapter owns:
+license, and its revision is checked by a test. The engine loads only that
+vendored file, and only when its bytes match the SHA-256 recorded beside it;
+no SDK option names a different module. The adapter owns:
 
 - A per-terminal handle over the C ABI and a render snapshot of rows and
   styles.
@@ -571,9 +602,8 @@ the web surface.
 #### Accessibility
 
 A canvas-rendered terminal is invisible to assistive technology unless the
-adapter exposes its text separately. xterm.js's screen reader mode covers
-this today, so shipping the Ghostty surface without an equivalent would be a
-regression. The emulator phase does not ship until this exists:
+adapter exposes its text separately. xterm.js's screen reader mode covered
+this, so the Ghostty surface had to ship with an equivalent:
 
 - **Accessible output buffer.** A visually hidden, focusable text mirror of
   the screen and scrollback, built from the emulator's rows (not from raw

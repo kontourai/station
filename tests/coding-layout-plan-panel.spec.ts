@@ -414,11 +414,11 @@ test.describe('Coding Layout — mobile single-panel workspace', () => {
       await fallbackTerminal.click({ position: { x: 20, y: 20 } });
       await expect(fallbackInput).toBeFocused();
     } else {
-      const xterm = terminal.getByRole('application', { name: 'Terminal' });
-      const xtermInput = xterm.getByRole('textbox', { name: 'Terminal input' });
-      await expect(xtermInput).not.toBeFocused();
-      await xterm.click({ position: { x: 20, y: 20 } });
-      await expect(xtermInput).toBeFocused();
+      const view = terminal.getByRole('group', { name: 'Terminal' });
+      const viewInput = view.getByRole('textbox', { name: 'Terminal input' });
+      await expect(viewInput).not.toBeFocused();
+      await view.click({ position: { x: 20, y: 20 } });
+      await expect(viewInput).toBeFocused();
     }
     await page.evaluate(() =>
       (

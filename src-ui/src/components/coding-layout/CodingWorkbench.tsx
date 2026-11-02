@@ -111,7 +111,7 @@ import './CodingWorkbench.css';
 /** Whether keyboard focus is in something that edits text. */
 /**
  * Whether focus is in an editor that owns these keys itself — CodeMirror
- * (⌘[ outdents), xterm, a contenteditable rich editor — whose own handler
+ * (⌘[ outdents), the terminal, a contenteditable rich editor — whose own handler
  * takes the key. There the stack declines. A plain input, textarea or the
  * composer does not own ⌘[ or Alt+←: off macOS, Alt+← there is the browser's
  * Back, which would leave the layout, so the stack handles the chord instead.
@@ -121,7 +121,7 @@ function focusInKeyOwningEditor(): boolean {
   if (!(focused instanceof Element)) return false;
   return Boolean(
     focused.closest(
-      '[contenteditable=""], [contenteditable="true"], .cm-editor, .xterm',
+      '[contenteditable=""], [contenteditable="true"], .cm-editor, .station-terminal',
     ),
   );
 }
@@ -677,8 +677,8 @@ export function CodingWorkbench({
   // The fold crossed the other way with the lower panel open: below it the
   // Terminal is a drill-in, so it becomes the page (in place — the reader
   // did not navigate) rather than vanishing with the lower panel. Its tabs
-  // and their server-side processes carry across the remount; xterm's local
-  // scrollback does not.
+  // and their server-side processes carry across the remount; output
+  // replays from the server's journal.
   const wasWide = useRef(wide);
   useLayoutEffect(() => {
     const was = wasWide.current;

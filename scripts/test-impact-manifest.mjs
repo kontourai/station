@@ -799,6 +799,9 @@ export const REPO_SCAN_SUITES = Object.freeze([
   // of them: #3170 broke it that way and it first failed in qualification.
   'packages/sdk/src/__tests__/client-entry-portability.test.ts',
   'packages/sdk/src/__tests__/publicBarrel.test.ts',
+  // Walks src-ui/src/components/coding-layout for imports of terminal
+  // internals; a new Coding file has no import edge to this suite (#3994).
+  'packages/sdk/src/__tests__/terminal-view/import-boundary.test.ts',
   // Scans src-server, packages/shared/src and packages/cli/src for Station
   // home-root literals the store registry must list (#2675 D1).
   'packages/shared/src/__tests__/station-home-store-registry.test.ts',

@@ -13,7 +13,7 @@ export interface StationDocsTopic {
 }
 
 export const STATION_DOCS_CONTENT_DIGEST =
-  '70875ba6c908874caababc80b21258c2cb5fa0ee9ce782b1d799294e0803a199';
+  '667f541f5865b39f7f9e04b8739911f11fa7d43d79e4806f7b91910d81b73604';
 export const STATION_DOCS_TOPICS: readonly StationDocsTopic[] = [
   {
     id: 'station-overview',
@@ -715,7 +715,7 @@ export const STATION_DOCS_TOPICS: readonly StationDocsTopic[] = [
     title: 'Navigation and work surfaces',
     summary:
       'How people find work and arrange Panes, layouts, editors, and device surfaces without turning presentation into authority.',
-    body: 'How people find work and arrange Panes, layouts, editors, and device surfaces without turning presentation into authority.\n\nThis is a reading path through shipped documentation, not live state or a completed semantic audit.\n\nQuestions:\n- Which interface owns navigation, and which owns the work behind a view?\n- Can a Pane be unavailable without losing its saved identity?\n- Which UI states are derived from the server versus retained on one Device?\n\nRead module topics with get_station_docs_topic:\n- architecture-destinationregistry: DestinationRegistry\n- architecture-keyboard-shortcuts: Keyboard shortcuts\n- architecture-colorthemes: ColorThemes\n- architecture-unifiedsearchservice: UnifiedSearchService\n- architecture-workspacepanehostcontributions: WorkspacePaneHostContributions\n- architecture-workspacepanehostadmission: WorkspacePaneHostAdmission\n- architecture-workspacepanehostactions: WorkspacePaneHostActions\n- architecture-projectroom: ProjectRoom\n- architecture-projecttaskroom: ProjectTaskRoom\n- architecture-mobiledevicehost: MobileDeviceHost\n- architecture-browsersessionservice: BrowserSessionService\n- architecture-local-speech-and-media-tools: Local speech and media tools\n- architecture-shared-live-surface: Shared live surface\n- architecture-personal-work-board: Personal Work Board\n- architecture-personal-board-authoring: Personal Board authoring\n\nCanonical reading:\n- docs/guides/workspace-pane-authoring.md\n- docs/design/pane-host-contract.md\n- docs/guides/commands.md\n- docs/guides/local-speech.md\n- docs/guides/responsive-ui.md\n- docs/user/work-board.md\n- docs/user/personal-boards.md',
+    body: 'How people find work and arrange Panes, layouts, editors, and device surfaces without turning presentation into authority.\n\nThis is a reading path through shipped documentation, not live state or a completed semantic audit.\n\nQuestions:\n- Which interface owns navigation, and which owns the work behind a view?\n- Can a Pane be unavailable without losing its saved identity?\n- Which UI states are derived from the server versus retained on one Device?\n\nRead module topics with get_station_docs_topic:\n- architecture-destinationregistry: DestinationRegistry\n- architecture-keyboard-shortcuts: Keyboard shortcuts\n- architecture-colorthemes: ColorThemes\n- architecture-unifiedsearchservice: UnifiedSearchService\n- architecture-workspacepanehostcontributions: WorkspacePaneHostContributions\n- architecture-workspacepanehostadmission: WorkspacePaneHostAdmission\n- architecture-workspacepanehostactions: WorkspacePaneHostActions\n- architecture-projectroom: ProjectRoom\n- architecture-projecttaskroom: ProjectTaskRoom\n- architecture-mobiledevicehost: MobileDeviceHost\n- architecture-browsersessionservice: BrowserSessionService\n- architecture-terminalview: TerminalView\n- architecture-local-speech-and-media-tools: Local speech and media tools\n- architecture-shared-live-surface: Shared live surface\n- architecture-personal-work-board: Personal Work Board\n- architecture-personal-board-authoring: Personal Board authoring\n\nCanonical reading:\n- docs/guides/workspace-pane-authoring.md\n- docs/design/pane-host-contract.md\n- docs/guides/commands.md\n- docs/guides/local-speech.md\n- docs/guides/responsive-ui.md\n- docs/user/work-board.md\n- docs/user/personal-boards.md',
     tags: ['architecture', 'surfaces'],
     parentId: 'architecture',
     sourcePath: 'docs/learn/atlas.json',
@@ -841,6 +841,17 @@ export const STATION_DOCS_TOPICS: readonly StationDocsTopic[] = [
     parentId: 'architecture-surfaces',
     sourcePath: 'docs/architecture/module-map.md',
     sourceAnchor: 'browsersessionservice',
+  },
+  {
+    id: 'architecture-terminalview',
+    title: 'TerminalView',
+    summary:
+      'Interface, composition, invariants, and documented evidence for TerminalView.',
+    body: "Shipped architecture reference. Source and test links describe evidence to inspect; they do not establish live state or that those tests have been executed for this installation.\n\n## TerminalView\n\n[TerminalView](../../packages/sdk/src/terminal-view/TerminalView.tsx) is the\npublic `@kontourai/station-sdk/terminal-view` entry. It renders any\n[`TerminalViewSession`](../../packages/sdk/src/terminal-view/session.ts) and\nowns no transport. Its [controller](../../packages/sdk/src/terminal-view/controller.ts)\nkeeps React out of the frame loop: input, visibility, the renderer and the\nscreen-reader mirror live there, and React subscribes to a snapshot.\n\nThe [engine](../../packages/sdk/src/terminal-view/engine/terminal-engine.ts)\nwraps the vendored libghostty-vt module (Ghostty v1.4.0,\n[built reproducibly](../../scripts/ghostty-vt/build-wasm.mjs)) inside a Web\nWorker. Only render-state rows marked dirty cross to the UI thread, named by\nstable row ids; the [host](../../packages/sdk/src/terminal-view/engine/engine-host.ts)\nholds one frame in flight until the UI acknowledges it and sends none while\nhidden. Replayed journal output updates the screen with the reply writer and\nbell detached. The [WebGL2 renderer](../../packages/sdk/src/terminal-view/render/webgl2-renderer.ts)\ndraws instanced rectangles and atlas glyphs, survives context loss and\nreleases its context while hidden; a [canvas 2D renderer](../../packages/sdk/src/terminal-view/render/canvas2d-renderer.ts)\nis the fallback. [Box drawing](../../packages/sdk/src/terminal-view/render/box-drawing.ts)\nis drawn at cell size rather than taken from a font.\n\n**Code and evidence.** The [ABI test](../../packages/sdk/src/__tests__/terminal-view/ghostty-vt-abi.test.ts)\npins the revision and SHA-256 and checks every struct offset and enum value\nStation uses against the module's `ghostty_type_json()`. The\n[engine test](../../packages/sdk/src/__tests__/terminal-view/terminal-engine.test.ts)\nruns the real module headlessly: rows and styles, encoders, replies detached\nduring replay, the mirror after cursor-addressed redraws, find, selection and\nOSC 8. The [boundary test](../../packages/sdk/src/__tests__/terminal-view/import-boundary.test.ts)\nkeeps the Coding layout on the public entry. **Do not reintroduce:** a second\nemulator, terminal state in React render, replies written during replay, or a\nCoding import of terminal internals.",
+    tags: ['architecture', 'surfaces', 'TerminalView'],
+    parentId: 'architecture-surfaces',
+    sourcePath: 'docs/architecture/module-map.md',
+    sourceAnchor: 'terminalview',
   },
   {
     id: 'architecture-local-speech-and-media-tools',

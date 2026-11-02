@@ -111,3 +111,6 @@ export function terminalScopeAllows(
       pairingScopeIncludes(scope, PAIRING_SCOPE_TERMINAL_OBSERVE))
   );
 }
+
+/** The terminal pane target is declared by the pane host contract. */
+export type { RelatedTerminalOpenRequest as TerminalPaneTarget } from './workspace-pane-host-contract.js';

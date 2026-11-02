@@ -383,7 +383,7 @@
   --diff-deletion: var(--k-negative);
   --diff-modified: var(--k-active);
 
-  /* Terminal (xterm paints a canvas, so TerminalPanel reads these from the
+  /* Terminal (the terminal view paints a canvas, so it reads these from the
      computed style and re-reads them when the root theme changes). */
   --terminal-background: #1a1a2e;
   --terminal-foreground: #e0e0e0;
