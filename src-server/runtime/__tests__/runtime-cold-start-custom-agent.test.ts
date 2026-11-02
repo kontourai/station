@@ -37,6 +37,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  statSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -82,6 +83,7 @@ import {
   stageAccountSharingChange,
 } from '../../services/identity/account-sharing-setting.js';
 import type { LoadedLocalAccounts } from '../../services/identity/local-account-runtime.js';
+import { StationDelegationPersistence } from '../../services/orchestration/delegation-group-persistence.js';
 import { EventStore } from '../../services/orchestration/event-store.js';
 import type { RegistryTrustPolicyAuthority } from '../../services/plugins/registry-trust-policy.js';
 import type { ProjectMembershipService } from '../../services/projects/project-membership-service.js';
@@ -132,26 +134,34 @@ const routeMocks = vi.hoisted(() => {
         announceRoutesConfigured = resolve;
       });
     },
-    configureRuntimeRoutes: vi.fn((context: any) => {
-      announceRoutesConfigured();
-      // This crosses the same Dispatcher Interface that task routes and
-      // capability bindings receive while `initializeRuntime` is still
-      // constructing VoltAgent/routes. Before archive#2528's ordering repair this
-      // access crashed because StationRuntime assigned the field only after
-      // initializeRuntime returned.
-      const dispatch = context.taskDispatcher.dispatch(
-        '__cold-start-missing__',
-        {},
-      );
-      taskDispatches.push(dispatch);
-      const services = {
-        schedulerService: { stop: vi.fn(async () => {}) },
-        notificationService: { shutdown: vi.fn() },
-        kitLifecycleReady: routeMocks.kitLifecycleReady,
-      };
-      servicePairs.push(services);
-      return services;
-    }),
+    configureRuntimeRoutes: vi.fn(
+      (
+        context: any,
+      ): {
+        schedulerService: { stop(): unknown };
+        notificationService: { shutdown(): unknown };
+        kitLifecycleReady: Promise<void>;
+      } => {
+        announceRoutesConfigured();
+        // This crosses the same Dispatcher Interface that task routes and
+        // capability bindings receive while `initializeRuntime` is still
+        // constructing VoltAgent/routes. Before archive#2528's ordering repair this
+        // access crashed because StationRuntime assigned the field only after
+        // initializeRuntime returned.
+        const dispatch = context.taskDispatcher.dispatch(
+          '__cold-start-missing__',
+          {},
+        );
+        taskDispatches.push(dispatch);
+        const services = {
+          schedulerService: { stop: vi.fn(async () => {}) },
+          notificationService: { shutdown: vi.fn() },
+          kitLifecycleReady: routeMocks.kitLifecycleReady,
+        };
+        servicePairs.push(services);
+        return services;
+      },
+    ),
   };
   state.armRoutesConfigured();
   return state;
@@ -266,9 +276,21 @@ vi.mock('../frameworks/voltagent-hono-runtime.js', () => ({
   }),
 }));
 
-vi.mock('../../routes/operations/voice.js', () => ({
+vi.mock('../../routes/operations/voice.js', async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import('../../routes/operations/voice.js')
+  >()),
   attachVoiceWebSocket: vi.fn(),
 }));
+
+vi.mock('../consent/consent-listener.js', async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import('../consent/consent-listener.js')>();
+  return {
+    ...actual,
+    startConsentListener: vi.fn(actual.startConsentListener),
+  };
+});
 
 vi.mock('../../providers/llm/bedrock.js', async (importOriginal) => {
   const actual =
@@ -2500,6 +2522,237 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
           .backupDir,
       ).toBe(backupDir);
     } finally {
+      rmDirSyncRetrying(backupDir);
+    }
+  });
+
+  it('retains initialized report storage and Home ownership until a refused recovery releases publication', async () => {
+    // Actual core, HTTP factory, local-grant ingress and initialized stores.
+    // Existing watcher, native probe/adoption and integrity-worker controls remain.
+    // Consent is unavailable here, avoiding port 3 when the API binds port 0.
+    // Persistence still takes real locks with this fixture's fixed fingerprint.
+    // This proves pending refusal custody, not applied recovery or provider readiness.
+    const core = await import('@voltagent/core');
+    const realCore =
+      await vi.importActual<typeof import('@voltagent/core')>(
+        '@voltagent/core',
+      );
+    const realHono = await vi.importActual<
+      typeof import('../frameworks/voltagent-hono-runtime.js')
+    >('../frameworks/voltagent-hono-runtime.js');
+    const realRoutes = await vi.importActual<
+      typeof import('../routes/runtime-routes.js')
+    >('../routes/runtime-routes.js');
+    const consent = await import('../consent/consent-listener.js');
+    const coreMock = vi.mocked(core.VoltAgent);
+    const honoMock = vi.mocked(stationHonoServer);
+    const consentMock = vi.mocked(consent.startConsentListener);
+    const previousCore = coreMock.getMockImplementation();
+    const previousHono = honoMock.getMockImplementation();
+    const previousRoutes =
+      routeMocks.configureRuntimeRoutes.getMockImplementation();
+    const previousConsent = consentMock.getMockImplementation();
+    if (!previousCore || !previousHono || !previousRoutes || !previousConsent)
+      throw new Error('Cold-start mock implementations are required');
+    let boundPort: number | undefined;
+    let origin: string | undefined;
+    let factoryCalls = 0;
+    const outbound: string[] = [];
+    const fetchActual = globalThis.fetch;
+    const fetchFence = vi
+      .spyOn(globalThis, 'fetch')
+      .mockImplementation((input, init) => {
+        const url = new URL(
+          input instanceof Request ? input.url : String(input),
+        );
+        if (url.origin !== origin) {
+          outbound.push(url.origin);
+          return Promise.reject(
+            new Error('Unexpected outbound request during report boot'),
+          );
+        }
+        return fetchActual(input, init);
+      });
+    const events: string[] = [];
+    const closeActual = EventStore.prototype.close;
+    const close = vi
+      .spyOn(EventStore.prototype, 'close')
+      .mockImplementation(function (this: EventStore) {
+        const result = closeActual.call(this);
+        events.push('store-close');
+        return result;
+      });
+    const missing = 'initialized-storage-missing-group';
+    let enter!: () => void;
+    const entered = new Promise<void>((resolve) => {
+      enter = resolve;
+    });
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let paused = 0;
+    let observed:
+      | Awaited<ReturnType<StationDelegationPersistence['readReportAdmission']>>
+      | undefined;
+    const readActual =
+      StationDelegationPersistence.prototype.readReportAdmission;
+    const read = vi
+      .spyOn(StationDelegationPersistence.prototype, 'readReportAdmission')
+      .mockImplementation(async function (
+        this: StationDelegationPersistence,
+        ...args
+      ) {
+        if (args[0] === missing) {
+          paused++;
+          enter();
+          await gate;
+        }
+        const result = await readActual.apply(this, args);
+        if (args[0] === missing) {
+          observed = result;
+          events.push('read-settled');
+        }
+        return result;
+      });
+    let response: Promise<Response> | undefined;
+    home = await createSchemaHome('station-initialized-report-');
+    const backupDir = `${home}-backup`;
+    try {
+      coreMock.mockImplementation(function ForwardedVoltAgent(...args) {
+        return new realCore.VoltAgent(...args);
+      });
+      honoMock.mockImplementation((...args) => {
+        expect(args[1]).toBeUndefined();
+        const factory = realHono.stationHonoServer(...args);
+        return (deps) => {
+          const provider = factory(deps);
+          return {
+            ...provider,
+            async start() {
+              const result = await provider.start();
+              if (
+                !result ||
+                typeof result !== 'object' ||
+                !('port' in result) ||
+                typeof result.port !== 'number'
+              )
+                throw new Error(
+                  'Actual HTTP provider did not report a bound port',
+                );
+              boundPort = result.port;
+              origin = `http://127.0.0.1:${boundPort}`;
+              return result;
+            },
+          };
+        };
+      });
+      routeMocks.configureRuntimeRoutes.mockImplementation((context) => {
+        factoryCalls++;
+        return realRoutes.configureRuntimeRoutes(context);
+      });
+      consentMock.mockImplementation(async () => ({
+        status: 'unavailable',
+        reason: 'Consent listener excluded from report-storage test',
+      }));
+      runtime = new StationRuntime({
+        projectHomeDir: home,
+        port: 0,
+        host: '127.0.0.1',
+      });
+      await runtime.initialize();
+      expect(factoryCalls).toBe(1);
+      expect(boundPort).toBeGreaterThan(0);
+      if (!origin) throw new Error('Actual loopback listener is required');
+      const minted = await fetch(
+        `${origin}/.well-known/station/v1/pairing/local-grant`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            secret: readFileSync(
+              join(home, 'runtime', 'local-grant.secret'),
+              'utf8',
+            ).trim(),
+            deviceName: 'initialized-report-custody',
+          }),
+        },
+      );
+      expect(minted.status).toBe(200);
+      const grant = await minted.json();
+      if (
+        !grant ||
+        typeof grant !== 'object' ||
+        !('credential' in grant) ||
+        typeof grant.credential !== 'string' ||
+        !grant.credential
+      )
+        throw new Error('The actual local-grant mint must return a credential');
+      const directory = statSync(join(home, 'report-groups'));
+      expect(directory.isDirectory()).toBe(true);
+      expect(directory.mode & 0o7777).toBe(0o700);
+      expect(directory.uid).toBe(process.getuid?.());
+      response = fetch(
+        `${origin}/api/orchestration/report-groups/${missing}/accounting/recover`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${grant.credential}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            seatId: 'missing-seat',
+            invocationId: 'missing-invocation',
+            operationKey: 'boot-custody',
+          }),
+        },
+      );
+      expect(
+        await Promise.race([
+          entered.then(() => 'entered'),
+          response.then(() => 'responded'),
+        ]),
+      ).toBe('entered');
+      expect(paused).toBe(1);
+      await expect(runtime.shutdown()).rejects.toMatchObject({
+        code: 'runtime_publication_pending',
+      });
+      expect(close).not.toHaveBeenCalled();
+      expect(() =>
+        createStationHomeBackup({ homeDir: home, outputDir: backupDir }),
+      ).toThrow(/must be inactive before backup/);
+      release();
+      const refused = await response;
+      events.push('response-settled');
+      expect(observed).toBeNull();
+      expect(refused.status).toBe(503);
+      expect(await refused.json()).toEqual({
+        success: false,
+        code: 'report_group_unavailable',
+      });
+      expect(refused.headers.get('Cache-Control')).toBe('no-store');
+      await runtime.shutdown();
+      runtime = undefined;
+      expect(close).toHaveBeenCalledTimes(1);
+      expect(close.mock.results[0].value).toMatchObject({ kind: 'closed' });
+      expect(events.indexOf('store-close')).toBeGreaterThan(
+        events.indexOf('response-settled'),
+      );
+      expect(
+        createStationHomeBackup({ homeDir: home, outputDir: backupDir })
+          .backupDir,
+      ).toBe(backupDir);
+      expect(outbound).toEqual([]);
+    } finally {
+      release();
+      await response?.catch(() => undefined);
+      read.mockRestore();
+      close.mockRestore();
+      fetchFence.mockRestore();
+      coreMock.mockImplementation(previousCore);
+      honoMock.mockImplementation(previousHono);
+      routeMocks.configureRuntimeRoutes.mockImplementation(previousRoutes);
+      consentMock.mockImplementation(previousConsent);
       rmDirSyncRetrying(backupDir);
     }
   });
