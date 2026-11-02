@@ -405,13 +405,26 @@ describe('fast-checks under GitHub job-status semantics (#2709 re-land)', () => 
   test('a deferred conflict spends no plan, shard or statics runner and fails the aggregator', () => {
     const state = simulate(jobs, sameRepositoryPr, {
       outcomes: { 'pr-admission': 'failure' },
-      outputs: { 'fast-checks-plan': { legacy: 'false' } },
+      outputs: { 'pr-admission': { admitted: 'false' } },
     });
     expect(state.results.get('pr-admission')).toBe('failure');
     for (const part of PARTS)
       expect(state.results.get(part), part).toBe('skipped');
     expect(aggregatorPartResults(jobs, state)).toBe(1);
   });
+
+  test.each(['failure', 'cancelled'] as const)(
+    'an admission job that %s without deciding never blocks the candidate',
+    (outcome) => {
+      const state = simulate(jobs, sameRepositoryPr, {
+        outcomes: { 'pr-admission': outcome },
+        outputs: { 'fast-checks-plan': { legacy: 'false' } },
+      });
+      for (const part of PARTS)
+        expect(state.results.get(part), part).toBe('success');
+      expect(aggregatorPartResults(jobs, state)).toBe(0);
+    },
+  );
 
   test.each([
     ['merge_group', { ...sameRepositoryPr, event: 'merge_group' }],

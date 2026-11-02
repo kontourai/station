@@ -13,12 +13,13 @@ const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 /**
  * Decide whether a same-repository pull request should spend runner time.
  *
- * Only a confirmed conflict defers: GitHub reported `mergeable: false` twice
- * for an unchanged owner while main stayed put (see checkPrMergeability). A
- * conflicted candidate cannot merge, so the plan, shards and statics would be
- * discarded work. Every other outcome, including GitHub still computing
- * mergeability and API failures, admits the run: deferral exists to save
- * cost, so uncertainty must never block a candidate from getting feedback.
+ * Only a confirmed conflict defers: two consecutive observations, `retryMs`
+ * apart, each reporting `mergeable: false` for an unchanged owner while main
+ * stayed put (see checkPrMergeability). A conflicted candidate cannot merge,
+ * so the plan, shards and statics would be discarded work. Every other
+ * outcome, including GitHub still computing mergeability and API failures,
+ * admits the run: deferral exists to save cost, so uncertainty must never
+ * block a candidate from getting feedback.
  */
 export async function admitPullRequest({
   env,
@@ -40,6 +41,7 @@ export async function admitPullRequest({
   )
     throw new Error('untrusted PR admission event');
   let last = { reason: 'unobserved' };
+  let conflicts = 0;
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
     try {
       last = await check({
@@ -52,7 +54,8 @@ export async function admitPullRequest({
       last = { eligible: false, reason: `api-unavailable: ${error.message}` };
     }
     if (last.eligible) return { admitted: true, reason: last.reason };
-    if (last.reason === 'conflict')
+    conflicts = last.reason === 'conflict' ? conflicts + 1 : 0;
+    if (conflicts >= 2)
       return { admitted: false, reason: 'conflict', base: last.base };
     if (attempt < attempts) await sleep(retryMs);
   }
@@ -60,7 +63,15 @@ export async function admitPullRequest({
 }
 
 async function main() {
-  const result = await admitPullRequest({ env: process.env });
+  let result;
+  try {
+    result = await admitPullRequest({ env: process.env });
+  } catch (error) {
+    // Nothing is published, and the workflow gate defers only on an explicit
+    // `admitted=false`, so an unreadable event cannot block a candidate.
+    console.log(`::warning::PR admission unavailable: ${error.message}`);
+    return;
+  }
   console.log(JSON.stringify(result));
   if (process.env.GITHUB_OUTPUT)
     appendFileSync(
@@ -75,8 +86,4 @@ async function main() {
   }
 }
 
-if (invokedDirectly(import.meta.url))
-  main().catch((error) => {
-    console.error(`PR admission unavailable: ${error.message}`);
-    process.exitCode = 1;
-  });
+if (invokedDirectly(import.meta.url)) await main();

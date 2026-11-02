@@ -111,13 +111,13 @@ function environment(
 
 const noWait = { sleep: async () => {}, retryMs: 0 };
 
-test('a confirmed conflict is deferred on the first observation', async () => {
+test('a conflict confirmed by a second observation is deferred', async () => {
   await withGithub(false, async (url, reads) => {
     expect(
       await admitPullRequest({ env: environment(url), ...noWait }),
     ).toEqual({ admitted: false, reason: 'conflict', base });
-    // Two reads of one observation, never a retry loop over a conflict.
-    expect(reads()).toBe(2);
+    // Two observations of two reads each; a conflict is never retried further.
+    expect(reads()).toBe(4);
   });
 });
 
@@ -154,6 +154,38 @@ test('a conflict that appears after GitHub finishes computing is still deferred'
       ).toMatchObject({ admitted: false, reason: 'conflict' });
     },
   );
+});
+
+test('a conflict GitHub reports once and then retracts is admitted', async () => {
+  let calls = 0;
+  await withGithub(
+    () => (++calls <= 2 ? false : true),
+    async (url) => {
+      expect(
+        await admitPullRequest({ env: environment(url), ...noWait }),
+      ).toEqual({ admitted: true, reason: 'mergeable' });
+    },
+  );
+});
+
+test('a conflict on a head that is no longer current is not deferred', async () => {
+  await withGithub(false, async (url) => {
+    const result = await admitPullRequest({
+      env: environment(
+        url,
+        {},
+        {
+          head: { sha: 'c'.repeat(40), repo: { full_name: repository } },
+        },
+      ),
+      attempts: 3,
+      ...noWait,
+    });
+    expect(result).toEqual({
+      admitted: true,
+      reason: 'inconclusive: identity-or-base-changed',
+    });
+  });
 });
 
 test('an unavailable API admits the run instead of blocking feedback', async () => {
@@ -226,3 +258,25 @@ test.each([
     });
   },
 );
+
+test('the CLI admits, with no deferral output, when the event is unreadable', async () => {
+  await withGithub(false, async (url) => {
+    const outputPath = join(temp('pr-admission-output-'), 'output');
+    writeFileSync(outputPath, '');
+    const child = spawn(process.execPath, ['scripts/pr-source-admission.mjs'], {
+      windowsHide: true,
+      timeout: 20000,
+      stdio: 'ignore',
+      env: {
+        ...environment(url, { GITHUB_EVENT_NAME: 'workflow_dispatch' }),
+        GITHUB_OUTPUT: outputPath,
+      },
+    });
+    const code = await new Promise<number | null>((resolve, reject) => {
+      child.once('error', reject);
+      child.once('exit', resolve);
+    });
+    expect(code).toBe(0);
+    expect(readFileSync(outputPath, 'utf8')).not.toContain('admitted=false');
+  });
+});

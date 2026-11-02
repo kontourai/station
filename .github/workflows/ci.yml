@@ -52,8 +52,9 @@ jobs:
 
   # Defer a same-repository pull request with a confirmed merge conflict
   # before it spends the plan, shards and statics: it cannot merge, so that
-  # work is discarded. Only a confirmed conflict defers; GitHub still
-  # computing mergeability or an API failure admits the run
+  # work is discarded. Only an explicit `admitted=false` output defers; GitHub
+  # still computing mergeability, an API failure, or this job failing to
+  # start leaves the output empty and admits the run
   # (scripts/pr-source-admission.mjs). The workflow comes from the base
   # branch and no candidate code runs here. A deferred run is re-run with
   # "Re-run failed jobs" once the conflict is gone; the source policy reads
@@ -95,7 +96,7 @@ jobs:
     needs: [classify, pr-admission]
     # Same admission as the part jobs beside it: same-repository PRs, the
     # merge queue, dispatch, and heavy pushes. Forks stay on fork-smoke.
-    if: ${{ always() && !cancelled() && (github.event_name != 'pull_request_target' || needs.pr-admission.result == 'success') && (github.event_name == 'merge_group' || (github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) && github.event.pull_request.head.repo.full_name == github.repository) || github.event_name == 'workflow_dispatch' || needs.classify.outputs.heavy == 'true') }}
+    if: ${{ always() && !cancelled() && needs.pr-admission.outputs.admitted != 'false' && (github.event_name == 'merge_group' || (github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) && github.event.pull_request.head.repo.full_name == github.repository) || github.event_name == 'workflow_dispatch' || needs.classify.outputs.heavy == 'true') }}
     permissions:
       contents: read
     concurrency:
@@ -435,7 +436,7 @@ jobs:
     needs: [classify, pr-admission]
     # `always()` permits same-repository PR feedback after its intentionally
     # skipped classifier. Fork PRs stay on the isolated fork-smoke job below.
-    if: ${{ always() && !cancelled() && (github.event_name != 'pull_request_target' || needs.pr-admission.result == 'success') && (github.event_name == 'merge_group' || (github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) && github.event.pull_request.head.repo.full_name == github.repository) || github.event_name == 'workflow_dispatch' || needs.classify.outputs.heavy == 'true') }}
+    if: ${{ always() && !cancelled() && needs.pr-admission.outputs.admitted != 'false' && (github.event_name == 'merge_group' || (github.event_name == 'pull_request_target' && (github.event.action != 'edited' || github.event.changes.base) && github.event.pull_request.head.repo.full_name == github.repository) || github.event_name == 'workflow_dispatch' || needs.classify.outputs.heavy == 'true') }}
     permissions:
       contents: read
     concurrency:
