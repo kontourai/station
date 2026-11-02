@@ -245,7 +245,7 @@ it('writer 8 partials retain their logical bytes when converted into immutable b
   f.database.exec(
     "DROP TABLE agent_steps_meta; CREATE TABLE agent_steps_meta(id INTEGER PRIMARY KEY CHECK(id=1), writer_format TEXT NOT NULL CHECK(writer_format='agent-steps/8')) STRICT; INSERT INTO agent_steps_meta VALUES(1,'agent-steps/8')",
   );
-  await f.crash.reopen();
+  await expect(f.crash.reopen()).resolves.toBeDefined();
   expect(
     (await f.lease.effect({ type: 'effectRead', id: 'model:old' })).effect,
   ).toEqual(effect);
