@@ -1,3 +1,4 @@
+import { ownedWorkUnknownReasons } from '@kontourai/station-contracts/session-attention';
 import { taskAwaitsAnswer } from '@kontourai/station-contracts/task-memory';
 import type {
   OrchestrationSessionSummary,
@@ -69,6 +70,10 @@ export interface WorkFacts {
   station?: { id: string; label: string };
   attention?: WorkAttentionKind;
   activity?: WorkActivity;
+  ownedWorkState?: NonNullable<
+    OrchestrationSessionSummary['ownedWork']
+  >['state'];
+  ownedStopReasons?: readonly string[];
 }
 
 export type WorkFactsById = ReadonlyMap<string, WorkFacts>;
@@ -234,6 +239,10 @@ export function buildWorkFacts({
       if (attention) entry.attention = attention;
     }
     if (item.lifecycleLabel === 'Running') {
+      if (session?.ownedWork) {
+        entry.ownedWorkState = session.ownedWork.state;
+        entry.ownedStopReasons = ownedWorkUnknownReasons(session.ownedWork);
+      }
       const activity =
         workActivityFrom(session?.conversationActivity, session?.threadId) ??
         // The chat's own copy of the server record; a turn a Stop receipt
