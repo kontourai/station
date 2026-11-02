@@ -279,7 +279,13 @@ that Project. Project Room messages remain shared discussion; only an explicit
 **Bring an Agent** request starts Agent work from the Room.
 A project with no folder can still be chosen and runs where the server puts it:
 the home folder, or for an ACP engine its connection folder or a private
-Station-managed workspace. The Project control draws its chosen icon, or a
+Station-managed workspace. A No project chat runs in its own scratch folder,
+`<Station home>/scratch/<conversation>` (#4389), unless
+`AppConfig.noProjectChatFolder` is `home`; the server reads that once, at the
+conversation's first start, and a conversation that already recorded a folder
+keeps it. The chip says "Runs in a private folder Station makes for this chat"
+for that case, and the session card names it "Chat workspace"
+(`cwdManagedWorkspace`). The Project control draws its chosen icon, or a
 12px accent dot when none is displayable. The project menu states the
 server-resolved run location from `GET /api/projects/run-locations`; the
 Project catalogue and boot do not wait on folder checks. Until the separate

@@ -24,6 +24,7 @@ import type {
   ClientOrigin,
   ClientOriginActor,
 } from '@kontourai/station-contracts/client-origin';
+import type { NoProjectChatFolder } from '@kontourai/station-contracts/config';
 import type { ConnectionRecoveryProjection } from '@kontourai/station-contracts/connection-recovery';
 import type {
   ConversationContextBoundaryProjection,
@@ -422,6 +423,10 @@ import {
   NativeMemoryContinuityUnavailableError,
   type NativeMemorySessionIdentity,
 } from './native-memory-continuity.js';
+import {
+  DEFAULT_NO_PROJECT_CHAT_FOLDER,
+  prepareNoProjectChatScratch,
+} from './no-project-chat-folder.js';
 import {
   projectRequestAnswerability,
   REQUEST_SETTLED_BY_TURN_ABORT_MESSAGE,
@@ -1067,6 +1072,13 @@ interface OrchestrationServiceOptions {
   resolveStationDefaultWorkspaceIsolation?: () => Promise<
     WorkspaceIsolationMode | undefined
   >;
+  /**
+   * #4389: this Station's `AppConfig.noProjectChatFolder`, loaded per call
+   * like the workspace default above. Absent reads as `'private'`.
+   */
+  resolveNoProjectChatFolder?: () => Promise<NoProjectChatFolder | undefined>;
+  /** #4389: the Station home that holds scratch folders; defaults to this Station's. */
+  noProjectChatStationHome?: string;
   /**
    * #2409: the approval posture a Default pick resolves to — the engine
    * connection's own `approvalMode`, else `AppConfig.defaultApprovalMode`.
@@ -1895,6 +1907,12 @@ async function resolveStartSessionCwd(
   observeShadow?: (sample: CwdShadowSample) => void,
   admittedWorkspace?: ForegroundInvocationAdmission['provisionedWorkspace'],
   resolveProjectDirectory?: (slug: string) => Promise<string | undefined>,
+  /**
+   * #4389: the folder a chat with no Project and no folder runs in, or
+   * `undefined` for the home folder. Only a new start passes it; recovery of
+   * a session with no recorded folder keeps the home default.
+   */
+  noProjectChatFolder?: () => Promise<string | undefined>,
 ): Promise<ProviderSessionStartInput> {
   const rawProjectSlug = input.metadata?.projectSlug;
   const projectSlug =
@@ -1973,6 +1991,23 @@ async function resolveStartSessionCwd(
     // shadow it. Since archive#1403, the adapter ends that chain in a private,
     // Station-managed workspace and fails closed if it cannot prepare one;
     // it records that final outcome on this instrument.
+    //
+    // #4389: a chat with no Project runs in a private scratch folder of its
+    // own rather than the whole home folder, unless this Station opted out
+    // (`AppConfig.noProjectChatFolder: 'home'`) or the conversation already
+    // ran somewhere (the callback returns that folder).
+    if (!projectSlug && input.provider !== 'acp' && noProjectChatFolder) {
+      const folder = await noProjectChatFolder();
+      if (folder) {
+        sessionCwdResolution.add(1, {
+          provider: input.provider,
+          source: 'none',
+          outcome: 'no_project_folder',
+          reason: 'unbound_chat',
+        });
+        return { ...input, cwd: folder, cwdDefaulted: true };
+      }
+    }
     const home = input.provider === 'acp' ? undefined : safeHomeDirectory();
     if (home) {
       sessionCwdResolution.add(1, {
@@ -7697,6 +7732,7 @@ export class OrchestrationService {
             // `adoptedChildAdmittedWorkspace`).
             admittedStartWorkspace,
             this.options.resolveProjectSessionDirectory,
+            () => this.noProjectChatFolder(publicStartInput.threadId),
           );
           // Station #90 lane D (D5): record the Project's local id beside its
           // slug, from this Station's own project list, never from input.
@@ -11658,6 +11694,41 @@ export class OrchestrationService {
         'The Session workspace is no longer an authorized Project resource.',
       );
     return { projectSlug, cwd };
+  }
+
+  /**
+   * #4389: the folder a start with no Project and no folder of its own runs
+   * in, or `undefined` for the home folder. A conversation that already
+   * recorded a folder keeps it (a chat started before this change stays in
+   * the home folder); otherwise a new chat gets its private scratch folder
+   * unless this Station chose the home folder.
+   */
+  private async noProjectChatFolder(
+    threadId: string,
+  ): Promise<string | undefined> {
+    const store = this.options.eventStore;
+    const conversationId =
+      store?.conversationForSession(threadId)?.conversationId ?? threadId;
+    const sessions = store
+      ? [
+          conversationId,
+          ...store
+            .conversationSessions(conversationId)
+            .map((session) => session.sessionId),
+        ]
+      : [];
+    for (const sessionId of sessions) {
+      const recorded = store?.readSessionByThread(sessionId)?.cwd;
+      if (recorded) return recorded;
+    }
+    const choice =
+      (await this.options.resolveNoProjectChatFolder?.()) ??
+      DEFAULT_NO_PROJECT_CHAT_FOLDER;
+    if (choice === 'home') return undefined;
+    return prepareNoProjectChatScratch(
+      conversationId,
+      this.options.noProjectChatStationHome,
+    );
   }
 
   private async retainedSessionAdmittedWorkspace(

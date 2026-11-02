@@ -531,6 +531,13 @@ const SETTINGS_CATALOG_SOURCE = [
     configKeys: ['defaultWorkspaceIsolation'],
   },
   {
+    id: 'no-project-chat-folder',
+    title: 'Chats without a project',
+    section: 'agent-runs',
+    keywords: ['no project', 'home folder', 'scratch', 'private folder'],
+    configKeys: ['noProjectChatFolder'],
+  },
+  {
     id: 'workspace-checkpoints',
     title: 'Workspace checkpoints',
     section: 'agent-runs',

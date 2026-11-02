@@ -652,6 +652,25 @@ export const APP_SETTINGS_REGISTRY = [
     defaultValue: 'shared',
   }),
   defineSetting({
+    key: 'noProjectChatFolder',
+    scope: 'station',
+    // `NO_PROJECT_CHAT_FOLDERS` in `config.ts`, restated as a literal for the
+    // schema-parity test (see defaultApprovalMode below).
+    descriptor: {
+      kind: 'enum',
+      values: ['private', 'home'],
+      labels: { private: 'Private folder', home: 'Home folder' },
+    },
+    label: 'Chats without a project',
+    help: 'A new chat with no project runs in a private folder of its own, or in your home folder.',
+    // #4389: read by `OrchestrationService` at a new conversation's first
+    // start (`no-project-chat-folder.ts`); a chat that already ran keeps its
+    // folder.
+    description:
+      'Private folder gives each new chat its own folder in Station’s data. Existing chats keep their folder.',
+    defaultValue: 'private',
+  }),
+  defineSetting({
     key: 'defaultApprovalMode',
     scope: 'station',
     // The canonical list is `APPROVAL_MODES` in `provider.ts`; it is restated

@@ -37,7 +37,7 @@ describe('StartApprovalSummary on the engine default', () => {
     const chip = screen.getByRole('button', { name: /^Permissions: / });
     expect(chip.textContent).toContain('Permissions Default');
     expect(chip.getAttribute('title')).toBe(
-      'Codex settings apply until you pick one. If unset, it asks to go online or write outside temp and the chat folder (home if no project).',
+      'Codex settings apply until you pick one. If unset, it asks to go online or write outside temp and the chat’s own folder.',
     );
   });
 

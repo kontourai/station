@@ -65,6 +65,7 @@ import { receiptBus } from '../infra/receipt-bus.js';
 import type { RuntimeEngineStartLease } from '../infra/resource-posture.js';
 import { assertDispatchCwdUnmoved } from './dispatch-cwd-admission.js';
 import type { EventStore } from './event-store.js';
+import { isNoProjectChatScratch } from './no-project-chat-folder.js';
 import {
   projectRequestAnswerability,
   type SessionAnswerabilityObservation,
@@ -715,7 +716,9 @@ export function buildOrchestrationSessionSummary(options: {
     ...(modelRoute ? { modelRoute } : {}),
     ...(base.model ? { model: base.model } : {}),
     ...(base.cwd ? { cwd: base.cwd } : {}),
-    ...(base.cwd && isManagedAcpWorkspace(base.cwd)
+    // #4389: a no-project chat's scratch folder is one Station made too.
+    ...(base.cwd &&
+    (isManagedAcpWorkspace(base.cwd) || isNoProjectChatScratch(base.cwd))
       ? { cwdManagedWorkspace: true as const }
       : {}),
     ...(resumeCursor !== undefined ? { resumeCursor } : {}),

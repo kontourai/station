@@ -300,7 +300,7 @@ describe('ApprovalModeChip', () => {
     // Says what the engine default concretely is for Codex, not only that
     // Station has not confirmed a mode.
     expect(defaultOption.closest('label')?.textContent).toContain(
-      'Codex settings apply until you pick one. If unset, it asks to go online or write outside temp and the chat folder (home if no project).',
+      'Codex settings apply until you pick one. If unset, it asks to go online or write outside temp and the chat’s own folder.',
     );
   });
 

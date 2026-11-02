@@ -53,8 +53,9 @@ dies keeps its folder until the session is stopped or Station next restarts
 and sweeps it. Station's built-in agent runs inside Station and has no temporary folder of
 its own.
 
-A working folder is not read at all when it is or contains your home folder or
-Station's data (a chat with no Project uses the home folder), or when it is or
+A working folder is not read at all when it is or contains your home folder,
+overlaps Station's data (a chat with no Project works in a private folder
+inside Station's data, or in the home folder if you chose that), or when it is or
 contains a shared temporary directory such as the system temporary folder, is
 writable by every user, or when its path, as written and through any link it
 follows, passes a folder another user owns or that others can write to without

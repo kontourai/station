@@ -14,6 +14,7 @@ import {
   readFileSync,
   realpathSync,
   rmSync,
+  statSync,
   symlinkSync,
   writeFileSync,
 } from 'node:fs';
@@ -53,6 +54,7 @@ import {
   awaitSessionAttachmentSettled,
   awaitSessionRecoveryCompleted,
 } from '../../../__test-utils__/session-runtime-barriers.js';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { FileStorageAdapter } from '../../../domain/file-storage-adapter.js';
 import { MonitoringEmitter } from '../../../monitoring/emitter.js';
 import type {
@@ -18992,16 +18994,102 @@ describe('OrchestrationService', () => {
     // Claude adapter's cwd-less skills overlay keys off this exact flag.
     expect(claude.startSession.mock.calls.at(-1)?.[0].cwdDefaulted).toBe(true);
 
-    await service.dispatch({
-      type: 'startSession',
-      input: {
-        threadId: 'thread-no-slug',
-        provider: 'claude',
-        modelId: 'claude-sonnet',
-      },
+  });
+
+  describe('a chat with no Project runs in its own scratch folder (#4389)', () => {
+    const tempDir = trackTempDirs();
+
+    function scratchService(
+      stationHome: string,
+      folder?: 'private' | 'home',
+    ): OrchestrationService {
+      return new OrchestrationService({
+        adapterRegistry: createRegistry([claude]),
+        eventBus,
+        eventStore,
+        listProjects: () => configuredProjects,
+        logger: { debug: vi.fn(), warn: vi.fn() },
+        noProjectChatStationHome: stationHome,
+        resolveNoProjectChatFolder: async () => folder,
+      });
+    }
+
+    test('a new no-project chat starts its engine in <Station home>/scratch/<conversation>', async () => {
+      const stationHome = tempDir('station-4389-home-');
+      await scratchService(stationHome).dispatch({
+        type: 'startSession',
+        input: {
+          threadId: 'thread-no-slug',
+          provider: 'claude',
+          modelId: 'claude-sonnet',
+        },
+      });
+      const start = claude.startSession.mock.calls.at(-1)?.[0];
+      const scratch = realpathSync(join(stationHome, 'scratch', 'thread-no-slug'));
+      expect(start?.cwd).toBe(scratch);
+      expect(start?.cwd).not.toBe(homedir());
+      expect(statSync(scratch).isDirectory()).toBe(true);
+      // Still Station's choice, not a folder the person bound.
+      expect(start?.cwdDefaulted).toBe(true);
     });
-    expect(claude.startSession.mock.calls.at(-1)?.[0].cwd).toBe(homedir());
-    expect(claude.startSession.mock.calls.at(-1)?.[0].cwdDefaulted).toBe(true);
+
+    test('the Station-level opt-out runs a new no-project chat in the home folder', async () => {
+      const stationHome = tempDir('station-4389-optout-');
+      await scratchService(stationHome, 'home').dispatch({
+        type: 'startSession',
+        input: {
+          threadId: 'thread-no-slug-home',
+          provider: 'claude',
+          modelId: 'claude-sonnet',
+        },
+      });
+      const start = claude.startSession.mock.calls.at(-1)?.[0];
+      expect(start?.cwd).toBe(homedir());
+      expect(start?.cwdDefaulted).toBe(true);
+      expect(existsSync(join(stationHome, 'scratch'))).toBe(false);
+    });
+
+    test('a Project with no folder still runs in the home folder', async () => {
+      configuredProjects.push({ slug: 'no-workdir-4389' });
+      const stationHome = tempDir('station-4389-project-');
+      await scratchService(stationHome).dispatch({
+        type: 'startSession',
+        input: {
+          threadId: 'thread-folderless-project',
+          provider: 'claude',
+          modelId: 'claude-sonnet',
+          metadata: { projectSlug: 'no-workdir-4389' },
+        },
+      });
+      expect(claude.startSession.mock.calls.at(-1)?.[0].cwd).toBe(homedir());
+    });
+
+    test('a chat that already ran in the home folder keeps it when it starts again', async () => {
+      const stationHome = tempDir('station-4389-existing-');
+      // Started before the change (or with the opt-out): it ran in home.
+      await scratchService(stationHome, 'home').dispatch({
+        type: 'startSession',
+        input: {
+          threadId: 'thread-existing-home',
+          provider: 'claude',
+          modelId: 'claude-sonnet',
+        },
+      });
+      expect(eventStore.readSessionByThread('thread-existing-home')?.cwd).toBe(
+        homedir(),
+      );
+      // Its next start, with the private default now in force, does not move it.
+      await scratchService(stationHome).dispatch({
+        type: 'startSession',
+        input: {
+          threadId: 'thread-existing-home',
+          provider: 'claude',
+          modelId: 'claude-sonnet',
+        },
+      });
+      expect(claude.startSession.mock.calls.at(-1)?.[0].cwd).toBe(homedir());
+      expect(existsSync(join(stationHome, 'scratch'))).toBe(false);
+    });
   });
 
   test('startSession leaves ACP unbound chats to the adapter connection default (#1023 review)', async () => {
