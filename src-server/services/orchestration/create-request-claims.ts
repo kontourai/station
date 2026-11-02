@@ -319,7 +319,7 @@ export class CreateRequestClaims {
     );
     if (
       known &&
-      !claimExpired(known, Date.now()) &&
+      (!known.result || !claimExpired(known, Date.now())) &&
       !matchesClaimInput(known, digest)
     )
       throw new CreateRequestConflictError();

@@ -406,12 +406,37 @@ test('expiry cannot prune a still-running create when another request is admitte
   });
   await ready;
   vi.setSystemTime(new Date('2026-11-08T00:00:00Z'));
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  const conflictingEffect = vi.fn(async (id: string) => handle(id));
+  const conflict = claims
+    .run(
+      { ...input(), intent: { message: 'changed while live' } },
+      conflictingEffect,
+    )
+    .then(
+      (value) => value,
+      (error: unknown) => error,
+    );
   try {
+    const outcome = await Promise.race([
+      conflict,
+      new Promise((resolve) => {
+        timeout = setTimeout(
+          () => resolve('still waiting for the live owner'),
+          1000,
+        );
+      }),
+    ]);
+    expect(outcome).toMatchObject({ code: 'create_request_conflict' });
+    expect(conflictingEffect).not.toHaveBeenCalled();
     await claims.run({ ...input(), requestKey: 'other' }, async (id) =>
       handle(id),
     );
   } finally {
+    clearTimeout(timeout);
     finish();
+    await original;
+    await conflict;
   }
   await expect(original).resolves.toMatchObject({ providerTurnId: 'turn-1' });
   expect(
