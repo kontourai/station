@@ -96,7 +96,20 @@ Accounting recovery retains publication and exact Home custody through its body
 and trailing read (`f09435644f3`, `b3f5bfecb80`). Its five-case selection and trailing
 inspection mutation establish constructor-level custody. The cold-start control
 above adds initialized refused-work custody; successful recovery and complete
-boot/auth wiring remain open, as does release-failure retry.
+boot/auth wiring remain open.
+
+At `3d16435e1c3`, two additional accounting controls fault the real Home guard
+quarantine removal only after the real recovery intent is retained. They cover
+a body returning `held` and a controlled body error after retention. Nested
+uncertainty preserves the original error first; shutdown stays pending and keeps
+its EventStore open, retries the same quarantine, and completes once removal is
+unblocked, without new provider work or reservations. The seven-case baseline
+passes; reversing error order fails exactly the two new cases (five pass), and
+byte-exact restoration passes all seven. Server-test types pass. Independent
+source review found no blocker at this owner boundary. Replay after release
+uncertainty and release failure after a settled recovery remain unproven; these
+controls do not establish boot/auth, cross-process, native or live-provider
+qualification.
 
 Readiness remains failed on stale semantic documentation and capture reviews.
 An archived profiling source was preserved byte-for-byte under a non-test suffix,

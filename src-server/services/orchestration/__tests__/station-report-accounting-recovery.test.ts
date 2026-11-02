@@ -561,9 +561,13 @@ test.each([
               ? 'returned-cleanup-unknown'
               : 'publication-unknown',
           );
-          if (mode === 'body-and-release-failed')
-            assert.equal(inner.errors[0], bodyFailure);
-          assert.ok(inner.errors.includes(cleanupFailure));
+          assert.deepEqual(
+            inner.errors,
+            mode === 'body-and-release-failed'
+              ? [bodyFailure, cleanupFailure]
+              : [cleanupFailure],
+          );
+          assert.deepEqual(error.errors, [inner, cleanupFailure]);
           return true;
         });
         assert.ok(
@@ -587,6 +591,17 @@ test.each([
         blockRelease = false;
         await runtimeOwner.shutdown();
         assert.equal(close.mock.calls.length, 1);
+        assert.equal(fs.existsSync(failedRetirements[0]), false);
+        const probe = await prepareFileMutationOwner(
+          join(h.f.home, 'security', '.home-writer.mutation'),
+        );
+        try {
+          const physical = probe.tryAcquire();
+          assert.equal(physical.kind, 'acquired');
+          if (physical.kind === 'acquired') await physical.lease.release();
+        } finally {
+          await probe.close();
+        }
         assert.deepEqual(await dispatch.inspectInvocation(reservation), before);
         assert.equal(settle.mock.calls.length, 0);
         assert.equal(release.mock.calls.length, 0);
