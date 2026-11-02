@@ -2610,10 +2610,10 @@
     },
     "packages/sdk/src/conversation-open.ts": {
       "complexity_critical": {
-        "count": 2
+        "count": 3
       },
       "crap_critical": {
-        "count": 2
+        "count": 3
       }
     },
     "packages/sdk/src/core-update-restart-status.ts": {
@@ -4545,6 +4545,20 @@
     "scripts/check-documentation-freshness.mjs": {
       "crap_critical": {
         "count": 1
+      }
+    },
+    "scripts/check-durability-provider-branches.mjs": {
+      "complexity_critical": {
+        "count": 2
+      },
+      "complexity_high": {
+        "count": 2
+      },
+      "crap_critical": {
+        "count": 2
+      },
+      "crap_high": {
+        "count": 2
       }
     },
     "scripts/check-ios-store-profile.mjs": {
@@ -9151,7 +9165,7 @@
         "count": 10
       },
       "crap_high": {
-        "count": 9
+        "count": 10
       },
       "crap_moderate": {
         "count": 12
@@ -10190,6 +10204,14 @@
     },
     "src-server/runtime/conversation/fleet-routing-envelope.ts": {
       "crap_moderate": {
+        "count": 1
+      }
+    },
+    "src-server/runtime/conversation/inbox-model-step.ts": {
+      "complexity_moderate": {
+        "count": 1
+      },
+      "crap_high": {
         "count": 1
       }
     },
@@ -12838,14 +12860,17 @@
       "complexity_critical": {
         "count": 1
       },
+      "complexity_high": {
+        "count": 1
+      },
       "crap_critical": {
         "count": 1
       },
       "crap_high": {
-        "count": 2
+        "count": 3
       },
       "crap_moderate": {
-        "count": 5
+        "count": 4
       }
     },
     "src-server/services/orchestration/__tests__/orchestration-source-invariants.test.ts": {
@@ -12922,6 +12947,17 @@
     },
     "src-server/services/orchestration/__tests__/session-turn-wait.test.ts": {
       "complexity_moderate": {
+        "count": 1
+      },
+      "crap_moderate": {
+        "count": 1
+      }
+    },
+    "src-server/services/orchestration/__tests__/thread-inbox.test.ts": {
+      "complexity_critical": {
+        "count": 1
+      },
+      "crap_critical": {
         "count": 1
       },
       "crap_moderate": {
@@ -13909,13 +13945,16 @@
     },
     "src-server/services/orchestration/thread-inbox.ts": {
       "complexity_critical": {
-        "count": 1
+        "count": 5
+      },
+      "complexity_high": {
+        "count": 2
       },
       "crap_critical": {
-        "count": 1
+        "count": 5
       },
       "crap_high": {
-        "count": 2
+        "count": 3
       },
       "crap_moderate": {
         "count": 4
@@ -17528,6 +17567,9 @@
       },
       "crap_critical": {
         "count": 2
+      },
+      "crap_high": {
+        "count": 1
       }
     },
     "src-ui/src/components/chat/QuoteSelectionToolbar.tsx": {
@@ -19626,11 +19668,17 @@
       }
     },
     "src-ui/src/hooks/useOutboundQueueFlush.ts": {
+      "complexity_critical": {
+        "count": 1
+      },
       "complexity_moderate": {
         "count": 3
       },
+      "crap_critical": {
+        "count": 1
+      },
       "crap_moderate": {
-        "count": 4
+        "count": 3
       }
     },
     "src-ui/src/hooks/useProjectCreationRecovery.ts": {
@@ -19836,7 +19884,7 @@
     },
     "src-ui/src/lib/deliveryLookup.ts": {
       "crap_moderate": {
-        "count": 1
+        "count": 2
       }
     },
     "src-ui/src/lib/device-settings-store.ts": {
@@ -19897,19 +19945,19 @@
     },
     "src-ui/src/lib/outboundQueue.ts": {
       "complexity_critical": {
-        "count": 1
+        "count": 3
       },
       "complexity_high": {
-        "count": 3
+        "count": 2
       },
       "complexity_moderate": {
         "count": 1
       },
       "crap_critical": {
-        "count": 2
+        "count": 4
       },
       "crap_high": {
-        "count": 7
+        "count": 5
       },
       "crap_moderate": {
         "count": 3
@@ -23015,26 +23063,27 @@
     "src-ui/src/components/chat-dock/ChatDockInboxPanel.tsx:complexity",
     "src-ui/src/contexts/ActivityReviewContext.tsx:high impact",
     "src-server/services/knowledge/knowledge-storage.ts:complexity",
+    "src-ui/src/components/chat-dock/conversationOpenController.ts:complexity",
     "src-server/runtime/routes/runtime-routes.ts:complexity",
+    "src-ui/src/lib/foregroundMessageDispatch.ts:complexity",
     "packages/shared/src/skill-experience-values.ts:high impact",
     "src-server/analytics/usage-aggregator.ts:complexity",
-    "src-ui/src/lib/foregroundMessageDispatch.ts:complexity",
     "packages/monument/src/decisions/invocation-terminal.ts:high impact",
     "scripts/check-prepush-sdk-barrel.mjs:dead code",
     "src-ui/src/utils/answer-quotes.ts:high impact",
     "src-ui/src/components/acp-connections/ACPChatPanel.tsx:complexity",
     "src-ui/src/components/chat-dock/MobileInboxPanel.tsx:complexity",
-    "src-ui/src/components/chat-dock/conversationOpenController.ts:complexity",
     "src-server/services/ssh/environment-security-service.ts:complexity",
     "src-server/routes/chat/chat-request-preparation.ts:complexity",
     "src-ui/src/components/project-sidebar/ProjectSidebar.tsx:complexity",
     "src-server/routes/orchestration/coordinator.ts:high impact",
+    "src-ui/src/components/modals/NewChatModal.tsx:complexity",
     "tests/tauri-shell/native-relay-grant-lifecycle.e2e.ts:complexity",
     "src-server/services/orchestration/orchestration-service.ts:circular dependency",
-    "src-ui/src/components/modals/NewChatModal.tsx:complexity",
-    "scripts/lib/learning-source-reader.mjs:high impact",
-    "src-server/services/notifications/notification-service.ts:complexity",
     "src-ui/src/hooks/useActiveChatSessionMessaging.ts:complexity",
+    "scripts/lib/learning-source-reader.mjs:high impact",
+    "packages/sdk/src/conversation-open.ts:high impact",
+    "src-server/services/notifications/notification-service.ts:complexity",
     "src-ui/src/components/GuidedConnect.tsx:complexity",
     "src-ui/src/hooks/useConnectedServerUpdateContext.ts:complexity",
     "packages/cli/src/cli.ts:complexity",
@@ -23051,6 +23100,7 @@
     "src-server/services/identity/operator-sessions.ts:hidden coupling",
     "src-ui/src/contexts/ApiBaseContext.tsx:complexity",
     "src-ui/src/components/chat/MessageBubble.tsx:complexity",
+    "src-ui/src/components/chat-dock/ChatDockBody.tsx:complexity",
     "src-server/providers/adapters/codex-adapter.ts:complexity",
     "packages/sdk/src/client/sent-turn-key.ts:high impact",
     "src-shared/foreground-work-journal.ts:dead code",
@@ -23059,9 +23109,7 @@
     "src-server/services/orchestration/orchestration-session-state.ts:complexity",
     "src-server/tools/station-control-delegation.ts:complexity",
     "src-ui/src/components/chat/StreamingMessage.tsx:complexity",
-    "src-ui/src/components/chat-dock/ChatDockBody.tsx:complexity",
     "src-ui/src/views/home/home-view-model.ts:complexity",
-    "packages/sdk/src/conversation-open.ts:high impact",
     "src-ui/src/components/chat-dock/ImportedConversationPane.tsx:complexity",
     "src-ui/src/components/session-detail/SessionTranscript.tsx:complexity",
     "src-ui/src/workspace-panes/RegionActivityReviewPane.tsx:complexity",
@@ -23074,6 +23122,7 @@
     "src-ui/src/components/session/SessionModelPicker.tsx:complexity",
     "src-server/routes/orchestration/orchestration.ts:complexity",
     "scripts/migrate-review-ledger.mjs:complexity",
+    "src-server/services/execution-target/execution-target-execution.ts:complexity",
     "src-ui/src/components/chat/message-bubble/MessageContent.tsx:complexity",
     "tests/tauri-shell/native-project-acceptance-webview.ts:dead code",
     "src-server/services/plugins/plugin-installation-service.ts:complexity",
@@ -23082,21 +23131,22 @@
     "src-server/routes/operations/analytics.ts:complexity",
     "src-server/services/connections/pion-application-adapter.ts:complexity",
     "src-server/services/discord/discord-gateway-config-store.ts:high impact",
-    "src-server/services/execution-target/execution-target-execution.ts:complexity",
+    "src-ui/src/components/chat/ChatInputArea.tsx:complexity",
     "packages/cli/src/commands/lifecycle.ts:complexity",
     "src-ui/src/components/UsageTelemetryDisclosure.tsx:complexity",
-    "src-ui/src/components/chat/ChatInputArea.tsx:complexity",
     "src-server/services/ssh/device-pairing-service.ts:complexity",
     "src-ui/src/components/SplitPaneLayout.tsx:complexity",
     "src-ui/src/views/SessionsView.tsx:complexity",
     "src-server/services/plugins/mcp-service.ts:complexity",
-    "src-server/services/projects/task-graph-service.ts:circular dependency",
     "src-ui/src/views/ScheduleView.tsx:complexity",
     "packages/sdk/src/client/task-room-work.ts:high impact",
     "src-server/services/orchestration/session-agent-resolution.ts:complexity",
+    "src-server/services/projects/task-graph-service.ts:circular dependency",
+    "src-server/services/orchestration/thread-inbox.ts:complexity",
     "packages/cli/src/commands/service.ts:complexity",
     "src-ui/src/workspace-panes/RegionPaneHost.tsx:circular dependency",
     "src-ui/src/components/chat/ToolCallDisplay.tsx:complexity",
+    "src-ui/src/hooks/orchestration/snapshotHandlers.ts:complexity",
     "src-ui/src/components/skill-experiences/SkillExperiencePanel.tsx:complexity",
     "scripts/qualification-evidence.mjs:high impact",
     "src-ui/src/components/chat-dock/useConversationBoundaryDialogs.ts:complexity",
@@ -23115,7 +23165,6 @@
     "scripts/actionlint-gate.mjs:high impact",
     "scripts/lib/release-sboms.mjs:high impact",
     "src-server/services/usage-telemetry-service.ts:complexity",
-    "src-ui/src/hooks/orchestration/snapshotHandlers.ts:complexity",
     "src-server/services/plugins/plugin-source.ts:complexity",
     "src-server/providers/tool-output-projection.ts:complexity",
     "src-server/services/infra/server-log-reader.ts:complexity",
@@ -23124,9 +23173,8 @@
     "src-ui/src/hooks/useServerEventsListener.ts:complexity",
     "src-ui/src/platform/native/nativeRelayConnectionOwner.ts:high impact",
     "src-ui/src/views/project-settings/AccessSection.tsx:complexity",
-    "src-server/services/orchestration/thread-inbox.ts:complexity",
     "src-server/services/acp/acp-probe.ts:complexity",
-    "src-ui/src/hooks/orchestration/queueDrain.ts:complexity",
+    "src-ui/src/components/chat/QueuedMessages.tsx:complexity",
     "src-server/knowledge-store/knowledge-store-provider.ts:complexity",
     "src-server/services/plugins/plugin-manifest-loader.ts:complexity",
     "src-server/runtime/conversation/native-memory-history.ts:high impact",
@@ -23142,10 +23190,10 @@
     "scripts/pr-mergeability-admission.mjs:untested risk",
     "src-ui/src/lib/browserRelayAccountScope.ts:high impact",
     "scripts/native-fresh-relay-fixture.ts:complexity",
-    "scripts/run-changed-verification.mjs:complexity",
     "src-server/runtime/consent/consent-listener.ts:complexity",
     "src-server/services/agents/skill-service.ts:complexity",
     "packages/cli/src/commands/profile-store.ts:complexity",
+    "scripts/run-changed-verification.mjs:complexity",
     "src-ui/src/hooks/useDockShellChrome.ts:complexity",
     "src-ui/src/hooks/useSTT.ts:high impact",
     "packages/monument/src/decisions/prepared-settlement.ts:high impact",
@@ -23157,6 +23205,7 @@
     "scripts/lib/interactive-workspace-production-bridge.mjs:untested risk",
     "src-server/services/automation/automation-intent.ts:high impact",
     "src-server/routes/orchestration/tasks.ts:complexity",
+    "src-ui/src/hooks/orchestration/queueDrain.ts:complexity",
     "tests/helpers/orchestration.ts:complexity",
     "packages/contracts/src/analytics-views.ts:high impact",
     "src-ui/src/components/chat/ChildWorkInstructionPanel.tsx:complexity",
@@ -23165,7 +23214,6 @@
     "src-ui/src/contexts/RegionModelContext.tsx:complexity",
     "src-server/providers/adapters/bedrock-adapter.ts:complexity",
     "src-server/tools/station-control-mcp-server.ts:hidden coupling",
-    "src-ui/src/components/chat/QueuedMessages.tsx:complexity",
     "src-ui/src/views/home/work-facts.ts:complexity",
     "packages/contracts/src/session-goal.ts:high impact",
     "src-server/security/outside-agent-release-guard.ts:high impact",
@@ -23203,9 +23251,9 @@
     "src-server/services/orchestration/skill-experience-model.ts:high impact",
     "src-server/services/plugins/plugin-command-effect-admission.ts:complexity",
     "src-ui/src/components/UsageSharingPrompt.tsx:complexity",
+    "src-ui/src/components/notifications/NotificationContainer.tsx:complexity",
     "packages/shared/src/station-home-archive.ts:complexity",
     "src-server/services/connections/connection-service.ts:complexity",
-    "src-ui/src/components/notifications/NotificationContainer.tsx:complexity",
     "src-server/services/orchestration/project-task-room-history.ts:complexity",
     "src-ui/src/app-shell/RegionShells.tsx:hidden coupling",
     "ops/nightly/macos-build-only-artifact.mjs:dead code",
@@ -23220,7 +23268,6 @@
     "packages/monument/src/sqlite.ts:complexity",
     "packages/sdk/src/client/http.ts:complexity",
     "src-server/services/notifications/agent-activity-publisher.ts:complexity",
-    "src-server/routes/projects/projects.ts:complexity",
     "src-ui/src/lib/newChatIntent.ts:high impact",
     "src-server/providers/registries/mcp-subregistry-provider.ts:complexity",
     "src-ui/src/views/connections-hub/ComputersSection.tsx:complexity",
@@ -23232,6 +23279,7 @@
     "src-ui/src/views/account/GuestSharedTaskView.tsx:complexity",
     "src-ui/src/views/project-settings/ProjectKnowledgeSources.tsx:complexity",
     "scripts/lib/documentation-freshness.mjs:complexity",
+    "src-server/routes/projects/projects.ts:complexity",
     "src-server/analytics/usage-export-reader.ts:high impact",
     "src-server/services/orchestration/session-lifecycle-service.ts:complexity",
     "src-server/services/plugins/registry-trust-policy.ts:high impact",
@@ -23522,6 +23570,7 @@
     "src-ui/src/views/monitoring/ContextDiagnostics.tsx:complexity",
     "src-ui/src/views/settings/registry-row.tsx:complexity",
     "packages/monument/src/memory-recovery.ts:complexity",
+    "packages/contracts/src/provider.ts:complexity",
     "src-server/services/terminal/terminal-sessions.ts:complexity",
     "src-ui/src/app-shell/AppViewContent.tsx:complexity",
     "src-ui/src/views/connections-hub/BrowserRelayRoutes.tsx:complexity",
@@ -23531,7 +23580,6 @@
     "src-server/services/connections/connection-readiness-evidence.ts:complexity",
     "scripts/lib/verification-completion-phases.mjs:complexity",
     "src-ui/src/components/acp-connections/ACPConnectionSetupStages.tsx:complexity",
-    "packages/contracts/src/provider.ts:complexity",
     "packages/contracts/src/task-graph.ts:complexity",
     "src-server/services/flow/orchestration-flow-gate.ts:complexity",
     "src-server/services/infra/workload-resources.ts:complexity",
@@ -23628,7 +23676,6 @@
     "src-server/services/outside-agent/consent-service.ts:complexity",
     "src-server/services/pull-requests/pull-request-review-guide-normalize.ts:complexity",
     "src-ui/src/workspace-panes/SessionInventoryItemDetails.tsx:complexity",
-    "packages/monument/src/step.ts:complexity",
     "src-server/services/execution-target/execution-target-resolver.ts:complexity",
     "src-server/services/starter-work/starter-registry.ts:complexity",
     "src-ui/src/views/settings/CoreUpdateCheck.tsx:complexity",
@@ -23643,6 +23690,7 @@
     "packages/shared/src/plugin-tsconfig.ts:complexity",
     "src-server/routes/projects/learning-review-routes.ts:complexity",
     "src-server/runtime/frameworks/strands-stream-events.ts:complexity",
+    "packages/monument/src/step.ts:complexity",
     "src-server/domain/config-loader-app.ts:complexity",
     "src-ui/src/views/ProjectSettingsView.tsx:complexity",
     "src-ui/src/views/ProviderSettingsView.tsx:complexity",
@@ -23653,6 +23701,7 @@
     "scripts/route-error-egress-gate.mjs:complexity",
     "src-ui/src/components/EnginePicker.tsx:complexity",
     "packages/sdk/src/query-domains/sessionSummaryNormalize.ts:untested risk",
+    "scripts/check-durability-provider-branches.mjs:untested risk",
     "scripts/component-style-hygiene.mjs:complexity",
     "packages/connect/src/core/deviceLabel.ts:complexity",
     "packages/sdk/src/query-domains/uiBlocks.ts:complexity",
@@ -23729,9 +23778,9 @@
     "scripts/run-vitest-corpus.mjs:complexity",
     "src-server/providers/adapters/acp-tool-update-supervisor.ts:complexity",
     "src-server/routes/operations/insights.ts:complexity",
-    "src-server/services/orchestration/session-command-module.ts:complexity",
     "src-ui/src/components/header/StationSwitcherMenu.tsx:complexity",
     "src-ui/src/views/integrations/IntegrationEditorPanel.tsx:complexity",
+    "src-server/services/orchestration/session-command-module.ts:complexity",
     "packages/cli/src/commands/tailscale-serve.ts:untested risk",
     "packages/cli/src/commands/telemetry.ts:complexity",
     "scripts/examples-conformance.mjs:complexity",
@@ -23839,6 +23888,7 @@
     "src-server/services/acp/acp-bridge-client.ts:complexity",
     "src-ui/src/lib/browserRelayEnrollmentController.ts:complexity",
     "scripts/build-github-pages.mjs:complexity",
+    "src-server/services/orchestration/__tests__/thread-inbox.test.ts:complexity",
     "src-ui/src/__tests__/orchestration-sync-property.test.ts:complexity",
     "src-ui/src/views/settings/PersonalTokens.tsx:complexity",
     "src-server/services/acp/public-agent-registry-catalog.ts:complexity",
@@ -23848,9 +23898,9 @@
     "src-server/runtime/routes/__tests__/runtime-routes-usage-telemetry-late-binding.test.ts:complexity",
     "src-server/services/orchestration/__tests__/monument-boundary-host.test.ts:complexity",
     "packages/shared/src/launch-path.ts:complexity",
-    "scripts/__tests__/pr-title-check.test.ts:complexity",
     "src-server/services/agents/skill-service-install.ts:complexity",
     "packages/shared/src/cloud-move.ts:complexity",
+    "scripts/__tests__/pr-title-check.test.ts:complexity",
     "scripts/codeql-sarif-policy.mjs:complexity",
     "src-server/services/connections/__tests__/connection-service.test.ts:complexity",
     "src-ui/src/components/monitoring/AnalyticsSourceSetup.tsx:complexity",

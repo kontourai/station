@@ -647,6 +647,7 @@
     "unused-class-member:src-server/services/orchestration/session-execution-coordinator.ts:SessionTurnStartIndeterminateError:code",
     "unused-class-member:src-server/services/orchestration/session-execution-coordinator.ts:SessionTurnStartIndeterminateError:outcome",
     "unused-class-member:src-server/services/orchestration/thread-inbox.ts:ThreadInboxDelivery:mayContinue",
+    "unused-class-member:src-server/services/orchestration/thread-inbox.ts:ThreadInboxDelivery:submitDisplay",
     "unused-class-member:src-server/services/outside-agent/management-service.ts:OutsideAgentManagementService:validateGrant",
     "unused-class-member:src-server/services/outside-agent/oauth-store.ts:OutsideAgentGrantStore:acknowledge",
     "unused-class-member:src-server/services/outside-agent/oauth-store.ts:OutsideAgentGrantStore:change",
