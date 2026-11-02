@@ -1560,8 +1560,9 @@ test('an image reply remains durably posted when its room write overlaps provide
       }),
     );
     await commit.entered;
-    // A blocking main-thread writer prevents this authorization release from running.
-    releaseTimer = setTimeout(commit.release, 0);
+    // Hold past both short observed-event retry delays: publication must wait
+    // for write availability, while leaving this authorization release runnable.
+    releaseTimer = setTimeout(commit.release, 300);
     if (!deliverStart) throw Error('Provider start prerequisite');
     deliverStart();
     deliverStart = undefined;
