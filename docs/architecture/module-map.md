@@ -6404,7 +6404,13 @@ the operator in person and the operator's own paired devices
 ([`isTerminalOperator`](../../src-server/security/coding-authority.ts)); hosted,
 account, member, agent and plugin admission is withheld. Engine sign-in, the
 Project terminal close and the process projections reach TerminalSessions; no
-other terminal service or listener remains.
+other terminal service or listener remains. An ACP agent's terminals are
+`command` sessions opened through
+[AcpSessionTerminals](../../src-server/services/acp/acp-session-terminals.ts)
+(pipes and an output cap, from
+[command-process.ts](../../src-server/services/terminal/command-process.ts)),
+on personal hosts only. `restart` keeps a session's id and starts a new
+journal segment.
 
 The [design boundary](../design/terminal.md#first-implementation-boundary-3994-part-a)
 separates this foundation from retention Settings and Ghostty. The
