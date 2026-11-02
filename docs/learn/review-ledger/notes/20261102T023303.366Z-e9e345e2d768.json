@@ -1,0 +1,7 @@
+{
+  "revision": "ea4e0e8adc49f79abd5fba65a3bcd2b2c792b85c",
+
+  "notes": [
+    {"path":"CONTEXT-MAP.md","note":"Reviewed the target-change input custody delta and live-surface or module-map references against useLiveSurface and the focused regression; the per-viewer transport and unverified platform limits remain. No other claims were changed.","inputs":["CONTEXT-MAP.md","docs/architecture/module-map.md"]}
+  ]
+}
