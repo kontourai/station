@@ -4818,10 +4818,8 @@ export async function start(opts: StartOptions = {}): Promise<void> {
     runningMatch = null;
   }
   // The home schema gate runs below, before the log directory and the
-  // instance record are written — after the recursive mkdir, because the
-  // gate requires the home's parent to exist and a custom --base path may
-  // have a multi-level missing ancestor chain (#1570 review; supersedes the
-  // earlier pre-mkdir call from #1567).
+  // instance record are written (#1570 review; supersedes the earlier
+  // pre-mkdir call from #1567).
   const buildPaths = resolveBuildPaths(instanceId);
   const needsBuild = !watch && (Boolean(build) || !isInstalled(instanceId));
   const warnStale = () => {
