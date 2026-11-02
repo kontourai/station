@@ -432,6 +432,25 @@ test('bound catalog dispatches device logs and Task recording through their auth
         'device_open_url',
       ]),
     );
+    for (const name of [
+      'device_input',
+      'device_record_to_task',
+      'device_install_app',
+      'device_launch_app',
+      'device_terminate_app',
+      'device_open_url',
+      'device_capture_to_task',
+      'device_logs',
+      'device_screenshot',
+      'device_snapshot',
+      'device_open',
+      'device_close',
+    ]) {
+      const tool = server.tools.find((item) => item.name === name) as
+        | { _meta?: Record<string, unknown> }
+        | undefined;
+      expect(tool?._meta?.['ai.kontour/durable-replay'], name).toBe('unsafe');
+    }
     const logResult = (await server.call(
       'device_logs',
       { deviceSessionId: 'device-session', appId: 'com.example.app' },

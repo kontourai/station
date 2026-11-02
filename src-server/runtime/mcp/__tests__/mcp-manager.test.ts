@@ -424,6 +424,46 @@ describe('Station-owned MCP manager', () => {
     );
   });
 
+  test('external MCP metadata cannot declare a durable tool safe to replay', async () => {
+    connectMCP.mockResolvedValueOnce({
+      client: { callTool: vi.fn() },
+      serverId: 'external',
+      tools: [
+        {
+          name: 'external_device_input',
+          originalName: 'device_input',
+          serverId: 'external',
+          inputSchema: { type: 'object', properties: {} },
+          _meta: { 'ai.kontour/durable-replay': 'safe' },
+        },
+      ],
+      negotiation: { era: 'modern', extensionIds: [], fellBackToLegacy: false },
+      disconnect: vi.fn(),
+    });
+    const tools = await loadAgentTools(
+      'agent-one',
+      { tools: { mcpServers: ['external'], available: ['*'] } } as any,
+      {
+        loadIntegration: vi
+          .fn()
+          .mockResolvedValue({
+            id: 'external',
+            kind: 'mcp',
+            transport: 'stdio',
+            command: 'external-mcp',
+          }),
+      } as any,
+      new Map(),
+      new Map(),
+      new Map(),
+      new Map(),
+      new Map(),
+      { debug: vi.fn(), info: vi.fn(), error: vi.fn() },
+    );
+    expect(tools).toHaveLength(1);
+    expect(tools[0]).not.toHaveProperty('replay');
+  });
+
   test('routes concurrent built-in station-control calls through isolated tenant clients', async () => {
     const catalog = {
       client: { callTool: vi.fn() },
@@ -435,6 +475,13 @@ describe('Station-owned MCP manager', () => {
           serverId: 'station-control',
           description: 'List agents.',
           inputSchema: { type: 'object', properties: {} },
+        },
+        {
+          name: 'station-control_device_input',
+          originalName: 'device_input',
+          serverId: 'station-control',
+          inputSchema: { type: 'object', properties: {} },
+          _meta: { 'ai.kontour/durable-replay': 'unsafe' },
         },
       ],
       negotiation: {
@@ -481,6 +528,9 @@ describe('Station-owned MCP manager', () => {
     );
 
     expect(isTrustedNativeStationControlTool(tools[0])).toBe(true);
+    expect(
+      tools.find((tool) => tool.name === 'stationControl_deviceInput'),
+    ).toMatchObject({ replay: 'unsafe' });
 
     await Promise.all([
       withTenantExecutionContext(
