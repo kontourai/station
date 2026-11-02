@@ -351,8 +351,8 @@ With the same preview enabled, **Annotate** in **⋯** opens Select, Box, Draw
 and Erase tools over the streamed page. S, B, D and E select them; Escape
 cancels and Enter attaches. Select inspects an element on the server. Selecting
 elements inside iframes, including same-origin iframes, is not supported. Box and
-Draw marks use target viewport coordinates; Erase removes a mark under the
-pointer. Opening annotation captures a target viewport screenshot before marks
+Draw marks use target viewport coordinates at the current zoom; Erase removes a mark under the
+pointer. Changing zoom during capture refuses the annotation. Opening annotation captures a target viewport screenshot before marks
 can be made. Select is refused if the page scrolls away from the captured viewport. Attach sends an image and a JSON description to the active chat's
 composer. A selected element supplies its target PNG crop; marks also include
 the viewport screenshot captured on opening. Marks are described in JSON, not
@@ -473,3 +473,9 @@ receipt. Named/incognito profile management, file transfer, native authenticatio
 handoff, annotations/recordings, document preview and connection admission remain
 separate acceptance work under #90. The epic must remain open until its remaining
 behavior and platform receipts exist.
+
+## Browser experience preview
+
+Enable **Browser experience** in Feature Previews to try per-tab zoom, page appearance, the Float over chat button, Browser shortcuts, and the agent action overlay. Appearance uses the same browser emulation operation as the agent color-scheme tool. The driver chip opens recent session actions. Screenshot to chat is a separate action that attaches to the active chat for the same Project. Mod+Shift+S opens the screenshot view, including with the preview off or focus in the live page. See [keyboard shortcuts](keyboard-shortcuts.md#browser-shortcuts). Find in page is not currently supported on the streamed host.
+
+A current device paired by the operator can view Browser sessions and agent reveals within its granted scope. The Browser access response identifies this standing as `operator-device`, separately from `operator` and `project-admin`. Viewing does not grant drive authority; an operator or Project administrator must have the separate authority and scope needed to control a session. A stale credential or missing Project standing is reported in the pane.

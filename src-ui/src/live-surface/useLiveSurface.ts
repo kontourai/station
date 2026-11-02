@@ -2,6 +2,7 @@ import {
   LIVE_SURFACE_INPUT_MAX_BODY_BYTES,
   LIVE_SURFACE_INPUT_MAX_EVENTS,
   LIVE_SURFACE_TEXT_MAX_LENGTH,
+  type LiveSurfaceAgentAction,
   type LiveSurfaceControlLease,
   type LiveSurfaceFrameHeader,
   type LiveSurfaceInput,
@@ -115,6 +116,7 @@ export interface UseLiveSurfaceOptions {
    * authorizer can admit that Project's admins to a device shared with it.
    */
   projectSlug?: string;
+  agentActionsEnabled?: boolean;
 }
 
 export interface UseLiveSurfaceResult {
@@ -134,6 +136,7 @@ export interface UseLiveSurfaceResult {
    */
   producerStatus: LiveSurfaceProducerStatus;
   inputNotice: LiveSurfaceInputNotice;
+  agentAction: { action: LiveSurfaceAgentAction; expiresAt: number } | null;
   sendInput: (events: LiveSurfaceInput[]) => void;
   claimControl: () => Promise<void>;
   /**
@@ -184,6 +187,7 @@ function streamUrl(
   surfaceId: string,
   params: Partial<LiveSurfaceStreamParams> | undefined,
   projectSlug: string | undefined,
+  agentActionsEnabled: boolean,
 ): string {
   const query = new URLSearchParams();
   for (const key of ['maxFps', 'quality', 'maxWidth', 'maxHeight'] as const) {
@@ -191,6 +195,7 @@ function streamUrl(
     if (value !== undefined) query.set(key, String(Math.round(value)));
   }
   if (projectSlug) query.set('projectSlug', projectSlug);
+  if (agentActionsEnabled) query.set('agentActions', '1');
   const suffix = query.size > 0 ? `?${query}` : '';
   return `${apiBase}/api/live-surfaces/${encodeURIComponent(surfaceId)}/frames${suffix}`;
 }
@@ -246,6 +251,7 @@ export function useLiveSurface(
     transport = authenticatedFetch,
     now = Date.now,
     projectSlug,
+    agentActionsEnabled = false,
   } = options;
   const onFrameRef = useRef(options.onFrame);
   onFrameRef.current = options.onFrame;
@@ -271,6 +277,17 @@ export function useLiveSurface(
   const [producerStatus, setProducerStatus] =
     useState<LiveSurfaceProducerStatus>({});
   const [inputNotice, setInputNotice] = useState<LiveSurfaceInputNotice>(null);
+  const [agentAction, setAgentAction] = useState<{
+    action: LiveSurfaceAgentAction;
+    expiresAt: number;
+  } | null>(null);
+  const agentActionSequence = useRef(0);
+  // Reset transient action state when the viewed surface or capability changes.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: both values define the reset boundary.
+  useEffect(() => {
+    agentActionSequence.current = 0;
+    setAgentAction(null);
+  }, [surfaceId, agentActionsEnabled]);
   const [retryToken, setRetryToken] = useState(0);
   const epochRef = useRef(0);
 
@@ -303,7 +320,13 @@ export function useLiveSurface(
     let attempt = 0;
     let timer: ReturnType<typeof setTimeout> | null = null;
     let stopped = false;
-    const url = streamUrl(apiBase, surfaceId, params, projectSlug);
+    const url = streamUrl(
+      apiBase,
+      surfaceId,
+      params,
+      projectSlug,
+      agentActionsEnabled,
+    );
 
     const scheduleReconnect = () => {
       if (stopped) return;
@@ -355,6 +378,22 @@ export function useLiveSurface(
             attempt = 0;
             setStatus('live');
             if (record.kind === 'state') {
+              const actions = record.state.agentActions;
+              const latest = actions?.events.at(-1);
+              if (
+                agentActionsEnabled &&
+                actions &&
+                latest &&
+                latest.seq > agentActionSequence.current
+              ) {
+                agentActionSequence.current = latest.seq;
+                const age = Math.max(0, actions.now - latest.at);
+                if (age < 700)
+                  setAgentAction({
+                    action: latest,
+                    expiresAt: nowRef.current() + 700 - age,
+                  });
+              }
               adoptLease(record.state.lease);
               setEffectiveParams(record.state.effectiveParams);
               setWedged(record.state.wedged === true);
@@ -422,6 +461,7 @@ export function useLiveSurface(
     paramsKey,
     paramsPending,
     projectSlug,
+    agentActionsEnabled,
     visible,
     retryToken,
     adoptLease,
@@ -655,6 +695,7 @@ export function useLiveSurface(
     wedged,
     producerStatus,
     inputNotice,
+    agentAction,
     sendInput,
     claimControl,
     releaseControl,

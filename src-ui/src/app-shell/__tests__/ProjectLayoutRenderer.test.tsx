@@ -119,6 +119,10 @@ const pluginBoundaryMock = vi.hoisted(() => vi.fn());
  *  unplaced-Review case; hoisted because the SDK mock factory closes over it. */
 const placementCalls = vi.hoisted(() => [] as string[]);
 
+vi.mock('../../hooks/useSurfaceVisibilityFlags', () => ({
+  useSurfaceVisibilityFlags: () => new Set(['browser-experience']),
+}));
+
 vi.mock('@kontourai/station-sdk', async () => ({
   FullScreenError: ({ description }: { description: string }) => (
     <div>{description}</div>
@@ -1685,7 +1689,12 @@ describe('ProjectLayoutRenderer', () => {
     expect(screen.getByText('Readiness pane')).toBeTruthy();
     expect(screen.getByText('Trust pane')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Open Browser pane' }));
-    expect(screen.getByRole('button', { name: 'Open Browser' })).toBeTruthy();
+    expect(
+      within(screen.getByRole('region', { name: 'Browser' })).getByRole(
+        'button',
+        { name: /^Open Browser$/ },
+      ),
+    ).toBeTruthy();
     expect(layoutQueryMock.mock.calls).toEqual(
       expect.arrayContaining([['project-route', 'coding']]),
     );
@@ -2079,9 +2088,12 @@ describe('ProjectLayoutRenderer', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Open Browser pane' }));
     expect(
       (
-        screen.getByRole('button', {
-          name: 'Open Browser',
-        }) as HTMLButtonElement
+        within(screen.getByRole('region', { name: 'Browser' })).getByRole(
+          'button',
+          {
+            name: /^Open Browser$/,
+          },
+        ) as HTMLButtonElement
       ).disabled,
     ).toBe(true);
     expect(
@@ -2175,9 +2187,12 @@ describe('ProjectLayoutRenderer', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Open Browser pane' }));
     expect(
       (
-        screen.getByRole('button', {
-          name: 'Open Browser',
-        }) as HTMLButtonElement
+        within(screen.getByRole('region', { name: 'Browser' })).getByRole(
+          'button',
+          {
+            name: /^Open Browser$/,
+          },
+        ) as HTMLButtonElement
       ).disabled,
     ).toBe(true);
     expect(

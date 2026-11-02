@@ -101,7 +101,10 @@ afterEach(async () => {
 function harness(
   respond?: (call: SentCall) => unknown,
   hooks?: FakeHooks,
-  previewOptions: { requireRestrictedWebRtc?: boolean } = {},
+  previewOptions: {
+    requireRestrictedWebRtc?: boolean;
+    faviconEnabled?: () => boolean;
+  } = {},
 ) {
   const fake = fakeTransport(respond, hooks);
   let exit!: (reason: string) => void;
@@ -989,6 +992,89 @@ describe('ChromiumServerHost with a fake browser', () => {
       'Page.handleJavaScriptDialog',
     ]);
     producer.dispose();
+  });
+
+  test('favicon observation is preview-gated and ignores unrelated finished requests', async () => {
+    let enabled = false;
+    const icon = Buffer.from('89504e470d0a1a0a00000000', 'hex').toString(
+      'base64',
+    );
+    const { host, profileDir, calls, emit } = harness(
+      (call) =>
+        call.method === 'Network.getResponseBody'
+          ? { body: icon, base64Encoded: true }
+          : {},
+      undefined,
+      { faviconEnabled: () => enabled },
+    );
+    const seen: Array<string | undefined> = [];
+    host.onFaviconChanged((_target, value) => seen.push(value));
+    await host.openTarget({ profileDir, viewport: VIEWPORT });
+    expect(calls.some((call) => call.method === 'Network.enable')).toBe(false);
+    enabled = true;
+    emit(
+      'Page.frameNavigated',
+      { frame: { id: 'frame', url: 'https://example.test/' } },
+      'S-T1',
+    );
+    await flush();
+    expect(
+      calls.filter((call) => call.method === 'Network.enable'),
+    ).toHaveLength(1);
+    emit(
+      'Network.responseReceived',
+      {
+        requestId: 'icon',
+        response: {
+          url: 'https://example.test/favicon.ico',
+          mimeType: 'image/png',
+        },
+      },
+      'S-T1',
+    );
+    emit(
+      'Network.loadingFinished',
+      { requestId: 'icon', encodedDataLength: 12 },
+      'S-T1',
+    );
+    await flush();
+    expect(seen).toEqual([`data:image/png;base64,${icon}`]);
+    emit(
+      'Network.responseReceived',
+      {
+        requestId: 'other',
+        response: {
+          url: 'https://example.test/other.png',
+          mimeType: 'image/png',
+        },
+      },
+      'S-T1',
+    );
+    emit(
+      'Network.loadingFinished',
+      { requestId: 'other', encodedDataLength: 12 },
+      'S-T1',
+    );
+    emit(
+      'Network.loadingFinished',
+      { requestId: 'icon', encodedDataLength: 12 },
+      'S-T1',
+    );
+    await flush();
+    expect(seen).toHaveLength(1);
+    expect(
+      calls.filter((call) => call.method === 'Network.getResponseBody'),
+    ).toHaveLength(2);
+    enabled = false;
+    emit(
+      'Network.loadingFinished',
+      { requestId: 'icon', encodedDataLength: 12 },
+      'S-T1',
+    );
+    await flush();
+    expect(
+      calls.filter((call) => call.method === 'Network.getResponseBody'),
+    ).toHaveLength(2);
   });
 
   test('a parsed page title is read back after the document loads, not left at the URL placeholder', async () => {

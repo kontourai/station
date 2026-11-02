@@ -10,10 +10,12 @@ import {
   type ReactNode,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
 } from 'react';
+import { showChatPageOrDock } from '../../app-shell/chat-placement';
 import { Button } from '../../components/Button';
 import { IconButton } from '../../components/IconButton';
 import {
@@ -34,8 +36,24 @@ import {
   TerminalGlyph,
 } from '../../components/icons/Glyph';
 import { Empty, ErrorState, SkeletonBlock } from '../../components/state';
-import { useApiBase } from '../../contexts/ApiBaseContext';
+import {
+  useApiBase,
+  useHostRequestAuthorityScope,
+} from '../../contexts/ApiBaseContext';
+import { activeChatsStore } from '../../contexts/active-chats-store';
+import {
+  type KeyboardShortcut,
+  setShortcutContext,
+  useOptionalKeyboardShortcuts,
+} from '../../contexts/KeyboardShortcutsContext';
+import { navigationStore } from '../../contexts/navigation-store';
 import { browserFloatSourceKey } from '../../float-over-chat/floatSource';
+import {
+  isFloatSourceOpen,
+  requestFloat,
+  useFloatHostAvailable,
+  useFloatStoreVersion,
+} from '../../float-over-chat/floatStore';
 import {
   agentInputOf,
   DRIVER_TEXT,
@@ -74,7 +92,10 @@ import {
   BrowserScreenshot,
   type BrowserScreenshotShot,
 } from './BrowserScreenshot';
-import { BrowserSessionList } from './BrowserSessionList';
+import {
+  BrowserSessionList,
+  describeBrowserAction,
+} from './BrowserSessionList';
 import { BrowserTabs } from './BrowserTabs';
 import { browserAddressInput } from './browserAddressInput';
 import { BROWSER_PAGE_CONTENT_NOTICE } from './browserArtifactContent';
@@ -138,6 +159,9 @@ const IS_MAC =
 const SCREENSHOT_SHORTCUT = IS_MAC
   ? { label: '⇧⌘S', aria: 'Meta+Shift+S' }
   : { label: 'Ctrl+Shift+S', aria: 'Control+Shift+S' };
+const BROWSER_ZOOM_STEPS = [
+  0.5, 0.67, 0.75, 0.8, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2,
+];
 
 /** Host and the rest of the URL, for the omnibox's two weights. */
 function addressParts(url: string): {
@@ -195,16 +219,28 @@ function BrowserDriverChip({
   releaseLabel,
   releaseBlocked,
   onRelease,
+  api,
+  apiBase,
+  browserSessionId,
 }: {
   tone: LiveSurfaceControllerTone;
   canRelease: boolean;
   releaseLabel: string;
   releaseBlocked: boolean;
   onRelease: () => void;
+  api: BrowserPaneApi;
+  apiBase: string;
+  browserSessionId: string;
 }) {
   const coarsePointer = useCoarsePointer();
   const [open, setOpen] = useState(false);
   const menuRef = useMenuFocus<HTMLDivElement>(open, () => setOpen(false));
+  const history = useQuery({
+    queryKey: browserPaneKeys.fullHistory(apiBase, browserSessionId),
+    queryFn: ({ signal }) => api.session(browserSessionId, signal),
+    enabled: open,
+    refetchInterval: open ? 3000 : false,
+  });
   if (tone === 'none')
     return (
       <span className="sr-only" aria-live="polite">
@@ -217,30 +253,18 @@ function BrowserDriverChip({
       {DRIVER_TEXT[tone]}
     </span>
   );
-  if (!canRelease)
-    return (
-      <span
-        className="browser-pane__chip"
-        data-tone={tone}
-        title={
-          tone === 'agent'
-            ? `${DRIVER_TEXT.agent}. ${coarsePointer ? 'Tap' : 'Click'} the page to take over.`
-            : DRIVER_TEXT[tone]
-        }
-      >
-        <span className="browser-pane__chip-dot" aria-hidden="true" />
-        <span aria-hidden="true">{word}</span>
-        {live}
-      </span>
-    );
   return (
     <span className="browser-pane__chip-wrap">
       <button
         type="button"
         className="browser-pane__chip browser-pane__chip--button"
         data-tone={tone}
-        aria-label={`${DRIVER_TEXT[tone]}. Control options`}
-        title={DRIVER_TEXT[tone]}
+        aria-label={`${DRIVER_TEXT[tone]}. ${canRelease ? 'Control options' : 'Recent actions'}`}
+        title={
+          tone === 'agent'
+            ? `${DRIVER_TEXT.agent}. ${coarsePointer ? 'Tap' : 'Click'} the page to take over.`
+            : DRIVER_TEXT[tone]
+        }
         aria-haspopup="menu"
         aria-expanded={open}
         onClick={() => setOpen((value) => !value)}
@@ -263,24 +287,47 @@ function BrowserDriverChip({
             }
           }}
         >
-          <button
-            type="button"
-            role="menuitem"
-            className="menu-row browser-pane__menu-row"
-            disabled={releaseBlocked}
-            title={
-              releaseBlocked ? 'Answer the page’s dialog first.' : undefined
-            }
-            onClick={() => {
-              setOpen(false);
-              onRelease();
-            }}
-          >
-            <span className="menu-row__glyph" aria-hidden="true">
-              <ArrowUpGlyph />
-            </span>
-            {releaseLabel}
-          </button>
+          {canRelease ? (
+            <button
+              type="button"
+              role="menuitem"
+              className="menu-row browser-pane__menu-row"
+              disabled={releaseBlocked}
+              title={
+                releaseBlocked ? 'Answer the page’s dialog first.' : undefined
+              }
+              onClick={() => {
+                setOpen(false);
+                onRelease();
+              }}
+            >
+              <span className="menu-row__glyph" aria-hidden="true">
+                <ArrowUpGlyph />
+              </span>
+              {releaseLabel}
+            </button>
+          ) : null}
+          <section aria-label="Recent actions">
+            {history.isPending ? (
+              <SkeletonBlock count={1} label="Loading recent actions" />
+            ) : history.isError ? (
+              'Could not load actions.'
+            ) : (
+              <ol className="browser-pane__history">
+                {history.data.history.entries
+                  .slice(-20)
+                  .reverse()
+                  .map((action) => (
+                    <li key={action.seq}>
+                      <time dateTime={action.at}>
+                        {new Date(action.at).toLocaleTimeString()}
+                      </time>{' '}
+                      {describeBrowserAction(action)}
+                    </li>
+                  ))}
+              </ol>
+            )}
+          </section>
         </div>
       ) : null}
     </span>
@@ -316,11 +363,34 @@ export default function BrowserPane({
   transport = authenticatedFetch,
 }: BrowserPaneProps) {
   const { apiBase } = useApiBase();
+  const requestScope = useHostRequestAuthorityScope();
   const api = useMemo(
     () => browserPaneApi(apiBase, transport),
     [apiBase, transport],
   );
   const queryClient = useQueryClient();
+  const visibility = useSurfaceVisibilityFlags();
+  const [browserFocused, setBrowserFocused] = useState(false);
+  const workspaceRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!browserFocused) return;
+    const leave = (event: Event) => {
+      const target = event.target;
+      if (
+        target instanceof Element &&
+        (workspaceRef.current?.contains(target) ||
+          target.closest('.command-palette-overlay, .browser-pane__menu'))
+      )
+        return;
+      setBrowserFocused(false);
+    };
+    document.addEventListener('focusin', leave);
+    document.addEventListener('pointerdown', leave);
+    return () => {
+      document.removeEventListener('focusin', leave);
+      document.removeEventListener('pointerdown', leave);
+    };
+  }, [browserFocused]);
   const access = useQuery({
     queryKey: browserPaneKeys.access(apiBase, projectSlug),
     queryFn: ({ signal }) => api.access(projectSlug, signal),
@@ -350,10 +420,34 @@ export default function BrowserPane({
             label="The browser isn't available on this Station"
             description="It runs only on a personal Station host, not on a shared or hosted deployment."
           />
-        ) : status === 403 ? (
-          <Empty
-            label="The browser isn't available to you"
-            description="Only the Station operator and this Project's admins can open or watch its browser sessions."
+        ) : status === 403 || status === 401 ? (
+          <ErrorState
+            title={
+              error instanceof BrowserApiError &&
+              error.code === 'project-not-found'
+                ? 'Project not found'
+                : error instanceof BrowserApiError &&
+                    (error.code === 'stale-sign-in' || status === 401)
+                  ? 'Sign in again'
+                  : "The browser isn't available to you"
+            }
+            description={
+              error instanceof BrowserApiError &&
+              error.code === 'project-not-found'
+                ? 'Open an existing Project, then try again.'
+                : error instanceof BrowserApiError &&
+                    (error.code === 'stale-sign-in' || status === 401)
+                  ? 'Reconnect this device to this Station, then try again.'
+                  : "Ask the Station operator to grant you Project admin access, or open the Browser on the operator's device."
+            }
+            action={
+              <Button
+                className="browser-pane__control"
+                onClick={() => void access.refetch()}
+              >
+                Try again
+              </Button>
+            }
           />
         ) : (
           <ErrorState
@@ -391,22 +485,47 @@ export default function BrowserPane({
           api={api}
           projectSlug={projectSlug}
           onAttach={onAttach}
+          canDrive={access.data.canDrive !== false}
         />
       </div>
     );
   if (target.kind === 'migrate')
     return (
       <div className="browser-pane">
-        <BrowserMigration
-          api={api}
-          projectSlug={projectSlug}
-          migration={target.migration}
-          onAttach={onAttach}
-        />
+        {access.data.canDrive === false ? (
+          <BrowserNewSession
+            apiBase={apiBase}
+            api={api}
+            projectSlug={projectSlug}
+            onAttach={onAttach}
+            canDrive={false}
+          />
+        ) : (
+          <BrowserMigration
+            api={api}
+            projectSlug={projectSlug}
+            migration={target.migration}
+            onAttach={onAttach}
+          />
+        )}
       </div>
     );
   return (
-    <div className="browser-pane__workspace">
+    <div
+      className="browser-pane__workspace"
+      ref={workspaceRef}
+      onFocusCapture={() => setBrowserFocused(true)}
+      onBlurCapture={(event) => {
+        const next = event.relatedTarget;
+        if (
+          next instanceof Element &&
+          (event.currentTarget.contains(next) ||
+            next.closest('.command-palette-overlay, .browser-pane__menu'))
+        )
+          return;
+        setBrowserFocused(false);
+      }}
+    >
       {browserSessionIds && onTabsChange ? (
         <BrowserTabs
           apiBase={apiBase}
@@ -416,6 +535,12 @@ export default function BrowserPane({
           selected={target.browserSessionId}
           onSelect={onAttach}
           onChange={onTabsChange}
+          readOnly={access.data.canDrive === false}
+          browserFocused={browserFocused}
+          experienceEnabled={
+            access.data.experiencePreviewEnabled === true &&
+            visibility.has('browser-experience')
+          }
         />
       ) : null}
       <BrowserSessionPane
@@ -425,6 +550,13 @@ export default function BrowserPane({
         projectSlug={projectSlug}
         browserSessionId={target.browserSessionId}
         operator={access.data.operator}
+        canDrive={access.data.canDrive !== false}
+        browserFocused={browserFocused}
+        experienceEnabled={
+          access.data.experiencePreviewEnabled === true &&
+          visibility.has('browser-experience')
+        }
+        requestScope={requestScope}
         onAttach={onAttach}
         transport={transport}
       />
@@ -499,11 +631,13 @@ function BrowserNewSession({
   api,
   projectSlug,
   onAttach,
+  canDrive,
 }: {
   apiBase: string;
   api: BrowserPaneApi;
   projectSlug: string;
   onAttach: (browserSessionId: string) => void;
+  canDrive: boolean;
 }) {
   const [address, setAddress] = useState('');
   const open = useMutation({
@@ -513,35 +647,41 @@ function BrowserNewSession({
   });
   return (
     <>
-      <form
-        className="browser-pane__nav"
-        aria-label="Open a page"
-        onSubmit={(event) => {
-          event.preventDefault();
-          open.mutate(address.trim() || 'about:blank');
-        }}
-      >
-        <input
-          className="browser-pane__address"
-          aria-label="Address"
-          placeholder="Search or enter an address"
-          value={address}
-          onChange={(event) => setAddress(event.target.value)}
-          autoCapitalize="off"
-          autoComplete="off"
-          autoCorrect="off"
-          spellCheck={false}
-          inputMode="url"
-        />
-        <Button
-          type="submit"
-          variant="primary"
-          className="browser-pane__control"
-          pending={open.isPending}
+      {canDrive ? (
+        <form
+          className="browser-pane__nav"
+          aria-label="Open a page"
+          onSubmit={(event) => {
+            event.preventDefault();
+            open.mutate(address.trim() || 'about:blank');
+          }}
         >
-          Open
-        </Button>
-      </form>
+          <input
+            className="browser-pane__address"
+            aria-label="Address"
+            placeholder="Search or enter an address"
+            value={address}
+            onChange={(event) => setAddress(event.target.value)}
+            autoCapitalize="off"
+            autoComplete="off"
+            autoCorrect="off"
+            spellCheck={false}
+            inputMode="url"
+          />
+          <Button
+            type="submit"
+            variant="primary"
+            className="browser-pane__control"
+            pending={open.isPending}
+          >
+            Open
+          </Button>
+        </form>
+      ) : (
+        <p className="browser-pane__hint">
+          View only: open a session from the operator's device to watch it here.
+        </p>
+      )}
       {open.isError ? (
         <p className="browser-pane__notice" role="alert">
           {describeBrowserFailure(open.error, address)}
@@ -563,6 +703,10 @@ function BrowserSessionPane({
   projectSlug,
   browserSessionId,
   operator,
+  canDrive,
+  browserFocused,
+  experienceEnabled,
+  requestScope,
   onAttach,
   transport,
 }: {
@@ -571,6 +715,10 @@ function BrowserSessionPane({
   projectSlug: string;
   browserSessionId: string;
   operator: boolean;
+  canDrive: boolean;
+  browserFocused: boolean;
+  experienceEnabled: boolean;
+  requestScope: ReturnType<typeof useHostRequestAuthorityScope>;
   onAttach: (browserSessionId: string) => void;
   transport: BrowserFetch;
 }) {
@@ -604,11 +752,22 @@ function BrowserSessionPane({
   const [addressFocused, setAddressFocused] = useState(false);
   const artifactsEnabled = useSurfaceVisibilityFlags().has('browser-artifacts');
   const paneRef = useRef<HTMLDivElement>(null);
+  const addressRef = useRef<HTMLInputElement>(null);
+  const shortcutStore = useOptionalKeyboardShortcuts();
+  const shortcutActions = useRef<Record<string, () => void>>({});
   const coarsePointer = useCoarsePointer();
   const narrow = useIsMobile();
   const [shot, setShot] = useState<BrowserScreenshotShot | null>(null);
   const [annotating, setAnnotating] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  const [floating, setFloating] = useState(false);
+  const floatVersion = useFloatStoreVersion();
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the store version signals float closure.
+  useEffect(() => {
+    if (floating && !isFloatSourceOpen(browserFloatSourceKey(browserSessionId)))
+      setFloating(false);
+  }, [floating, browserSessionId, floatVersion]);
+  const floatAvailable = useFloatHostAvailable();
   const [draft, setDraft] = useState<string | null>(null);
   const stageRef = useRef<HTMLDivElement>(null);
   const record = session.data;
@@ -643,7 +802,10 @@ function BrowserSessionPane({
   // #90 D9: while this pane's live view is on screen, the float-over-chat
   // hides for this session (and so never streams it a second time).
   useAnnounceShownSource(
-    !session.isError && record?.state === 'live' && record.surfaceId
+    !floating &&
+      !session.isError &&
+      record?.state === 'live' &&
+      record.surfaceId
       ? browserFloatSourceKey(record.browserSessionId)
       : null,
     stageRef,
@@ -722,6 +884,24 @@ function BrowserSessionPane({
     },
     onError: (error) => setNotice(describeBrowserFailure(error)),
   });
+  const zoom = useMutation({
+    mutationFn: (factor: number) =>
+      api.zoom(browserSessionId, factor, generation),
+    onSuccess: (next) => {
+      apply(next);
+      setNotice(null);
+    },
+    onError: (error) => setNotice(describeBrowserFailure(error)),
+  });
+  const appearance = useMutation({
+    mutationFn: (scheme: 'system' | 'light' | 'dark') =>
+      api.appearance(browserSessionId, scheme, generation),
+    onSuccess: (next) => {
+      apply(next);
+      setNotice(null);
+    },
+    onError: (error) => setNotice(describeBrowserFailure(error)),
+  });
   const reopen = useMutation({
     mutationFn: () => api.reopen(browserSessionId),
     onSuccess: apply,
@@ -762,6 +942,57 @@ function BrowserSessionPane({
     },
     onError: (error) => setNotice(describeBrowserFailure(error)),
   });
+  const screenshotToChat = useMutation({
+    mutationFn: async () => {
+      const active = navigationStore.getSnapshot().activeChat;
+      const matches = Object.entries(activeChatsStore.getSnapshot()).filter(
+        ([id, chat]) =>
+          (id === active || chat.conversationId === active) &&
+          chat.projectSlug === projectSlug,
+      );
+      if (
+        !requestScope ||
+        !active ||
+        matches.length !== 1 ||
+        !requestScope.isCurrent()
+      )
+        throw new Error(
+          'Open a chat in this Project before attaching a screenshot.',
+        );
+      const sessionId = matches[0]![0];
+      const current = () =>
+        requestScope.isCurrent() &&
+        navigationStore.getSnapshot().activeChat === active &&
+        activeChatsStore.getSnapshot()[sessionId]?.projectSlug === projectSlug;
+      const blob = await api.screenshot(browserSessionId);
+      if (!current())
+        throw new Error(
+          'The chat or Station changed before the screenshot was attached.',
+        );
+      const extension = blob.type === 'image/jpeg' ? 'jpg' : 'png';
+      const file = new File([blob], `browser-screenshot.${extension}`, {
+        type: blob.type,
+      });
+      const { requestConversationFileIntake } = await import(
+        '../../lib/conversation-file-intake'
+      );
+      return requestConversationFileIntake(
+        { ...requestScope, isCurrent: current },
+        sessionId,
+        [file],
+        () => showChatPageOrDock(() => navigationStore.setDockState(true)),
+      );
+    },
+    onSuccess: () => setNotice('Screenshot added to chat.'),
+    onError: (error) =>
+      setNotice(
+        error instanceof BrowserApiError
+          ? describeBrowserFailure(error)
+          : error instanceof Error
+            ? error.message
+            : 'The screenshot could not be attached.',
+      ),
+  });
   const openNew = useMutation({
     mutationFn: () => api.create({ projectSlug, url: 'about:blank' }),
     onSuccess: (next) => onAttach(next.browserSessionId),
@@ -783,9 +1014,217 @@ function BrowserSessionPane({
     open: panel === 'console',
   });
   const busy = navigate.isPending || history.isPending;
+  const canDriveLive = live && canDrive;
+  const zoomFactor = record?.zoomFactor ?? 1;
+  const changeZoom = (direction: -1 | 0 | 1) => {
+    if (!canDriveLive || zoom.isPending) return;
+    const next =
+      direction === 0
+        ? 1
+        : direction > 0
+          ? (BROWSER_ZOOM_STEPS.find((step) => step > zoomFactor + 0.001) ??
+            BROWSER_ZOOM_STEPS.at(-1)!)
+          : ([...BROWSER_ZOOM_STEPS]
+              .reverse()
+              .find((step) => step < zoomFactor - 0.001) ??
+            BROWSER_ZOOM_STEPS[0]!);
+    if (next !== zoomFactor) zoom.mutate(next);
+  };
+  shortcutActions.current = {
+    address: () => addressRef.current?.focus(),
+    reload: () => {
+      if (canDriveLive && !busy) history.mutate('reload');
+    },
+    hardReload: () => {
+      if (canDriveLive && !busy) history.mutate('hard-reload');
+    },
+    back: () => {
+      if (canDriveLive && !busy && navigation.data?.canGoBack !== false)
+        history.mutate('back');
+    },
+    forward: () => {
+      if (canDriveLive && !busy && navigation.data?.canGoForward !== false)
+        history.mutate('forward');
+    },
+    screenshot: () => {
+      if (live && !screenshot.isPending) screenshot.mutate();
+    },
+    screenshotChat: () => {
+      if (live && !screenshotToChat.isPending) screenshotToChat.mutate();
+    },
+    zoomIn: () => changeZoom(1),
+    zoomOut: () => changeZoom(-1),
+    zoomReset: () => changeZoom(0),
+    takeControl: () => {
+      if (canDriveLive && control?.tone !== 'you') void control?.claimControl();
+    },
+    handBack: () => {
+      if (canDriveLive && control?.tone === 'you' && !pendingDialog)
+        void control.releaseControl();
+    },
+  };
+  useLayoutEffect(() => {
+    if (!shortcutStore || !browserFocused) return;
+    setShortcutContext('browserFocused', true);
+    const definitions: Array<
+      [string, string, string, KeyboardShortcut['modifiers'], string, boolean]
+    > = [
+      [
+        'address',
+        'address',
+        'l',
+        ['cmd'],
+        'Focus Browser address',
+        !canDriveLive,
+      ],
+      [
+        'reload',
+        'reload',
+        'r',
+        ['cmd'],
+        'Reload Browser page',
+        !canDriveLive || busy,
+      ],
+      [
+        'hardReload',
+        'hardReload',
+        'r',
+        ['cmd', 'shift'],
+        'Reload Browser page without cache',
+        !canDriveLive || busy,
+      ],
+      [
+        'backAlt',
+        'back',
+        'ArrowLeft',
+        ['alt'],
+        'Browser back',
+        !canDriveLive || busy || navigation.data?.canGoBack === false,
+      ],
+      [
+        'forwardAlt',
+        'forward',
+        'ArrowRight',
+        ['alt'],
+        'Browser forward',
+        !canDriveLive || busy || navigation.data?.canGoForward === false,
+      ],
+      [
+        'back',
+        'back',
+        '[',
+        ['cmd'],
+        'Browser back',
+        !canDriveLive || busy || navigation.data?.canGoBack === false,
+      ],
+      [
+        'forward',
+        'forward',
+        ']',
+        ['cmd'],
+        'Browser forward',
+        !canDriveLive || busy || navigation.data?.canGoForward === false,
+      ],
+      [
+        'screenshot',
+        'screenshot',
+        's',
+        ['cmd', 'shift'],
+        'Take Browser screenshot',
+        !live || screenshot.isPending,
+      ],
+      [
+        'screenshotChat',
+        'screenshotChat',
+        '',
+        [],
+        'Screenshot Browser to chat',
+        !live || screenshotToChat.isPending,
+      ],
+      [
+        'zoomIn',
+        'zoomIn',
+        '=',
+        ['cmd'],
+        'Zoom Browser in',
+        !canDriveLive || zoom.isPending,
+      ],
+      [
+        'zoomOut',
+        'zoomOut',
+        '-',
+        ['cmd'],
+        'Zoom Browser out',
+        !canDriveLive || zoom.isPending,
+      ],
+      [
+        'zoomReset',
+        'zoomReset',
+        '0',
+        ['cmd'],
+        'Reset Browser zoom',
+        !canDriveLive || zoom.isPending,
+      ],
+      [
+        'takeControl',
+        'takeControl',
+        '',
+        [],
+        'Take Browser control',
+        !canDriveLive || !control || control.tone === 'you',
+      ],
+      [
+        'handBack',
+        'handBack',
+        '',
+        [],
+        'Hand Browser control back',
+        !canDriveLive || control?.tone !== 'you' || !!pendingDialog,
+      ],
+    ];
+    const releases = definitions
+      .filter(
+        ([id, , key]) =>
+          (experienceEnabled || key !== '') &&
+          !(IS_MAC && (id === 'backAlt' || id === 'forwardAlt')),
+      )
+      .map(([id, action, key, modifiers, description, disabled]) =>
+        shortcutStore.register({
+          id: `browser.${id}`,
+          key,
+          modifiers,
+          description,
+          disabled: key ? false : disabled,
+          when: 'browserFocused',
+          handler: () => {
+            if (experienceEnabled || id === 'screenshot')
+              shortcutActions.current[action]?.();
+          },
+        }),
+      );
+    return () => {
+      for (const release of releases) release();
+      setShortcutContext('browserFocused', false);
+    };
+  }, [
+    shortcutStore,
+    browserFocused,
+    experienceEnabled,
+    canDriveLive,
+    busy,
+    live,
+    screenshotToChat.isPending,
+    screenshot.isPending,
+    zoom.isPending,
+    control,
+    pendingDialog,
+    navigation.data?.canGoBack,
+    navigation.data?.canGoForward,
+  ]);
 
   const onSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (!canDrive) return;
     const value = (draft ?? record?.url ?? '').trim();
     navigate.mutate(value);
   };
@@ -817,14 +1256,16 @@ function BrowserSessionPane({
         label="This browser session no longer exists"
         description="It may have been closed and cleaned up. Open a new one, or choose another session."
         action={
-          <Button
-            variant="primary"
-            className="browser-pane__control"
-            pending={openNew.isPending}
-            onClick={() => openNew.mutate()}
-          >
-            Open a new session
-          </Button>
+          canDrive ? (
+            <Button
+              variant="primary"
+              className="browser-pane__control"
+              pending={openNew.isPending}
+              onClick={() => openNew.mutate()}
+            >
+              Open a new session
+            </Button>
+          ) : undefined
         }
       />
     ) : (
@@ -849,15 +1290,17 @@ function BrowserSessionPane({
         label="The browser stopped"
         description={stoppedReason(record)}
         action={
-          <Button
-            variant="primary"
-            className="browser-pane__control"
-            pending={reopen.isPending}
-            pendingLabel="Reopening…"
-            onClick={() => reopen.mutate()}
-          >
-            Reopen
-          </Button>
+          canDrive ? (
+            <Button
+              variant="primary"
+              className="browser-pane__control"
+              pending={reopen.isPending}
+              pendingLabel="Reopening…"
+              onClick={() => reopen.mutate()}
+            >
+              Reopen
+            </Button>
+          ) : undefined
         }
       />
     );
@@ -866,14 +1309,16 @@ function BrowserSessionPane({
       <Empty
         label="This session was closed"
         action={
-          <Button
-            variant="primary"
-            className="browser-pane__control"
-            pending={openNew.isPending}
-            onClick={() => openNew.mutate()}
-          >
-            Open a new session
-          </Button>
+          canDrive ? (
+            <Button
+              variant="primary"
+              className="browser-pane__control"
+              pending={openNew.isPending}
+              onClick={() => openNew.mutate()}
+            >
+              Open a new session
+            </Button>
+          ) : undefined
         }
       />
     );
@@ -892,6 +1337,8 @@ function BrowserSessionPane({
         // The pane's control line says who drives and offers Take control
         // and the hand-back; the canvas keeps status, notices and input.
         hostControls
+        readOnly={!canDrive}
+        agentActionsEnabled={experienceEnabled}
         onControlState={setControl}
       />
     );
@@ -941,8 +1388,52 @@ function BrowserSessionPane({
             id: 'annotate',
             label: 'Annotate',
             glyph: <EditGlyph />,
-            disabled: !live,
+            disabled: !live || floating || generation === undefined,
             onSelect: () => setAnnotating(true),
+          },
+        ]
+      : []),
+    ...(experienceEnabled
+      ? [
+          {
+            kind: 'action' as const,
+            id: 'screenshot-chat',
+            label: 'Screenshot to chat',
+            glyph: <CameraGlyph />,
+            disabled: !live || screenshotToChat.isPending,
+            onSelect: () => screenshotToChat.mutate(),
+          },
+        ]
+      : []),
+    ...(experienceEnabled
+      ? [
+          {
+            kind: 'list' as const,
+            id: 'zoom',
+            label: 'Zoom',
+            glyph: <GlobeGlyph />,
+            hint: `${Math.round(zoomFactor * 100)}%`,
+            disabled: !canDriveLive || zoom.isPending,
+            choices: BROWSER_ZOOM_STEPS.map((factor) => ({
+              id: String(factor),
+              label: `${Math.round(factor * 100)}%`,
+              checked: Math.abs(factor - zoomFactor) < 0.001,
+              onSelect: () => zoom.mutate(factor),
+            })),
+          },
+          {
+            kind: 'list' as const,
+            id: 'appearance',
+            label: 'Appearance',
+            glyph: <GlobeGlyph />,
+            hint: record?.colorScheme ?? 'system',
+            disabled: !canDriveLive || appearance.isPending,
+            choices: (['system', 'light', 'dark'] as const).map((scheme) => ({
+              id: scheme,
+              label: scheme[0]!.toUpperCase() + scheme.slice(1),
+              checked: (record?.colorScheme ?? 'system') === scheme,
+              onSelect: () => appearance.mutate(scheme),
+            })),
           },
         ]
       : []),
@@ -952,7 +1443,7 @@ function BrowserSessionPane({
       label: 'Viewport',
       glyph: <PhoneGlyph />,
       hint: viewportValue,
-      disabled: !live || viewport.isPending,
+      disabled: !canDriveLive || viewport.isPending,
       choices: [
         {
           id: 'fill',
@@ -973,7 +1464,7 @@ function BrowserSessionPane({
       id: 'rotate',
       label: 'Rotate viewport',
       glyph: <RotateGlyph />,
-      disabled: !live || viewport.isPending,
+      disabled: !canDriveLive || viewport.isPending,
       onSelect: () => {
         if (record)
           viewport.mutate({
@@ -988,7 +1479,7 @@ function BrowserSessionPane({
       id: 'hard-reload',
       label: 'Reload without cache',
       glyph: <RefreshGlyph />,
-      disabled: !live || busy,
+      disabled: !canDriveLive || busy,
       onSelect: () => history.mutate('hard-reload'),
     },
     {
@@ -996,7 +1487,7 @@ function BrowserSessionPane({
       id: 'stop',
       label: 'Stop loading',
       glyph: <CloseGlyph />,
-      disabled: !live,
+      disabled: !canDriveLive,
       onSelect: () => history.mutate('stop'),
     },
     {
@@ -1011,6 +1502,7 @@ function BrowserSessionPane({
       id: 'agents',
       label: 'Agent access',
       glyph: <ShieldGlyph />,
+      disabled: !canDrive,
       onSelect: () => togglePanel('agents'),
     },
     ...(operator
@@ -1024,7 +1516,7 @@ function BrowserSessionPane({
           },
         ]
       : []),
-    ...(live
+    ...(canDriveLive
       ? [
           { kind: 'separator' as const, id: 'sep' },
           {
@@ -1056,20 +1548,6 @@ function BrowserSessionPane({
       data-coarse={coarsePointer || undefined}
       data-narrow={narrow || undefined}
       ref={paneRef}
-      onKeyDownCapture={(event) => {
-        // The screenshot shortcut, anywhere in the pane (even the live view's
-        // keyboard target, so it is not typed into the page).
-        if (
-          live &&
-          event.shiftKey &&
-          (event.metaKey || event.ctrlKey) &&
-          event.key.toLowerCase() === 's'
-        ) {
-          event.preventDefault();
-          event.stopPropagation();
-          if (!screenshot.isPending) screenshot.mutate();
-        }
-      }}
     >
       <form
         className="browser-pane__toolbar"
@@ -1088,6 +1566,7 @@ function BrowserSessionPane({
           </span>
           <span className="browser-pane__omni-field">
             <input
+              ref={addressRef}
               className="browser-pane__omni-input"
               aria-label="Address"
               title={record?.url}
@@ -1108,7 +1587,7 @@ function BrowserSessionPane({
                   event.currentTarget.blur();
                 }
               }}
-              disabled={!live}
+              disabled={!canDriveLive}
               autoCapitalize="off"
               autoComplete="off"
               autoCorrect="off"
@@ -1129,7 +1608,7 @@ function BrowserSessionPane({
             aria-label="Back"
             title="Back"
             disabled={
-              !live ||
+              !canDriveLive ||
               busy ||
               (navigation.data?.generation === generation &&
                 navigation.data?.canGoBack === false)
@@ -1143,7 +1622,7 @@ function BrowserSessionPane({
             aria-label="Forward"
             title="Forward"
             disabled={
-              !live ||
+              !canDriveLive ||
               busy ||
               (navigation.data?.generation === generation &&
                 navigation.data?.canGoForward === false)
@@ -1156,7 +1635,7 @@ function BrowserSessionPane({
             className="browser-pane__nav-action"
             aria-label="Reload"
             title="Reload"
-            disabled={!live || busy}
+            disabled={!canDriveLive || busy}
             onClick={() => history.mutate('reload')}
           >
             <RefreshGlyph />
@@ -1164,11 +1643,38 @@ function BrowserSessionPane({
         </div>
         <BrowserDriverChip
           tone={chipTone}
-          canRelease={live && control?.tone === 'you'}
+          api={api}
+          apiBase={apiBase}
+          browserSessionId={browserSessionId}
+          canRelease={canDriveLive && control?.tone === 'you'}
           releaseLabel={handBackLabel}
           releaseBlocked={pendingDialog !== undefined}
           onRelease={() => void control?.releaseControl()}
         />
+        {experienceEnabled ? (
+          <IconButton
+            aria-label="Float over chat"
+            title={
+              floatAvailable
+                ? 'Float over chat'
+                : 'Open a chat in a Project to float this browser'
+            }
+            disabled={!live || !record?.surfaceId || !floatAvailable}
+            onClick={() => {
+              if (record?.surfaceId)
+                requestFloat(
+                  {
+                    kind: 'browser',
+                    browserSessionId,
+                    surfaceId: record.surfaceId,
+                  },
+                  () => setFloating(true),
+                );
+            }}
+          >
+            <BoardGlyph />
+          </IconButton>
+        ) : null}
         <IconButton
           aria-label={consoleLabel}
           title={consoleLabel}
@@ -1203,6 +1709,7 @@ function BrowserSessionPane({
           <MoreGlyph />
         </BrowserOverflowMenu>
       </form>
+      {!canDrive ? <p className="browser-pane__hint">View only</p> : null}
       {panel === 'console' ? (
         <BrowserConsoleDrawer read={consoleState.read} live={live} />
       ) : null}
@@ -1242,10 +1749,31 @@ function BrowserSessionPane({
         />
       ) : null}
       <div className="browser-pane__stage" ref={stageRef}>
-        {body}
-        {annotating && live && record && generation !== undefined ? (
+        {floating ? (
+          <Empty
+            label="This Browser is floating over chat"
+            action={
+              <Button onClick={() => setFloating(false)}>Return to pane</Button>
+            }
+          />
+        ) : (
+          body
+        )}
+        {experienceEnabled && live && !floating && zoomFactor !== 1 ? (
+          <output
+            className="browser-pane__zoom-indicator"
+            aria-label={`Page zoom ${Math.round(zoomFactor * 100)}%`}
+          >
+            {Math.round(zoomFactor * 100)}%
+          </output>
+        ) : null}
+        {annotating &&
+        live &&
+        !floating &&
+        record &&
+        generation !== undefined ? (
           <BrowserAnnotationFlow
-            key={`${browserSessionId}:${generation}:${record.url}:${record.viewport.width}:${record.viewport.height}`}
+            key={`${browserSessionId}:${generation}:${record.url}:${record.viewport.width}:${record.viewport.height}:${record.zoomFactor ?? 1}`}
             stageRef={stageRef}
             record={record}
             api={api}
@@ -1253,13 +1781,13 @@ function BrowserSessionPane({
             onError={setNotice}
           />
         ) : null}
-        {live && record?.surfaceId && chipTone === 'agent' ? (
+        {canDriveLive && record?.surfaceId && chipTone === 'agent' ? (
           <span className="browser-pane__takeover-hint" aria-hidden="true">
             {coarsePointer ? 'Tap' : 'Click'} anywhere to take over from the
             agent
           </span>
         ) : null}
-        {live && pendingDialog ? (
+        {canDriveLive && pendingDialog ? (
           // Over the live view: the page is waiting on this answer.
           <div className="browser-pane__dialog-layer">
             <BrowserPageDialog

@@ -56,6 +56,7 @@ export interface BrowserServiceOptions {
   configuredOrigins: readonly string[];
   networkPreviewEnabled?: () => boolean;
   recordingResolver?: Pick<MediaToolsResolver, 'resolveFfmpeg'>;
+  experienceEnabled?: () => boolean;
   /**
    * More Station-owned listener ports, read LIVE on every check and never
    * cached: the managed device hub and its stream helpers (#1970), whose
@@ -168,6 +169,9 @@ export function createBrowserService(
   const localTargets = new LocalTargetStore(options.stationHome);
   const registry = new BrowserSessionRegistry({
     stationHome: options.stationHome,
+    ...(options.experienceEnabled
+      ? { experienceEnabled: options.experienceEnabled }
+      : {}),
     isStationAddress: (url) =>
       isStationSelfUrl(url, listeners(), localInterfaceAddresses()),
     // #90 D13: the resolver is the one path to a host; local only today.
@@ -184,6 +188,7 @@ export function createBrowserService(
       }
       return new ChromiumServerHost({
         executablePath,
+        faviconEnabled: options.experienceEnabled,
         egressPolicy: egressPolicyFor(profile, listeners, localTargets),
         onEvent: (event) => {
           if (
@@ -205,6 +210,9 @@ export function createBrowserService(
         surfaces: options.liveSurfaces.registry,
         authorizeProject: options.liveSurfaces.authorizeProject,
         networkPreviewEnabled: options.networkPreviewEnabled,
+        ...(options.experienceEnabled
+          ? { experienceEnabled: options.experienceEnabled }
+          : {}),
         onError: (message, error) =>
           logger.warn(`browser: ${message}`, {
             error: error instanceof Error ? error.message : String(error),

@@ -23,6 +23,12 @@ export function BrowserAnnotationFlow({
   onError(message: string): void;
 }) {
   const beginIntake = useBrowserArtifactIntake();
+  const zoom = record.zoomFactor ?? 1;
+  const viewport = {
+    ...record.viewport,
+    width: Math.round(record.viewport.width / zoom),
+    height: Math.round(record.viewport.height / zoom),
+  };
   const [pending, setPending] = useState(false);
   const mounted = useRef(true);
   const started = useRef(false);
@@ -38,7 +44,8 @@ export function BrowserAnnotationFlow({
         current.generation !== record.generation ||
         current.url !== record.url ||
         current.viewport.width !== record.viewport.width ||
-        current.viewport.height !== record.viewport.height
+        current.viewport.height !== record.viewport.height ||
+        (current.zoomFactor ?? 1) !== zoom
       )
         throw new Error('The page changed during capture.');
       return { blob, scroll, capturedAt };
@@ -82,7 +89,7 @@ export function BrowserAnnotationFlow({
       stageRef={stageRef}
       screenshot={capture.data.blob}
       scroll={capture.data.scroll}
-      viewport={record.viewport}
+      viewport={viewport}
       generation={record.generation}
       sessionId={record.browserSessionId}
       api={api}
@@ -98,7 +105,8 @@ export function BrowserAnnotationFlow({
             current.generation !== record.generation ||
             current.url !== record.url ||
             current.viewport.width !== record.viewport.width ||
-            current.viewport.height !== record.viewport.height
+            current.viewport.height !== record.viewport.height ||
+            (current.zoomFactor ?? 1) !== zoom
           )
             throw new Error(
               'The page changed before the annotation could be attached.',
@@ -120,10 +128,10 @@ export function BrowserAnnotationFlow({
                 { type: 'image/png' },
               )
             : undefined;
-          const viewport = capture.data.blob;
+          const viewportImage = capture.data.blob;
           const images =
             annotation.marks.length || !crop
-              ? [viewport, ...(crop ? [crop] : [])]
+              ? [viewportImage, ...(crop ? [crop] : [])]
               : [crop];
           const files: File[] = [];
           const descriptions = [];
@@ -157,7 +165,7 @@ export function BrowserAnnotationFlow({
             kind: 'browser-annotation',
             browserSessionId: record.browserSessionId,
             generation: record.generation,
-            viewport: record.viewport,
+            viewport,
             coordinateSpace: 'viewport',
             marks: annotation.marks,
             images: descriptions,
