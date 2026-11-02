@@ -378,7 +378,7 @@ export class ProjectWorkingConfigurationService {
       }
       if (source.kind === 'ci')
         for (const match of source.text.matchAll(
-          /^\s*-?\s*run:\s*([^|>\r\n][^\r\n]*)$/gm,
+          /^\s*-?\s*run:[ \t]*([^|>#\s][^\r\n]*)$/gm,
         ))
           if (match[1]!.trim().length <= 512)
             suggested.validationCommands.push({

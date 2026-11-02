@@ -27,6 +27,10 @@ content digest. Rediscovery preserves authored choices. A changed source or
 Project refuses a stale apply or mandatory Task context read; review the new
 snapshot instead of silently proceeding without guidance.
 
+Workflow suggestions include bounded single-line `run` declarations. Multiline
+YAML blocks and comment-only values are not presented as executable commands;
+read the retained source before selecting a validation procedure.
+
 The [Task brief owner](../../src-server/services/projects/task-brief-source.ts)
 serves both dispatch and `get_task_brief`. It shares one 16K-character bound
 across Task state, reviewed Project rules, guidance and source pointers. Scoped

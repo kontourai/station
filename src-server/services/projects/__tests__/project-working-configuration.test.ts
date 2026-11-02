@@ -78,7 +78,7 @@ function fixture() {
   );
   writeFileSync(
     join(cwd, '.github/workflows/check.yml'),
-    'steps:\n  - run: npm run test:focused\n',
+    'steps:\n  - run: npm run test:focused\n  - run: |\n      npm run test:focused\n  - run: >\n      npm run test:focused\n  - run: # no command declared\n',
   );
   let allowed = true;
   let projectId = 'project-1';

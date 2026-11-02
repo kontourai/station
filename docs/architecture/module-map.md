@@ -3498,7 +3498,7 @@ thread replies, and canonical completed-answer reads. Turn events and startup
 reconcile the existing agent-publish text append path; no new history body or
 storage worker is needed. An unavailable canonical completed-answer query defers
 that Task's startup publication, retaining blocked presence and the original
-request while other rooms recover. A later room read retries publication without
+request while other rooms recover. An authorized agent-request list read retries publication without
 restarting its provider. Other recovery errors still fail readiness.
 Browser records add optional timestamps, opaque actor
 identity and execution/thread correlation. Older records remain readable;
