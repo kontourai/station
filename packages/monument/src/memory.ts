@@ -30,6 +30,7 @@ import { isParticipantRefusal, runKernelTransactionStep } from './step.js';
 interface MemoryImage {
   readonly steerReceipts: Map<string, SteerReceiptRecord>;
   readonly turnDedup: Map<string, TurnDedupRecord>;
+  readonly turnDedupResolvedAt: Map<string, number>;
   /** Evicted keys and when they were evicted. */
   readonly turnDedupExpired: Map<string, number>;
   readonly turnBoundaries: Map<string, TurnBoundaryRecord>;
@@ -50,6 +51,7 @@ function emptyImage(): MemoryImage {
   return {
     steerReceipts: new Map(),
     turnDedup: new Map(),
+    turnDedupResolvedAt: new Map(),
     turnDedupExpired: new Map(),
     turnBoundaries: new Map(),
     turnTerminals: new Map(),
@@ -162,11 +164,20 @@ function transactionOver(image: MemoryImage): KernelTransaction {
         const record = image.turnDedup.get(key);
         return record && copy(record);
       },
-      put: (record) => {
+      put: (record, resolvedAt) => {
+        const prior = image.turnDedup.get(record.key);
+        if (
+          record.value === null ||
+          (prior && JSON.stringify(prior) !== JSON.stringify(record))
+        )
+          image.turnDedupResolvedAt.delete(record.key);
         image.turnDedup.set(record.key, copy(record));
+        if (resolvedAt !== undefined && record.value !== null)
+          image.turnDedupResolvedAt.set(record.key, resolvedAt);
       },
       delete: (key) => {
         image.turnDedup.delete(key);
+        image.turnDedupResolvedAt.delete(key);
       },
       deletePrefix: (prefix) => {
         let removed = 0;
@@ -176,9 +187,29 @@ function transactionOver(image: MemoryImage): KernelTransaction {
               table.delete(key);
               removed += 1;
             }
+        for (const key of image.turnDedupResolvedAt.keys())
+          if (key.startsWith(prefix)) image.turnDedupResolvedAt.delete(key);
         return removed;
       },
-      evictResolved: ({ maxEntries, minResolvedEntries }, now) => {
+      evictResolved: (
+        { maxEntries, minResolvedEntries, resolvedRetentionMs },
+        now,
+      ) => {
+        if (resolvedRetentionMs !== undefined) {
+          for (const record of image.turnDedup.values()) {
+            if (record.value === null) continue;
+            const resolvedAt = image.turnDedupResolvedAt.get(record.key);
+            if (resolvedAt === undefined) {
+              image.turnDedupResolvedAt.set(record.key, now);
+            } else if (resolvedAt <= now - resolvedRetentionMs) {
+              image.turnDedup.delete(record.key);
+              image.turnDedupResolvedAt.delete(record.key);
+              if (!image.turnDedupExpired.has(record.key))
+                image.turnDedupExpired.set(record.key, now);
+            }
+          }
+          return;
+        }
         const overflow = image.turnDedup.size - maxEntries;
         if (overflow <= 0) return;
         const resolved = [...image.turnDedup.values()].filter(
@@ -194,6 +225,7 @@ function transactionOver(image: MemoryImage): KernelTransaction {
           .slice(0, excess);
         for (const victim of victims) {
           image.turnDedup.delete(victim.key);
+          image.turnDedupResolvedAt.delete(victim.key);
           // An existing tombstone keeps its original time.
           if (!image.turnDedupExpired.has(victim.key))
             image.turnDedupExpired.set(victim.key, now);

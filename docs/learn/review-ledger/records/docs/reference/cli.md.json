@@ -256,7 +256,9 @@
 
     "packages/sdk/src/client/automations.ts",
 
-    "src-server/routes/operations/automations.ts"
+    "src-server/routes/operations/automations.ts",
+
+    "packages/sdk/src/client/delegations.ts"
   ],
 
   "checks": [
