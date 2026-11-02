@@ -1,8 +1,9 @@
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
+import { ActionRow } from '../../components/ActionRow';
 import { Button } from '../../components/Button';
 import { IconButton } from '../../components/IconButton';
-import { RecordGlyph } from '../../components/icons/Glyph';
+import { CloseGlyph, RecordGlyph } from '../../components/icons/Glyph';
 import { activeChatsStore } from '../../contexts/active-chats-store';
 import { navigationStore } from '../../contexts/navigation-store';
 import { BROWSER_PAGE_CONTENT_NOTICE } from './browserArtifactContent';
@@ -306,67 +307,87 @@ export function BrowserRecordingStatus({
                 ? 'Finishing recording…'
                 : 'Recording…')}
       </p>
-      {url ? (
-        <a
-          className="button button--primary button--small browser-pane__control browser-pane__link-button"
-          href={url}
-          download="browser-recording.webm"
-        >
-          Save clip
-        </a>
-      ) : null}
-      {recording.phase === 'ready' && recording.video ? (
-        <Button size="sm" disabled={attaching} onClick={() => void attach()}>
-          Attach recording frames to chat
-        </Button>
-      ) : null}
+      <ActionRow
+        overflowLabel="More recording actions"
+        label="Recording actions"
+        primary={
+          url ? (
+            <a
+              className="button button--primary button--small browser-pane__control browser-pane__link-button"
+              href={url}
+              download="browser-recording.webm"
+            >
+              Save clip
+            </a>
+          ) : undefined
+        }
+        secondary={
+          recording.phase === 'ready' && recording.video ? (
+            <Button
+              size="sm"
+              disabled={attaching}
+              onClick={() => void attach()}
+            >
+              Attach recording frames to chat
+            </Button>
+          ) : undefined
+        }
+        overflow={
+          recording.phase === 'ready' &&
+          recording.task?.kind === 'ready' &&
+          recording.recordingId
+            ? [
+                {
+                  key: 'task',
+                  label: 'Add to Task clips',
+                  disabled: publishing || !!taskMessage,
+                  onSelect: () => {
+                    const id = recording.recordingId;
+                    if (!id) return;
+                    setPublishing(true);
+                    void recording.api
+                      .publishRecordingToTask(recording.sessionId, id)
+                      .then(
+                        () => {
+                          if (alive.current)
+                            setTaskResult({
+                              id,
+                              message: 'Recording added to Task clips.',
+                            });
+                        },
+                        () => {
+                          if (alive.current)
+                            setTaskResult({
+                              id,
+                              message:
+                                'Could not add this recording to Task clips.',
+                            });
+                        },
+                      )
+                      .finally(() => {
+                        if (alive.current) setPublishing(false);
+                      });
+                  },
+                },
+              ]
+            : []
+        }
+      />
       {attachError ? <p>{attachError}</p> : null}
       {recording.task?.kind === 'unavailable' ? (
         <p>{recording.task.reason}</p>
-      ) : null}
-      {recording.phase === 'ready' &&
-      recording.task?.kind === 'ready' &&
-      recording.recordingId ? (
-        <Button
-          size="sm"
-          disabled={publishing || !!taskMessage}
-          onClick={() => {
-            const id = recording.recordingId;
-            if (!id) return;
-            setPublishing(true);
-            void recording.api
-              .publishRecordingToTask(recording.sessionId, id)
-              .then(
-                () => {
-                  if (alive.current)
-                    setTaskResult({
-                      id,
-                      message: 'Recording added to Task clips.',
-                    });
-                },
-                () => {
-                  if (alive.current)
-                    setTaskResult({
-                      id,
-                      message: 'Could not add this recording to Task clips.',
-                    });
-                },
-              )
-              .finally(() => {
-                if (alive.current) setPublishing(false);
-              });
-          }}
-        >
-          Add to Task clips
-        </Button>
       ) : null}
       {taskMessage ? <p>{taskMessage}</p> : null}
       {recording.phase === 'ready' ||
       recording.phase === 'failed' ||
       recording.error ? (
-        <Button size="sm" onClick={recording.reset}>
-          Dismiss
-        </Button>
+        <IconButton
+          aria-label="Dismiss"
+          title="Dismiss"
+          onClick={recording.reset}
+        >
+          <CloseGlyph />
+        </IconButton>
       ) : null}
     </div>
   );

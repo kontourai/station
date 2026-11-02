@@ -288,7 +288,10 @@ it('offers Task publication only when start established a Task pin', async () =>
   );
   fireEvent.click(screen.getByRole('button', { name: 'Record' }));
   fireEvent.click(
-    await screen.findByRole('button', { name: 'Add to Task clips' }),
+    await screen.findByRole('button', { name: 'More recording actions' }),
+  );
+  fireEvent.click(
+    await screen.findByRole('menuitem', { name: 'Add to Task clips' }),
   );
   expect(
     await screen.findByText('Recording added to Task clips.'),
@@ -320,6 +323,6 @@ it('shows the Task refusal without offering publication when the pin or authorit
   fireEvent.click(screen.getByRole('button', { name: 'Record' }));
   expect(await screen.findByText(reason)).toBeTruthy();
   expect(
-    screen.queryByRole('button', { name: 'Add to Task clips' }),
+    screen.queryByRole('button', { name: 'More recording actions' }),
   ).toBeNull();
 });
