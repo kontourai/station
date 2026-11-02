@@ -615,6 +615,16 @@ test('app tools use the selected host and refuse a human-held lease', async () =
     ok: true,
     result: { hostId: h.remoteDevice.hostId, observed: 'foreground' },
   });
+  expect(h.remoteSessions!.actionHistory(remoteId)).toEqual([
+    expect.objectContaining({
+      action: 'open-url',
+      actor: 'agent',
+      outcome: 'success',
+    }),
+  ]);
+  expect(
+    JSON.stringify(h.remoteSessions!.actionHistory(remoteId)),
+  ).not.toContain('example://page');
   expect(h.remoteTools.appAction).toHaveBeenCalledOnce();
   expect(h.localTools.appAction).toHaveBeenCalledOnce();
   await h.take(localId);

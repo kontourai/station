@@ -1393,13 +1393,7 @@ export async function mutateJson(
   opts?: ClientRequestOptions,
   body?: unknown,
 ): Promise<Response> {
-  return mutateBody(
-    url,
-    method,
-    opts,
-    body === undefined ? undefined : JSON.stringify(body),
-    body === undefined ? undefined : 'application/json',
-  );
+  return mutateBody(url, method, opts, body, 'json');
 }
 
 /** Send a binary body with the same captured authority and response guards as JSON mutations. */
@@ -1409,15 +1403,15 @@ export async function mutateBinary(
   opts: ClientRequestOptions | undefined,
   body: Blob,
 ): Promise<Response> {
-  return mutateBody(url, method, opts, body, 'application/octet-stream');
+  return mutateBody(url, method, opts, body, 'binary');
 }
 
 async function mutateBody(
   url: string,
   method: string,
   opts: ClientRequestOptions | undefined,
-  body: BodyInit | undefined,
-  contentType: string | undefined,
+  body: unknown,
+  kind: 'json' | 'binary',
 ): Promise<Response> {
   const requestOptions = snapshotRequestOptions(opts);
   const maximum = requestOptions?.maxResponseBytes;
@@ -1427,7 +1421,14 @@ async function mutateBody(
   const baseHeaders =
     hasBody || requestOptions?.headers
       ? {
-          ...(hasBody && contentType ? { 'Content-Type': contentType } : {}),
+          ...(hasBody
+            ? {
+                'Content-Type':
+                  kind === 'json'
+                    ? 'application/json'
+                    : 'application/octet-stream',
+              }
+            : {}),
           ...(requestOptions?.headers || {}),
         }
       : undefined;
@@ -1450,7 +1451,7 @@ async function mutateBody(
     init.headers = headers;
   }
   if (hasBody) {
-    init.body = body;
+    init.body = kind === 'json' ? JSON.stringify(body) : (body as Blob);
   }
   const timeoutMs = resolveTimeoutMs(requestOptions);
   const request =

@@ -1,6 +1,7 @@
 import { expect, test, vi } from 'vitest';
 import type { DeviceAccess } from '../../devices/device-access.js';
 import type { DeviceSessionService } from '../../devices/device-session-service.js';
+import type { DeviceToolsService } from '../../devices/device-tools.js';
 import { LiveSurfaceRegistry } from '../../live-surface/registry.js';
 import type { LocalMobileDeviceHost } from '../../mobile-device/mobile-device-host.js';
 import type { TaskReviewAccess } from '../../orchestration/project-task-room-runtime.js';
@@ -41,7 +42,27 @@ function fixture() {
   const sessions = {
     list,
     get: (id: string) => (id === 'session' ? session : undefined),
-  } as unknown as Pick<DeviceSessionService, 'list' | 'get'>;
+    actionHistory: () => [
+      {
+        at: '2026-01-01T00:00:00Z',
+        action: 'launch',
+        actor: 'agent',
+        outcome: 'success',
+      },
+    ],
+  } as unknown as Pick<DeviceSessionService, 'list' | 'get' | 'actionHistory'>;
+  const logs = vi.fn(async () => ({
+    output: 'application log',
+    processId: '42',
+    truncated: true,
+  }));
+  const tools = {
+    foreground: async () => ({
+      readAt: '2026-01-01T00:00:00Z',
+      foregroundApp: { state: 'read', value: null },
+    }),
+    logs,
+  } as unknown as Pick<DeviceToolsService, 'foreground' | 'logs'>;
   const deviceAccess = {
     mayAccessDevice: async (_request, _platform, _id, _purpose, hostId) =>
       allowed && hostId === session.hostId,
@@ -59,7 +80,8 @@ function fixture() {
     >,
     access: deviceAccess,
     hostIds: () => [session.hostId],
-    host: (id) => (id === session.hostId ? { host, sessions } : undefined),
+    host: (id) =>
+      id === session.hostId ? { host, sessions, tools } : undefined,
     hostRevision: () => revision,
     projectMatches: (_request, id) => id === 'p',
     requestCurrent: () => true,
@@ -69,6 +91,7 @@ function fixture() {
     list,
     capture,
     publish,
+    logs,
     revoke: () => {
       allowed = false;
     },
@@ -146,4 +169,33 @@ test('a recording source follows the selected host and loses authorization on re
   } finally {
     await surfaces.dispose();
   }
+});
+
+test('reproduction captures only the selected host and refuses a revoked log sample', async () => {
+  const f = fixture();
+  const bundle = await f.service.reproduction(
+    request,
+    access,
+    input.sourceSessionId,
+    'com.example.app',
+  );
+  expect(bundle.data).toMatchObject({
+    device: { hostId: session.hostId },
+    app: { appId: 'com.example.app', revision: null },
+    logs: { output: 'application log', truncated: true },
+    screenshot: { mimeType: 'image/png' },
+    actions: [{ action: 'launch' }],
+  });
+  f.logs.mockImplementationOnce(async () => {
+    f.revoke();
+    return { output: 'secret', processId: '42', truncated: false };
+  });
+  await expect(
+    f.service.reproduction(
+      request,
+      access,
+      input.sourceSessionId,
+      'com.example.app',
+    ),
+  ).rejects.toThrow();
 });

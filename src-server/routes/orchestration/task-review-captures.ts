@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { CHAT_ATTACHMENT_MAX_BYTES } from '@kontourai/station-contracts/chat-attachment';
 import { parseTaskReviewCreateCaptureRequest } from '@kontourai/station-contracts/task-review';
 import type { Walkthrough } from '@kontourai/station-contracts/walkthrough';
 import { type Context, Hono } from 'hono';
@@ -30,7 +31,10 @@ import { BROWSER_RECORD_MAX_DURATION_MS } from '../../tools/station-browser-poli
 
 export function createTaskReviewCaptureRoutes(deps: {
   logger: { warn(message: string, meta?: Record<string, unknown>): void };
-  runtime: Pick<ProjectTaskRoomRuntime, 'personTaskReviewAccess'>;
+  runtime: Pick<ProjectTaskRoomRuntime, 'personTaskReviewAccess'> &
+    Partial<
+      Pick<ProjectTaskRoomRuntime, 'storeAttachments' | 'message' | 'discover'>
+    >;
   captures: TaskBrowserCapture;
   devices?: TaskDeviceCapture;
   deviceRecordings?: {
@@ -70,6 +74,7 @@ export function createTaskReviewCaptureRoutes(deps: {
   app.use('/:taskId/review/capture-sessions', captureBoundary);
   app.use('/:taskId/review/device-capture-sessions', captureBoundary);
   app.use('/:taskId/review/device-captures', captureBoundary);
+  app.use('/:taskId/review/device-repro-bundles', captureBoundary);
   app.use('/:taskId/review/device-recordings', captureBoundary);
   app.use('/:taskId/review/device-recordings/*', captureBoundary);
   app.use('/:taskId/review/captures', captureBoundary);
@@ -238,6 +243,110 @@ export function createTaskReviewCaptureRoutes(deps: {
       );
     const result = await deps.devices.capture(c.req.raw, access, input);
     return c.json({ success: true, data: { capture: result.capture } }, 201);
+  });
+
+  app.post('/:taskId/review/device-repro-bundles', async (c) => {
+    const access = await accessFor(c);
+    if (
+      !deps.deviceRecordings?.enabled() ||
+      !deps.devices ||
+      !deps.runtime.storeAttachments ||
+      !deps.runtime.message ||
+      !deps.runtime.discover
+    )
+      throw new TaskBrowserCaptureError(
+        'capture-unavailable',
+        'Device reproduction is unavailable.',
+      );
+    const body = await readBoundedRequestBody(c.req.raw, 8192);
+    let value: unknown;
+    try {
+      value = body.status === 'ok' ? JSON.parse(body.body) : null;
+    } catch {
+      value = null;
+    }
+    if (!value || typeof value !== 'object' || Array.isArray(value))
+      throw new TaskBrowserCaptureError(
+        'invalid-request',
+        'Give a Device session and app ID.',
+      );
+    const input = value as Record<string, unknown>;
+    if (
+      Object.keys(input).some(
+        (key) => !['sourceSessionId', 'appId'].includes(key),
+      ) ||
+      typeof input.sourceSessionId !== 'string' ||
+      typeof input.appId !== 'string'
+    )
+      throw new TaskBrowserCaptureError(
+        'invalid-request',
+        'Give a Device session and app ID.',
+      );
+    const bundle = await deps.devices.reproduction(
+      c.req.raw,
+      access,
+      input.sourceSessionId,
+      input.appId,
+    );
+    const bytes = Buffer.from(JSON.stringify(bundle.data));
+    if (bytes.length > CHAT_ATTACHMENT_MAX_BYTES || !(await bundle.current()))
+      throw new TaskBrowserCaptureError(
+        'capture-unavailable',
+        'Device reproduction is unavailable.',
+      );
+    const room = await deps.runtime.discover({
+      taskId: c.req.param('taskId'),
+      request: c.req.raw,
+    });
+    if (
+      (room.kind !== 'opened' && room.kind !== 'existing') ||
+      !(await bundle.current())
+    )
+      throw new TaskBrowserCaptureError(
+        'capture-unavailable',
+        'Task room is unavailable.',
+      );
+    const attachments = await deps.runtime.storeAttachments({
+      taskId: c.req.param('taskId'),
+      taskCreatedAt: access.write.taskCreatedAt,
+      request: c.req.raw,
+      attachments: [
+        {
+          kind: 'file',
+          name: 'device-reproduction.json',
+          mimeType: 'application/json',
+          size: bytes.length,
+          dataUrl: `data:application/json;base64,${bytes.toString('base64')}`,
+        },
+      ],
+    });
+    if (
+      !attachments?.length ||
+      !(await bundle.current()) ||
+      !deps.deviceRecordings.enabled()
+    )
+      throw new TaskBrowserCaptureError(
+        'capture-unavailable',
+        'Device reproduction was not added to the Task.',
+      );
+    const result = await deps.runtime.message({
+      taskId: c.req.param('taskId'),
+      request: c.req.raw,
+      proposalId: randomUUID(),
+      expectedTaskCreatedAt: access.write.taskCreatedAt,
+      text: 'Device reproduction bundle',
+      attachments,
+    });
+    if (
+      result.kind !== 'committed' ||
+      !(await bundle.current()) ||
+      !deps.deviceRecordings.enabled()
+    )
+      throw new TaskBrowserCaptureError(
+        'capture-unavailable',
+        'Device reproduction could not be confirmed in the Task.',
+      );
+    return c.json({ success: true, data: { attachment: attachments[0] } }, 201);
   });
 
   app.post('/:taskId/review/device-recordings', async (c) => {

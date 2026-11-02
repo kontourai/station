@@ -149,6 +149,26 @@ function setup(
   const app = createDeviceToolsRoutes({
     deviceLoopEnabled,
     ...(appInstall ? { appInstall } : {}),
+    actionHistory: {
+      read: (target) => {
+        const session = sessions.forDevice(target.platform, target.deviceId);
+        const entries = session
+          ? sessions.actionHistory(session.sessionId)
+          : undefined;
+        return session && entries
+          ? { sessionId: session.sessionId, entries }
+          : undefined;
+      },
+      installation: (target, value) => {
+        const session = sessions.forDevice(target.platform, target.deviceId);
+        if (session) sessions.noteInstallation(session.sessionId, value);
+      },
+      note: (target, action, outcome) => {
+        const session = sessions.forDevice(target.platform, target.deviceId);
+        if (session)
+          sessions.noteAction(session.sessionId, action, 'person', outcome);
+      },
+    },
     isRequestPrincipalCurrent: () => true,
     access: fakeAccess,
     tools,
@@ -1449,4 +1469,29 @@ test('install requires current Project and device authority before invoking the 
     }),
   );
   await staging.dispose();
+});
+
+test('session history records human actions without their payload and requires device view access', async () => {
+  const env = setup();
+  const session = await env.sessions.open({
+    hostId: 'local',
+    platform: 'ios',
+    deviceId: IOS,
+  });
+  const response = await env.call('POST', actionPath(), 'operator', DARK);
+  expect(response.status).toBe(200);
+  expect(
+    (await env.call('GET', `${toolsPath()}/history`, 'contributor')).status,
+  ).toBe(403);
+  const history = await (
+    await env.call('GET', `${toolsPath()}/history`, 'operator')
+  ).json();
+  expect(history).toMatchObject({
+    success: true,
+    data: {
+      sessionId: session.sessionId,
+      entries: [{ action: 'tool-action', actor: 'person', outcome: 'success' }],
+    },
+  });
+  expect(JSON.stringify(history)).not.toContain('dark');
 });

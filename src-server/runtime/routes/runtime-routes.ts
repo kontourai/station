@@ -5048,6 +5048,52 @@ export function configureRuntimeRoutes(
         deviceLoopEnabled,
         isRequestPrincipalCurrent,
         access: deviceAccess,
+        actionHistory: {
+          read: (target) => {
+            const sessions =
+              target.hostId === LOCAL_DEVICE_HOST_ID
+                ? toolSessions
+                : remoteDeviceHosts?.get(target.hostId)?.sessions;
+            const session = sessions?.forDevice(
+              target.platform,
+              target.deviceId,
+            );
+            const entries = session
+              ? sessions?.actionHistory(session.sessionId)
+              : undefined;
+            return session && entries
+              ? { sessionId: session.sessionId, entries }
+              : undefined;
+          },
+          installation: (target, value) => {
+            const sessions =
+              target.hostId === LOCAL_DEVICE_HOST_ID
+                ? toolSessions
+                : remoteDeviceHosts?.get(target.hostId)?.sessions;
+            const session = sessions?.forDevice(
+              target.platform,
+              target.deviceId,
+            );
+            if (session) sessions?.noteInstallation(session.sessionId, value);
+          },
+          note: (target, action, outcome) => {
+            const sessions =
+              target.hostId === LOCAL_DEVICE_HOST_ID
+                ? toolSessions
+                : remoteDeviceHosts?.get(target.hostId)?.sessions;
+            const session = sessions?.forDevice(
+              target.platform,
+              target.deviceId,
+            );
+            if (session)
+              sessions?.noteAction(
+                session.sessionId,
+                action,
+                'person',
+                outcome,
+              );
+          },
+        },
         appInstall: {
           staging: artifacts,
           projectId: (slug) =>

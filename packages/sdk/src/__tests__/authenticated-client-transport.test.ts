@@ -5,6 +5,7 @@ import {
   authenticatedFetch,
   CREDENTIAL_REPORT_DEADLINE_MS,
   getJson,
+  mutateBinary,
   mutateJson,
   StationCredentialConflictError,
   StationHttpError,
@@ -18,6 +19,54 @@ describe('authenticated client transport', () => {
   afterEach(() => {
     setClientCredentialResolver(undefined);
     vi.unstubAllGlobals();
+  });
+
+  it('binds a binary upload to the selected request authority through dispatch and response', async () => {
+    const scope = {
+      apiBase: 'https://station.example.test',
+      authorityKey: 'station-a',
+    };
+    let current = false;
+    let reply!: (response: Response) => void;
+    const transport = vi.fn(
+      (_url: string, _init: RequestInit) =>
+        new Promise<Response>((resolve) => {
+          reply = resolve;
+        }),
+    );
+    setClientCredentialResolver(() => ({
+      origin: scope.apiBase,
+      transport,
+      requestAuthority: { ...scope, isCurrent: () => current },
+    }));
+    const body = new Blob(['artifact']);
+    await expect(
+      mutateBinary(
+        `${scope.apiBase}/api/upload`,
+        'POST',
+        { requestScope: scope },
+        body,
+      ),
+    ).rejects.toMatchObject({ name: 'StationRequestAuthorityError' });
+    expect(transport).not.toHaveBeenCalled();
+    current = true;
+    const pending = mutateBinary(
+      `${scope.apiBase}/api/upload`,
+      'POST',
+      { requestScope: scope },
+      body,
+    );
+    await vi.waitFor(() => expect(transport).toHaveBeenCalledOnce());
+    const init = transport.mock.calls[0]![1];
+    expect(init.body).toBe(body);
+    expect(new Headers(init.headers).get('content-type')).toBe(
+      'application/octet-stream',
+    );
+    current = false;
+    reply(new Response('{}'));
+    await expect(pending).rejects.toMatchObject({
+      name: 'StationRequestAuthorityError',
+    });
   });
 
   it('drops stale host binding 200 and 401 responses before either credential reporter', async () => {

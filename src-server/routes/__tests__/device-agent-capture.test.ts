@@ -17,6 +17,7 @@ import {
 import { createBrowserPrincipalAuthorizer } from '../../services/browser/browser-agent-authority.js';
 import { DeviceAutomation } from '../../services/devices/device-automation.js';
 import { DeviceSessionService } from '../../services/devices/device-session-service.js';
+import type { DeviceToolsService } from '../../services/devices/device-tools.js';
 import {
   claimHumanControl,
   LiveSurfaceRegistry,
@@ -31,6 +32,7 @@ import { TaskCaptureBlobStore } from '../../services/projects/task-capture-blob-
 import { TaskDeviceCapture } from '../../services/projects/task-device-capture.js';
 import { TaskDeviceRecording } from '../../services/projects/task-device-recording.js';
 import { TaskReviewModule } from '../../services/projects/task-review-module.js';
+import { TaskRoomAttachments } from '../../services/projects/task-room-attachments.js';
 import { STATION_CONTROL_CALLER_TOKEN_HEADER } from '../../tools/station-control-shared.js';
 import { execGit } from '../../utils/git-exec.js';
 import { createDeviceAgentRoutes } from '../device-agent.js';
@@ -111,6 +113,7 @@ async function harness(
       id === PROJECT ? { id, slug: 'capture-demo' } : undefined,
     history: (authority) => events.createProjectTaskRoomHistory(authority),
     working: events.createProjectTaskRoomWorkingState(),
+    attachments: new TaskRoomAttachments(join(home, 'task-room-attachments')),
     requestAuthority: {
       resolve: async () => ({
         kind: 'granted',
@@ -291,6 +294,23 @@ async function harness(
       throw new Error('injected recording failure');
     },
   });
+  const personTools: Pick<DeviceToolsService, 'foreground' | 'logs'> = {
+    foreground: async () => ({
+      readAt: new Date().toISOString(),
+      foregroundApp: { state: 'read', value: null },
+    }),
+    logs: async (_target, appId, beforeRun) => {
+      await beforeRun?.();
+      return {
+        ...device,
+        appId,
+        processId: '42',
+        output: 'sample log',
+        truncated: false,
+        readAt: new Date().toISOString(),
+      };
+    },
+  };
   app.route(
     '/api/tasks',
     createTaskReviewCaptureRoutes({
@@ -310,7 +330,10 @@ async function harness(
           mayAccessDevice: async () => personDeviceAllowed,
         },
         hostIds: () => ['local'],
-        host: (hostId) => (hostId === 'local' ? { host, sessions } : undefined),
+        host: (hostId) =>
+          hostId === 'local'
+            ? { host, sessions, tools: personTools }
+            : undefined,
         hostRevision: (hostId) => (hostId === 'local' ? 1 : undefined),
         projectMatches: (request, id) =>
           id === PROJECT &&
@@ -401,6 +424,7 @@ async function harness(
     id,
     store,
     access,
+    room,
     recordingStarted,
     recordingSourceSeen: () => recordingSourceSeen,
     shots: () => shots,
@@ -697,4 +721,62 @@ test('reports an oversized device response as screenshot-too-large without publi
   expect(h.shots()).toBe(1);
   expect(h.store.listCaptures(h.access.write)).toEqual([]);
   expect(h.blobFiles()).toEqual([]);
+});
+
+test('a reproduction bundle is committed to the Task room with device diagnostics', async () => {
+  const h = await harness();
+  const path =
+    '/api/tasks/task-a/review/device-repro-bundles?projectSlug=capture-demo';
+  const response = await h.app.request(path, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      sourceSessionId: `local:${h.id}`,
+      appId: 'com.example.app',
+    }),
+  });
+  const body = await response.json();
+  expect(response.status, JSON.stringify(body)).toBe(201);
+  if (
+    !body ||
+    typeof body !== 'object' ||
+    !('data' in body) ||
+    !body.data ||
+    typeof body.data !== 'object' ||
+    !('attachment' in body.data) ||
+    !body.data.attachment ||
+    typeof body.data.attachment !== 'object' ||
+    !('id' in body.data.attachment) ||
+    typeof body.data.attachment.id !== 'string'
+  )
+    throw new Error('No attachment receipt');
+  const attachmentId = body.data.attachment.id;
+  const request = new Request('http://station.test/api/tasks/task-a/room');
+  const stored = await h.room.readAttachment({
+    taskId: 'task-a',
+    taskCreatedAt: h.task.createdAt,
+    id: attachmentId,
+    request,
+  });
+  expect(stored).toBeDefined();
+  const bundle = JSON.parse(stored!.bytes.toString('utf8'));
+  expect(bundle).toMatchObject({
+    schema: 'station.device-reproduction/v1',
+    device: { hostId: 'local', deviceId: 'emulator-5554' },
+    app: { appId: 'com.example.app', revision: null },
+    logs: { output: 'sample log' },
+    screenshot: { mimeType: 'image/png' },
+  });
+  const history = await h.room.history({ taskId: 'task-a', request });
+  expect(JSON.stringify(history)).toContain(attachmentId);
+  h.revokePerson();
+  const refused = await h.app.request(path, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      sourceSessionId: `local:${h.id}`,
+      appId: 'com.example.app',
+    }),
+  });
+  expect(refused.status).not.toBe(201);
 });

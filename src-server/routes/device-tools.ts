@@ -13,6 +13,11 @@ import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import { readBoundedRequestBody } from '../security/bounded-request-body.js';
 import type { DeviceAccess } from '../services/devices/device-access.js';
 import type { DeviceArtifactStaging } from '../services/devices/device-app-artifacts.js';
+import type {
+  DeviceHistoryAction,
+  DeviceHistoryEntry,
+  DeviceInstallation,
+} from '../services/devices/device-session-service.js';
 import { DeviceHostBusyError } from '../services/devices/device-shares.js';
 import {
   type DeviceControlConflict,
@@ -64,6 +69,30 @@ import type {
 
 export interface DeviceToolsRouteOptions {
   isRequestPrincipalCurrent: (request: Request) => boolean;
+  actionHistory?: {
+    read(target: {
+      hostId: string;
+      platform: MobileDevicePlatform;
+      deviceId: string;
+    }): { sessionId: string; entries: DeviceHistoryEntry[] } | undefined;
+    installation(
+      target: {
+        hostId: string;
+        platform: MobileDevicePlatform;
+        deviceId: string;
+      },
+      value: DeviceInstallation,
+    ): void;
+    note(
+      target: {
+        hostId: string;
+        platform: MobileDevicePlatform;
+        deviceId: string;
+      },
+      action: DeviceHistoryAction,
+      outcome: DeviceHistoryEntry['outcome'],
+    ): void;
+  };
   appInstall?: {
     staging: DeviceArtifactStaging;
     projectId(slug: string): string | undefined;
@@ -428,6 +457,26 @@ export function createDeviceToolsRoutes(options: DeviceToolsRouteOptions) {
     },
   );
 
+  app.get(
+    '/hosts/:hostId/devices/:platform/:deviceId/tools/history',
+    async (c) => {
+      if (!options.deviceLoopEnabled?.())
+        return c.json(
+          { success: false, code: 'feature_preview_disabled' },
+          404,
+        );
+      if (!queryIsClean(c, ['projectSlug']))
+        return failure(c, 'invalid-request');
+      const admitted = await admit(c, 'view');
+      if (!admitted.ok) return admitted.response;
+      const history = options.actionHistory?.read(admitted.target);
+      if (!history) return failure(c, 'unavailable');
+      if (!stillCurrent(c) || !options.deviceLoopEnabled?.())
+        return failure(c, 'access-denied');
+      return publish(c, history);
+    },
+  );
+
   app.post(
     '/hosts/:hostId/devices/:platform/:deviceId/tools/install',
     async (c) => {
@@ -540,14 +589,40 @@ export function createDeviceToolsRoutes(options: DeviceToolsRouteOptions) {
                     ? ('unknown' as const)
                     : ('none' as const),
               };
-            return outcome;
+            if (outcome.ok)
+              options.actionHistory?.installation(target, {
+                ...outcome,
+                source: receipt.source,
+              });
+            return outcome.ok
+              ? {
+                  ...outcome,
+                  source: receipt.source,
+                  hostId: target.hostId,
+                  deviceId: target.deviceId,
+                }
+              : outcome;
           },
           c.req.raw.signal,
+        );
+        options.actionHistory?.note(
+          target,
+          'install-app',
+          result.ok
+            ? 'success'
+            : result.effect === 'unknown'
+              ? 'unknown'
+              : 'failed',
         );
         return result.ok
           ? publish(c, result)
           : c.json({ success: false, ...result }, 409);
       } catch {
+        options.actionHistory?.note(
+          target,
+          'install-app',
+          started ? 'unknown' : 'failed',
+        );
         return c.json(
           {
             success: false,
@@ -623,12 +698,18 @@ export function createDeviceToolsRoutes(options: DeviceToolsRouteOptions) {
       };
       return run(c, async () => {
         await readmit();
-        const result = await service.appAction(target, action, {
-          beforeRun: readmit,
-          signal: c.req.raw.signal,
-        });
-        await readmit();
-        return publish(c, result);
+        try {
+          const result = await service.appAction(target, action, {
+            beforeRun: readmit,
+            signal: c.req.raw.signal,
+          });
+          await readmit();
+          options.actionHistory?.note(target, action.type, 'success');
+          return publish(c, result);
+        } catch (error) {
+          options.actionHistory?.note(target, action.type, 'unknown');
+          throw error;
+        }
       });
     },
   );
@@ -696,14 +777,26 @@ export function createDeviceToolsRoutes(options: DeviceToolsRouteOptions) {
             heldBy: now,
           });
       };
-      return run(c, async () =>
-        publish(
-          c,
-          await admitted.service.act(admitted.target, action, {
+      return run(c, async () => {
+        try {
+          const result = await admitted.service.act(admitted.target, action, {
             beforeRun: readmit,
-          }),
-        ),
-      );
+          });
+          options.actionHistory?.note(
+            admitted.target,
+            'tool-action',
+            'success',
+          );
+          return publish(c, result);
+        } catch (error) {
+          options.actionHistory?.note(
+            admitted.target,
+            'tool-action',
+            'unknown',
+          );
+          throw error;
+        }
+      });
     },
   );
 

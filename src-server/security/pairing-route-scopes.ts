@@ -1160,6 +1160,14 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
     origin: 'explicit',
   },
   {
+    id: '/api/tasks/:taskId/review/device-repro-bundles:terminal-operate',
+    method: 'POST',
+    prefix: '/api/tasks/:taskId/review/device-repro-bundles',
+    exact: true,
+    scope: PAIRING_SCOPE_TERMINAL_OPERATE,
+    origin: 'explicit',
+  },
+  {
     id: '/api/tasks/:taskId/review/device-captures:terminal-operate',
     method: 'POST',
     prefix: '/api/tasks/:taskId/review/device-captures',

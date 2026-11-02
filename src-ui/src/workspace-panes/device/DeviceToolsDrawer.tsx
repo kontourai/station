@@ -22,16 +22,20 @@ import {
 import { Button } from '../../components/Button';
 import { CloseGlyph } from '../../components/icons/Glyph';
 import { ErrorState, SkeletonBlock } from '../../components/state';
+import { DeviceReproductionPicker } from './DeviceReproductionPicker';
 import {
   axRectOnShownFrame,
   type DeviceFrameRotation,
 } from './deviceAxGeometry';
 import {
   type DeviceToolsTarget,
+  describeDeviceInstallFailure,
   describeDeviceLogsFailure,
   describeDeviceToolsFailure,
   useDeviceAccessibilityTree,
+  useDeviceActionHistory,
   useDeviceAppAction,
+  useDeviceAppInstall,
   useDeviceLogs,
   useDevicePermissions,
   useDeviceToolAction,
@@ -139,6 +143,7 @@ function locationLine(location: DeviceLocationReadBack): string {
 export interface DeviceToolsDrawerProps {
   requestScope: ApiRequestScope;
   projectSlug: string | null;
+  sourceSessionId?: string;
   target: DeviceToolsTarget;
   deviceName: string;
   /** The drawer's element id (the Tools toggle's `aria-controls`). */
@@ -177,6 +182,13 @@ export function DeviceToolsDrawer(props: DeviceToolsDrawerProps) {
     null,
   );
   const [notice, setNotice] = useState<string | null>(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const history = useDeviceActionHistory(
+    requestScope,
+    target,
+    projectSlug,
+    deviceLoopEnabled && historyOpen,
+  );
   const [logAppId, setLogAppId] = useState('');
   const [logFilter, setLogFilter] = useState('');
   const [logLevel, setLogLevel] = useState('all');
@@ -314,6 +326,7 @@ export function DeviceToolsDrawer(props: DeviceToolsDrawerProps) {
               requestScope={requestScope}
               target={target}
               projectSlug={projectSlug}
+              sourceSessionId={props.sourceSessionId}
             />
           ) : null}
         </Section>
@@ -392,6 +405,48 @@ export function DeviceToolsDrawer(props: DeviceToolsDrawerProps) {
                 </pre>
               </>
             ) : null}
+          </Section>
+        ) : null}
+
+        {deviceLoopEnabled ? (
+          <Section title="Action history">
+            <details
+              onToggle={(event) => setHistoryOpen(event.currentTarget.open)}
+            >
+              <summary>Session actions</summary>
+              {history.isLoading ? (
+                <SkeletonBlock count={1} label="Loading action history" />
+              ) : null}
+              {history.isError ? (
+                <ErrorState
+                  variant="compact"
+                  title="History unavailable"
+                  description="Open a device session and try again."
+                  action={
+                    <Button size="sm" onClick={() => void history.refetch()}>
+                      Retry
+                    </Button>
+                  }
+                />
+              ) : null}
+              {history.data?.length === 0 ? (
+                <p>No actions recorded in this session.</p>
+              ) : null}
+              {history.data?.length ? (
+                <ol>
+                  {history.data.map((entry, index) => (
+                    <li key={`${entry.at}-${index}`}>
+                      {entry.action} · {entry.actor} · {entry.outcome}
+                    </li>
+                  ))}
+                </ol>
+              ) : null}
+              {history.data ? (
+                <Button size="sm" onClick={() => void history.refetch()}>
+                  Refresh history
+                </Button>
+              ) : null}
+            </details>
           </Section>
         ) : null}
 
@@ -493,13 +548,20 @@ function AppActions({
   requestScope,
   target,
   projectSlug,
+  sourceSessionId,
 }: {
   requestScope: ApiRequestScope;
   target: DeviceToolsTarget;
   projectSlug: string | null;
+  sourceSessionId?: string;
 }) {
+  const [pickingReproduction, setPickingReproduction] = useState(false);
+  const reproductionButton = useRef<HTMLButtonElement>(null);
   const [appId, setAppId] = useState('');
   const [url, setUrl] = useState('');
+  const [artifactPath, setArtifactPath] = useState('');
+  const [artifactFile, setArtifactFile] = useState<File | null>(null);
+  const install = useDeviceAppInstall(requestScope, target, projectSlug);
   const [notice, setNotice] = useState<string | null>(null);
   const action = useDeviceAppAction(requestScope, target, projectSlug);
   const run = async (next: DeviceAppAction) => {
@@ -519,6 +581,66 @@ function AppActions({
   return (
     <>
       <label className="device-tools__field">
+        <span className="device-tools__label">Project workspace app path</span>
+        <input
+          value={artifactPath}
+          onChange={(event) => setArtifactPath(event.target.value)}
+          placeholder={
+            target.platform === 'ios' ? 'build/Sample.app' : 'build/app.apk'
+          }
+        />
+      </label>
+      <div className="device-tools__actions">
+        <Button
+          size="sm"
+          disabled={!projectSlug || !artifactPath.trim() || install.isPending}
+          onClick={() =>
+            void install
+              .mutateAsync({ kind: 'workspace', path: artifactPath.trim() })
+              .catch(() => {})
+          }
+        >
+          Install from workspace
+        </Button>
+      </div>
+      <label className="device-tools__field">
+        <span className="device-tools__label">App file</span>
+        <input
+          type="file"
+          accept={target.platform === 'ios' ? '.zip' : '.apk'}
+          onChange={(event) => setArtifactFile(event.target.files?.[0] ?? null)}
+        />
+      </label>
+      <div className="device-tools__actions">
+        <Button
+          size="sm"
+          disabled={!projectSlug || !artifactFile || install.isPending}
+          onClick={() => {
+            if (artifactFile)
+              void install
+                .mutateAsync({ kind: 'upload', file: artifactFile })
+                .catch(() => {});
+          }}
+        >
+          Upload and install
+        </Button>
+      </div>
+      {install.isPending ? (
+        <SkeletonBlock count={1} label="Installing app" />
+      ) : null}
+      {install.isSuccess ? (
+        <p role="status">
+          Installed {install.data.appId} (build {install.data.build}).
+        </p>
+      ) : null}
+      {install.isError ? (
+        <ErrorState
+          variant="compact"
+          title="Install did not complete"
+          description={describeDeviceInstallFailure(install.error)}
+        />
+      ) : null}
+      <label className="device-tools__field">
         <span className="device-tools__label">App to control</span>
         <input
           value={appId}
@@ -529,6 +651,26 @@ function AppActions({
           onChange={(event) => setAppId(event.target.value)}
         />
       </label>
+      <div className="device-tools__actions">
+        <Button
+          size="sm"
+          ref={reproductionButton}
+          disabled={!valid || !projectSlug || !sourceSessionId}
+          onClick={() => setPickingReproduction(true)}
+        >
+          Save reproduction to Task
+        </Button>
+      </div>
+      {pickingReproduction && projectSlug && sourceSessionId ? (
+        <DeviceReproductionPicker
+          scope={requestScope}
+          projectSlug={projectSlug}
+          sourceSessionId={sourceSessionId}
+          appId={appId}
+          returnFocusTarget={reproductionButton.current}
+          onClose={() => setPickingReproduction(false)}
+        />
+      ) : null}
       <div className="device-tools__actions">
         <Button
           size="sm"

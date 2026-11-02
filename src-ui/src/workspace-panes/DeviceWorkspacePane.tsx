@@ -1095,7 +1095,20 @@ function DeviceStage({
           toolsButtonRef={toolsButtonRef}
           toolsDrawerId={toolsDrawerId}
           toolsOpen={toolsOpen}
-          onClose={onClose}
+          onClose={() => {
+            if (deviceLoopEnabled) {
+              requestFloat({
+                kind: 'device',
+                hostId: session.hostId,
+                platform,
+                deviceId: session.deviceId,
+                surfaceId: session.surfaceId,
+                projectSlug,
+                name: session.name,
+              });
+            }
+            onClose();
+          }}
           onEndForEveryone={onEndForEveryone}
           onPowerOff={onPowerOff}
           onReconnect={onReconnect}
@@ -1209,6 +1222,7 @@ function DeviceStage({
             onAxOverlayChange: setAxOverlay,
             onClose: () => setToolsOpen(false),
             projectSlug,
+            sourceSessionId: `${session.hostId}:${session.sessionId}`,
             requestScope,
             streamVisible: streamLive,
             target,

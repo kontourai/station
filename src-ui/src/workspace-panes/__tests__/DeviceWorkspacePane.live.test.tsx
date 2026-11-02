@@ -124,6 +124,37 @@ describe('opening a device', () => {
     });
     release();
   });
+  test('closing the device stage promotes its session to a floater with preview enabled', async () => {
+    activeProject.slug = 'project-one';
+    stubDeviceFetch({
+      inventory: readyInventory([ANDROID_DEVICE]),
+      deviceLoopPreview: true,
+    });
+    const release = registerFloatHost();
+    renderInQueryClient(<DeviceWorkspacePane />);
+    await openFirst('Open Pixel 10 Pro XL');
+    await screen.findByRole('button', { name: 'Record to Task' });
+    await click(screen.getByRole('button', { name: 'Close' }));
+    expect(takeFloatRequest()?.source).toMatchObject({
+      kind: 'device',
+      hostId: 'local',
+      deviceId: ANDROID_DEVICE.deviceId,
+      projectSlug: 'project-one',
+    });
+    release();
+  });
+
+  test('closing the device stage does not auto-float with the preview off', async () => {
+    activeProject.slug = 'project-one';
+    stubDeviceFetch({ inventory: readyInventory([ANDROID_DEVICE]) });
+    const release = registerFloatHost();
+    renderInQueryClient(<DeviceWorkspacePane />);
+    await openFirst('Open Pixel 10 Pro XL');
+    await click(await screen.findByRole('button', { name: 'Close' }));
+    expect(takeFloatRequest()).toBeNull();
+    release();
+  });
+
   test('starts and stops a Task recording for the selected host-qualified session', async () => {
     activeProject.slug = 'project-one';
     const log = stubDeviceFetch({
@@ -201,6 +232,88 @@ describe('opening a device', () => {
     await click(screen.getByRole('button', { name: 'Stop recording' }));
     await screen.findByText('Recording saved to Task.');
   });
+  test('captures a reproduction bundle into a selected Task', async () => {
+    activeProject.slug = 'project-one';
+    stubDeviceFetch({
+      inventory: readyInventory([ANDROID_DEVICE]),
+      deviceLoopPreview: true,
+      tools: ({ method, path }) =>
+        method === 'GET' && path.endsWith('/tools')
+          ? {
+              body: {
+                success: true,
+                data: {
+                  hostId: 'local',
+                  platform: 'android',
+                  deviceId: ANDROID_DEVICE.deviceId,
+                  readAt: '2026-11-01T00:00:00Z',
+                  foregroundApp: { state: 'read', value: null },
+                  appearance: { state: 'read', value: 'dark' },
+                  location: { state: 'unreadable', reason: 'unsupported' },
+                  capabilities: {
+                    appearance: true,
+                    location: false,
+                    clearLocation: false,
+                    push: false,
+                    permissions: [],
+                    permissionDecisions: [],
+                    accessibility: false,
+                  },
+                },
+              },
+            }
+          : undefined,
+    });
+    const originalFetch = globalThis.fetch;
+    const captures: unknown[] = [];
+    vi.stubGlobal(
+      'fetch',
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = new URL(String(input));
+        if (url.pathname === '/api/tasks' && (init?.method ?? 'GET') === 'GET')
+          return Response.json({
+            success: true,
+            data: [{ id: 'task-a', title: 'Test Task', status: 'ready' }],
+          });
+        if (url.pathname.endsWith('/review/device-repro-bundles')) {
+          captures.push(JSON.parse(String(init?.body)));
+          return Response.json({
+            success: true,
+            data: { attachment: { id: 'attachment' } },
+          });
+        }
+        return originalFetch(input, init);
+      },
+    );
+    renderInQueryClient(<DeviceWorkspacePane />);
+    await openFirst('Open Pixel 10 Pro XL');
+    await click(await screen.findByRole('button', { name: 'Tools' }));
+    fireEvent.change(await screen.findByLabelText('App to control'), {
+      target: { value: 'com.example.app' },
+    });
+    await click(
+      screen.getByRole('button', { name: 'Save reproduction to Task' }),
+    );
+    const dialog = await screen.findByRole('dialog', {
+      name: 'Save reproduction to Task',
+    });
+    expect(
+      within(dialog).getByText('Includes a screenshot and app logs'),
+    ).toBeTruthy();
+    await click(
+      await within(dialog).findByRole('button', { name: /Test Task/ }),
+    );
+    await click(within(dialog).getByRole('button', { name: 'Save bundle' }));
+    await waitFor(() =>
+      expect(captures).toEqual([
+        {
+          sourceSessionId: expect.stringMatching(/^local:/),
+          appId: 'com.example.app',
+        },
+      ]),
+    );
+  });
+
   test('saves a screenshot from the selected device and Project', async () => {
     activeProject.slug = 'project-one';
     stubDeviceFetch({ inventory: readyInventory([ANDROID_DEVICE]) });

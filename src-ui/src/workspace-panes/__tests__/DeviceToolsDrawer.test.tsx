@@ -806,6 +806,105 @@ describe('a device on an SSH device host (#2442)', () => {
     );
   });
 
+  test('stages workspace and uploaded apps before installing on the selected host', async () => {
+    const handle = '12345678-1234-4234-8234-123456789abc';
+    const digest = `sha256:${'a'.repeat(64)}`;
+    const { drawer, log } = await renderDrawer(({ method, path }) => {
+      if (method === 'GET' && path.endsWith('/tools'))
+        return { body: { success: true, data: snapshot({ hostId: REMOTE }) } };
+      if (method === 'POST' && path.includes('/device-artifacts/'))
+        return {
+          body: { success: true, data: { handle, digest, platform: 'ios' } },
+        };
+      if (method === 'POST' && path.endsWith('/tools/install'))
+        return {
+          body: {
+            success: true,
+            data: {
+              ok: true,
+              digest,
+              metadata: {
+                platform: 'ios',
+                appId: 'com.example.app',
+                build: '42',
+              },
+            },
+          },
+        };
+      return undefined;
+    });
+    fireEvent.change(
+      await within(drawer).findByLabelText('Project workspace app path'),
+      { target: { value: 'build/Sample.app' } },
+    );
+    await click(
+      within(drawer).getByRole('button', { name: 'Install from workspace' }),
+    );
+    await within(drawer).findByText('Installed com.example.app (build 42).');
+    const file = new File(['archive'], 'Sample.zip', {
+      type: 'application/zip',
+    });
+    fireEvent.change(within(drawer).getByLabelText('App file'), {
+      target: { files: [file] },
+    });
+    await click(
+      within(drawer).getByRole('button', { name: 'Upload and install' }),
+    );
+    await waitFor(() =>
+      expect(
+        log.requests.filter((entry) => entry.url.includes('/tools/install')),
+      ).toHaveLength(2),
+    );
+    const stage = log.requests.filter((entry) =>
+      entry.url.includes('/device-artifacts/'),
+    );
+    expect(stage).toHaveLength(2);
+    expect(stage[0]!.body).toEqual({
+      relativePath: 'build/Sample.app',
+      platform: 'ios',
+    });
+    expect(stage[1]!.body).toBe(file);
+    expect(
+      log.requests
+        .filter((entry) => entry.url.includes('/tools/install'))
+        .every(
+          (entry) =>
+            new URL(entry.url).pathname.includes(`/hosts/${REMOTE}/`) &&
+            JSON.stringify(entry.body) ===
+              JSON.stringify({ artifactHandle: handle }),
+        ),
+    ).toBe(true);
+  });
+
+  test('shows session action history only after it is opened', async () => {
+    const { drawer, log } = await renderDrawer(({ method, path }) => {
+      if (method === 'GET' && path.endsWith('/tools'))
+        return { body: { success: true, data: snapshot({ hostId: REMOTE }) } };
+      if (method === 'GET' && path.endsWith('/tools/history'))
+        return {
+          body: {
+            success: true,
+            data: {
+              sessionId: 'session',
+              entries: [
+                {
+                  at: '2026-11-01T00:00:00Z',
+                  action: 'launch',
+                  actor: 'agent',
+                  outcome: 'success',
+                },
+              ],
+            },
+          },
+        };
+      return undefined;
+    });
+    expect(toolsRequests(log, '/history')).toHaveLength(0);
+    await click(await within(drawer).findByText('Session actions'));
+    await within(drawer).findByText('launch · agent · success');
+    expect(toolsRequests(log, '/history')).toHaveLength(1);
+  });
+
   test('App actions use the selected host and show only observed outcomes', async () => {
     const { drawer, log } = await renderDrawer(({ method, path, body }) => {
       if (method === 'GET' && path.endsWith('/tools'))

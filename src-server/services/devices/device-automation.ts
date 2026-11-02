@@ -22,7 +22,10 @@ import {
   mintDeviceAgentGrant,
 } from './device-agent-authority.js';
 import type { DeviceArtifactStaging } from './device-app-artifacts.js';
-import type { DeviceSessionService } from './device-session-service.js';
+import type {
+  DeviceHistoryAction,
+  DeviceSessionService,
+} from './device-session-service.js';
 import type { DeviceToolsService } from './device-tools.js';
 import type {
   DeviceInstallFile,
@@ -271,6 +274,7 @@ export class DeviceAutomation {
     access: DeviceAgentAccessDeps,
     authority: DeviceAgentAuthority,
     id: string,
+    action: DeviceHistoryAction | undefined,
     run: (
       selected: Extract<
         Awaited<ReturnType<DeviceAutomation['claim']>>,
@@ -301,7 +305,52 @@ export class DeviceAutomation {
           selected.lease.fence,
         );
       });
-      return await run(selected);
+      try {
+        const result = await run(selected);
+        if (action) {
+          const state = result as {
+            ok?: unknown;
+            effect?: unknown;
+            code?: unknown;
+          };
+          const mutating = [
+            'input',
+            'install-app',
+            'launch',
+            'terminate',
+            'open-url',
+          ].includes(action);
+          selected.services.sessions.noteAction(
+            id,
+            action,
+            'agent',
+            state.effect === 'unknown' ||
+              (mutating && state.code === 'interrupted')
+              ? 'unknown'
+              : state.ok === false
+                ? 'failed'
+                : 'success',
+          );
+        }
+        return result;
+      } catch (error) {
+        if (action)
+          selected.services.sessions.noteAction(
+            id,
+            action,
+            'agent',
+            [
+              'input',
+              'install-app',
+              'launch',
+              'terminate',
+              'open-url',
+            ].includes(action)
+              ? 'unknown'
+              : 'failed',
+          );
+        throw error;
+      }
     } finally {
       if (--group.active === 0) {
         this.inFlight.delete(key);
@@ -395,6 +444,7 @@ export class DeviceAutomation {
       access,
       authority,
       id,
+      'input',
       async (selected) =>
         this.withInputBatch(selected.session.surfaceId, async () => {
           const supported = selected.entry.producer.capabilities.input;
@@ -446,38 +496,44 @@ export class DeviceAutomation {
       isFenceCurrent(): boolean;
     }) => Promise<T>,
   ) {
-    return this.withControl(access, authority, id, async (selected) => {
-      const isFenceCurrent = () => {
-        const current = this.sessionServices(id);
-        return (
-          current?.session.surfaceId === selected.session.surfaceId &&
-          current.services.sessions === selected.services.sessions &&
-          current.services.tools === selected.services.tools &&
-          selected.entry.lease.isCurrent(selected.lease.fence, selected.agent)
-            .ok
-        );
-      };
-      const isCurrent = async () =>
-        isFenceCurrent() &&
-        (await selected.entry.authorize(
-          authority.principalId,
-          'view',
-          selected.context,
-        )) &&
-        isFenceCurrent();
-      const result = await publish({
-        screenshot: async () => {
-          const shot = await selected.services.host.capture(selected.session);
-          return {
-            data: Buffer.from(shot.pngBase64, 'base64'),
-            mimeType: shot.mimeType,
-          };
-        },
-        isCurrent,
-        isFenceCurrent,
-      });
-      return { ok: true as const, ...result };
-    });
+    return this.withControl(
+      access,
+      authority,
+      id,
+      'capture-to-task',
+      async (selected) => {
+        const isFenceCurrent = () => {
+          const current = this.sessionServices(id);
+          return (
+            current?.session.surfaceId === selected.session.surfaceId &&
+            current.services.sessions === selected.services.sessions &&
+            current.services.tools === selected.services.tools &&
+            selected.entry.lease.isCurrent(selected.lease.fence, selected.agent)
+              .ok
+          );
+        };
+        const isCurrent = async () =>
+          isFenceCurrent() &&
+          (await selected.entry.authorize(
+            authority.principalId,
+            'view',
+            selected.context,
+          )) &&
+          isFenceCurrent();
+        const result = await publish({
+          screenshot: async () => {
+            const shot = await selected.services.host.capture(selected.session);
+            return {
+              data: Buffer.from(shot.pngBase64, 'base64'),
+              mimeType: shot.mimeType,
+            };
+          },
+          isCurrent,
+          isFenceCurrent,
+        });
+        return { ok: true as const, ...result };
+      },
+    );
   }
 
   async observe(
@@ -486,25 +542,34 @@ export class DeviceAutomation {
     id: string,
     screenshot: boolean,
   ) {
-    return this.withControl(access, authority, id, async (selected) => {
-      const result = screenshot
-        ? { capture: await selected.services.host.capture(selected.session) }
-        : {
-            tree: await selected.services.tools.accessibility(selected.session),
-          };
-      // An observation may complete after takeover or revocation. Publish nothing
-      // from that operation once its fence or device grant has gone stale.
-      if (
-        !(await selected.entry.authorize(
-          authority.principalId,
-          'view',
-          selected.context,
-        )) ||
-        !selected.entry.lease.isCurrent(selected.lease.fence, selected.agent).ok
-      )
-        return refused('interrupted');
-      return { ok: true, ...result };
-    });
+    return this.withControl(
+      access,
+      authority,
+      id,
+      screenshot ? 'screenshot' : 'snapshot',
+      async (selected) => {
+        const result = screenshot
+          ? { capture: await selected.services.host.capture(selected.session) }
+          : {
+              tree: await selected.services.tools.accessibility(
+                selected.session,
+              ),
+            };
+        // An observation may complete after takeover or revocation. Publish nothing
+        // from that operation once its fence or device grant has gone stale.
+        if (
+          !(await selected.entry.authorize(
+            authority.principalId,
+            'view',
+            selected.context,
+          )) ||
+          !selected.entry.lease.isCurrent(selected.lease.fence, selected.agent)
+            .ok
+        )
+          return refused('interrupted');
+        return { ok: true, ...result };
+      },
+    );
   }
 
   async logs(
@@ -515,7 +580,7 @@ export class DeviceAutomation {
     enabled: () => boolean,
     signal?: AbortSignal,
   ) {
-    return this.withControl(access, authority, id, async (selected) => {
+    return this.withControl(access, authority, id, 'logs', async (selected) => {
       const current = async () =>
         enabled() &&
         selected.entry.lease.isCurrent(selected.lease.fence, selected.agent)
@@ -552,103 +617,111 @@ export class DeviceAutomation {
   ) {
     const { artifacts, installApp } = this.deps;
     if (!artifacts || !installApp) return refused('unsupported');
-    return this.withControl(access, authority, id, async (selected) => {
-      const abort = new AbortController();
-      const combined = signal
-        ? AbortSignal.any([signal, abort.signal])
-        : abort.signal;
-      const stillCurrent = () => {
-        const live = this.sessionServices(id);
-        return (
-          enabled() &&
-          !combined.aborted &&
-          live?.session.surfaceId === selected.session.surfaceId &&
-          live.services.sessions === selected.services.sessions &&
-          live.services.host === selected.services.host &&
-          this.deps.surfaces.get(selected.session.surfaceId) ===
-            selected.entry &&
-          selected.entry.lease.isCurrent(selected.lease.fence, selected.agent)
-            .ok
-        );
-      };
-      const current = async () =>
-        stillCurrent() &&
-        (await selected.entry.authorize(
-          authority.principalId,
-          'input',
-          selected.context,
-        )) &&
-        stillCurrent();
-      const off = selected.entry.lease.onChange(() => {
-        if (
-          !selected.entry.lease.isCurrent(selected.lease.fence, selected.agent)
-            .ok
-        )
-          abort.abort();
-      });
-      let started = false;
-      let result: DeviceInstallOutcome | undefined;
-      try {
-        return await artifacts.withArtifact(
-          authority.projectId,
-          handle,
-          current,
-          async (receipt, payload, artifactCurrent, activeSignal) => {
-            if (receipt.platform !== selected.session.platform)
-              return {
-                ok: false as const,
-                code: 'incompatible-artifact',
-                effect: 'none' as const,
-              };
-            const files =
-              payload.platform === 'ios'
-                ? payload.files
-                : [
-                    {
-                      path: 'Application.apk',
-                      executable: false,
-                      bytes: payload.apk,
-                    },
-                  ];
-            started = true;
-            result = await installApp({
-              hostId: selected.session.hostId,
-              platform: selected.session.platform,
-              deviceId: selected.session.deviceId,
-              digest: receipt.digest,
-              files,
-              signal: activeSignal,
-              beforeInstall: async () =>
-                (await current()) &&
-                (await artifactCurrent()) &&
-                (await current()),
-            });
-            if (!(await current()))
-              return {
-                ok: false as const,
-                code: 'interrupted',
-                effect:
-                  result.ok || result.effect === 'unknown'
-                    ? ('unknown' as const)
-                    : ('none' as const),
-              };
-            return result;
-          },
-          combined,
-        );
-      } catch {
-        return {
-          ok: false as const,
-          code: 'interrupted',
-          effect:
-            started && (!result || result.ok || result.effect === 'unknown')
-              ? ('unknown' as const)
-              : ('none' as const),
+    return this.withControl(
+      access,
+      authority,
+      id,
+      'install-app',
+      async (selected) => {
+        const abort = new AbortController();
+        const combined = signal
+          ? AbortSignal.any([signal, abort.signal])
+          : abort.signal;
+        const stillCurrent = () => {
+          const live = this.sessionServices(id);
+          return (
+            enabled() &&
+            !combined.aborted &&
+            live?.session.surfaceId === selected.session.surfaceId &&
+            live.services.sessions === selected.services.sessions &&
+            live.services.host === selected.services.host &&
+            this.deps.surfaces.get(selected.session.surfaceId) ===
+              selected.entry &&
+            selected.entry.lease.isCurrent(selected.lease.fence, selected.agent)
+              .ok
+          );
         };
-      } finally {
-        off();
-      }
-    });
+        const current = async () =>
+          stillCurrent() &&
+          (await selected.entry.authorize(
+            authority.principalId,
+            'input',
+            selected.context,
+          )) &&
+          stillCurrent();
+        const off = selected.entry.lease.onChange(() => {
+          if (
+            !selected.entry.lease.isCurrent(
+              selected.lease.fence,
+              selected.agent,
+            ).ok
+          )
+            abort.abort();
+        });
+        let started = false;
+        let result: DeviceInstallOutcome | undefined;
+        try {
+          return await artifacts.withArtifact(
+            authority.projectId,
+            handle,
+            current,
+            async (receipt, payload, artifactCurrent, activeSignal) => {
+              if (receipt.platform !== selected.session.platform)
+                return {
+                  ok: false as const,
+                  code: 'incompatible-artifact',
+                  effect: 'none' as const,
+                };
+              const files =
+                payload.platform === 'ios'
+                  ? payload.files
+                  : [
+                      {
+                        path: 'Application.apk',
+                        executable: false,
+                        bytes: payload.apk,
+                      },
+                    ];
+              started = true;
+              result = await installApp({
+                hostId: selected.session.hostId,
+                platform: selected.session.platform,
+                deviceId: selected.session.deviceId,
+                digest: receipt.digest,
+                files,
+                signal: activeSignal,
+                beforeInstall: async () =>
+                  (await current()) &&
+                  (await artifactCurrent()) &&
+                  (await current()),
+              });
+              if (!(await current()))
+                return {
+                  ok: false as const,
+                  code: 'interrupted',
+                  effect:
+                    result.ok || result.effect === 'unknown'
+                      ? ('unknown' as const)
+                      : ('none' as const),
+                };
+              return result;
+            },
+            combined,
+          );
+        } catch {
+          return {
+            ok: false as const,
+            code: 'interrupted',
+            effect:
+              started && (!result || result.ok || result.effect === 'unknown')
+                ? ('unknown' as const)
+                : ('none' as const),
+          };
+        } finally {
+          off();
+        }
+      },
+    );
   }
 
   async appAction(
@@ -659,66 +732,74 @@ export class DeviceAutomation {
     enabled: () => boolean,
     signal?: AbortSignal,
   ) {
-    return this.withControl(access, authority, id, async (selected) => {
-      const run = selected.services.tools.appAction;
-      if (!run) return refused('unsupported');
-      const abort = new AbortController();
-      const stillCurrent = () => {
-        const live = this.sessionServices(id);
-        return (
-          enabled() &&
-          !abort.signal.aborted &&
-          !signal?.aborted &&
-          live?.session.surfaceId === selected.session.surfaceId &&
-          live.services.sessions === selected.services.sessions &&
-          live.services.tools === selected.services.tools &&
-          live.services.host === selected.services.host &&
-          this.deps.surfaces.get(selected.session.surfaceId) ===
-            selected.entry &&
-          selected.entry.lease.isCurrent(selected.lease.fence, selected.agent)
-            .ok
-        );
-      };
-      const current = async () =>
-        stillCurrent() &&
-        (await selected.entry.authorize(
-          authority.principalId,
-          'input',
-          selected.context,
-        )) &&
-        stillCurrent();
-      const beforeRun = async () => {
-        if (!(await current())) throw new Error('device authority changed');
-      };
-      const off = selected.entry.lease.onChange(() => {
-        if (
-          !selected.entry.lease.isCurrent(selected.lease.fence, selected.agent)
-            .ok
-        )
-          abort.abort();
-      });
-      try {
-        await beforeRun();
-        const result = await run.call(
-          selected.services.tools,
-          selected.session,
-          action,
-          {
-            beforeRun,
-            signal: signal
-              ? AbortSignal.any([signal, abort.signal])
-              : abort.signal,
-          },
-        );
-        if (!(await current())) return refused('interrupted');
-        return { ok: true as const, result };
-      } catch (error) {
-        if (!(await current())) return refused('interrupted');
-        throw error;
-      } finally {
-        off();
-      }
-    });
+    return this.withControl(
+      access,
+      authority,
+      id,
+      action.type,
+      async (selected) => {
+        const run = selected.services.tools.appAction;
+        if (!run) return refused('unsupported');
+        const abort = new AbortController();
+        const stillCurrent = () => {
+          const live = this.sessionServices(id);
+          return (
+            enabled() &&
+            !abort.signal.aborted &&
+            !signal?.aborted &&
+            live?.session.surfaceId === selected.session.surfaceId &&
+            live.services.sessions === selected.services.sessions &&
+            live.services.tools === selected.services.tools &&
+            live.services.host === selected.services.host &&
+            this.deps.surfaces.get(selected.session.surfaceId) ===
+              selected.entry &&
+            selected.entry.lease.isCurrent(selected.lease.fence, selected.agent)
+              .ok
+          );
+        };
+        const current = async () =>
+          stillCurrent() &&
+          (await selected.entry.authorize(
+            authority.principalId,
+            'input',
+            selected.context,
+          )) &&
+          stillCurrent();
+        const beforeRun = async () => {
+          if (!(await current())) throw new Error('device authority changed');
+        };
+        const off = selected.entry.lease.onChange(() => {
+          if (
+            !selected.entry.lease.isCurrent(
+              selected.lease.fence,
+              selected.agent,
+            ).ok
+          )
+            abort.abort();
+        });
+        try {
+          await beforeRun();
+          const result = await run.call(
+            selected.services.tools,
+            selected.session,
+            action,
+            {
+              beforeRun,
+              signal: signal
+                ? AbortSignal.any([signal, abort.signal])
+                : abort.signal,
+            },
+          );
+          if (!(await current())) return refused('interrupted');
+          return { ok: true as const, result };
+        } catch (error) {
+          if (!(await current())) return refused('interrupted');
+          throw error;
+        } finally {
+          off();
+        }
+      },
+    );
   }
 
   async recordToTask<T extends object>(
@@ -728,59 +809,66 @@ export class DeviceAutomation {
     enabled: () => boolean,
     publish: (source: RecordingSource) => Promise<T>,
   ) {
-    return this.withControl(access, authority, id, async (selected) => {
-      const current = () => {
-        const live = this.sessionServices(id);
-        return (
-          enabled() &&
-          live?.services.sessions === selected.services.sessions &&
-          live.services.tools === selected.services.tools &&
-          live.services.host === selected.services.host &&
-          live.session.surfaceId === selected.session.surfaceId &&
-          this.deps.surfaces.get(selected.session.surfaceId) ===
-            selected.entry &&
-          selected.entry.lease.isCurrent(selected.lease.fence, selected.agent)
-            .ok
+    return this.withControl(
+      access,
+      authority,
+      id,
+      'record-to-task',
+      async (selected) => {
+        const current = () => {
+          const live = this.sessionServices(id);
+          return (
+            enabled() &&
+            live?.services.sessions === selected.services.sessions &&
+            live.services.tools === selected.services.tools &&
+            live.services.host === selected.services.host &&
+            live.session.surfaceId === selected.session.surfaceId &&
+            this.deps.surfaces.get(selected.session.surfaceId) ===
+              selected.entry &&
+            selected.entry.lease.isCurrent(selected.lease.fence, selected.agent)
+              .ok
+          );
+        };
+        const authorize = async () =>
+          current() &&
+          (await selected.entry.authorize(
+            authority.principalId,
+            'view',
+            selected.context,
+          )) &&
+          current();
+        if (!(await authorize())) return refused('interrupted');
+        const observed = await selected.services.tools.foreground(
+          selected.session,
+          async () => {
+            if (!(await authorize()))
+              throw new Error('device authority changed');
+          },
         );
-      };
-      const authorize = async () =>
-        current() &&
-        (await selected.entry.authorize(
-          authority.principalId,
-          'view',
-          selected.context,
-        )) &&
-        current();
-      if (!(await authorize())) return refused('interrupted');
-      const observed = await selected.services.tools.foreground(
-        selected.session,
-        async () => {
-          if (!(await authorize())) throw new Error('device authority changed');
-        },
-      );
-      if (!(await authorize())) return refused('interrupted');
-      const appId =
-        observed.foregroundApp.state === 'read'
-          ? (observed.foregroundApp.value?.appId ?? null)
-          : null;
-      const result = await publish({
-        entry: selected.entry,
-        current,
-        authorize,
-        checkEachFrame: true,
-        platform: selected.session.platform,
-        adapter: 'device-live-surface',
-        device: {
-          hostId: selected.session.hostId,
-          deviceId: selected.session.deviceId,
-          name: selected.session.name,
-          runtime: selected.session.runtime,
-          appId,
-          appObservedAt: appId === null ? null : observed.readAt,
-        },
-      });
-      return { ok: true as const, ...result };
-    });
+        if (!(await authorize())) return refused('interrupted');
+        const appId =
+          observed.foregroundApp.state === 'read'
+            ? (observed.foregroundApp.value?.appId ?? null)
+            : null;
+        const result = await publish({
+          entry: selected.entry,
+          current,
+          authorize,
+          checkEachFrame: true,
+          platform: selected.session.platform,
+          adapter: 'device-live-surface',
+          device: {
+            hostId: selected.session.hostId,
+            deviceId: selected.session.deviceId,
+            name: selected.session.name,
+            runtime: selected.session.runtime,
+            appId,
+            appObservedAt: appId === null ? null : observed.readAt,
+          },
+        });
+        return { ok: true as const, ...result };
+      },
+    );
   }
 
   async close(
@@ -793,18 +881,25 @@ export class DeviceAutomation {
     const standing = await authorizeDeviceAgentCaller(access);
     if (!standing.ok || standing.actor.kind !== 'operator')
       return refused('operator-required');
-    return this.withControl(access, authority, id, async (selected) => {
-      // The early gate prevents claiming; recheck after the asynchronous claim.
-      const current = await authorizeDeviceAgentCaller(access);
-      if (!current.ok || current.actor.kind !== 'operator')
-        return refused('operator-required');
-      if (
-        !selected.entry.lease.isCurrent(selected.lease.fence, selected.agent).ok
-      )
-        return refused('interrupted');
-      await selected.services.sessions.close(id);
-      this.owners.delete(id);
-      return { ok: true, shutdown: false };
-    });
+    return this.withControl(
+      access,
+      authority,
+      id,
+      undefined,
+      async (selected) => {
+        // The early gate prevents claiming; recheck after the asynchronous claim.
+        const current = await authorizeDeviceAgentCaller(access);
+        if (!current.ok || current.actor.kind !== 'operator')
+          return refused('operator-required');
+        if (
+          !selected.entry.lease.isCurrent(selected.lease.fence, selected.agent)
+            .ok
+        )
+          return refused('interrupted');
+        await selected.services.sessions.close(id);
+        this.owners.delete(id);
+        return { ok: true, shutdown: false };
+      },
+    );
   }
 }

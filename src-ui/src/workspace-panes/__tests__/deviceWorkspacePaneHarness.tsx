@@ -198,7 +198,8 @@ export function stubDeviceFetch(plan: DeviceFetchPlan = {}): DeviceFetchLog {
       // Route on the PATH: a Project's requests carry `?projectSlug=`.
       const path = new URL(url).pathname;
       const method = (init?.method ?? 'GET').toUpperCase();
-      const body = init?.body ? JSON.parse(String(init.body)) : undefined;
+      const body =
+        typeof init?.body === 'string' ? JSON.parse(init.body) : init?.body;
       log.requests.push({ method, url, body });
       if (path.endsWith('/api/feature-previews') && method === 'GET')
         return json({
@@ -273,7 +274,11 @@ export function stubDeviceFetch(plan: DeviceFetchPlan = {}): DeviceFetchLog {
             sessions: sessions.filter((session) => session.hostId === 'local'),
           },
         });
-      if (plan.tools && /\/devices\/(ios|android)\/[^/]+\/tools/.test(path)) {
+      if (
+        plan.tools &&
+        (/\/devices\/(ios|android)\/[^/]+\/tools/.test(path) ||
+          /\/projects\/[^/]+\/device-artifacts\//.test(path))
+      ) {
         const answer = plan.tools({
           method,
           path,
