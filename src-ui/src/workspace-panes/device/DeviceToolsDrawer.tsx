@@ -435,7 +435,7 @@ export function DeviceToolsDrawer(props: DeviceToolsDrawerProps) {
                 />
               ) : null}
               {history.data?.length === 0 ? (
-                <p>No actions recorded in this session.</p>
+                <p>Actions in this session will appear here.</p>
               ) : null}
               {history.data?.length ? (
                 <ol>
