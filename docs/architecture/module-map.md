@@ -1588,9 +1588,9 @@ The same public module supplies `conversationKeyDecision` and
 host inspects the whole conversation before a successor Session can take the
 key. A prior started turn replays, a live claim stays in flight, and an
 expired or indeterminate effect is never started again. This
-primitive adds no storage command or inbox. Recovery-ledger extraction remains open under #3565. Steer receipts now use
+primitive adds no storage command or inbox. Recovery-ledger extraction remains open under #3565. Steer receipts use
 Monument over the existing EventStore connection, including host rollback and
-explicit thread deletion; this does not add durable steer placement. Separately, Station atomically records child-steer instructions and target-bound claims, retains key tombstones on Session deletion, and serves authorized instruction pages. See [child steering](../reference/session-api.md#lifecycle-control-commands) and [instruction reads](../reference/session-api.md#child-instructions-get-sessionsthreadidchild-workchildidinstructions).
+explicit thread deletion. The conversation inbox below separately persists steer text and placement. Separately, Station atomically records child-steer instructions and target-bound claims, retains key tombstones on Session deletion, and serves authorized instruction pages. See [child steering](../reference/session-api.md#lifecycle-control-commands) and [instruction reads](../reference/session-api.md#child-instructions-get-sessionsthreadidchild-workchildidinstructions).
 
 **Provenance.** Station's `send_to_session` and delegated-result host callers
 validate their server-owned sender and frame the message (`frameAgentMessage`)
@@ -1741,8 +1741,7 @@ sender and input, FIFO, one `placing` at a time. Placement runs after a turn
 or Session-state event on the conversation, after each submit, at startup,
 and on bounded re-checks (the schedule, then two-minute checks up to 30 while
 entries wait, reset when a new message is accepted, and after a drive that
-failed mid-placement). It is not this
-module: a follow-up is a start, never a steer. Before each start it re-checks
+failed mid-placement). A follow-up is a start, never a steer. Before each start it re-checks
 the sender with the live continuation's rule (`mayContinue`) and the sending
 device's or personal access token's route scope (`deviceMaySendChat`, one
 by-id lookup in the pairing service, `credentialHoldsScope`, which for an
@@ -1780,8 +1779,33 @@ the conversation dismisses it; only the sender withdraws a waiting one.
 Refusal reasons are stable codes with fixed messages. The delivery lookup
 answers `queued` for a waiting entry. `GET`/`DELETE /conversations/:id/inbox`
 list it and withdraw it. `deleteThread` forgets a conversation's entries.
-Hosted Stations have no inbox. Steer and display-only entries, a stale-head
-check and the UI's switch from its own per-tab queue are not built yet. The
+Hosted Stations have no inbox. The same machine now holds steer and display
+kinds. Submission compares an optional expected head atomically with the write;
+steer requires the observed Session-qualified head. Display is immediately
+visible and never reaches the model. Display notes have a separate 50-note
+capacity and expire after the seven-day settled retention period on the next
+submission. Steer keys and dismissed uncertain claims retain their replay fence.
+
+Native steer text and head persist before the durable claim. Recovery settles
+a confirmed receipt or surfaces unconfirmed without replaying a claimed handoff.
+The current Station tool-loop hook calls
+[inbox step preparation](../../src-server/runtime/conversation/inbox-model-step.ts)
+through VoltAgent's prepareStep after tools settle. The
+[post-tool inbox owner](../../src-server/services/orchestration/post-tool-inbox.ts)
+refuses ambiguous runtime ownership without aborting the turn and unregisters
+on stop. Prompt preparation leaves the claim in flight; the carrying model
+request must return before memory, the canonical steer event and receipt are
+recorded and the entry is settled. Tool-call IDs anchor the input before its
+later model responses, even when earlier history is compacted. A request error
+or an owning turn ending without acknowledgement settles the claim unconfirmed;
+late callbacks cannot record it into a successor turn. The existing explicit
+review/dismiss barrier then releases following input without a restart.
+Delivery rechecks sender/placement policy and current turn confinement before
+injecting the text, retains it in later model steps and records the acknowledgement. Other loops use the terminal boundary.
+The UI renders server entries and an explicit Review and resend action.
+New busy sends and outbox replay use whenBusy queue; replay retains its
+background resource-admission class. Unscoped sessionStorage input is retained
+for destination review and excluded from automatic drain and authority reassignment. The
 [service test](../../src-server/services/orchestration/__tests__/thread-inbox.test.ts)
 restarts a real `OrchestrationService` and `EventStore` around a counting
 adapter. The
@@ -5101,7 +5125,7 @@ adapter are not implemented by naming them in the contract.
 records, browser generations and bounded action history. Profiles are keyed by
 canonical Project ID and principal under `browser/profiles/`, with separate
 cookie jars/processes for the operator and each Project admin.
-`browser-access.ts` admits the operator or active Project admins/owners;
+`browser-access.ts` admits the operator or active Project admins/owners for drive, and the operator’s own current paired Device for scoped view;
 `actorOwnsSessionProfile` lets the operator see all profiles and restricts other
 callers to their own. The personal-host gate is necessary, not authority by
 itself. Internal credentials do not become human Pane authority.
@@ -5137,9 +5161,12 @@ page evaluation. Select is hit-tested and respects inherited fieldset disability
 Human claims clear existing snapshot refs, including after hand-back; snapshots
 overlapping any human hold or lacking a bound lease produce no usable refs.
 Media requests are audited when sent, including interrupted requests. The
-live-surface binder resets target-local color emulation on human claims. The current [Browser Agent decision](../decisions/browser-agent-actions-and-bound-channel.md)
-records the authority constraints and proposed cross-engine binding. Control
-operations capture a lease fence and check it around asynchronous steps. JavaScript evaluation additionally needs the
+live-surface binder restores the saved human appearance on human claims. The current [Browser Agent decision](../decisions/browser-agent-actions-and-bound-channel.md)
+records the authority constraints and Codex's default-off bound-channel preview.
+`codex-bound-tool-channel.ts` fences calls to the Session's current stream and
+turn; `codex-bound-request.ts` carries in-process proof through the HTTP
+bounded-body replacement. ACP remains unavailable without independent binding.
+Control operations capture a lease fence and check it around asynchronous steps. JavaScript evaluation additionally needs the
 Project's default-off permission; timeout/preemption does not undo an effect
 already sent to Chromium. Closing a viewer only stops its capture subscription.
 Host exit/restart produces `needs-reopen`, and old-generation live surfaces are

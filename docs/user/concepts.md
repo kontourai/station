@@ -98,8 +98,15 @@ it says so and offers **Retry**; that does not mean nothing is held.
 **Remove** withdraws a waiting held message when your identity is allowed to do
 so; a message already being sent cannot be removed. The composer's Queue action
 requests inbox admission for an eligible busy conversation; Station can hold the
-follow-up or return a started-turn receipt. Other local queued follow-ups remain
-in this browser.
+follow-up or return a started-turn receipt. Other clients see the same server
+queue. Older saved input without a Station identity remains for destination
+review and does not send automatically.
+
+Native steering has engine-defined placement. Station-owned steering waits for
+an observed tool boundary, otherwise the next turn. If a handoff may already
+have reached an engine, **May have been sent** stays visible. **Review and resend**
+restores the text into an empty composer; sending again is your explicit choice.
+Display-only notes appear immediately without sending anything to an engine.
 
 ## Gates, Evidence, And Receipts
 

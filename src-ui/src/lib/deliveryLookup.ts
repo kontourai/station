@@ -15,7 +15,39 @@ export const DELIVERY_CHECK_MAX_INTERVAL_MS = 30_000;
 /** The conversation id a send named; a first send names its chat's id. */
 export function lookupTurnDelivery(apiBase: string): OutboundDeliveryLookup {
   return async (turn) => {
-    const { getTurnDelivery } = await import('@kontourai/station-sdk/client');
+    const { getTurnDelivery, listConversationInbox } = await import(
+      '@kontourai/station-sdk/client'
+    );
+    if (turn.inboxSteerHead) {
+      if (!turn.conversationId)
+        throw new Error('The steer has no conversation identity.');
+      const entries = await listConversationInbox(apiBase, turn.conversationId);
+      const entry = entries.find(
+        (item) => item.clientTurnId === turn.clientTurnId,
+      );
+      if (!entry)
+        return {
+          outcome: 'not-received',
+          conversationId: turn.conversationId,
+          clientTurnId: turn.clientTurnId,
+        };
+      if (
+        entry.kind !== 'steer' ||
+        entry.ownedByCaller !== true ||
+        entry.message !== turn.content ||
+        entry.expectedHead !== turn.inboxSteerHead
+      )
+        return {
+          outcome: 'indeterminate',
+          conversationId: turn.conversationId,
+          clientTurnId: turn.clientTurnId,
+        };
+      return {
+        outcome: 'inbox-accepted',
+        conversationId: turn.conversationId,
+        clientTurnId: turn.clientTurnId,
+      };
+    }
     return getTurnDelivery(
       apiBase,
       turn.conversationId ?? turn.sessionId,
@@ -56,7 +88,8 @@ export function watchInFlightDelivery(input: {
           projectSlug: input.projectSlug,
         } as Parameters<OutboundDeliveryLookup>[0]);
         if (answer.clientTurnId === input.clientTurnId)
-          outcome = answer.outcome;
+          outcome =
+            answer.outcome === 'inbox-accepted' ? 'queued' : answer.outcome;
       } catch {
         // Unreachable right now; the request itself will settle or fail.
       }

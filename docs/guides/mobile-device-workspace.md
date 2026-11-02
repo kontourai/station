@@ -124,7 +124,7 @@ By default a successful live open publishes a bounded, ten-minute reveal intent
 for the calling principal, Project and conversation. `reveal: false` opens in
 the background. Repeated opens reuse that intent. The active matching chat polls
 for new intents and opens/reuses the canonical Device pane, subject to current
-Station authority and device view access. Explicit intents survive an initial
+Station authority and device view access. The operator’s own current paired Device may receive reveal intents within its granted scope, without gaining Device drive or administration authority. Explicit intents survive an initial
 poll failure; opening an existing session by itself creates no historical reveal.
 A bounded, authority/Project/conversation-scoped in-memory history remembers
 handled intents across chat remounts in the same tab, preserving dismissals.
@@ -174,11 +174,11 @@ session, capture and accessibility services with the same ownership ledger and
 lease; host removal or replacement invalidates existing grants. Agent shutdown
 is not included.
 
-Only a credential minted for `sdk-in-process` currently supplies bound assurance.
-Codex and ACP `http-header-token` sessions are not offered the
-device tools in their tool list, and a call from them is still refused as
-`caller-not-bound`; a stdio connection with no verified caller is refused as
-`caller-required`. Tool visibility grants no authority. The separate toolchain
+Claude's in-process tools and the preview Codex dynamic-tool channel can carry
+bound assurance. Codex requires the **Codex browser and device tools** Feature
+Preview and an Agent with the built-in Station Control source. ACP
+`http-header-token` calls remain `caller-not-bound`; a stdio connection with no
+verified caller is refused as `caller-required`. Tool visibility grants no authority. The separate toolchain
 **Agent access** setting is the explicit operator opt-in for both managed
 agent-device tooling and these live tools. It does not put external CLI commands
 under the shared lease.

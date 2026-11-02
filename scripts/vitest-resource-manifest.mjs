@@ -418,6 +418,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Two bounded, short-lived Node probes prove per-process stdio caller
   // separation while sharing one fixture internal credential; no real services.
   'src-server/tools/__tests__/station-control-caller-binding.process.test.ts',
+  // A same-user Node child replays copied Codex tool headers over loopback.
+  'src-server/runtime/mcp/__tests__/codex-bound-tools.test.ts',
   // #2377: one bounded Node child runs the stdio entry's credential install
   // and the stdio tools' own REST helper against an in-process guard, proving
   // a real pooled child reaches reads only; no real services.
@@ -1054,6 +1056,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // throwaway git repos (known-bad fixtures and false-positive controls) and
   // against this repository, same shape as the entry above.
   'scripts/__tests__/test-path-import-gate.test.ts',
+  // Runs the durability branch gate in a throwaway Git repository.
+  'scripts/__tests__/durability-provider-branches.test.ts',
   'scripts/__tests__/trust-reconcile-manifest.test.ts',
   // station#3465 review (second pass): one assertion shells a real `git
   // ls-files` child process as an independent oracle for packages/connect's
@@ -1467,6 +1471,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Same shape again: launches a real Chromium to prove a long Dialog body
   // scrolls and keeps the footer's commit action on screen and hittable.
   'src-ui/src/__tests__/Dialog.chrome.geometry.test.tsx',
+  // Owns Chromium for the durable inbox's responsive actions and display notes.
+  'src-ui/src/__tests__/ConversationInboxMessages.geometry.test.tsx',
   // Same shape again: launch a real Chromium to measure the Coding layout's
   // rail (scrolling inside the window) and the Chat column's edges (8px
   // borderless splitters, the folded inbox strip's rule colour) against the

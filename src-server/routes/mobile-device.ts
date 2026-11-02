@@ -75,6 +75,8 @@ export interface MobileDeviceRouteOptions {
    */
   access?: DeviceAccess;
   agentReveals?: {
+    /** This is view authority only, rechecked before publishing a reveal. */
+    operatorDeviceMayView?(request: Request): boolean;
     projectAccess: Pick<
       DeviceAccessDeps,
       'authorizeProject' | 'resolveProject'
@@ -193,13 +195,21 @@ export function createMobileDeviceRoutes(
           c.req.raw,
           project.id,
           'view',
+          { allowOperatorDeviceView: true },
         )
       : undefined;
     if (
       !project ||
       !actor ||
-      (actor.kind !== 'operator' && actor.kind !== 'project-admin')
+      (actor.kind !== 'operator' &&
+        actor.kind !== 'operator-device' &&
+        actor.kind !== 'project-admin')
     )
+      return c.json({ success: false, code: 'access-denied' }, 403);
+    const operatorDevice =
+      actor.kind === 'operator-device' &&
+      source.operatorDeviceMayView?.(c.req.raw) === true;
+    if (actor.kind === 'operator-device' && !operatorDevice)
       return c.json({ success: false, code: 'access-denied' }, 403);
     const reveals: DeviceAgentReveal[] = [];
     for (const reveal of await source.list(
@@ -209,17 +219,21 @@ export function createMobileDeviceRoutes(
     )) {
       const session = reveal.session;
       if (
-        await options.access.mayAccessDevice(
+        operatorDevice ||
+        (await options.access.mayAccessDevice(
           c.req.raw,
           session.platform,
           session.deviceId,
           'view',
           session.hostId,
-        )
+        ))
       )
         reveals.push(reveal);
     }
-    if (!options.isRequestPrincipalCurrent(c.req.raw))
+    if (
+      !options.isRequestPrincipalCurrent(c.req.raw) ||
+      (operatorDevice && source.operatorDeviceMayView?.(c.req.raw) !== true)
+    )
       return c.json({ success: false, code: 'access-denied' }, 403);
     return c.json({ success: true, data: { reveals } });
   });
