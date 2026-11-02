@@ -5155,6 +5155,15 @@ generation (agent-capable requests read it only under `browserEvaluate`), and
 the registry's `captureScreenshot` serves the pane's screenshot, one capture
 in flight per session.
 
+The default-off Browser artifacts preview also binds `browser-network-log.ts`,
+which retains bounded, redacted request metadata in memory per generation.
+`browser-pick.ts` inspects a viewport point in an isolated world and captures
+an optional target PNG crop after checking page identity. The Browser pane's
+annotation overlay maps pointer positions to the target viewport; its file
+intake passes the image and JSON description to the selected conversation's
+existing attachment staging owner. Human-controlled recording remains separate
+work; the Task recorder described below accepts a bound Agent call.
+
 **Evidence and limits.** Synthetic tests include `chromium-acquisition.test.ts`,
 `browser-session-registry.test.ts`, `egress-policy.test.ts`,
 `browser-live-surfaces.test.ts`, `browser-agent-authority.store.test.ts`,
