@@ -8957,6 +8957,14 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   .chat-dock__mobile-header {
     padding: var(--space-1) 8px;
   }
+
+  /* #4391's size control is a third 44px leading slot: with it the bar's
+     44px floors no longer fit, and the title overlapped Switch project. A
+     phone chat already opens full screen and Chat actions keeps Full screen,
+     so this slot gives way too. */
+  .chat-dock__mobile-header .chat-dock__mobile-extent {
+    display: none;
+  }
 }
 
 /* touch-action does not inherit: a drag-passthrough control (the identity
