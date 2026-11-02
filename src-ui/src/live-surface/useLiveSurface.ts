@@ -18,6 +18,7 @@ import {
   type RefObject,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
 } from 'react';
@@ -273,6 +274,7 @@ export function useLiveSurface(
   const [inputNotice, setInputNotice] = useState<LiveSurfaceInputNotice>(null);
   const [retryToken, setRetryToken] = useState(0);
   const epochRef = useRef(0);
+  const targetGenerationRef = useRef(0);
 
   const observeEpoch = useCallback((epoch: number) => {
     epochRef.current = Math.max(epochRef.current, epoch);
@@ -300,13 +302,14 @@ export function useLiveSurface(
       return;
     }
     const abort = new AbortController();
+    const generation = targetGenerationRef.current;
     let attempt = 0;
     let timer: ReturnType<typeof setTimeout> | null = null;
     let stopped = false;
     const url = streamUrl(apiBase, surfaceId, params, projectSlug);
 
     const scheduleReconnect = () => {
-      if (stopped) return;
+      if (stopped || generation !== targetGenerationRef.current) return;
       setStatus('reconnecting');
       const delay =
         LIVE_SURFACE_RECONNECT_DELAYS_MS[
@@ -331,6 +334,7 @@ export function useLiveSurface(
         if (!abort.signal.aborted) scheduleReconnect();
         return;
       }
+      if (stopped || generation !== targetGenerationRef.current) return;
       if (response.status === 404) {
         setStatus('unavailable');
         return;
@@ -348,6 +352,7 @@ export function useLiveSurface(
       try {
         while (!stopped) {
           const chunk = await reader.read();
+          if (stopped || generation !== targetGenerationRef.current) break;
           if (chunk.done) break;
           if (chunk.value.byteLength > 0) setLastActivityAt(nowRef.current());
           for (const record of decoder.push(chunk.value)) {
@@ -435,6 +440,21 @@ export function useLiveSurface(
   /** Pressed when control changed hands; the server released them already. */
   const orphanedRef = useRef(new Set<string>());
   const inFlightRef = useRef(false);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: these values define the target whose queued work must be retired.
+  useLayoutEffect(() => {
+    targetGenerationRef.current += 1;
+    queueRef.current = [];
+    inFlightRef.current = false;
+    pressedRef.current.clear();
+    orphanedRef.current.clear();
+    epochRef.current = 0;
+    setLease(null);
+    setSelf(null);
+    return () => {
+      targetGenerationRef.current += 1;
+      queueRef.current = [];
+    };
+  }, [apiBase, surfaceId, projectSlug]);
   const flushScheduledRef = useRef(false);
   const busyNoticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(
@@ -482,6 +502,7 @@ export function useLiveSurface(
       return;
     }
     inFlightRef.current = true;
+    const generation = targetGenerationRef.current;
     try {
       const response = await transportRef.current(inputUrlRef.current, {
         method: 'POST',
@@ -491,6 +512,7 @@ export function useLiveSurface(
       const envelope = (await response.json().catch(() => null)) as {
         data?: LiveSurfaceInputResult;
       } | null;
+      if (generation !== targetGenerationRef.current) return;
       if (isSurfaceBusy(response, envelope)) {
         // Not sent, and not replayed later onto a view that may have moved on.
         queueRef.current = [];
@@ -521,10 +543,12 @@ export function useLiveSurface(
         setInputNotice('input-failed');
       }
     } catch {
+      if (generation !== targetGenerationRef.current) return;
       queueRef.current = [];
       setInputNotice('input-failed');
     } finally {
-      inFlightRef.current = false;
+      if (generation === targetGenerationRef.current)
+        inFlightRef.current = false;
     }
     if (queueRef.current.length > 0) void flush();
   }, [adoptLease, showHostBusy]);
@@ -563,6 +587,7 @@ export function useLiveSurface(
   );
 
   const claimControl = useCallback(async () => {
+    const generation = targetGenerationRef.current;
     try {
       const response = await transportRef.current(
         `${apiBase}/api/live-surfaces/${encodeURIComponent(surfaceId)}/lease${contextQuery(projectSlug)}`,
@@ -575,6 +600,7 @@ export function useLiveSurface(
       const envelope = (await response.json().catch(() => null)) as {
         data?: LiveSurfaceLeaseResult;
       } | null;
+      if (generation !== targetGenerationRef.current) return;
       if (isSurfaceBusy(response, envelope)) {
         showHostBusy();
         return;
@@ -585,7 +611,8 @@ export function useLiveSurface(
       if (!nextLease) return;
       adoptLease(nextLease);
     } catch {
-      setInputNotice('input-failed');
+      if (generation === targetGenerationRef.current)
+        setInputNotice('input-failed');
     }
   }, [apiBase, surfaceId, projectSlug, adoptLease, showHostBusy]);
 
@@ -594,6 +621,7 @@ export function useLiveSurface(
   const releaseControl = useCallback(async () => {
     const current = leaseRef.current;
     if (!current) return;
+    const generation = targetGenerationRef.current;
     try {
       const response = await transportRef.current(
         `${apiBase}/api/live-surfaces/${encodeURIComponent(surfaceId)}/lease${contextQuery(projectSlug)}`,
@@ -606,6 +634,7 @@ export function useLiveSurface(
       const envelope = (await response.json().catch(() => null)) as {
         data?: LiveSurfaceLeaseResult;
       } | null;
+      if (generation !== targetGenerationRef.current) return;
       if (isSurfaceBusy(response, envelope)) {
         showHostBusy();
         return;
@@ -615,13 +644,15 @@ export function useLiveSurface(
         : null;
       if (nextLease) adoptLease(nextLease);
     } catch {
-      setInputNotice('input-failed');
+      if (generation === targetGenerationRef.current)
+        setInputNotice('input-failed');
     }
   }, [apiBase, surfaceId, projectSlug, adoptLease, showHostBusy]);
 
   const keepControlAlive = useCallback(async () => {
     const current = leaseRef.current;
     if (!current) return;
+    const generation = targetGenerationRef.current;
     try {
       const response = await transportRef.current(
         `${apiBase}/api/live-surfaces/${encodeURIComponent(surfaceId)}/lease${contextQuery(projectSlug)}`,
@@ -634,6 +665,7 @@ export function useLiveSurface(
       const envelope = (await response.json().catch(() => null)) as {
         data?: LiveSurfaceLeaseResult;
       } | null;
+      if (generation !== targetGenerationRef.current) return;
       const nextLease = envelope?.data
         ? parseLiveSurfaceControlLease(envelope.data.lease)
         : null;
