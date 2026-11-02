@@ -2681,7 +2681,8 @@ returns HTTP `409` (`client_turn_input_conflict` for foreground,
 A live owner holds its request lock. After its owner dies, a reservation with
 no starting mark is reclaimable immediately under the same key and input, even
 when it targets an existing Session. The absence of this request's mark proves
-it did not invoke. Station durably marks `starting` immediately before session
+it did not invoke. Admission also frees abandoned unmarked reservations under
+other keys, without consulting Session existence. Station durably marks `starting` immediately before session
 start, an initial turn, or a forwarded create POST. A marked but unconfirmed
 create is indeterminate within its seven-day window. Inspect the returned
 Session reference with `get_session` or the Session API; Station has no automatic

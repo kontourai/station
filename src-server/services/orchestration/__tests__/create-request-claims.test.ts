@@ -504,3 +504,29 @@ test('capacity pressure prunes only the oldest tombstone and preserves newer ind
   });
   expect(effect).toHaveBeenCalledTimes(1);
 });
+
+test('dead unmarked reservations free capacity for another key without consulting Session existence', async () => {
+  const { claims, file } = setup();
+  await claims.run(input(), async (id) => handle(id));
+  const ledger = JSON.parse(readFileSync(file, 'utf8'));
+  const row = ledger.claims[Object.keys(ledger.claims)[0]];
+  delete row.result;
+  delete row.completedAt;
+  ledger.claims = Object.fromEntries(
+    Array.from({ length: 1024 }, (_, n) => [`abandoned-${n}`, row]),
+  );
+  writeFileSync(file, JSON.stringify(ledger));
+  const hasSessionStartRecord = vi.fn(() => true);
+  const effect = vi.fn(async (id: string) => handle(id));
+  await expect(
+    claims.run(
+      { ...input(), requestKey: 'independent-key', hasSessionStartRecord },
+      effect,
+    ),
+  ).resolves.toMatchObject({ providerTurnId: 'turn-1' });
+  expect(effect).toHaveBeenCalledTimes(1);
+  expect(hasSessionStartRecord).not.toHaveBeenCalled();
+  expect(
+    Object.keys(JSON.parse(readFileSync(file, 'utf8')).claims),
+  ).toHaveLength(1);
+});

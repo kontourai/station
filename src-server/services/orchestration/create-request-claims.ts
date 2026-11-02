@@ -283,10 +283,17 @@ export class CreateRequestClaims {
       const claim = await this.#update(async (ledger) => {
         const now = Date.now();
         for (const [id, row] of Object.entries(ledger.claims)) {
-          if (!claimExpired(row, now)) continue;
+          const unmarked =
+            !row.result && !row.starting && row.tombstoneAt === undefined;
+          if (unmarked && id === key) continue;
+          if (!unmarked && !claimExpired(row, now)) continue;
           if (!row.result && id !== key) {
             const owner = inspectLock(`${this.#file}.${id}.owner`);
             if (owner && lockOwnerAlive(owner.owner)) continue;
+          }
+          if (unmarked) {
+            delete ledger.claims[id];
+            continue;
           }
           if (row.result) delete ledger.claims[id];
           else if (await input.hasSessionStartRecord(row.sessionId)) {
