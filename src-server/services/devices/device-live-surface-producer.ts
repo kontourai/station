@@ -16,6 +16,7 @@ import {
 import type { MobileDevicePlatform } from '@kontourai/station-contracts/mobile-device';
 import { jpegSize } from '../live-surface/jpeg-size.js';
 import type {
+  LiveSurfaceCodecDemand,
   LiveSurfaceDispatchContext,
   LiveSurfaceHeldInput,
   LiveSurfaceProducer,
@@ -240,11 +241,6 @@ interface AndroidVideo {
   sequence: LiveSurfaceH264Sequence | null;
 }
 
-export interface LiveSurfaceCodecDemand {
-  image: boolean;
-  h264: boolean;
-}
-
 const ANNEX_B_START = Uint8Array.from([0, 0, 0, 1]);
 
 function withParameterSets(
@@ -269,7 +265,7 @@ function withParameterSets(
  * ffmpeg image path scales to, so input maps to the same unit square
  * whichever path a viewer takes.
  */
-export function fittedVideoSize(
+function fittedVideoSize(
   sequence: { width: number; height: number },
   params: Pick<LiveSurfaceStreamParams, 'maxWidth' | 'maxHeight'>,
 ): { width: number; height: number } {
@@ -950,7 +946,7 @@ export class DeviceLiveSurfaceProducer implements LiveSurfaceProducer {
         if (type !== 7) continue;
         android.sps = nal.slice();
         const sequence = parseLiveSurfaceH264Sequence(
-          withParameterSets(new Uint8Array(0), nal, new Uint8Array(0)),
+          Buffer.concat([ANNEX_B_START, nal]),
         );
         if (sequence) android.sequence = sequence;
       }
@@ -1016,32 +1012,26 @@ export class DeviceLiveSurfaceProducer implements LiveSurfaceProducer {
         (this.demand.image &&
           (android.decoderPath === null || android.decoderFailed)));
     try {
-      await this.pollWhile(run, interval, wanted);
+      while (wanted()) {
+        try {
+          const shot = await this.options.hub.screenshot(this.target());
+          if (this.run !== run) return;
+          this.offer(run, {
+            codec: 'png',
+            body: shot.png,
+            width: shot.width,
+            height: shot.height,
+          });
+        } catch (error) {
+          if (this.run === run)
+            this.reportError('device screenshot poll failed', error);
+        }
+        await new Promise<void>((resolve) =>
+          this.later(run, interval, resolve),
+        );
+      }
     } finally {
       if (android) android.polling = false;
-    }
-  }
-
-  private async pollWhile(
-    run: VideoRun,
-    interval: number,
-    wanted: () => boolean,
-  ): Promise<void> {
-    while (wanted()) {
-      try {
-        const shot = await this.options.hub.screenshot(this.target());
-        if (this.run !== run) return;
-        this.offer(run, {
-          codec: 'png',
-          body: shot.png,
-          width: shot.width,
-          height: shot.height,
-        });
-      } catch (error) {
-        if (this.run === run)
-          this.reportError('device screenshot poll failed', error);
-      }
-      await new Promise<void>((resolve) => this.later(run, interval, resolve));
     }
   }
 

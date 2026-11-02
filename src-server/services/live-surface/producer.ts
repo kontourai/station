@@ -84,6 +84,12 @@ export interface LiveSurfaceDispatchContext {
  *   the stuck dispatch settles; it cannot cancel it. A producer that never
  *   settles a dispatch leaves the surface wedged forever.
  */
+/** Which encodings a surface's attached viewers take. */
+export interface LiveSurfaceCodecDemand {
+  image: boolean;
+  h264: boolean;
+}
+
 export interface LiveSurfaceProducer {
   readonly surfaceId: string;
   readonly capabilities: {
@@ -108,7 +114,7 @@ export interface LiveSurfaceProducer {
    * `h264` access units and decoded images uses it to run its image decoder
    * only while an image viewer is attached. Must not throw.
    */
-  setCodecDemand?(demand: { image: boolean; h264: boolean }): void;
+  setCodecDemand?(demand: LiveSurfaceCodecDemand): void;
   stop(): Promise<void>;
   dispatch(
     input: LiveSurfaceInput,

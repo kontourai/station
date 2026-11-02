@@ -10,7 +10,10 @@ import {
   parseLiveSurfaceFrameHeader,
 } from '@kontourai/station-contracts/live-surface';
 import type { LiveSurfaceLeaseReader } from './control-lease.js';
-import type { LiveSurfaceProducer } from './producer.js';
+import type {
+  LiveSurfaceCodecDemand,
+  LiveSurfaceProducer,
+} from './producer.js';
 
 /**
  * Fan-out of one producer to N viewers (#90).
@@ -473,7 +476,7 @@ export class LiveSurfaceHub {
   }
 
   /** Which encodings the attached viewers take. */
-  codecDemand(): { image: boolean; h264: boolean } {
+  codecDemand(): LiveSurfaceCodecDemand {
     let image = false;
     let h264 = false;
     for (const viewer of this.viewers) {
