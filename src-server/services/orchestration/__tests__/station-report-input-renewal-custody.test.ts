@@ -43,6 +43,7 @@ test.each([
   'owned-commit',
   'held-home',
   'candidate-close-failed',
+  'capture-close-failed',
   'lost-adoption',
   'shutdown-preparing',
   'revoked-after-renew',
@@ -112,6 +113,19 @@ test.each([
         }
       });
     onTestFinished(() => observeCreate.mockRestore());
+    let narrowFailure: unknown;
+    const narrow = runtime.narrowAfterInput.bind(runtime);
+    const observeNarrow = vi
+      .spyOn(runtime, 'narrowAfterInput')
+      .mockImplementation(async (...args) => {
+        try {
+          return await narrow(...args);
+        } catch (error) {
+          narrowFailure = error;
+          throw error;
+        }
+      });
+    onTestFinished(() => observeNarrow.mockRestore());
     const principal = getRuntimeAuthenticatedRequestPrincipal(h.f.req);
     assert.ok(principal && principal.kind !== 'internal');
     const abort = new AbortController();
@@ -329,7 +343,9 @@ test.each([
               assert.ok(scope);
               scope.owner.runWithLease(scope.lease, () => {
                 assert.equal(
-                  h.f.environment.devicePairing.verifyCredential(h.f.paired.credential),
+                  h.f.environment.devicePairing.verifyCredential(
+                    h.f.paired.credential,
+                  ),
                   true,
                 );
                 h.f.environment.devicePairing.revokeDevice(
@@ -402,10 +418,26 @@ test.each([
         return result;
       });
     onTestFinished(() => candidate.mockRestore());
+    const captureError = Error('controlled retained capture failure');
+    let captureFaultApplied = false;
+    if (scenario === 'capture-close-failed') {
+      const inspect = sourceWireOwner.inspectSdkSourceWire;
+      const captureFault = vi
+        .spyOn(sourceWireOwner, 'inspectSdkSourceWire')
+        .mockImplementation((...args) => {
+          inspect(...args);
+          captureFaultApplied = true;
+          throw captureError;
+        });
+      onTestFinished(() => captureFault.mockRestore());
+    }
     const retireCalls: Array<
       Parameters<typeof sourceWireOwner.retireSdkSourceWire>
     > = [];
-    if (scenario === 'candidate-close-failed') {
+    if (
+      scenario === 'candidate-close-failed' ||
+      scenario === 'capture-close-failed'
+    ) {
       const retire = sourceWireOwner.retireSdkSourceWire;
       const fault = vi
         .spyOn(sourceWireOwner, 'retireSdkSourceWire')
@@ -545,13 +577,52 @@ test.each([
         'narrow must fairly admit after an independent Home holder',
       );
     }
-    if (scenario === 'candidate-close-failed') {
+    if (
+      scenario === 'candidate-close-failed' ||
+      scenario === 'capture-close-failed'
+    ) {
       await assert.rejects(
         narrowing,
         (error: unknown) =>
-          error instanceof DelegationRoundsTransactionUncertainError ||
-          (error instanceof Error && 'status' in error && error.status === 503),
+          error instanceof Error && 'status' in error && error.status === 503,
       );
+      if (scenario === 'capture-close-failed')
+        assert.equal(captureFaultApplied, true);
+      assert.ok(
+        narrowFailure instanceof DelegationRoundsTransactionUncertainError,
+      );
+      let cleanupOutcome = narrowFailure;
+      while (
+        cleanupOutcome.errors[0] instanceof
+        DelegationRoundsTransactionUncertainError
+      )
+        cleanupOutcome = cleanupOutcome.errors[0];
+      assert.equal(
+        cleanupOutcome.status,
+        scenario === 'candidate-close-failed'
+          ? 'returned-cleanup-unknown'
+          : 'publication-unknown',
+      );
+      const persistence = new StationDelegationPersistence(
+        join(h.f.loader.getProjectHomeDir(), 'report-groups'),
+      );
+      const execution = await persistence.readReportExecution(
+        created.group.groupId,
+        created.group.groupId,
+        () => undefined,
+      );
+      if (scenario === 'candidate-close-failed') {
+        assert.equal(execution.authority?.epochs.length, 2);
+        assert.equal(execution.group?.grants.authority.authority_epoch, 2);
+      } else {
+        assert.equal(captureFaultApplied, true);
+        let first: unknown = narrowFailure;
+        while (first instanceof AggregateError && first.errors.length)
+          first = first.errors[0];
+        assert.equal(first, captureError);
+        assert.equal(execution.authority?.epochs.length, 1);
+        assert.equal(execution.group?.grants.authority.authority_epoch, 1);
+      }
       assert.ok(
         retireCalls.length > 0,
         'candidate retirement failure must execute',

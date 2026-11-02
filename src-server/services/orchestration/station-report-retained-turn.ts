@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import type { DelegationEnvelopeV2 } from '@kontourai/flow-agents/delegation-envelope-v2';
+import { DelegationRoundsTransactionUncertainError } from '@kontourai/flow-agents/delegation-group-rounds';
 import { canonicalJson, type ModelInvocationRequest } from '@kontourai/relay';
 import { createOrchestrationRequestPrincipalResolver } from '../../runtime/bootstrap/orchestration-request-principal.js';
 import { captureEnvironmentLocalGrantObservationOwner } from '../../runtime/conversation/local-grant-observation-owner.js';
@@ -27,10 +28,7 @@ import {
   createContextReportSdkSourceWireOwner,
   createContextSyncSdkSourceWireOwner,
   createPreparedSdkSourceWireOwner,
-  disposeSdkSourceWire,
   inspectSdkSourceWire,
-  retireSdkSourceWire,
-  sdkDisposalPromise,
 } from './delegation-group-sdk-source-wire-owner.js';
 import type {
   LocalSourceAdmissionOwner,
@@ -379,8 +377,37 @@ export class StationReportRetainedTurns {
               ? { resourceId: loaded.intent.resourceId }
               : {}),
           });
-    let sdk: { owner: object; sdkHandle: object } | undefined;
+    const retireSnapshot = sources.prepareSnapshotRetirement(source.capability);
+    let closed = false;
+    let cleaned = false;
+    let closing: Promise<void> | undefined;
+    let requestCleanup!: () => void;
+    const cleanupRequested = new Promise<void>((resolve) => {
+      requestCleanup = resolve;
+    });
+    const retire = async () => {
+      if (cleaned) return;
+      closing ??= retireSnapshot().then(() => {
+        cleaned = true;
+      });
+      try {
+        await closing;
+      } finally {
+        closing = undefined;
+      }
+    };
+    let ownedRetire = retire;
+    const close = async () => {
+      closed = true;
+      requestCleanup();
+      await ownedRetire();
+    };
     try {
+      if (publication)
+        ownedRetire = publication.retainCleanup(async () => {
+          await cleanupRequested;
+          await retire();
+        });
       const flow = loaded.intent.flow
         ? await sources.prepareFlowSnapshot(
             context,
@@ -463,7 +490,6 @@ export class StationReportRetainedTurns {
         source.capability,
         owner,
       );
-      sdk = { owner, sdkHandle: prepared.sdkHandle };
       const { wireDigest, quote, contract, sourceBinding } = await admit(() => {
         current();
         sessionCurrent();
@@ -517,30 +543,11 @@ export class StationReportRetainedTurns {
       )
         refuse();
       let claimed = false;
-      let closed = false;
-      let cleaned = false;
-      let closing: Promise<void> | undefined;
       const assertCurrent = (): undefined => {
         if (closed) refuse();
         current();
         flow?.assertCurrent();
         return undefined;
-      };
-      const close = async () => {
-        closed = true;
-        if (cleaned) return;
-        if (!closing) {
-          closing = (async () => {
-            sources.releaseSnapshot(source.capability);
-            await retireSdkSourceWire(owner, prepared.sdkHandle);
-            cleaned = true;
-          })();
-        }
-        try {
-          await closing;
-        } finally {
-          closing = undefined;
-        }
       };
       return {
         provider: selected.provider,
@@ -722,10 +729,13 @@ export class StationReportRetainedTurns {
         close,
       };
     } catch (error) {
-      sources.releaseSnapshot(source.capability);
-      if (sdk) {
-        disposeSdkSourceWire(sdk.owner, sdk.sdkHandle);
-        await sdkDisposalPromise(sdk.owner, sdk.sdkHandle);
+      try {
+        await close();
+      } catch (cleanupError) {
+        throw new DelegationRoundsTransactionUncertainError(
+          'publication-unknown',
+          [error, cleanupError],
+        );
       }
       throw error;
     }

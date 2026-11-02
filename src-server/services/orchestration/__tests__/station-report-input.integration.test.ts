@@ -760,7 +760,20 @@ test('explicit report input crosses real Flow dispatch, canonical answer and ret
   );
   const principal = getRuntimeAuthenticatedRequestPrincipal(h.f.req);
   assert.ok(principal && principal.kind !== 'internal');
+  const narrowFailures: unknown[] = [];
   const createApp = (owner: StationReportGroupRuntime) => {
+    const narrow = owner.narrowAfterInput.bind(owner);
+    const observer = vi
+      .spyOn(owner, 'narrowAfterInput')
+      .mockImplementation(async (...args) => {
+        try {
+          return await narrow(...args);
+        } catch (error) {
+          narrowFailures.push(error);
+          throw error;
+        }
+      });
+    onTestFinished(() => observer.mockRestore());
     const app = new Hono();
     app.use('*', async (c, next) => {
       setRuntimeAuthenticatedRequestPrincipal(c.req.raw, {
@@ -921,6 +934,7 @@ test('explicit report input crosses real Flow dispatch, canonical answer and ret
   const bothLoaded = new Promise<void>((resolve) => {
     release = resolve;
   });
+  onTestFinished(() => release());
   const concurrent = vi
     .spyOn(StationReportGroupCustody.prototype, 'loadIntentForMutation')
     .mockImplementation(async function (
@@ -941,7 +955,13 @@ test('explicit report input crosses real Flow dispatch, canonical answer and ret
         options,
       ),
     ),
-  );
+  ).catch((error: unknown) => {
+    release();
+    throw new AggregateError(
+      [...narrowFailures, error],
+      'concurrent renewal adoption replay failed',
+    );
+  });
   concurrent.mockRestore();
   assert.equal(
     arrived,

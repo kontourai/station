@@ -75,6 +75,7 @@ import {
   beginSdkSourceWire,
   capturedSdkSourceWire,
   disposeSdkSourceWire,
+  retireSdkSourceWire,
   sdkDisposalPromise,
 } from './delegation-group-sdk-source-wire-owner.js';
 import { EventStore } from './event-store.js';
@@ -1794,6 +1795,15 @@ export class LocalSourceAdmissionOwner {
   }
   releaseSnapshot(capability: object): void {
     this.#dropSnapshot(capability);
+  }
+  prepareSnapshotRetirement(capability: object): () => Promise<void> {
+    const state = this.#snapshots.get(capability);
+    if (!state) refuse('snapshot_unavailable');
+    return async () => {
+      this.#dropSnapshot(capability);
+      if (state.sdk)
+        await retireSdkSourceWire(state.sdk.owner, state.sdk.handle);
+    };
   }
   #assertSnapshot(
     state: SealedState,
