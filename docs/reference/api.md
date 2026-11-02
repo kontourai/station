@@ -5587,7 +5587,8 @@ per-terminal and total sizes are the `terminalHistory*`
 
 Core session retention reserves each record's per-terminal history against the
 total, with 64 MiB of raw tail payload and 32 retained records as constructor
-budgets. Ended/failed sessions eligible for the caller's operate authority
+budgets. Agent command sessions (`kind: 'command'`) have a separate pool of 16
+records and only expire one another. Ended/failed sessions eligible for the caller's operate authority
 expire when a new slot is needed or once older than the maximum age; active
 sessions are pinned. Expired session ids are refused.
 

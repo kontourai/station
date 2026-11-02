@@ -6451,7 +6451,8 @@ other terminal service or listener remains.
 The `terminalHistory*` [retention settings](../../src-server/services/terminal/terminal-retention.ts)
 are read before each open and usage read: history on or off, the journal
 directory (ended journals move there), maximum age and the per-terminal and
-total sizes. On start, a shell that ended only because its host went away
+total sizes; agent command sessions are retained in a separate 16-record pool
+that never expires a user shell. On start, a shell that ended only because its host went away
 reopens under the same id below a "restored after restart" divider; one the
 supervisor reattached, or that ended by itself, is not restored. Shell records
 carry a stable `ordinal`, and an `adopt` open answers with the binding's

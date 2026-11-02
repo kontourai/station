@@ -239,8 +239,14 @@ budgets remain core constructor controls, not a measured process-RSS bound.
 With the default settings, at most 32 journal instances/tails and 512 MiB of
 journal files can be retained.
 
-When a slot is needed, the oldest ended or failed record eligible for the
-caller's operate authority expires: its journal and cache entry are discarded
+Agent command sessions (`kind: 'command'`, #4453) are retained in their own
+pool of 16 records, with output capped per command, apart from every other
+session. A pool only expires its own ended records, so a busy agent can never
+expire a person's shell history, and commands get no shell number and are
+never restored.
+
+When a slot is needed, the oldest ended or failed record in the same pool,
+eligible for the caller's operate authority, expires: its journal and cache entry are discarded
 and its metadata is removed. Live/stopping sessions are pinned. Closed/failed
 records therefore do not consume admission forever. A caller cannot evict
 another Project/binding it cannot operate. Startup applies the same fixed
