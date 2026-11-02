@@ -235,11 +235,6 @@ interface AndroidVideo {
   /** The last unit carried a non-IDR slice: the screen changed. */
   lastUnitHadContent: boolean;
   requestKeyframe: (() => void) | null;
-  /**
-   * The size of the decoder's last JPEG. While the decoder runs, H.264
-   * frames are headed with it, so every viewer's input maps against one size.
-   */
-  imageSize: { width: number; height: number } | null;
   /** The latest parameter sets, prepended to an IDR that lacks them. */
   sps: Uint8Array | null;
   pps: Uint8Array | null;
@@ -265,10 +260,12 @@ function withParameterSets(
 }
 
 /**
- * The size an H.264 frame is shown at while no decoder runs: the picture
- * fitted inside the stream's max size, never upscaled, even dimensions (the
- * box the ffmpeg image path scales to). While a decoder runs, frames take its
- * JPEGs' actual size instead (`AndroidVideo.imageSize`).
+ * Android's ONE coordinate space: the device picture fitted inside the
+ * stream's max size, never upscaled, even dimensions. Every Android frame
+ * (H.264 unit, ffmpeg JPEG, polled PNG) declares this size in its header,
+ * whatever resolution its body is encoded at, and viewers draw it scaled to
+ * that box. Input from any viewer is therefore in the same pixels, and maps
+ * through `lastFrame` to the same point on the device.
  */
 function fittedVideoSize(
   sequence: { width: number; height: number },
@@ -646,7 +643,6 @@ export class DeviceLiveSurfaceProducer implements LiveSurfaceProducer {
       connecting: false,
       polling: false,
       lastUnitHadContent: false,
-      imageSize: null,
       requestKeyframe: null,
       sps: null,
       pps: null,
@@ -681,7 +677,6 @@ export class DeviceLiveSurfaceProducer implements LiveSurfaceProducer {
     if (!decode && run.decoder) {
       const decoder = run.decoder;
       run.decoder = null;
-      android.imageSize = null;
       void decoder.close();
     }
     const wantSocket = this.demand.h264 || decode;
@@ -792,14 +787,12 @@ export class DeviceLiveSurfaceProducer implements LiveSurfaceProducer {
           if (run.decoder !== decoder) return;
           const size = jpegSize(jpeg);
           if (!size) return;
-          android.imageSize = size;
           this.offer(run, { codec: 'jpeg', body: jpeg, ...size });
         },
         onExit: (reason) => {
           if (this.run !== run || run.decoder !== decoder) return;
           this.reportError('device video decoder exited', reason);
           run.decoder = null;
-          android.imageSize = null;
           // A decoder that ran stably before dying is a fresh failure, not
           // the second of a pattern.
           const restarts =
@@ -917,7 +910,6 @@ export class DeviceLiveSurfaceProducer implements LiveSurfaceProducer {
           android.sps = null;
           android.pps = null;
           android.sequence = null;
-          android.imageSize = null;
           requestKeyframe();
         }
         return;
@@ -996,11 +988,7 @@ export class DeviceLiveSurfaceProducer implements LiveSurfaceProducer {
 
   /** An H.264 access unit, published as it arrives: the hub queues it. */
   private publishVideo(run: VideoRun, unit: Uint8Array, keyframe: boolean) {
-    const android = run.android!;
-    const size =
-      run.decoder && android.imageSize
-        ? android.imageSize
-        : fittedVideoSize(android.sequence!, run.params);
+    const size = fittedVideoSize(run.android!.sequence!, run.params);
     const rotation = frameRotationFor(
       this.options.platform,
       this.orientation,
@@ -1069,12 +1057,13 @@ export class DeviceLiveSurfaceProducer implements LiveSurfaceProducer {
   }
 
   private publish(run: VideoRun, frame: PendingFrame): void {
+    const size = this.declaredSize(run, frame);
     const rotation = frameRotationFor(
       this.options.platform,
       this.orientation,
-      frame,
+      size,
     );
-    this.lastFrame = { width: frame.width, height: frame.height, rotation };
+    this.lastFrame = { ...size, rotation };
     const seq = ++this.seq;
     this.awaitingAck = seq;
     run.onFrame(
@@ -1083,14 +1072,32 @@ export class DeviceLiveSurfaceProducer implements LiveSurfaceProducer {
         seq,
         epoch: 0,
         codec: frame.codec,
-        width: frame.width,
-        height: frame.height,
+        width: size.width,
+        height: size.height,
         deviceScaleFactor: 1,
         capturedAt: this.now(),
         ...(rotation === 0 ? {} : { rotation }),
       },
       frame.body,
     );
+  }
+
+  /**
+   * The size an image frame declares. iOS has one video path, so its frames
+   * keep their own size. Android frames declare the shared fitted box of the
+   * device picture: the SPS size when known (an ffmpeg JPEG is that picture,
+   * scaled), else the image's own (a polled PNG is the full screen).
+   */
+  private declaredSize(
+    run: VideoRun,
+    frame: PendingFrame,
+  ): { width: number; height: number } {
+    if (!run.android) return { width: frame.width, height: frame.height };
+    const native =
+      frame.codec === 'jpeg' && run.android.sequence
+        ? run.android.sequence
+        : frame;
+    return fittedVideoSize(native, run.params);
   }
 
   ack(seq: number): void {
