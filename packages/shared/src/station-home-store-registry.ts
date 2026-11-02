@@ -276,6 +276,7 @@ export const STATION_HOME_SQLITE_STORES: readonly (readonly string[])[] =
   Object.freeze([
     // Includes chat-app links, bindings, kill switches and delivery receipts.
     ['data', 'orchestration.sqlite'],
+    ['data', 'agent-runtime', 'steps.sqlite'],
     ['scheduler', 'scheduler.sqlite'],
     ['automation', 'automation.sqlite'],
     ['authentication', 'application-sessions.sqlite'],

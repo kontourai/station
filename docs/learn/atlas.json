@@ -44,6 +44,7 @@
         "docs/design/terminal.md"
       ],
       "modules": [
+        "Durable Station Agent",
         "SessionQueryModule",
         "SessionGoalModule",
         "ConversationSessionLineage",
