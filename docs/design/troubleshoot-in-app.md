@@ -79,9 +79,11 @@ The request and response types are in
   or an error summary over 2,000 characters is refused with 400. Nothing is
   truncated. The route keeps only its path; the query and fragment are dropped.
 - **Run.** The service writes `context.json`, `playbook.md` and `seed.md` to a
-  new `$STATION_ROOT/cache/triage/<uuid>` with the same owner-only rules as
+  new `<Station home>/cache/triage/<uuid>` with the same owner-only rules as
   `station triage` (directory `0700`, files `0600`, no symlinked cache
-  leaves). The context records the Station name, environment id, version,
+  leaves). It uses the serving Station's home rather than the shared
+  `$STATION_ROOT` that `station triage` writes to, so a run belongs to the
+  Station that prepared it and an isolated instance keeps its runs to itself. The context records the Station name, environment id, version,
   channel, stamped source revision, platform, the doctor summary, server-log
   availability, the caller's role and surface, and the seed.
 - **Response.** The run id, `agentId: 'station'`, the ambient seed (at most

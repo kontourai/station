@@ -4077,8 +4077,8 @@ export function configureRuntimeRoutes(
             JSON.stringify({ kind: 'diagnostics-session', sessionId }),
             'station-control:read_logs',
           ),
-        // #4470: in-app troubleshooting writes its run under $STATION_ROOT
-        // with the same owner-only rules as `station triage`.
+        // #4470: in-app troubleshooting writes its run under this Station's
+        // home with the same owner-only rules as `station triage`.
         troubleshoot: new TroubleshootService(
           context.configLoader.getProjectHomeDir(),
           {

@@ -160,6 +160,30 @@ describe('POST /api/diagnostics/troubleshoot/prepare', () => {
     });
   });
 
+  test('writes runs under the serving Station home by default, not the shared Station root', async () => {
+    const home = makeTempDir('troubleshoot-home-');
+    const sharedRoot = makeTempDir('troubleshoot-shared-root-');
+    const previous = process.env.STATION_ROOT;
+    process.env.STATION_ROOT = sharedRoot;
+    try {
+      const result = await new TroubleshootService(home, {
+        stationName: () => 'home-station',
+        collectDoctor: async () =>
+          ({
+            checks: [],
+            recommendation: '',
+            chatReady: true,
+            runtimeReady: true,
+          }) as never,
+      }).prepare({ role: 'owner', surface: 'web' });
+      expect(runDirs(home)).toEqual([result.runId]);
+      expect(runDirs(sharedRoot)).toEqual([]);
+    } finally {
+      if (previous === undefined) delete process.env.STATION_ROOT;
+      else process.env.STATION_ROOT = previous;
+    }
+  });
+
   test('records a paired device that is not the owner as a member', async () => {
     const stationRoot = makeTempDir('troubleshoot-member-');
     const response = await prepare(unitApp(stationRoot), 'device');

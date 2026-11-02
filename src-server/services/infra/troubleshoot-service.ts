@@ -66,8 +66,13 @@ export interface TroubleshootServiceDeps {
   collectDoctor: (deps?: Partial<DoctorDeps>) => Promise<DoctorReport>;
   now: () => Date;
   newRunId: () => string;
-  /** `$STATION_ROOT`; undefined resolves the process's root. */
-  stationRoot?: string;
+  /**
+   * The root whose `cache/triage` holds runs. Defaults to this Station's own
+   * home, so a run belongs to the Station that prepared it: an isolated or
+   * temporary-home instance never writes into the shared `$STATION_ROOT` the
+   * CLI uses.
+   */
+  stationRoot: string;
   stationName: () => string;
   environmentId: () => Promise<string | null> | string | null;
   serverLogDirectory?: string;
@@ -149,6 +154,7 @@ export class TroubleshootService {
       collectDoctor: collectDoctorReport,
       now: () => new Date(),
       newRunId: randomUUID,
+      stationRoot: projectHome,
       stationName: hostname,
       environmentId: () => null,
       serverLogDirectory: join(projectHome, 'logs', 'server'),

@@ -346,7 +346,7 @@ revoked grant lookup denies the read.
 - **`POST /api/diagnostics/troubleshoot/prepare`** — body
   `{ surface?: 'desktop'|'web'|'mobile'|'unknown', seed?: { route?, errorSummary? } }`
   (strict, at most 16 KiB). Writes an owner-only run under
-  `$STATION_ROOT/cache/triage/<uuid>` and returns the run id, the Station
+  this Station's home, `<home>/cache/triage/<uuid>`, and returns the run id, the Station
   Assistant id, a bounded ambient seed, an opening message and display facts.
   The `/api/diagnostics` POST tier (`orchestration:operate`) applies; every
   agent caller is refused with 403; a seed route over 512 characters or an
