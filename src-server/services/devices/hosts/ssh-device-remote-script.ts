@@ -119,6 +119,7 @@ export type RemoteDeviceHostParams =
       /** One deadline for the whole run. */
       timeoutMs: number;
       maxBuffer: number;
+      tail?: boolean;
       /** stdin closing cancels the run (Station keeps it open meanwhile). */
       cancelOnClose?: boolean;
       /**
@@ -234,7 +235,7 @@ if (p.mode === 'avd') {
 
 if (p.mode === 'tool') {
   const followedBy = p.followedBy === undefined ? [] : p.followedBy;
-  if (!Number.isSafeInteger(p.timeoutMs) || p.timeoutMs < 1 || p.timeoutMs > ${REMOTE_TOOL_LIMITS.maxTimeoutMs} || !Number.isSafeInteger(p.maxBuffer) || p.maxBuffer < 1 || p.maxBuffer > ${REMOTE_TOOL_LIMITS.maxBuffer} || (p.stdin !== undefined && (typeof p.stdin !== 'string' || Buffer.byteLength(p.stdin, 'utf8') > ${REMOTE_TOOL_LIMITS.maxStdinBytes})) || !Array.isArray(followedBy) || followedBy.length > ${REMOTE_TOOL_LIMITS.maxFollowedBy} || (followedBy.length > 0 && p.stdin !== undefined) || (p.keepGoing !== undefined && typeof p.keepGoing !== 'boolean')) return fail('protocol');
+  if (!Number.isSafeInteger(p.timeoutMs) || p.timeoutMs < 1 || p.timeoutMs > ${REMOTE_TOOL_LIMITS.maxTimeoutMs} || !Number.isSafeInteger(p.maxBuffer) || p.maxBuffer < 1 || p.maxBuffer > ${REMOTE_TOOL_LIMITS.maxBuffer} || (p.stdin !== undefined && (typeof p.stdin !== 'string' || Buffer.byteLength(p.stdin, 'utf8') > ${REMOTE_TOOL_LIMITS.maxStdinBytes})) || !Array.isArray(followedBy) || followedBy.length > ${REMOTE_TOOL_LIMITS.maxFollowedBy} || (followedBy.length > 0 && p.stdin !== undefined) || (p.keepGoing !== undefined && typeof p.keepGoing !== 'boolean') || (p.tail !== undefined && (p.tail !== true || followedBy.length !== 0 || !Array.isArray(p.args) || !((p.tool === 'xcrun' && p.args[3] === 'log' && p.args[4] === 'show') || (p.tool === 'adb' && p.args[2] === 'logcat'))))) return fail('protocol');
   // Written, flushed, then exit: a descendant the tool left holding its
   // stdout must not keep this session open.
   let answered = false;
@@ -275,39 +276,49 @@ if (p.mode === 'tool') {
     const args = commands[index];
     const last = index === commands.length - 1;
     try {
-      child = spawn(p.tool, args, { shell: false, windowsHide: true, stdio: [p.stdin === undefined ? 'ignore' : 'pipe', 'pipe', 'ignore'] });
+      child = spawn(p.tool, args, { shell: false, windowsHide: true, stdio: [p.stdin === undefined ? 'ignore' : 'pipe', 'pipe', 'pipe'] });
     } catch { answer({ ok: false, failure: 'tool-failed', applied: index - failedAt.length }); return; }
     const current = child;
     const chunks = [];
     let size = 0;
+    let truncated = false;
+    let stderrPresent = false;
     let settled = false;
-    const settle = (ok, failure) => {
+    const settle = (ok, failure, exitCode) => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
-      if (!ok && !(p.keepGoing === true && failure === 'tool-failed')) { answer({ ok: false, failure, applied: index - failedAt.length }); return; }
+      if (!ok && !(p.keepGoing === true && failure === 'tool-failed')) { answer(Object.assign({ ok: false, failure, applied: index - failedAt.length }, p.tool === 'adb' && args[2] === 'shell' && args[3] === 'pidof' && exitCode === 1 ? { exitCode: 1, stderrPresent } : {})); return; }
       if (!ok) failedAt.push(index);
       index += 1;
       if (!last) { runOne(); return; }
       if (failedAt.length === commands.length) answer({ ok: false, failure: 'tool-failed', applied: 0 });
-      else answer(p.keepGoing === true ? { ok: true, stdout: Buffer.concat(chunks).toString('base64'), failed: failedAt } : { ok: true, stdout: Buffer.concat(chunks).toString('base64') });
+      else answer(p.keepGoing === true ? { ok: true, stdout: Buffer.concat(chunks).toString('base64'), failed: failedAt } : p.tail ? { ok: true, stdout: Buffer.concat(chunks).toString('base64'), truncated } : { ok: true, stdout: Buffer.concat(chunks).toString('base64') });
     };
     const abort = (failure) => {
       if (settled) return;
       try { current.kill('SIGKILL'); } catch {}
       if (current.stdout) current.stdout.destroy();
+      if (current.stderr) current.stderr.destroy();
       if (current.stdin) current.stdin.destroy();
       settle(false, failure);
     };
     const timer = setTimeout(() => abort('tool-timeout'), left);
     current.stdout.on('data', (chunk) => {
       size += chunk.length;
-      if (size > p.maxBuffer) { abort('tool-failed'); return; }
+      if (size > p.maxBuffer && !p.tail) { abort('tool-failed'); return; }
+      if (size > p.maxBuffer) truncated = true;
       chunks.push(chunk);
+      if (p.tail) {
+        while (size - chunks[0].length >= p.maxBuffer) size -= chunks.shift().length;
+        if (size > p.maxBuffer) { const excess = size - p.maxBuffer; chunks[0] = chunks[0].subarray(excess); size -= excess; }
+      }
     });
     current.stdout.on('error', () => {});
+    current.stderr.on('data', (chunk) => { if (chunk.length) stderrPresent = true; });
+    current.stderr.on('error', () => {});
     current.on('error', (error) => settle(false, error && error.code === 'ENOENT' ? 'tool-unavailable' : 'tool-failed'));
-    current.on('close', (code) => settle(code === 0, 'tool-failed'));
+    current.on('close', (code) => settle(code === 0, 'tool-failed', code));
     if (p.stdin !== undefined) { current.stdin.on('error', () => {}); current.stdin.end(p.stdin); }
   };
   runOne();

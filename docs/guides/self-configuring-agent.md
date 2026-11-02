@@ -126,6 +126,10 @@ owns limits, theme variables, Chromium prerequisites and page deletion semantics
   authorized device session to the bound lead Task. This mutating device tool
   requires device Agent access and a clean Task workspace. See
   [device capture](mobile-device-workspace.md#capture-a-device-screen-to-a-task).
+- `device_record_to_task {deviceSessionId, durationMs, maxBytes?, label?}` to
+  record a bounded Task clip, and `device_logs {deviceSessionId, appId}` to read
+  one bounded app log sample. Both claim the device input lease and refuse while
+  a person controls it; the lease is held for the operation.
 - config and navigation tools for steering the workspace
 - the full scheduler lifecycle: `list_jobs`, `list_scheduler_providers`,
   `get_scheduler_stats`, `get_scheduler_status`, `preview_schedule`,
