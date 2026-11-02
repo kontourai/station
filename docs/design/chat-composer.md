@@ -1090,7 +1090,9 @@ picker offers **New Task from this** even with an empty Task catalog.
 
 Chat actions retains conversation history, background tasks, connection
 management where needed, and chat settings. Its geometry action is **Full screen**
-or **Exit full screen**. Collapse stays on the header control. No resize or
+or **Exit full screen**; the open phone bar also shows the same switch as a
+44px **Full screen chat** / **Restore chat size** control (#4391). Collapse
+stays on the header control. No resize or
 navigation action requires a gesture.
 
 Mobile message rows prioritize the authored text and essential live approval or
