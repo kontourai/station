@@ -38,6 +38,7 @@ import {
   SessionStartRefusedError,
 } from '../../../providers/adapter-shape.js';
 import { AttachmentStagingService } from '../../../services/orchestration/attachment-staging-service.js';
+import { FileDelegationAttemptClaimStore } from '../../../services/orchestration/delegation-attempt-claim-store.js';
 import { EventBus } from '../../../services/orchestration/event-bus.js';
 import { EventStore } from '../../../services/orchestration/event-store.js';
 import { OrchestrationService } from '../../../services/orchestration/orchestration-service.js';
@@ -242,6 +243,8 @@ describe('CLI delegation files through staging, route and real orchestration', (
         eventBus: bus,
         logger: { debug: vi.fn() },
         resolvePrincipal: () => actor,
+        getUserId: () => actor.id,
+        delegationAttemptClaimStore: new FileDelegationAttemptClaimStore(root),
         delegateTask: dispatchDelegate,
         continueDelegatedTask: continueTask,
         respondToDelegatedTaskRequest: vi.fn(async () => ({})),
@@ -503,6 +506,7 @@ describe('CLI delegation files through staging, route and real orchestration', (
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
+        clientTurnId: crypto.randomUUID(),
         prompt: 'Read the attached values',
         target: {
           environment: { kind: 'current' },
