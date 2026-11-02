@@ -17,8 +17,8 @@ import type { InboxEntryRecord, InboxEntryState } from '../records.js';
  * host places one at a time, each at a turn boundary of the host's choosing.
  *
  * - A submission is idempotent by key: the same digest answers the stored
- *   entry, a different digest is a conflict. A key whose entry was refused or
- *   cancelled had no effect, so submitting it again queues it again.
+ *   entry, a different digest is a conflict. A refused or never-placed
+ *   cancelled entry can be queued again; dismissing an unknown effect cannot.
  * - The head is the oldest unsettled entry. A `placing` head is in flight and
  *   is never claimed afresh; the host re-drives it under the same key. An
  *   `unconfirmed` head may have had its effect: it blocks the inbox until the
@@ -64,18 +64,28 @@ export function decideInboxSubmit(
     /** Every retained entry of the inbox, after retention ran. */
     readonly entries: readonly InboxEntryRecord[];
     readonly maxUnsettled: number;
+    readonly maxDisplay: number;
   },
   command: InboxSubmitCommand,
 ): InboxDecision<InboxSubmitResult> {
   const { existing } = inputs;
-  if (existing && existing.digest !== command.digest)
+  if (
+    existing &&
+    (existing.digest !== command.digest || existing.kind !== command.kind)
+  )
     return { result: { kind: 'conflict' } };
   const requeue =
-    existing?.state === 'refused' || existing?.state === 'cancelled';
+    existing?.state === 'refused' ||
+    (existing?.state === 'cancelled' && existing.placement === null);
   if (existing && !requeue)
     return { result: { kind: 'existing', entry: existing } };
+  const displayCount = inputs.entries.filter(
+    (entry) => entry.kind === 'display',
+  ).length;
+  if (command.kind === 'display' && displayCount >= inputs.maxDisplay)
+    return { result: { kind: 'capacity', limit: inputs.maxDisplay } };
   const unsettled = inputs.entries.filter(inboxEntryIsUnsettled).length;
-  if (unsettled >= inputs.maxUnsettled)
+  if (command.kind !== 'display' && unsettled >= inputs.maxUnsettled)
     return { result: { kind: 'capacity', limit: inputs.maxUnsettled } };
   const sequence =
     inputs.entries.reduce((max, entry) => Math.max(max, entry.sequence), 0) + 1;
@@ -86,7 +96,7 @@ export function decideInboxSubmit(
     kind: command.kind,
     digest: command.digest,
     payload: command.payload,
-    state: 'queued',
+    state: command.kind === 'display' ? 'placed' : 'queued',
     placement: null,
     outcome: null,
     createdAt: existing?.createdAt ?? command.now,

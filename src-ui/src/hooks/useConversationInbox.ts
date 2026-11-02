@@ -117,6 +117,10 @@ export function useConversationInbox(
           requireCredential: scope.requiresEnrolledCredential !== false,
           signal,
           timeoutMs: DEFAULT_CLIENT_REQUEST_TIMEOUT_MS,
+          onHead: (head) => {
+            if (!signal.aborted && scope.isCurrent())
+              client.setQueryData([...queryKey, 'head'], head);
+          },
         },
       );
       if (!scope.isCurrent())
@@ -170,7 +174,10 @@ export function useConversationInbox(
   // may be stale), but it says whether there was anything to lose sight of.
   const lostSightOfEntries =
     availability === 'unavailable' &&
-    visibleInboxEntries(query.data).length > 0;
+    (visibleInboxEntries(query.data).length > 0 ||
+      query.data?.some(
+        (entry) => entry.kind === 'display' && entry.state === 'sent',
+      ) === true);
   const cancellation = useMutation({
     mutationKey: [...queryKey, 'cancel'],
     retry: false,

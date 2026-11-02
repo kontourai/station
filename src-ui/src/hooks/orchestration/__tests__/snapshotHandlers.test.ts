@@ -1,4 +1,9 @@
+import {
+  STEERING_ENGINE_DURABILITY,
+  UNKNOWN_ENGINE_DURABILITY,
+} from '@kontourai/station-contracts/engine-capability-matrix';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
+import { sessionAdapterSupportsSteering } from '../../../utils/execution';
 
 const rehydrateChatSession = vi.fn().mockResolvedValue(undefined);
 const dismissToast = vi.fn((_id: string) => {});
@@ -79,6 +84,33 @@ describe('applyOrchestrationSnapshot reconnect-fallback refetch (station#1225)',
       },
     };
   });
+
+  test.each([
+    { profile: STEERING_ENGINE_DURABILITY, expected: true },
+    { profile: UNKNOWN_ENGINE_DURABILITY, expected: false },
+    { profile: undefined, expected: false },
+  ])(
+    'steering follows the snapshot declaration ($expected), clearing stale authority',
+    ({ profile, expected }) => {
+      chats['thread-1'].orchestrationDurability = STEERING_ENGINE_DURABILITY;
+      applyOrdinarySnapshot({
+        sessions: [
+          {
+            provider: 'muse',
+            threadId: 'thread-1',
+            status: 'running',
+            hasActiveTurn: true,
+            durability: profile,
+          },
+        ],
+      });
+      expect(
+        sessionAdapterSupportsSteering(
+          chats['thread-1'].orchestrationDurability,
+        ),
+      ).toBe(expected);
+    },
+  );
 
   test('replaces open approvals and stale toasts from an authoritative snapshot', () => {
     chats['thread-1'].pendingApprovals = ['stale-request'];

@@ -2,6 +2,7 @@ import { agentId } from '@kontourai/station-contracts/agent-identity';
 import type { SkillExperienceStartInputV1 } from '@kontourai/station-contracts/skill-experience';
 import {
   type ApprovalPickCarry,
+  ForegroundMessageQueuedError,
   queueExecutionMessage,
   sendExecutionMessage,
 } from '@kontourai/station-sdk/client';
@@ -246,6 +247,29 @@ async function foregroundRequest(input: ForegroundInput) {
 export async function dispatchForeground(input: ForegroundInput) {
   const { body, options } = await foregroundRequest(input);
   return sendExecutionMessage(input.apiBase, body, options);
+}
+
+export async function dispatchPossiblyQueuedForeground(input: ForegroundInput) {
+  const { body, options } = await foregroundRequest(input);
+  try {
+    const receipt = await sendExecutionMessage(
+      input.apiBase,
+      { ...body, whenBusy: 'queue' },
+      options,
+    );
+    return { outcome: 'started' as const, receipt };
+  } catch (error) {
+    if (error instanceof ForegroundMessageQueuedError) {
+      if (
+        error.receipt.clientTurnId === input.clientTurnId &&
+        error.receipt.conversationId === input.conversationId &&
+        error.receipt.entry.message === input.message
+      )
+        return error.receipt;
+      throw new Error('Station did not confirm this message identity.');
+    }
+    throw error;
+  }
 }
 
 export async function dispatchQueuedForeground(input: ForegroundInput) {

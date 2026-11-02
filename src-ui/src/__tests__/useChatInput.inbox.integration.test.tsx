@@ -1,3 +1,4 @@
+import { STEERING_ENGINE_DURABILITY } from '@kontourai/station-contracts/engine-capability-matrix';
 /** @vitest-environment jsdom */
 
 import { SDKProvider } from '@kontourai/station-sdk';
@@ -217,7 +218,10 @@ describe('mounted composer inbox handoff (test-scoped caller)', () => {
       const request = new Request(input, init);
       if (
         request.method === 'POST' &&
-        new URL(request.url).pathname === '/api/orchestration/chat'
+        [
+          '/api/orchestration/chat',
+          '/api/orchestration/chat/background',
+        ].includes(new URL(request.url).pathname)
       )
         submissions++;
       return world.app.request(request);
@@ -403,6 +407,7 @@ describe('mounted composer inbox handoff (test-scoped caller)', () => {
     activeChatsStore.updateChat(sessionId, {
       status: 'sending',
       orchestrationProvider: 'claude',
+      orchestrationDurability: STEERING_ENGINE_DURABILITY,
       currentSessionId: 'fixture-execution',
       openTurnId: 'fixture-turn',
       messages: [],
