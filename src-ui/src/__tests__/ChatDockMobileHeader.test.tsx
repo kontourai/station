@@ -125,6 +125,7 @@ function renderHeader(
     activeCount?: number;
     unreadCount?: number;
     extentToggle?: ChatDockMobileExtentToggle | null;
+    hasConversation?: boolean;
     inboxActive?: boolean;
   } = {},
 ) {
@@ -132,6 +133,7 @@ function renderHeader(
   renderWithIsolatedConnections(
     <ChatDockMobileHeader
       inboxActive={overrides.inboxActive}
+      hasConversation={overrides.hasConversation}
       extentToggle={overrides.extentToggle}
       showDrawerToggle={false}
       showConnection={overrides.showConnection ?? true}
@@ -669,5 +671,25 @@ describe('full-screen and peek control (#4391)', () => {
     expect(screen.queryByRole('button', { name: 'Full screen chat' })).toBe(
       null,
     );
+  });
+});
+
+describe('first-run bar without a chat (#4404 A44)', () => {
+  test('offers New chat, not a pressed Back to chat or Chat actions', () => {
+    renderHeader({
+      hasConversation: false,
+      inboxActive: true,
+      showConnection: false,
+      agentIdentity: null,
+    });
+    expect(screen.queryByRole('button', { name: 'Back to chat' })).toBe(null);
+    expect(screen.queryByRole('button', { name: 'Chat actions' })).toBe(null);
+    expect(screen.getByRole('button', { name: 'New chat' })).toBeTruthy();
+  });
+
+  test('keeps Back to chat and Chat actions once a chat exists', () => {
+    renderHeader({ hasConversation: true, inboxActive: true });
+    expect(screen.getByRole('button', { name: 'Back to chat' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Chat actions' })).toBeTruthy();
   });
 });

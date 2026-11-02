@@ -3219,6 +3219,9 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
           {isMobile ? (
             <ChatDockMobileHeader
               inboxActive={mobileInboxShown}
+              hasConversation={Boolean(
+                activeChat || importedSessionId || showNewChatModal,
+              )}
               // While a draft is open the header names the draft only: the
               // covered chat's route and the dock's destination controls would
               // disagree with the draft's own project chip (the one destination).

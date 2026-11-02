@@ -811,22 +811,10 @@ function MessageBubbleComponent({
         )}
       />
     ) : null;
-  // A settled answer's per-turn actions: the desktop footer row, or the phone
-  // sheet's action group.
-  const footerActions = (
+  // The answer's per-turn rows: the desktop footer's ⋯ menu, or on a phone
+  // rows of the answer sheet itself, below its summary (#4404 A40).
+  const turnActions = (
     <>
-      {developerToolsEnabled && msg.traceId && (
-        <a
-          href={`/developer/telemetry?filters=${encodeURIComponent(JSON.stringify({ trace: [msg.traceId] }))}`}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="message__trace"
-          title={`Trace: ${msg.traceId}`}
-        >
-          {msg.traceId.slice(-8)}
-        </a>
-      )}
-      {desktopCopy}
       {((msg.turnId &&
         answerSessionId &&
         msg.answerEligible === true &&
@@ -876,11 +864,32 @@ function MessageBubbleComponent({
                 ? { content: reasoningContent }
                 : undefined,
             handleRef: answerMenuHandle,
+            // The phone sheet lists the rows itself (#4404 A40).
+            inline: isMobile,
           }}
           pending={null}
           unavailable={() => null}
         />
       )}
+    </>
+  );
+  // A settled answer's per-turn actions: the desktop footer row, or the phone
+  // sheet's action group.
+  const footerActions = (
+    <>
+      {developerToolsEnabled && msg.traceId && (
+        <a
+          href={`/developer/telemetry?filters=${encodeURIComponent(JSON.stringify({ trace: [msg.traceId] }))}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="message__trace"
+          title={`Trace: ${msg.traceId}`}
+        >
+          {msg.traceId.slice(-8)}
+        </a>
+      )}
+      {desktopCopy}
+      {!isMobile && turnActions}
       {textContent && feedbackConversationId && rowAgentSlug && (
         <MessageRating
           conversationId={feedbackConversationId}
@@ -987,7 +996,13 @@ function MessageBubbleComponent({
     msg.role === 'user'
       ? [traceLink, userMessageMenu]
       : [metadataControls, hasTurnFooter ? footerActions : null];
-  const sheetAfter = msg.role === 'user' ? null : metadataAfter;
+  const sheetAfter =
+    msg.role === 'user' ? null : (
+      <>
+        {metadataAfter}
+        {hasTurnFooter ? turnActions : null}
+      </>
+    );
   // Only a user row's slots can all be empty; an answer's always carry its
   // identity and footer fragments, so it keeps its ⋯ as before.
   const sheetHasContent =

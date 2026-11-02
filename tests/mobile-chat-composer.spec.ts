@@ -2042,8 +2042,10 @@ test('mobile messages prioritize text and reveal 44px actions on demand', async 
   const answerSheet = page.getByRole('dialog', {
     name: 'Answer details and actions',
   });
+  // #4404 (A40): the sheet lists the answer's actions itself, below its
+  // summary row, instead of behind a second ⋯.
   for (const control of [
-    page.getByRole('button', { name: 'More answer actions' }),
+    answerSheet.getByRole('button', { name: 'Provenance' }),
     page.getByRole('button', { name: 'Good response' }),
     page.getByRole('button', { name: 'Bad response' }),
   ]) {
@@ -2054,8 +2056,11 @@ test('mobile messages prioritize text and reveal 44px actions on demand', async 
   }
   // Short provenance and the actions share ONE row: chips at the start, the
   // actions (one row of their own) at the end, no dead space under them.
+  await expect(
+    answerSheet.getByRole('button', { name: 'More answer actions' }),
+  ).toHaveCount(0);
   const fitting = await answerSheetLayout(answerSheet);
-  expect(fitting.actionCentres).toHaveLength(3);
+  expect(fitting.actionCentres).toHaveLength(2);
   for (const centre of fitting.actionCentres) {
     expect(Math.abs(centre - fitting.actionCentres[0]!)).toBeLessThan(1);
   }
@@ -2066,7 +2071,8 @@ test('mobile messages prioritize text and reveal 44px actions on demand', async 
   expect(Math.abs(fitting.actions.right - fitting.summary.right)).toBeLessThan(
     1,
   );
-  expect(fitting.panelBottom - fitting.summary.bottom).toBeLessThanOrEqual(
+  expect(fitting.rows.top).toBeGreaterThanOrEqual(fitting.summary.bottom - 1);
+  expect(fitting.panelBottom - fitting.rows.bottom).toBeLessThanOrEqual(
     MAX_SHEET_TAIL_PX,
   );
   await expect(answerSheet.getByRole('button', { name: /^Copy/ })).toHaveCount(
@@ -2082,23 +2088,6 @@ test('mobile messages prioritize text and reveal 44px actions on demand', async 
       `mobile-answer-details-${theme}`,
       '[role="dialog"][aria-label="Answer details and actions"]',
     );
-    // One visual family: the overflow trigger draws exactly like the rating
-    // buttons beside it (it is a filled chip everywhere else).
-    const looks = await answerSheet.evaluate((sheet) =>
-      ['More answer actions', 'Good response'].map((name) => {
-        const style = getComputedStyle(
-          sheet.querySelector(`button[aria-label="${name}"]`)!,
-        );
-        return [
-          style.backgroundColor,
-          style.borderTopColor,
-          style.width,
-          style.height,
-          style.color,
-        ].join(' ');
-      }),
-    );
-    expect(looks[0]).toBe(looks[1]);
   }
   await page.getByRole('button', { name: 'Close message details' }).click();
   await header
@@ -2137,12 +2126,12 @@ test('mobile messages prioritize text and reveal 44px actions on demand', async 
       .getByText(`via ${longStationName}`)
       .evaluate((pill) => pill.scrollWidth <= pill.clientWidth),
   ).toBe(true);
-  // The overflow menu loads lazily; measure once every action is present.
+  // The answer's rows load lazily; measure once every action is present.
   await expect(
-    answerSheet.getByRole('button', { name: 'More answer actions' }),
+    answerSheet.getByRole('button', { name: 'Provenance' }),
   ).toBeVisible();
   const wrapped = await answerSheetLayout(answerSheet);
-  expect(wrapped.actionCentres).toHaveLength(3);
+  expect(wrapped.actionCentres).toHaveLength(2);
   for (const centre of wrapped.actionCentres) {
     expect(Math.abs(centre - wrapped.actionCentres[0]!)).toBeLessThan(1);
   }
@@ -2150,7 +2139,7 @@ test('mobile messages prioritize text and reveal 44px actions on demand', async 
   expect(Math.abs(wrapped.actions.right - wrapped.summary.right)).toBeLessThan(
     1,
   );
-  expect(wrapped.panelBottom - wrapped.summary.bottom).toBeLessThanOrEqual(
+  expect(wrapped.panelBottom - wrapped.rows.bottom).toBeLessThanOrEqual(
     MAX_SHEET_TAIL_PX,
   );
 
@@ -2171,7 +2160,7 @@ test('mobile messages prioritize text and reveal 44px actions on demand', async 
     .getByRole('button', { name: 'Answer details and actions', exact: true })
     .click();
   await expect(
-    answerSheet.getByRole('button', { name: 'More answer actions' }),
+    answerSheet.getByRole('button', { name: 'Provenance' }),
   ).toBeVisible();
   // The sheet's title keeps one line at 320px.
   const titleLines = await answerSheet.evaluate((sheet) => {
@@ -2197,21 +2186,15 @@ test('mobile messages prioritize text and reveal 44px actions on demand', async 
     .toBeGreaterThan(140);
   const narrow = await answerSheet.evaluate((sheet) => {
     const rect = (node: Element) => node.getBoundingClientRect();
-    const menu = rect(
-      sheet.querySelector('button[aria-label="More answer actions"]')!,
-    );
     const rating = rect(sheet.querySelector('.message__rating')!);
     const reason = rect(sheet.querySelector('.message__rating-reason')!);
     const summary = rect(sheet.querySelector('.message-details__summary')!);
     return {
-      menu: { top: menu.top, bottom: menu.bottom, right: menu.right },
       rating: { top: rating.top, right: rating.right },
       reason: { left: reason.left, right: reason.right },
       summary: { left: summary.left, right: summary.right },
     };
   });
-  expect(Math.abs(narrow.menu.right - narrow.summary.right)).toBeLessThan(1);
-  expect(narrow.rating.top).toBeGreaterThanOrEqual(narrow.menu.bottom - 1);
   expect(Math.abs(narrow.rating.right - narrow.summary.right)).toBeLessThan(1);
   expect(narrow.reason.left).toBeGreaterThanOrEqual(narrow.summary.left - 1);
   expect(narrow.reason.right).toBeLessThanOrEqual(narrow.summary.right + 1);
@@ -2237,6 +2220,8 @@ async function answerSheetLayout(sheet: Locator) {
       actionCentres: [...actions.querySelectorAll('button')].map(
         (button) => rect(button).centre,
       ),
+      // The answer's own rows (Provenance, Add to Task), below the summary.
+      rows: rect(element.querySelector('fieldset.message-details__menu')!),
       panelBottom: window.innerHeight,
     };
   });
