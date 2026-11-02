@@ -93,6 +93,12 @@ vi.mock('@kontourai/station-sdk', () => ({
   }),
 }));
 
+const phone = vi.hoisted(() => ({ isMobile: false }));
+vi.mock('../hooks/useIsMobile', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../hooks/useIsMobile')>()),
+  useIsMobile: () => phone.isMobile,
+}));
+
 vi.mock('../contexts/ApiBaseContext', () => ({
   useApiBase: () => ({ apiBase: 'http://station.test' }),
 }));
@@ -108,6 +114,7 @@ import { NotificationHistory } from '../components/notifications/NotificationHis
  * different row than the test means.
  */
 beforeEach(() => {
+  phone.isMobile = false;
   notifications = [];
   attention = { items: [], pendingCount: 0 };
   sessions = [];
@@ -1250,4 +1257,34 @@ test('dismissing an approval row holds it for Undo', () => {
   fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
   expect(screen.getByText('Approve the deploy')).toBeTruthy();
   expect(dismiss).not.toHaveBeenCalled();
+});
+
+describe('NotificationHistory on a phone (#4404 A43)', () => {
+  test('opens as a dialog sheet over a backdrop, and the backdrop closes it', () => {
+    phone.isMobile = true;
+    const onClose = vi.fn();
+    render(
+      <NotificationHistory
+        isOpen={true}
+        onClose={onClose}
+        onViewAll={vi.fn()}
+      />,
+    );
+    const sheet = screen.getByRole('dialog', { name: 'Notifications' });
+    expect(sheet.classList).toContain('notification-history--sheet');
+    fireEvent.mouseDown(screen.getByTestId('notification-history-backdrop'));
+    expect(onClose).toHaveBeenCalled();
+  });
+
+  test('stays a popover without a backdrop on desktop', () => {
+    render(
+      <NotificationHistory
+        isOpen={true}
+        onClose={vi.fn()}
+        onViewAll={vi.fn()}
+      />,
+    );
+    expect(screen.queryByRole('dialog', { name: 'Notifications' })).toBe(null);
+    expect(screen.queryByTestId('notification-history-backdrop')).toBe(null);
+  });
 });

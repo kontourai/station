@@ -5,7 +5,7 @@
   flex-wrap: wrap;
   align-items: center;
   gap: 6px;
-  font-size: var(--text-sm);
+  font-size: var(--k-text-sm);
   color: var(--text-muted);
 }
 
@@ -16,7 +16,7 @@
 
 .workflow-status-line__slug {
   font-family: var(--font-mono);
-  font-size: var(--text-xs);
+  font-size: var(--k-text-sm);
   color: var(--text-secondary, var(--text-muted));
 }
 
@@ -25,7 +25,7 @@
   align-items: center;
   padding: 1px 6px;
   border-radius: 4px;
-  font-size: var(--text-xs);
+  font-size: var(--k-text-sm);
   font-weight: 600;
   letter-spacing: 0.03em;
   text-transform: uppercase;
@@ -42,7 +42,7 @@
   min-width: 0;
   overflow-wrap: anywhere;
   font-family: var(--font-mono);
-  font-size: var(--text-xs);
+  font-size: var(--k-text-sm);
   color: var(--text-secondary, var(--text-muted));
 }
 
@@ -51,7 +51,7 @@
 }
 
 .workflow-status-line__hint {
-  font-size: var(--text-xs);
+  font-size: var(--k-text-sm);
   font-style: italic;
   color: var(--text-muted);
 }
@@ -63,6 +63,6 @@
 }
 
 .workflow-status-line-list__more {
-  font-size: var(--text-xs);
+  font-size: var(--k-text-sm);
   color: var(--text-muted);
 }

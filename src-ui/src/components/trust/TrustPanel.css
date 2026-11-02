@@ -34,7 +34,7 @@
   border-radius: var(--k-radius-sm);
   background: var(--k-panel-raised);
   color: var(--k-text-muted);
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
   font-family: var(--k-font-ui);
   cursor: pointer;
   transition: border-color var(--k-dur) var(--k-ease);
@@ -54,7 +54,7 @@
 
 .trust-panel__generated {
   margin: 0;
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
   color: var(--k-text-faint);
 }
 
@@ -87,7 +87,7 @@
   border-radius: var(--k-radius-sm);
   background: var(--k-panel-raised);
   color: var(--k-text-muted);
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
 }
 
 .trust-panel__error {
@@ -110,7 +110,7 @@
 
 .trust-panel__empty-desc {
   margin: 0;
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
   color: var(--k-text-faint);
 }
 
@@ -120,7 +120,7 @@
   border-radius: var(--k-radius-sm);
   background: var(--k-panel-raised);
   color: var(--k-text);
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
   max-width: 100%;
 }
 
@@ -182,14 +182,14 @@
   /* An interactive control reads the action role, not the brand (an
      identity slot only). The fallback covers @kontourai/ui before 1.14. */
   color: var(--k-action, var(--k-brand));
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
   cursor: pointer;
   padding: 0;
 }
 
 .trust-panel__claim-subject {
   margin: 0;
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
   font-family: var(--k-font-mono);
   color: var(--k-text-faint);
   overflow: hidden;
@@ -207,7 +207,7 @@
 
 .trust-panel__detail-empty {
   margin: 0;
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
   color: var(--k-text-faint);
 }
 
@@ -229,12 +229,12 @@
 }
 
 .trust-panel__evidence-summary {
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
   color: var(--k-text);
 }
 
 .trust-panel__evidence-meta {
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
   font-family: var(--k-font-mono);
   color: var(--k-text-faint);
 }
@@ -247,7 +247,7 @@
 
 .trust-panel__gaps-title {
   margin: 0;
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
   font-weight: 600;
   color: var(--k-caution);
 }
@@ -255,7 +255,7 @@
 .trust-panel__gap {
   display: flex;
   gap: var(--k-space-2);
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
 }
 
 .trust-panel__gap-type {

@@ -85,6 +85,7 @@ export const STATION_SETTING_KEYS_BY_SECTION = {
     'defaultMaxTurns',
     'defaultMaxOutputTokens',
     'defaultWorkspaceIsolation',
+    'noProjectChatFolder',
     'workspaceCheckpoints',
     'checkoutStaleAfterCommits',
     'checkoutStaleAfterDays',

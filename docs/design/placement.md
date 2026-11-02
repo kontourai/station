@@ -2103,9 +2103,10 @@ server read beyond the pull request links Chat details already reads.
   sheet's bare branch line went with it: the sheet's Branch row is labelled.
 - **A folder Station made is named, not printed.** A chat whose engine runs in
   a workspace Station created for it (an ACP engine without a project or
-  connection directory, or an unbound confined Codex session) reports
-  `cwdManagedWorkspace` on its session summary; the server decides with
-  `isManagedEngineWorkspace`. The Workspace row
+  connection directory, an unbound confined Codex session, or since #4389 any
+  chat with no project, in its scratch folder) reports `cwdManagedWorkspace`
+  on its session summary; the server decides with `isStationChatFolder`
+  (`isManagedEngineWorkspace` or `isNoProjectChatScratch`). The Workspace row
   then reads "Chat workspace", with the hash path as its tooltip. The UI never
   matches the path itself.
 - **It fades; its column does not animate.** The card and its chip enter and

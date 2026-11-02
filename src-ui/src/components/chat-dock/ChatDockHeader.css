@@ -14,7 +14,6 @@
 .chat-dock__mobile-identity:hover {
   background: transparent;
 }
-
 /* New and its destination project, one split control: New starts a chat,
    the caret half shows and changes where. Both halves keep the bar's quiet
    chrome; one shared frame says they belong together. */
@@ -62,7 +61,7 @@
      on-colour was not a pair (an accent override changed one side only). */
   background: var(--k-panel-raised);
   color: var(--k-positive);
-  font-size: var(--text-2xs);
+  font-size: var(--k-text-sm);
   font-weight: 600;
   line-height: 1;
   animation: chat-dock-status-arrive var(--motion-base) var(--ease-spring);

@@ -248,7 +248,7 @@ describe('SessionModelPicker', () => {
       key: 'Escape',
     });
 
-    expect(screen.queryByRole('dialog', { name: 'Choose model' })).toBeNull();
+    expect(screen.queryByRole('dialog', { name: 'Model' })).toBeNull();
     expect(screen.getByRole('dialog', { name: 'New Chat' })).toBeTruthy();
     expect(onOuterClose).not.toHaveBeenCalled();
   });
@@ -278,14 +278,14 @@ describe('SessionModelPicker', () => {
     }
     render(<Harness />);
 
-    const picker = screen.getByRole('dialog', { name: 'Choose model' });
+    const picker = screen.getByRole('dialog', { name: 'Model' });
     expect(screen.getByLabelText('Loading models')).toBeTruthy();
     expect(document.activeElement).toBe(
       screen.getByRole('button', { name: 'Close model picker' }),
     );
     fireEvent.keyDown(picker, { key: 'Escape' });
 
-    expect(screen.queryByRole('dialog', { name: 'Choose model' })).toBeNull();
+    expect(screen.queryByRole('dialog', { name: 'Model' })).toBeNull();
     expect(screen.getByRole('dialog', { name: 'New Chat' })).toBeTruthy();
     expect(onOuterClose).not.toHaveBeenCalled();
   });
@@ -338,7 +338,7 @@ describe('SessionModelPicker', () => {
     renderNestedPicker();
 
     const picker = screen.getByRole('dialog', {
-      name: 'Choose model',
+      name: 'Model',
     });
     const close = screen.getByRole('button', { name: 'Close model picker' });
     const search = screen.getByPlaceholderText('Search models…');

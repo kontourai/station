@@ -234,6 +234,20 @@ describe('ChatInputArea', () => {
     ).toBeTruthy();
   });
 
+  test('#4403: the composer keeps one name whatever its placeholder says', () => {
+    // The placeholder varies with the turn and is empty while sending is
+    // refused; a screen reader must still hear what the field is.
+    renderChatInputArea();
+    expect(screen.getByRole('textbox', { name: 'Message' })).toBeTruthy();
+    cleanup();
+    renderChatInputArea({
+      disabled: true,
+      sendRefused: true,
+      sendBlockedReason: "You can read this chat but can't send to it.",
+    });
+    expect(screen.getByRole('textbox', { name: 'Message' })).toBeTruthy();
+  });
+
   test('keeps a busy continuation draft focusable without sending or queueing it', () => {
     const onInputChange = vi.fn();
     const onSend = vi.fn(async () => {});
@@ -1127,9 +1141,9 @@ describe('ChatInputArea', () => {
       ],
     });
 
-    expect(
-      await screen.findByRole('dialog', { name: 'Choose model' }),
-    ).toBeTruthy();
+    expect(await screen.findByRole('dialog', { name: 'Model' })).toBeTruthy();
+    // #4403: the popover is the one dialog; the picker inside is not another.
+    expect(screen.getAllByRole('dialog')).toHaveLength(1);
     expect(
       (screen.getByPlaceholderText(/Type a message/) as HTMLTextAreaElement)
         .value,

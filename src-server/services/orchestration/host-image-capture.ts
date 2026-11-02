@@ -574,8 +574,9 @@ async function resolvedOrSelf(path: string): Promise<string> {
  * The directories one session's images may come from: its working directory
  * and that checkout's verified worktrees, plus its own temp directory.
  *
- * A working directory that is or contains the home folder or Station's data
- * (a session with no project defaults to the home folder), the filesystem
+ * A working directory that is or contains the home folder or overlaps
+ * Station's data (a session with no project runs in a scratch folder inside
+ * Station's data, #4389, or in the home folder by choice), the filesystem
  * root, or a hidden folder under home is not a root: admitting it would make
  * every picture in `~` readable to a reply. The same rule decides whether a
  * workspace can be a confined write grant (`seatbeltWorkspaceRefusal`).
