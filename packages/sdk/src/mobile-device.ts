@@ -198,11 +198,12 @@ export async function captureMobileDevice(
   apiBase: string,
   selected: MobileDeviceTarget,
   options?: ClientRequestOptions,
+  projectSlug?: string | null,
 ): Promise<MobileDeviceCapture> {
   if (!isCaptureableMobileDeviceTarget(selected))
     throw new MobileDeviceRequestError(400);
   const expected = { ...selected };
-  const path = `/api/mobile-devices/hosts/${encodeURIComponent(expected.hostId)}/devices/${expected.platform}/${encodeURIComponent(expected.deviceId)}/capture`;
+  const path = `/api/mobile-devices/hosts/${encodeURIComponent(expected.hostId)}/devices/${expected.platform}/${encodeURIComponent(expected.deviceId)}/capture${projectQuery(projectSlug)}`;
   const result = await data(
     await mutateJson(
       `${apiBase}${path}`,

@@ -66,6 +66,14 @@
   gap: var(--space-2, 8px);
 }
 
+.device-tools__logs {
+  max-height: 16rem;
+  max-width: 100%;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 .device-tools__section-title {
   font-size: 0.75rem;
   letter-spacing: 0.02em;
