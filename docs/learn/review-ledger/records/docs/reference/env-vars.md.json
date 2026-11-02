@@ -96,7 +96,9 @@
 
     "src-server/services/identity/operator-sessions.ts",
 
-    "src-server/services/ssh/device-pairing-service.ts"
+    "src-server/services/ssh/device-pairing-service.ts",
+
+    "src-server/runtime/agents/durable-agent-tools.ts"
   ],
 
   "checks": [

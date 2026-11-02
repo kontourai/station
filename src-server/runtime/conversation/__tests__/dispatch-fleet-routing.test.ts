@@ -1,3 +1,10 @@
+import { DatabaseSync } from 'node:sqlite';
+import type { LanguageModelV3 } from '@ai-sdk/provider';
+import {
+  createAgentRuntime,
+  openSqliteAgentJournal,
+  runWithAgentTurn,
+} from '@kontourai/agent-runtime';
 /**
  * archive#1398 — the wiring test: does an agent that opts into fleet
  * routing actually get peer candidates in its Dispatch plan, and does the
@@ -69,7 +76,7 @@ vi.mock('../../plugins/runtime-provider-resolution.js', () => ({
 
 let capturedPlan: any;
 let capturedOnReceipt: any;
-let capturedModels: Record<string, unknown> = {};
+let capturedModels: Record<string, LanguageModelV3> = {};
 let capturedDispatchOptions: any;
 vi.mock('@kontourai/dispatch/ai-sdk', () => ({
   createAiSdkDispatchModel: (options: any) => {
@@ -1401,4 +1408,82 @@ describe('L-3: the envelope names a selection for a turn the real engine actuall
     // of hiding one.
     expect(envelope.failure).toBeNull();
   });
+});
+
+it('the fleet model registered by Station refuses an uncertain durable redispatch after takeover', async () => {
+  const database = new DatabaseSync(
+    join(FLEET_TEMP_ROOT, 'durable-fleet.sqlite'),
+  );
+  database.exec(
+    'PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; PRAGMA foreign_keys=ON',
+  );
+  const journal = openSqliteAgentJournal({ database });
+  let dead = false;
+  const firstOwner = {
+    id: 'first',
+    pid: 123,
+    identityKind: 'exact' as const,
+    birth: 'first',
+  };
+  const liveness = (candidate: { id: string }) =>
+    dead && candidate.id === 'first' ? ('dead' as const) : ('live' as const);
+  const runtime = createAgentRuntime({
+    journal,
+    owner: firstOwner,
+    liveness,
+    implementation: 'fleet/1',
+  });
+  const key = {
+    scopeId: 'fleet-test',
+    conversationId: 'conversation',
+    invocationId: 'turn',
+  };
+  const request = {
+    prompt: [
+      {
+        role: 'user' as const,
+        content: [{ type: 'text' as const, text: 'hello' }],
+      },
+    ],
+  };
+  const transport = vi
+    .fn<typeof fetch>()
+    .mockRejectedValue(new Error('lost peer response'));
+  vi.stubGlobal('fetch', transport);
+  try {
+    await createConfiguredDispatchModel(spec, config(resolution()), primary);
+    const model = capturedModels['fleet-runtime-0'];
+    if (!model) throw Error('Actual fleet model construction prerequisite');
+    const lease = await runtime.start({
+      key,
+      input: 'input',
+      implementation: 'fleet/1',
+    });
+    await expect(
+      runWithAgentTurn(lease, () => model.doStream(request)),
+    ).rejects.toThrow('did not answer');
+    expect(transport).toHaveBeenCalledTimes(1);
+    dead = true;
+    const successor = createAgentRuntime({
+      journal,
+      owner: { ...firstOwner, id: 'successor', birth: 'next' },
+      liveness,
+      implementation: 'fleet/1',
+    });
+    const restored = await successor.recover(key);
+    if (typeof restored === 'string')
+      throw Error('Actual takeover prerequisite');
+    const failure = await runWithAgentTurn(restored, () =>
+      model.doStream(request),
+    ).then(
+      () => undefined,
+      (error) => error,
+    );
+    expect(failure?.message).toContain('INDETERMINATE');
+    expect(transport).toHaveBeenCalledTimes(1);
+  } finally {
+    vi.unstubAllGlobals();
+    await journal.close();
+    database.close();
+  }
 });

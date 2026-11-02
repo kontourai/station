@@ -47,6 +47,17 @@ importer's locked versions. Run
 `npm run conduit:conformance:generate` after changing Conduit or a framework.
 `npm run verify:static` fails when the evidence is stale.
 
+## Durable Station turns
+
+The optional durable preview wraps Station's hooks before Conduit projection.
+Tool intent precedes the policy hook; body entry separately consumes a durable
+grant. Completed or interrupted unsafe tool outcomes return through the native
+loop. On a durable turn, `afterInvocation` is staged until identified memory
+writes flush, and then runs before settlement. A conversation metadata receipt
+prevents replay from charging its accumulated stats twice. Conduit's portable
+hook evidence remains distinct from the native crash-point adapter suite in
+`src-server/runtime/agents/__tests__/durable-agent-conformance.test.ts`.
+
 ## Telemetry
 
 No new metric is introduced. This integration adds no runtime decision,

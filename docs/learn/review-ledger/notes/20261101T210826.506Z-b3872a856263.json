@@ -1,0 +1,9 @@
+{
+  "revision": "0443149c4c81bfac7c70f309c32ac46763174560",
+
+  "notes": [
+    {"path":"docs/learn/media/inspect-request.png","note":"Inspected the retained request-inspection screenshot: the ordinary pending fixture-read request still exposes Deny, Approve once, identity and Session navigation. Reviewed the orchestration delta: opt-in runtime authorization and journal-backed publication preserve those canonical request fields and existing inspection routes. This retained image does not establish durable approval restart, a live provider journey or new visual qualification.","inputs":["docs/learn/media/inspect-request.png","src-server/services/orchestration/orchestration-service.ts"]},
+
+    {"path":"docs/learn/media/inspect-request.webm","note":"Inspected a frame of the retained request-inspection clip and its capture source manifest alongside the screenshot. The backend delta adds optional journal-backed approval publication without changing the ordinary request-inspection UI or route. The existing clip remains an ordinary fixture UI illustration, not proof of durable approval restart, live provider delivery or a newly executed browser journey.","inputs":["docs/learn/media/inspect-request.webm","src-server/services/orchestration/orchestration-service.ts"]}
+  ]
+}
