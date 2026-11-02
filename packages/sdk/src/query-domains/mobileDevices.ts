@@ -117,9 +117,17 @@ export function useMobileDeviceInventoryQuery(
  * row and the cache keeps whatever it was given; the pane therefore builds
  * the three fields explicitly rather than passing its `MobileDeviceSummary`.
  */
-export function useCaptureMobileDeviceMutation(scope: ApiRequestScope) {
+export function useCaptureMobileDeviceMutation(
+  scope: ApiRequestScope,
+  projectSlug?: string | null,
+) {
   return useApiMutation<MobileDeviceCapture, MobileDeviceTarget>((target) =>
-    captureMobileDevice(scope.apiBase, target, { requestScope: scope }),
+    captureMobileDevice(
+      scope.apiBase,
+      target,
+      { requestScope: scope },
+      projectSlug,
+    ),
   );
 }
 

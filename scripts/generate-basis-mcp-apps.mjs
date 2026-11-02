@@ -17,6 +17,17 @@ import { invokedDirectly } from './lib/module-entry.mjs';
 const root = resolve(import.meta.dirname, '..');
 const REPAIR_COMMAND = 'npm run basis:mcp:generate';
 
+export function formatterTimeout(env = process.env) {
+  const value = env.STATION_BASIS_FORMAT_TIMEOUT_MS;
+  if (value === undefined || value === '') return 30_000;
+  const timeout = Number(value);
+  if (!Number.isSafeInteger(timeout) || timeout <= 0)
+    throw new Error(
+      'STATION_BASIS_FORMAT_TIMEOUT_MS must be a positive whole number of milliseconds',
+    );
+  return timeout;
+}
+
 export function biomeFormatterInvocation(
   projectRoot,
   output,
@@ -92,7 +103,7 @@ async function buildOnce(app) {
     return execFileSync(formatter.command, formatter.args, {
       stdio: [descriptor, 'pipe', 'pipe'],
       encoding: 'utf8',
-      timeout: 30_000,
+      timeout: formatterTimeout(),
       maxBuffer: 2 * 1024 * 1024,
       cwd: root,
       windowsHide: true,

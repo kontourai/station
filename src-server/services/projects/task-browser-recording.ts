@@ -7,6 +7,7 @@ import {
   parseWalkthrough,
   WALKTHROUGH_LIMITS,
   WALKTHROUGH_SCHEMA,
+  type Walkthrough,
   type WalkthroughFrame,
 } from '@kontourai/station-contracts/walkthrough';
 import {
@@ -184,13 +185,34 @@ function encode(
   });
 }
 
-/** Records through the shared Browser hub, leaving other viewers attached. */
+export type RecordingSource = {
+  entry: NonNullable<ReturnType<LiveSurfaceRegistry['get']>>;
+  current(): boolean;
+  authorize(): Promise<boolean>;
+  platform: Walkthrough['capture']['platform'];
+  adapter: string;
+  device?: Walkthrough['source']['device'];
+  checkEachFrame?: boolean;
+};
+
+type RecordingInput = {
+  durationMs: number;
+  maxBytes?: number;
+  label?: string;
+  signal?: AbortSignal;
+  /** Stops capture and publishes its bounded clip; `signal` cancels it. */
+  stopSignal?: AbortSignal;
+  onStarted?: () => void;
+};
+
+/** Records through a shared live surface, leaving other viewers attached. */
 export class TaskBrowserRecording {
   private readonly jobs = new Set<{
     controller: AbortController;
     done: Promise<void>;
   }>();
   private readonly cleanupFailures: unknown[] = [];
+  private readonly disposeCallbacks = new Set<() => Promise<void>>();
   private disposed = false;
   constructor(
     private readonly deps: {
@@ -206,16 +228,33 @@ export class TaskBrowserRecording {
 
   async dispose(): Promise<void> {
     this.disposed = true;
+    const callbacks = [...this.disposeCallbacks];
+    this.disposeCallbacks.clear();
     const jobs = [...this.jobs];
     for (const job of jobs) job.controller.abort();
+    const callbackResults = Promise.allSettled(
+      callbacks.map((callback) => Promise.resolve().then(callback)),
+    ).then((results) => {
+      for (const result of results)
+        if (result.status === 'rejected')
+          this.cleanupFailures.push(result.reason);
+    });
     await waitForCleanup(
-      Promise.allSettled(jobs.map((job) => job.done)).then(() => {}),
+      Promise.allSettled([
+        ...jobs.map((job) => job.done),
+        callbackResults,
+      ]).then(() => {}),
     );
     if (this.cleanupFailures.length)
       throw new AggregateError(
         this.cleanupFailures,
         'Recording cleanup failed.',
       );
+  }
+
+  onDispose(callback: () => Promise<void>): void {
+    if (this.disposed) throw new Error('Recorder is disposed');
+    this.disposeCallbacks.add(callback);
   }
 
   private enabled() {
@@ -237,7 +276,59 @@ export class TaskBrowserRecording {
       authorize(): Promise<boolean>;
     },
   ) {
+    const allowed = (session: BrowserSessionRecord) =>
+      session.principalKey === authority.profileKey;
+    return this.recordSource(access, input, async () => {
+      const session = this.deps.captures.selectSession(
+        access,
+        input.browserSessionId,
+        this.deps.registry,
+        allowed,
+      );
+      const surfaceId = this.deps.surfaceIdFor(session.browserSessionId);
+      const entry = surfaceId ? this.deps.surfaces.get(surfaceId) : undefined;
+      if (!entry)
+        throw new TaskBrowserRecordingError(
+          'recording-unavailable',
+          'Recording surface is unavailable.',
+        );
+      return {
+        entry,
+        platform: 'web',
+        adapter: 'browser-screencast',
+        current: () => {
+          const current = this.deps.captures.selectSession(
+            access,
+            session.browserSessionId,
+            this.deps.registry,
+            allowed,
+          );
+          return (
+            current.generation === session.generation &&
+            this.deps.surfaceIdFor(session.browserSessionId) === surfaceId &&
+            this.deps.surfaces.get(surfaceId!) === entry
+          );
+        },
+        authorize: async () =>
+          (await input.authorize()) &&
+          (await entry.authorize(authority.principalId, 'view', {
+            agentGrant: authority.grant,
+          })),
+      };
+    });
+  }
+
+  async recordSource(
+    access: TaskReviewAccess,
+    input: RecordingInput,
+    resolveSource: () => Promise<RecordingSource>,
+  ) {
     if (input.signal?.aborted) throw cancelled();
+    if (input.stopSignal?.aborted)
+      throw new TaskBrowserRecordingError(
+        'invalid-request',
+        'Recording was stopped before it started.',
+      );
     if (
       !Number.isSafeInteger(input.durationMs) ||
       input.durationMs < 1 ||
@@ -277,14 +368,8 @@ export class TaskBrowserRecording {
     let cleanupFailure: unknown;
     try {
       throwIfCancelled(signal);
-      const allowed = (session: BrowserSessionRecord) =>
-        session.principalKey === authority.profileKey;
-      const session = this.deps.captures.selectSession(
-        access,
-        input.browserSessionId,
-        this.deps.registry,
-        allowed,
-      );
+      const source = await resolveSource();
+      const { entry } = source;
       const before = await this.deps.captures.pin(access);
       throwIfCancelled(signal);
       const resolution = await this.deps.resolver.resolveFfmpeg();
@@ -294,22 +379,13 @@ export class TaskBrowserRecording {
           'media-tools-unavailable',
           'FFmpeg is unavailable; set up media tools first.',
         );
-      const surfaceId = this.deps.surfaceIdFor(session.browserSessionId);
-      const entry = surfaceId ? this.deps.surfaces.get(surfaceId) : undefined;
-      if (entry) {
-        offSurface = entry.onDispose(async () => {
-          controller.abort();
-          await waitForCleanup(done);
-        });
-        if (entry.signal.aborted) controller.abort();
-      }
+      offSurface = entry.onDispose(async () => {
+        controller.abort();
+        await waitForCleanup(done);
+      });
+      if (entry.signal.aborted) controller.abort();
       throwIfCancelled(signal);
-      if (
-        !entry ||
-        !(await entry.authorize(authority.principalId, 'view', {
-          agentGrant: authority.grant,
-        }))
-      )
+      if (!source.current() || !(await source.authorize()))
         throw new TaskBrowserRecordingError(
           'recording-unavailable',
           'Browser surface is unavailable.',
@@ -318,6 +394,16 @@ export class TaskBrowserRecording {
       const stage = await this.deps.store.stage(access, before.workspace);
       try {
         throwIfCancelled(signal);
+        if (
+          !this.enabled() ||
+          !source.current() ||
+          !(await source.authorize()) ||
+          !this.enabled()
+        )
+          throw new TaskBrowserRecordingError(
+            'recording-unavailable',
+            'Recording authority changed.',
+          );
         const viewer = entry.hub.attach({
           maxFps: 10,
           quality: 70,
@@ -328,6 +414,13 @@ export class TaskBrowserRecording {
         const captureSignal = AbortSignal.any([signal, duration.signal]);
         const started = performance.now();
         const timer = setTimeout(() => duration.abort(), input.durationMs);
+        let stopped = false;
+        const onStop = () => {
+          stopped = true;
+          duration.abort();
+        };
+        input.stopSignal?.addEventListener('abort', onStop, { once: true });
+        if (input.stopSignal?.aborted) onStop();
         const frames: {
           file: string;
           tMs: number;
@@ -337,21 +430,45 @@ export class TaskBrowserRecording {
         }[] = [];
         let rawBytes = 0;
         try {
+          input.onStarted?.();
           while (!captureSignal.aborted) {
             const record = await viewer.next(captureSignal);
-            if (!record) break;
+            if (!record) {
+              if (!captureSignal.aborted)
+                throw new TaskBrowserRecordingError(
+                  'recording-unavailable',
+                  'The surface closed during recording.',
+                );
+              break;
+            }
             if (record.kind !== 'frame') continue;
             this.deps.captures.current(access);
+            if (
+              source.checkEachFrame &&
+              (!this.enabled() ||
+                !source.current() ||
+                !(await source.authorize()) ||
+                !this.enabled())
+            )
+              throw new TaskBrowserRecordingError(
+                'recording-unavailable',
+                'Recording authority changed.',
+              );
+            if (source.device && record.header.rotation)
+              throw new TaskBrowserRecordingError(
+                'recording-unavailable',
+                'Rotated Device recording is unavailable.',
+              );
             if (record.header.codec !== 'jpeg')
               throw new TaskBrowserRecordingError(
                 'recording-unavailable',
-                'Browser returned an unsupported frame.',
+                'The surface returned an unsupported frame.',
               );
             rawBytes += record.body.byteLength;
             if (rawBytes > MAX_RAW_FRAME_BYTES || frames.length >= MAX_FRAMES)
               throw new TaskBrowserRecordingError(
                 'recording-too-large',
-                'Browser frames exceed the recording limit.',
+                'Frames exceed the recording limit.',
               );
             const file = `frame-${String(frames.length).padStart(4, '0')}.jpg`;
             const tMs =
@@ -377,22 +494,29 @@ export class TaskBrowserRecording {
           if (!duration.signal.aborted)
             throw new TaskBrowserRecordingError(
               'recording-unavailable',
-              'Browser surface closed during recording.',
+              'The surface closed during recording.',
             );
         } finally {
           clearTimeout(timer);
+          input.stopSignal?.removeEventListener('abort', onStop);
           viewer.close();
         }
         throwIfCancelled(signal);
         if (!frames.length)
           throw new TaskBrowserRecordingError(
             'recording-unavailable',
-            'Browser produced no frames.',
+            'The surface produced no frames.',
           );
+        const durationMs = stopped
+          ? Math.min(
+              input.durationMs,
+              Math.max(1, Math.ceil(performance.now() - started)),
+            )
+          : input.durationMs;
         const lines = ['ffconcat version 1.0'];
         for (let i = 0; i < frames.length; i++) {
           const frame = frames[i]!;
-          const end = frames[i + 1]?.tMs ?? input.durationMs;
+          const end = frames[i + 1]?.tMs ?? durationMs;
           lines.push(
             `file '${frame.file}'`,
             `duration ${(Math.max(1, end - frame.tMs) / 1000).toFixed(3)}`,
@@ -408,7 +532,7 @@ export class TaskBrowserRecording {
         const bytes = await encode(
           resolution.paths.ffmpeg,
           concat,
-          input.durationMs,
+          durationMs,
           input.maxBytes ?? BROWSER_RECORD_MAX_ENCODED_BYTES,
           signal,
         );
@@ -458,33 +582,19 @@ export class TaskBrowserRecording {
         }
         const after = await this.deps.captures.pin(access);
         throwIfCancelled(signal);
-        const current = this.deps.captures.selectSession(
-          access,
-          session.browserSessionId,
-          this.deps.registry,
-          allowed,
-        );
         if (
           before.workspace !== after.workspace ||
           before.pin.commit !== after.pin.commit ||
           before.pin.statusDigest !== after.pin.statusDigest ||
-          current.generation !== session.generation ||
-          this.deps.surfaceIdFor(session.browserSessionId) !== surfaceId ||
-          this.deps.surfaces.get(surfaceId!) !== entry
+          !source.current()
         )
           throw new TaskBrowserCaptureError(
             'workspace-changed',
             'The workspace or browser session changed during recording.',
           );
-        const authorized = await input.authorize();
+        const authorized = await source.authorize();
         throwIfCancelled(signal);
-        if (
-          !authorized ||
-          !this.enabled() ||
-          !(await entry.authorize(authority.principalId, 'view', {
-            agentGrant: authority.grant,
-          }))
-        )
+        if (!authorized || !this.enabled())
           throw new TaskBrowserRecordingError(
             'recording-unavailable',
             'Recording authority changed.',
@@ -509,10 +619,11 @@ export class TaskBrowserRecording {
           createdAt: new Date().toISOString(),
           ...(input.label ? { title: input.label } : {}),
           source: {
-            adapter: 'browser-screencast',
+            adapter: source.adapter,
             adapterVersion: '1',
-            durationMs: input.durationMs,
+            durationMs,
             commit: before.pin.commit,
+            ...(source.device ? { device: source.device } : {}),
             recording: {
               file: 'recording.webm',
               mediaType: 'video/webm',
@@ -521,7 +632,7 @@ export class TaskBrowserRecording {
             },
           },
           capture: {
-            platform: 'web',
+            platform: source.platform,
             width: frames[0]!.width,
             height: frames[0]!.height,
           },
@@ -543,36 +654,28 @@ export class TaskBrowserRecording {
           manifest,
           async () => {
             throwIfCancelled(signal);
-            if (
-              !this.enabled() ||
-              !(await input.authorize()) ||
-              !(await entry.authorize(authority.principalId, 'view', {
-                agentGrant: authority.grant,
-              }))
-            )
-              return false;
+            if (!this.enabled() || !(await source.authorize())) return false;
             const final = await this.deps.captures.pin(access);
             throwIfCancelled(signal);
-            const live = this.deps.captures.selectSession(
-              access,
-              session.browserSessionId,
-              this.deps.registry,
-              allowed,
-            );
             if (
               final.workspace !== before.workspace ||
               final.pin.commit !== before.pin.commit ||
               final.pin.statusDigest !== before.pin.statusDigest ||
-              live.generation !== session.generation ||
-              this.deps.surfaceIdFor(session.browserSessionId) !== surfaceId ||
-              this.deps.surfaces.get(surfaceId!) !== entry
+              !source.current()
             )
               throw new TaskBrowserCaptureError(
                 'workspace-changed',
                 'The workspace or browser session changed during recording.',
               );
             return (
-              !signal.aborted && this.enabled() && access.write.beforeCommit()
+              !signal.aborted &&
+              this.enabled() &&
+              access.write.beforeCommit() &&
+              (await source.authorize()) &&
+              source.current() &&
+              !signal.aborted &&
+              this.enabled() &&
+              access.write.beforeCommit()
             );
           },
           signal,

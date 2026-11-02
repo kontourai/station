@@ -1207,9 +1207,17 @@
       "exempt": "agent-self",
       "reason": "Computer use inside the calling agent's own turn; the route refuses every non-internal request, and a person drives devices in the UI pane."
     },
+    "device_logs": {
+      "exempt": "agent-self",
+      "reason": "Reads the controlled device during the calling agent's bound turn; people use the Device pane."
+    },
     "device_open": {
       "exempt": "agent-self",
       "reason": "Computer use inside the calling agent's own turn; the route refuses every non-internal request, and a person drives devices in the UI pane."
+    },
+    "device_record_to_task": {
+      "exempt": "agent-self",
+      "reason": "Records the controlled device into the calling agent's bound Task."
     },
     "device_screenshot": {
       "exempt": "agent-self",

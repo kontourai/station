@@ -65,6 +65,34 @@ function manifest(): Walkthrough {
   };
 }
 describe('Walkthrough boundary', () => {
+  test('retains host-qualified Device identity and explicit unknown app provenance', () => {
+    const value = manifest();
+    value.capture.platform = 'ios';
+    value.source.device = {
+      hostId: 'ssh-0123456789ab',
+      deviceId: 'device-1',
+      name: 'Phone',
+      runtime: 'iOS',
+      appId: null,
+      appObservedAt: null,
+    };
+    expect(parseWalkthrough(value).source.device).toEqual(value.source.device);
+    expect(() =>
+      parseWalkthrough({
+        ...value,
+        source: {
+          ...value.source,
+          device: { ...value.source.device, hostId: '../local' },
+        },
+      }),
+    ).toThrow('Invalid device host');
+    expect(() =>
+      parseWalkthrough({
+        ...value,
+        capture: { ...value.capture, platform: 'web' },
+      }),
+    ).toThrow('Invalid device platform');
+  });
   test('retains a validated Task recording and refuses malformed pins and media references', () => {
     const value = manifest();
     value.source.commit = 'a'.repeat(40);

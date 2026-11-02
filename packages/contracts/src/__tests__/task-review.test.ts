@@ -21,6 +21,36 @@ const quote: Extract<TaskReviewAnchor, { kind: 'text-quote' }> = {
   suffix: ' ends',
 };
 
+test('recording job parser rejects incomplete and forged outcomes', () => {
+  const id = '11111111-2222-4333-8444-555555555555';
+  expect(
+    review.parseTaskDeviceRecordingJob({ id, state: 'recording' }),
+  ).toEqual({ id, state: 'recording' });
+  expect(
+    review.parseTaskDeviceRecordingJob({
+      id,
+      state: 'completed',
+      result: { walkthroughId: 'clip', commit: 'a'.repeat(40) },
+    }),
+  ).toMatchObject({ state: 'completed' });
+  expect(
+    review.parseTaskDeviceRecordingJob({
+      id,
+      state: 'completed',
+      result: { walkthroughId: 'clip' },
+    }),
+  ).toBeNull();
+  expect(
+    review.parseTaskDeviceRecordingJob({ id, state: 'recording', result: {} }),
+  ).toBeNull();
+  expect(
+    review.parseTaskDeviceRecordingJob({
+      id: '-'.repeat(36),
+      state: 'recording',
+    }),
+  ).toBeNull();
+});
+
 describe('parseTaskReviewAnchor', () => {
   test('accepts each closed anchor shape and the full image rectangle', () => {
     for (const anchor of [

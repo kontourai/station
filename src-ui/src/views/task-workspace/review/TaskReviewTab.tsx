@@ -9,6 +9,7 @@ import {
   fetchTaskCaptureContent,
   fetchTaskReviewThread,
   taskReviewThreadQueryKey,
+  useCaptureDeviceToTaskMutation,
   useCaptureToTaskMutation,
   useCreateReviewThreadMutation,
   useFeaturePreviewsQuery,
@@ -17,6 +18,7 @@ import {
   useResolveReviewThreadMutation,
   useSendReviewThreadsMutation,
   useTaskCaptureSessionsQuery,
+  useTaskDeviceCaptureSessionsQuery,
   useTaskReviewItemQuery,
   useTaskReviewQuery,
   useTaskReviewThreadQuery,
@@ -168,10 +170,12 @@ function captureSessionLabel(value: string) {
 
 function CapturePicker({
   taskId,
+  projectSlug,
   visible,
   onCaptured,
 }: {
   taskId: string;
+  projectSlug: string;
   visible: boolean;
   onCaptured: (id: string) => void;
 }) {
@@ -183,15 +187,34 @@ function CapturePicker({
     staleTime: 0,
   });
   const capture = useCaptureToTaskMutation(taskId);
+  const deviceSessions = useTaskDeviceCaptureSessionsQuery(
+    taskId,
+    projectSlug,
+    {
+      enabled: visible && open,
+      staleTime: 0,
+    },
+  );
+  const captureDevice = useCaptureDeviceToTaskMutation(taskId, projectSlug);
   const attempt = useRef<{ source: string; operationId: string } | undefined>(
     undefined,
   );
-  const choices = sessions.data?.sessions ?? [];
-  const selected = choices.some(
-    (session) => session.browserSessionId === sessionId,
-  )
-    ? sessionId
-    : choices[0]?.browserSessionId;
+  const choices = [
+    ...(sessions.data?.sessions ?? []).map((session) => ({
+      key: `browser:${session.browserSessionId}`,
+      kind: 'browser' as const,
+      id: session.browserSessionId,
+      label: captureSessionLabel(session.url),
+    })),
+    ...(deviceSessions.data?.sessions ?? []).map((session) => ({
+      key: `device:${session.sourceSessionId}`,
+      kind: 'device' as const,
+      id: session.sourceSessionId,
+      label: `Device · ${session.name} · ${session.hostId}`,
+    })),
+  ];
+  const selected =
+    choices.find((session) => session.key === sessionId) ?? choices[0];
   return (
     <div className="review-capture-picker">
       <Button
@@ -204,7 +227,7 @@ function CapturePicker({
       <Dialog
         open={open}
         historyMode="none"
-        title="Capture from Browser"
+        title="Capture a Screen"
         closeLabel="Close capture picker"
         onClose={() => setOpen(false)}
         size="sm"
@@ -213,17 +236,20 @@ function CapturePicker({
           className="review-capture-form"
           onSubmit={(event) => {
             event.preventDefault();
-            if (!selected || capture.isPending) return;
+            if (!selected || capture.isPending || captureDevice.isPending)
+              return;
             setError(undefined);
-            if (attempt.current?.source !== selected)
+            if (attempt.current?.source !== selected.key)
               attempt.current = {
-                source: selected,
+                source: selected.key,
                 operationId: randomCorrelationId(),
               };
-            capture.mutate(
+            const mutation =
+              selected.kind === 'device' ? captureDevice : capture;
+            mutation.mutate(
               {
-                sourceKind: 'browser',
-                sourceSessionId: selected,
+                sourceKind: selected.kind,
+                sourceSessionId: selected.id,
                 operationId: attempt.current.operationId,
               },
               {
@@ -237,43 +263,56 @@ function CapturePicker({
             );
           }}
         >
-          {sessions.isLoading ? (
+          {sessions.isLoading || deviceSessions.isLoading ? (
             <SkeletonList
               count={2}
               withIcon={false}
-              label="Loading Browser sessions"
+              label="Loading capture sessions"
             />
-          ) : sessions.error ? (
+          ) : sessions.error && deviceSessions.error ? (
             <ErrorState
               variant="compact"
-              title="Couldn’t load Browser sessions."
+              title="Couldn’t load capture sessions."
             />
           ) : choices.length === 0 ? (
-            <p>Open a Browser session in this Project first.</p>
+            <p>Open a Browser or Device session in this Project first.</p>
           ) : (
             <>
               <label>
-                Browser session
+                Session
                 <select
-                  value={selected}
+                  value={selected?.key}
                   onChange={(event) => setSessionId(event.target.value)}
                 >
                   {choices.map((session) => (
-                    <option
-                      key={session.browserSessionId}
-                      value={session.browserSessionId}
-                    >
-                      {captureSessionLabel(session.url)}
+                    <option key={session.key} value={session.key}>
+                      {session.label}
                     </option>
                   ))}
                 </select>
               </label>
-              <Button size="sm" type="submit" pending={capture.isPending}>
+              <Button
+                size="sm"
+                type="submit"
+                pending={capture.isPending || captureDevice.isPending}
+              >
                 Capture Screen
               </Button>
             </>
           )}
-          <Button size="sm" onClick={() => void sessions.refetch()}>
+          {(sessions.error || deviceSessions.error) && (
+            <ErrorState
+              variant="compact"
+              title="Some capture sessions could not be loaded."
+            />
+          )}
+          <Button
+            size="sm"
+            onClick={() => {
+              void sessions.refetch();
+              if (projectSlug) void deviceSessions.refetch();
+            }}
+          >
             Refresh sessions
           </Button>
           {error && <ErrorState variant="compact" title={error} />}
@@ -567,6 +606,7 @@ export function TaskReviewTab({
             captureAction={
               <CapturePicker
                 taskId={task.id}
+                projectSlug={task.projectId}
                 visible={visible}
                 onCaptured={(id) => select('capture', id)}
               />

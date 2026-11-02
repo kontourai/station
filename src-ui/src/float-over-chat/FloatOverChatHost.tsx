@@ -119,12 +119,9 @@ import './FloatOverChat.css';
  *   Project and no pane shows it (the "Automatically show agent browser
  *   sessions" setting, default on), never re-floating one the user put away
  *   in this conversation.
- * - A Device floats only when a person asks (the Device pane's "Float over
- *   chat"): no agent can open or drive a device surface today (the device
- *   session service fails an agent claim closed), so there is nothing for
- *   auto-float to follow. Its session is read from ITS device host's list,
- *   which the server filters to the devices this viewer may view (D12): a
- *   device missing from that list is never shown here.
+ * - A Device floats when a person uses "Float over chat" or an agent opens
+ *   it in this conversation. A floated session is read from its
+ *   device host's list, filtered to devices this viewer may view (D12).
  * - Too narrow a chat gets a one-line notice with the same two actions
  *   instead of a player that would cover the conversation.
  */
@@ -569,6 +566,10 @@ export function FloatOverChatHost({
 
   const sourceKey = source ? floatSourceKey(source) : null;
   const shownInPane = useSourceShown(sourceKey);
+  const deviceHandedOff =
+    source?.kind === 'device' && sourceKey !== null
+      ? isFloatHandedOff(conversationKey, sourceKey, shownInPane)
+      : false;
   const notice = getFloatNotice(conversationKey);
   const noticeCard = notice ? (
     <FloatNotice
@@ -581,9 +582,10 @@ export function FloatOverChatHost({
       <AgentDeviceReveal
         projectSlug={projectSlug}
         conversationId={conversationKey}
+        float
       />
       {noticeCard}
-      {source && !shownInPane ? renderSource(source) : null}
+      {source && !shownInPane && !deviceHandedOff ? renderSource(source) : null}
     </>
   );
 
@@ -819,9 +821,10 @@ function SourceFloat({
     // keeps the floater away while it does); closing that pane later is not
     // the user saying "never float this here again". The hand-off only keeps
     // it from re-floating in the moment before the pane has mounted.
-    if (outcome.ok) handOffFloat(conversationKey, sourceKey);
+    if (outcome.ok)
+      handOffFloat(conversationKey, sourceKey, Date.now(), noun === 'device');
     else setNotice(describeOpenInRegionRefusal(outcome.reason));
-  }, [open, conversationKey, sourceKey]);
+  }, [open, conversationKey, sourceKey, noun]);
 
   if (!layout) return null;
   // The overlay covers exactly the chat body, from whatever ancestor
@@ -1038,6 +1041,7 @@ function DeviceFloat({
   apiBase: string;
   transport: FloatFetch;
 }) {
+  const [frameSize, setFrameSize] = useState<FloatSize | null>(null);
   const scope = useHostRequestAuthorityScope();
   const openDevice = useOpenDeviceInRegion();
   const { hostId, platform, deviceId } = source;
@@ -1073,7 +1077,7 @@ function DeviceFloat({
       narrowText={(agentDriving) =>
         `${agentDriving ? `An agent is driving ${name}` : `${name} is open`}. The chat is too narrow to float it here.`
       }
-      sourceSize={devicePlayerSize(platform)}
+      sourceSize={frameSize ?? devicePlayerSize(platform)}
       agentInput={agentInput}
       openInPanel={openInPanel}
       renderSurface={(onControlState) =>
@@ -1095,6 +1099,7 @@ function DeviceFloat({
             hostControls
             inputRequiresLease
             onControlState={onControlState}
+            onFrameSize={setFrameSize}
           />
         )
       }

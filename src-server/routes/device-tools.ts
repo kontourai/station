@@ -58,6 +58,7 @@ import {
 
 export interface DeviceToolsRouteOptions {
   isRequestPrincipalCurrent: (request: Request) => boolean;
+  deviceLoopEnabled?: () => boolean;
   access?: DeviceAccess;
   /** The local device host's service. */
   tools?: DeviceToolsService;
@@ -336,6 +337,58 @@ export function createDeviceToolsRoutes(options: DeviceToolsRouteOptions) {
       return run(c, async () =>
         publish(c, await admitted.service.permissions(admitted.target, appId)),
       );
+    },
+  );
+
+  app.get(
+    '/hosts/:hostId/devices/:platform/:deviceId/tools/logs',
+    async (c) => {
+      if (!options.deviceLoopEnabled?.())
+        return c.json(
+          {
+            success: false,
+            code: 'feature_preview_disabled',
+            previewId: 'device-developer-loop',
+            settingsPath:
+              '/settings?view=feature-previews&highlight=feature-previews',
+          },
+          404,
+        );
+      if (!queryIsClean(c, ['projectSlug', 'appId']))
+        return failure(c, 'invalid-request');
+      const appId = c.req.query('appId');
+      if (!isDeviceAppId(appId)) return failure(c, 'invalid-request');
+      const admitted = await admit(c, 'view');
+      if (!admitted.ok) return admitted.response;
+      const recheck = async () => {
+        if (
+          !options.deviceLoopEnabled?.() ||
+          !stillCurrent(c) ||
+          !(await access!.mayAccessDevice(
+            c.req.raw,
+            admitted.target.platform,
+            admitted.target.deviceId,
+            'view',
+            admitted.target.hostId,
+          )) ||
+          (admitted.target.hostId === LOCAL_DEVICE_HOST_ID
+            ? tools
+            : options.toolsFor?.(admitted.target.hostId)) !==
+            admitted.service ||
+          !stillCurrent(c) ||
+          !options.deviceLoopEnabled?.()
+        )
+          throw new DeviceToolsAdmissionError({ code: 'access-denied' });
+      };
+      return run(c, async () => {
+        const logs = await admitted.service.logs(
+          admitted.target,
+          appId,
+          recheck,
+        );
+        await recheck();
+        return publish(c, logs);
+      });
     },
   );
 

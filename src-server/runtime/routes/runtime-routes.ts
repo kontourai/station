@@ -200,6 +200,8 @@ import type { ProjectSharedTaskStore } from '../../services/projects/project-sha
 import { TaskBrowserCapture } from '../../services/projects/task-browser-capture.js';
 import { TaskBrowserRecording } from '../../services/projects/task-browser-recording.js';
 import { createTaskCaptureBlobStoreFactory } from '../../services/projects/task-capture-blob-store-factory.js';
+import { TaskDeviceCapture } from '../../services/projects/task-device-capture.js';
+import { TaskDeviceRecording } from '../../services/projects/task-device-recording.js';
 import { TaskRoomAttachments } from '../../services/projects/task-room-attachments.js';
 import { createTaskRoomContext } from '../../services/projects/task-room-context.js';
 import { TaskRoomConversationModule } from '../../services/projects/task-room-conversation-module.js';
@@ -1742,6 +1744,9 @@ export function configureRuntimeRoutes(
   let deviceShareStore: DeviceShareStore | undefined;
   let deviceShareAccess: DeviceAccessDeps | undefined;
   let deviceSessions: DeviceSessionService | undefined;
+  let localDeviceHost: LocalMobileDeviceHost | undefined;
+  let localDeviceTools: DeviceToolsService | undefined;
+  let deviceLoopEnabled = () => false;
   let deviceHostRegistry: DeviceHostRegistry | undefined;
   let remoteDeviceHosts: RemoteDeviceHostServices | undefined;
   let browserProjectAuthorizer: BrowserProjectAuthorizer | undefined;
@@ -4720,6 +4725,14 @@ export function configureRuntimeRoutes(
   // Mobile devices (#1969 snapshots, #1970 live sessions, toolchain and
   // shares): personal operator hosts only, never a shared tenant.
   if (isPersonalHost) {
+    const deviceLoopPreview = context.featurePreviews.bind({
+      id: 'device-developer-loop',
+      label: 'Device developer loop',
+      description:
+        'Try app diagnostics and Task evidence for simulators and emulators.',
+    });
+    deviceLoopEnabled = () =>
+      deviceLoopPreview.select({ enabled: () => true, disabled: () => false });
     // The device helper address resolves through the settings registry —
     // this Station's stored config, then the STATION_MOBILE_DEVICE_HUB_URL
     // environment variable — instead of a direct env read, so the Settings
@@ -4813,6 +4826,13 @@ export function configureRuntimeRoutes(
       hostId: LOCAL_DEVICE_HOST_ID,
     })!;
     const deviceHost = new LocalMobileDeviceHost({ hub: deviceHubEndpoint });
+    const ownDeviceTools = new DeviceToolsService({
+      hostId: LOCAL_DEVICE_HOST_ID,
+      runner: createDeviceToolRunner(),
+      hub: deviceHubEndpoint,
+    });
+    localDeviceTools = ownDeviceTools;
+    localDeviceHost = deviceHost;
     const sessionSurfaces = liveSurfaceRegistry;
     // Android frames from ANY host are decoded here, on the Station host.
     const deviceDecoder = createFfmpegDecoderProvider({ mediaTools });
@@ -4885,15 +4905,12 @@ export function configureRuntimeRoutes(
         host: deviceHost,
         sessions: agentDeviceSessions,
         surfaces: agentDeviceSurfaces,
-        tools: new DeviceToolsService({
-          hostId: LOCAL_DEVICE_HOST_ID,
-          runner: createDeviceToolRunner(),
-          hub: deviceHubEndpoint,
-        }),
+        tools: ownDeviceTools,
       });
       context.app.route(
         '/api/device-agent',
         createDeviceAgentRoutes({
+          deviceLoopEnabled,
           agentAccessEnabled: () => devices.agentAccessEnabled(),
           isInternalRequest: isStationInternalRequest,
           resolveCaller: (request) =>
@@ -4917,6 +4934,7 @@ export function configureRuntimeRoutes(
               ? {
                   runtime: projectTaskRoomRuntime,
                   captures: taskCaptureService,
+                  ...(taskRecordings ? { recordings: taskRecordings } : {}),
                   localProjectIdFor: (identity) =>
                     localProjectIdFor(context.projectService, identity),
                 }
@@ -4979,15 +4997,12 @@ export function configureRuntimeRoutes(
     context.app.route(
       '/api/mobile-devices',
       createDeviceToolsRoutes({
+        deviceLoopEnabled,
         isRequestPrincipalCurrent,
         access: deviceAccess,
         // THIS machine's xcrun/adb and hub serve the local device host; an
         // SSH device host has its own service (#2442), built per host.
-        tools: new DeviceToolsService({
-          hostId: LOCAL_DEVICE_HOST_ID,
-          runner: createDeviceToolRunner(),
-          hub: deviceHubEndpoint,
-        }),
+        tools: ownDeviceTools,
         toolsFor: (hostId) => remoteDeviceHosts?.get(hostId)?.tools,
         ...(toolCaller ? { resolveHumanCaller: toolCaller } : {}),
         ...(toolSessions && toolSurfaces
@@ -8240,6 +8255,12 @@ export function configureRuntimeRoutes(
             store: taskWalkthroughs,
           })
         : undefined;
+    const deviceRecordings =
+      taskRecordings && liveSurfaceRegistry
+        ? new TaskDeviceRecording(taskRecordings)
+        : undefined;
+    if (deviceRecordings && taskRecordings)
+      taskRecordings.onDispose(() => deviceRecordings.dispose());
     if (taskCaptures && captureRuntime)
       context.app.route(
         '/api/tasks',
@@ -8248,6 +8269,71 @@ export function configureRuntimeRoutes(
           logger: context.logger,
           runtime: captureRuntime,
           captures: taskCaptures,
+          ...(deviceRecordings && liveSurfaceRegistry && localMediaPreviews
+            ? {
+                deviceRecordings: {
+                  manager: deviceRecordings,
+                  surfaces: liveSurfaceRegistry,
+                  enabled: deviceLoopEnabled,
+                  walkthroughPreview: localMediaPreviews.walkthroughsPreview,
+                },
+              }
+            : {}),
+          ...(deviceSessions && localDeviceHost && deviceHostRegistry
+            ? {
+                devices: new TaskDeviceCapture({
+                  captures: taskCaptures,
+                  access: deviceAccess,
+                  hostIds: () => [
+                    'local',
+                    ...deviceHostRegistry!
+                      .summaries()
+                      .map((host) => host.hostId),
+                  ],
+                  host: (id) => {
+                    if (id === 'local')
+                      return localDeviceHost && deviceSessions
+                        ? {
+                            host: localDeviceHost,
+                            sessions: deviceSessions,
+                            ...(localDeviceTools
+                              ? { tools: localDeviceTools }
+                              : {}),
+                          }
+                        : undefined;
+                    const remote = remoteDeviceHosts?.get(id);
+                    return remote?.sessions
+                      ? {
+                          host: remote.host,
+                          sessions: remote.sessions,
+                          ...(remote.tools ? { tools: remote.tools } : {}),
+                        }
+                      : undefined;
+                  },
+                  hostRevision: (id) =>
+                    id === 'local'
+                      ? 0
+                      : deviceHostRegistry?.has(id)
+                        ? deviceHostRegistry.generation(id)
+                        : undefined,
+                  projectMatches: (request, identity) => {
+                    const values = new URL(request.url).searchParams.getAll(
+                      'projectSlug',
+                    );
+                    if (values.length !== 1) return false;
+                    const project = context.projectService
+                      .listProjects()
+                      .find((candidate) => candidate.slug === values[0]);
+                    return (
+                      !!project &&
+                      localProjectIdFor(context.projectService, identity) ===
+                        project.id
+                    );
+                  },
+                  requestCurrent: isRequestPrincipalCurrent,
+                }),
+              }
+            : {}),
           ...(taskWalkthroughs && localMediaPreviews
             ? {
                 walkthroughs: {

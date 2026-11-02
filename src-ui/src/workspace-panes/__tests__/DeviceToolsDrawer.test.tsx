@@ -15,7 +15,14 @@ import type {
   DeviceToolsSnapshot,
 } from '@kontourai/station-contracts/device-tools';
 import type { LiveSurfaceRecord } from '@kontourai/station-contracts/live-surface';
-import { act, cleanup, screen, waitFor, within } from '@testing-library/react';
+import {
+  act,
+  cleanup,
+  fireEvent,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 vi.mock('../../hooks/useActiveProject', () => ({
@@ -738,7 +745,7 @@ describe('a device on an SSH device host (#2442)', () => {
 
   async function renderDrawer(tools: ToolsHandler) {
     const { DeviceToolsDrawer } = await import('../device/DeviceToolsDrawer');
-    const log = stubDeviceFetch({ tools });
+    const log = stubDeviceFetch({ tools, deviceLoopPreview: true });
     renderInQueryClient(
       <DeviceToolsDrawer
         axOverlay={false}
@@ -756,6 +763,42 @@ describe('a device on an SSH device host (#2442)', () => {
     const drawer = await screen.findByRole('complementary', { name: 'Tools' });
     return { log, drawer };
   }
+
+  test('logs use the selected host and can be filtered and paused', async () => {
+    const { log, drawer } = await renderDrawer(({ method, path }) => {
+      if (method === 'GET' && path.endsWith('/tools'))
+        return { body: { success: true, data: snapshot({ hostId: REMOTE }) } };
+      if (method === 'GET' && path.endsWith('/tools/logs'))
+        return {
+          body: {
+            success: true,
+            data: {
+              ...REMOTE_TARGET,
+              appId: 'com.example.app',
+              processId: '42',
+              output: 'info ready\nerror failed',
+            },
+          },
+        };
+      return undefined;
+    });
+    fireEvent.change(await within(drawer).findByLabelText('App ID'), {
+      target: { value: 'com.example.app' },
+    });
+    await click(within(drawer).getByRole('button', { name: 'Start logs' }));
+    await within(drawer).findByText(/error failed/);
+    fireEvent.change(within(drawer).getByLabelText('Filter'), {
+      target: { value: 'failed' },
+    });
+    expect(within(drawer).queryByText(/info ready/)).toBeNull();
+    await click(within(drawer).getByRole('button', { name: 'Pause logs' }));
+    expect(
+      within(drawer).getByRole('button', { name: 'Start logs' }),
+    ).toBeTruthy();
+    expect(new URL(toolsRequests(log, '/logs')[0]!.url).pathname).toContain(
+      `/hosts/${REMOTE}/`,
+    );
+  });
 
   test('the drawer reads the device on ITS host and shows what that host read', async () => {
     const { log, drawer } = await renderDrawer(({ method, path }) =>

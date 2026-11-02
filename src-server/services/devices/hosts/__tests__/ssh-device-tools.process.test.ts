@@ -105,8 +105,10 @@ const LOG_CALL = (tool: string) => `calls="$HOME/calls"
 mkdir -p "$calls"
 n=$(ls "$calls" | wc -l | tr -d ' ')
 file="$calls/$n-$$.${tool}"
-: > "$file"
-for a in "$@"; do printf '%s\\n' "$a" >> "$file"; done
+pending="$HOME/call-$$.tmp"
+: > "$pending"
+for a in "$@"; do printf '%s\\n' "$a" >> "$pending"; done
+mv "$pending" "$file"
 mode=$(cat "$HOME/mode" 2>/dev/null)
 case "$mode" in
   sleep) exec sleep 5 ;;
@@ -243,6 +245,49 @@ const decoded = (event: Record<string, unknown> | undefined) =>
   Buffer.from(String(event?.stdout), 'base64').toString('utf8');
 
 describe('the host program’s tool mode (run for real, no ssh)', () => {
+  test('an early exit cannot masquerade as a completed log sample', async () => {
+    const home = hostHome();
+    const args = [
+      'simctl',
+      'spawn',
+      UDID,
+      'log',
+      'stream',
+      '--style',
+      'compact',
+      '--predicate',
+      'processIdentifier == 42',
+    ];
+    const result = await runProgram(
+      home,
+      tool('xcrun', args, { sampleDurationMs: 500 }),
+    );
+    expect(result.events).toEqual([
+      { event: 'tool', ok: false, failure: 'tool-failed', applied: 0 },
+    ]);
+  });
+
+  test('the remote host ends an admitted log sample without reporting a timeout', async () => {
+    const home = hostHome();
+    writeFileSync(join(home, 'mode'), 'sleep');
+    const args = [
+      'simctl',
+      'spawn',
+      UDID,
+      'log',
+      'stream',
+      '--style',
+      'compact',
+      '--predicate',
+      'processIdentifier == 42',
+    ];
+    const result = await runProgram(
+      home,
+      tool('xcrun', args, { sampleDurationMs: 500 }),
+    );
+    expect(result.events).toEqual([{ event: 'tool', ok: true, stdout: '' }]);
+    expect(recordedCalls(home).map((call) => call.args)).toEqual([args]);
+  });
   test('runs an allowlisted vector with each argument its own literal word, and returns its output', async () => {
     const home = hostHome();
     const geo = ['-s', SERIAL, 'emu', 'geo', 'fix', '-0.127800', '51.507400'];
@@ -265,7 +310,7 @@ describe('the host program’s tool mode (run for real, no ssh)', () => {
       ['adb', ['-s', SERIAL, 'shell', 'dumpsys', 'package', 'com.x;id']],
       ['adb', ['-s', SERIAL, 'shell', 'cmd', 'uimode', 'night', 'yes', '-x']],
       ['adb', `-s ${SERIAL} shell dumpsys window`],
-      ['xcrun', ['simctl', 'spawn', UDID, 'launchctl', 'list']],
+      ['xcrun', ['simctl', 'spawn', UDID, 'launchctl', 'kickstart']],
       ['xcrun', ['simctl', 'push', UDID, 'com.example.app', HOSTILE]],
       ['sh', ['-c', 'touch "$HOME/pwned-sh"']],
       ['__proto__', []],

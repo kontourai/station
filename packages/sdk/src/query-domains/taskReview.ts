@@ -1,3 +1,7 @@
+import {
+  isMobileDeviceHostId,
+  type MobileDeviceSession,
+} from '@kontourai/station-contracts/mobile-device';
 import type {
   TaskCapture,
   TaskReviewArtifactKind,
@@ -15,6 +19,10 @@ import type {
   TaskReviewView,
 } from '@kontourai/station-contracts/task-review';
 import {
+  parseTaskDeviceRecordingJob,
+  type TaskDeviceRecordingJob,
+} from '@kontourai/station-contracts/task-review';
+import {
   isWalkthroughId,
   parseWalkthrough,
   WALKTHROUGH_LIMITS,
@@ -22,6 +30,7 @@ import {
 } from '@kontourai/station-contracts/walkthrough';
 import {
   useInfiniteQuery,
+  useMutation,
   useQuery,
   useQueryClient,
 } from '@tanstack/react-query';
@@ -31,6 +40,7 @@ import {
   type ApiRequestScope,
   authenticatedFetch,
   getJson,
+  mutateJson,
   readJsonBody,
   StationHttpError,
 } from '../client/http';
@@ -312,6 +322,221 @@ export function useCaptureToTaskMutation(taskId: string) {
     { invalidateKeys: [[...taskReviewQueryKey(taskId)]] },
   );
 }
+export type TaskCaptureDeviceSession = MobileDeviceSession & {
+  sourceSessionId: string;
+};
+export async function fetchTaskDeviceCaptureSessions(
+  taskId: string,
+  projectSlug: string,
+  signal?: AbortSignal,
+) {
+  const data = await result<{ sessions: unknown }>(
+    await authenticatedFetch(
+      await path(
+        taskId,
+        `/device-capture-sessions?projectSlug=${encodeURIComponent(projectSlug)}`,
+      ),
+      { signal },
+    ),
+  );
+  if (
+    !data ||
+    !Array.isArray(data.sessions) ||
+    data.sessions.length > 200 ||
+    !data.sessions.every((value) => {
+      if (!value || typeof value !== 'object') return false;
+      const row = value as Record<string, unknown>;
+      return (
+        isMobileDeviceHostId(row.hostId) &&
+        (row.platform === 'ios' || row.platform === 'android') &&
+        typeof row.sessionId === 'string' &&
+        row.sessionId.length > 0 &&
+        row.sessionId.length <= 80 &&
+        row.sourceSessionId === `${row.hostId}:${row.sessionId}` &&
+        typeof row.deviceId === 'string' &&
+        row.deviceId.length > 0 &&
+        row.deviceId.length <= 256 &&
+        typeof row.surfaceId === 'string' &&
+        row.surfaceId.length > 0 &&
+        typeof row.name === 'string' &&
+        typeof row.runtime === 'string' &&
+        typeof row.openedAt === 'string'
+      );
+    })
+  )
+    throw new StationHttpError(200, 'Invalid Device capture sessions.');
+  return data as { sessions: TaskCaptureDeviceSession[] };
+}
+export function useTaskDeviceCaptureSessionsQuery(
+  taskId: string,
+  projectSlug: string | null,
+  options?: QueryConfig<{ sessions: TaskCaptureDeviceSession[] }>,
+) {
+  return useQuery({
+    ...options,
+    queryKey: ['task-device-capture-sessions', taskId, projectSlug],
+    queryFn: ({ signal }) =>
+      fetchTaskDeviceCaptureSessions(taskId, projectSlug!, signal),
+    enabled: !!taskId && !!projectSlug && (options?.enabled ?? true),
+  });
+}
+export function useCaptureDeviceToTaskMutation(
+  taskId: string,
+  projectSlug: string | null,
+) {
+  return useApiMutation(
+    async (
+      input: TaskReviewCreateCaptureRequest,
+    ): Promise<{ capture: TaskCapture }> => {
+      if (!projectSlug) throw new Error('Project is required');
+      return result(
+        await authenticatedFetch(
+          await path(
+            taskId,
+            `/device-captures?projectSlug=${encodeURIComponent(projectSlug)}`,
+          ),
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(input),
+          },
+        ),
+      );
+    },
+    { invalidateKeys: [[...taskReviewQueryKey(taskId)]] },
+  );
+}
+
+function deviceRecordingPath(
+  scope: ApiRequestScope,
+  taskId: string,
+  projectSlug: string,
+  suffix = '',
+) {
+  return `${scope.apiBase}/api/tasks/${encodeURIComponent(taskId)}/review/device-recordings${suffix}?projectSlug=${encodeURIComponent(projectSlug)}`;
+}
+async function recordingJob(
+  response: Response,
+): Promise<TaskDeviceRecordingJob> {
+  const job = parseTaskDeviceRecordingJob(await result<unknown>(response));
+  if (!job) throw new Error('Invalid Device recording response.');
+  return job;
+}
+export function useStartDeviceRecordingMutation(scope: ApiRequestScope) {
+  return useMutation({
+    mutationFn: async (input: {
+      taskId: string;
+      sourceSessionId: string;
+      durationMs: number;
+      projectSlug: string;
+    }) =>
+      recordingJob(
+        await mutateJson(
+          deviceRecordingPath(scope, input.taskId, input.projectSlug),
+          'POST',
+          { requestScope: scope },
+          {
+            sourceSessionId: input.sourceSessionId,
+            durationMs: input.durationMs,
+          },
+        ),
+      ),
+  });
+}
+export function useDeviceRecordingQuery(
+  scope: ApiRequestScope,
+  projectSlug: string,
+  taskId: string | null,
+  jobId: string | null,
+) {
+  const queryClient = useQueryClient();
+  const query = useQuery({
+    queryKey: [
+      'device-recording',
+      scope.apiBase,
+      scope.authorityKey,
+      projectSlug,
+      taskId,
+      jobId,
+    ],
+    queryFn: async ({ signal }) => {
+      if (!taskId || !jobId)
+        throw new Error('Recording identity is unavailable.');
+      return recordingJob(
+        await getJson(
+          deviceRecordingPath(
+            scope,
+            taskId,
+            projectSlug,
+            `/${encodeURIComponent(jobId)}`,
+          ),
+          { requestScope: scope, signal },
+        ),
+      );
+    },
+    enabled: !!taskId && !!jobId,
+    retry: false,
+    refetchInterval: (query) =>
+      query.state.data?.state === 'completed' ||
+      query.state.data?.state === 'failed' ||
+      query.state.error
+        ? false
+        : 1000,
+  });
+  useEffect(() => {
+    if (query.data?.state === 'completed' && taskId)
+      void queryClient.invalidateQueries({
+        queryKey: [
+          'task-walkthroughs',
+          scope.apiBase,
+          scope.authorityKey,
+          taskId,
+        ],
+      });
+  }, [
+    query.data?.state,
+    queryClient,
+    scope.apiBase,
+    scope.authorityKey,
+    taskId,
+  ]);
+  return query;
+}
+export function useStopDeviceRecordingMutation(scope: ApiRequestScope) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: {
+      taskId: string;
+      jobId: string;
+      projectSlug: string;
+    }) =>
+      recordingJob(
+        await mutateJson(
+          deviceRecordingPath(
+            scope,
+            input.taskId,
+            input.projectSlug,
+            `/${encodeURIComponent(input.jobId)}/stop`,
+          ),
+          'POST',
+          { requestScope: scope },
+        ),
+      ),
+    onSuccess: (job, input) => {
+      queryClient.setQueryData(
+        [
+          'device-recording',
+          scope.apiBase,
+          scope.authorityKey,
+          input.projectSlug,
+          input.taskId,
+          input.jobId,
+        ],
+        job,
+      );
+    },
+  });
+}
 export async function fetchTaskCaptureContent(
   taskId: string,
   captureId: string,
@@ -343,6 +568,7 @@ export async function fetchTaskWalkthroughPage(
 ): Promise<TaskWalkthroughPage> {
   const query = new URLSearchParams({
     limit: String(TASK_WALKTHROUGH_PAGE_SIZE),
+    deviceIdentity: '1',
   });
   if (cursor) query.set('cursor', cursor);
   const page = await result<{ items: unknown; nextCursor?: unknown }>(

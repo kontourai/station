@@ -622,9 +622,16 @@ export function generateBuildInputs({
   run = command,
   exists = existsSync,
   log = console.log,
+  env = process.env,
 } = {}) {
+  const rawTimeout = env.STATION_BASIS_GENERATION_TIMEOUT_MS;
+  const timeout = rawTimeout ? Number(rawTimeout) : 120_000;
+  if (!Number.isSafeInteger(timeout) || timeout <= 0)
+    throw new Error(
+      'STATION_BASIS_GENERATION_TIMEOUT_MS must be a positive whole number of milliseconds',
+    );
   if (exists(resolve(root, '.git')))
-    run(process.execPath, [BASIS_MCP_APP_GENERATOR]);
+    run(process.execPath, [BASIS_MCP_APP_GENERATOR], { timeout });
   else
     log(
       '[dependency-lifecycle] NOT_APPLICABLE Basis MCP app generation outside a checkout',

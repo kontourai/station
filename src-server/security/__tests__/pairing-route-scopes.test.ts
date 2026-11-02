@@ -2107,6 +2107,21 @@ test('Task capture and review comments require operate scope; capture reads use 
   expect(
     requiredPairingScope(
       'GET',
+      '/api/tasks/task-a/review/device-capture-sessions',
+    ),
+  ).toBe('orchestration:read');
+  expect(
+    requiredPairingScope('POST', '/api/tasks/task-a/review/device-captures'),
+  ).toBe('terminal:operate');
+  for (const [method, path] of [
+    ['POST', '/api/tasks/task-a/review/device-recordings'],
+    ['GET', '/api/tasks/task-a/review/device-recordings/job-a'],
+    ['POST', '/api/tasks/task-a/review/device-recordings/job-a/stop'],
+  ] as const)
+    expect(requiredPairingScope(method, path)).toBe('terminal:operate');
+  expect(
+    requiredPairingScope(
+      'GET',
       '/api/tasks/task-a/review/captures/capture-a/content',
     ),
   ).toBe('orchestration:read');

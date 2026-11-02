@@ -588,6 +588,29 @@ async function harness(
     browser,
     tool,
     record,
+    recordSyntheticDevice: async () => {
+      const access = await room.sessionTaskReviewAccess('agent-a');
+      if (access.kind !== 'granted' || !recordings || !live)
+        throw new Error('Recording fixture unavailable');
+      const surfaceId = live.surfaceIdFor(browser.browserSessionId);
+      const entry = surfaceId ? surfaces.get(surfaceId) : undefined;
+      if (!entry) throw new Error('Recording surface unavailable');
+      return recordings.recordSource(access, { durationMs: 500 }, async () => ({
+        entry,
+        current: () => true,
+        authorize: async () => true,
+        platform: 'ios',
+        adapter: 'device-live-surface',
+        device: {
+          hostId: 'ssh-0123456789ab',
+          deviceId: 'device-1',
+          name: 'Test device',
+          runtime: 'iOS',
+          appId: null,
+          appObservedAt: null,
+        },
+      }));
+    },
     streamStarted,
     streams: () => streams,
     stopBrowser: () => live!.dispose(),
@@ -892,6 +915,52 @@ test.skipIf(!mediaReady)(
     expect(readdirSync(root).some((name) => name.startsWith('.pending-'))).toBe(
       false,
     );
+  },
+);
+
+test.skipIf(!mediaReady)(
+  'the shared recorder stores a synthetic Device source with host and unknown app identity',
+  async () => {
+    const h = await harness({ recording: true });
+    const manifest = await h.recordSyntheticDevice();
+    expect(manifest.source.device).toMatchObject({
+      hostId: 'ssh-0123456789ab',
+      deviceId: 'device-1',
+      appId: null,
+      appObservedAt: null,
+    });
+    const response = await h.person(
+      `task-a/review/walkthroughs/${manifest.id}?deviceIdentity=1`,
+    );
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    if (
+      !body ||
+      typeof body !== 'object' ||
+      !('data' in body) ||
+      !body.data ||
+      typeof body.data !== 'object' ||
+      !('walkthrough' in body.data)
+    )
+      throw new Error('Task Walkthrough response has no document');
+    expect(parseWalkthrough(body.data.walkthrough).source.device).toEqual(
+      manifest.source.device,
+    );
+    const legacy = await (
+      await h.person(`task-a/review/walkthroughs/${manifest.id}`)
+    ).json();
+    if (
+      !legacy ||
+      typeof legacy !== 'object' ||
+      !('data' in legacy) ||
+      !legacy.data ||
+      typeof legacy.data !== 'object' ||
+      !('walkthrough' in legacy.data)
+    )
+      throw new Error('Task Walkthrough response has no document');
+    expect(
+      parseWalkthrough(legacy.data.walkthrough).source.device,
+    ).toBeUndefined();
   },
 );
 

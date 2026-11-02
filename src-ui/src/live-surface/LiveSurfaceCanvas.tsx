@@ -113,6 +113,8 @@ export interface LiveSurfaceCanvasProps {
    * than opening a second stream for the same lease (ADR 0018 budget).
    */
   onControlState?: (state: LiveSurfaceControlState) => void;
+  /** Dimensions of the most recently drawn frame, after rotation. */
+  onFrameSize?: (size: { width: number; height: number }) => void;
   /**
    * No input at all — not even a click or a key — until this viewer holds
    * control (through `claimControl`, the host's Take control). For a
@@ -283,6 +285,9 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
   } | null>(null);
   const [frameRotation, setFrameRotation] =
     useState<LiveSurfaceFrameRotation>(0);
+  useEffect(() => {
+    if (frameSize) props.onFrameSize?.(frameSize);
+  }, [frameSize, props.onFrameSize]);
   const decodingRef = useRef(false);
   const nextFrameRef = useRef<LiveSurfaceFrame | null>(null);
   const composingRef = useRef(false);

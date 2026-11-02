@@ -8,6 +8,61 @@ import { findTwoMatches, matchesAt } from './task-review-matcher.js';
 
 export const TASK_REVIEW_VERSION = 'station.task-review/v1' as const;
 
+export type TaskDeviceRecordingJob =
+  | { id: string; state: 'starting' | 'recording' | 'stopping' }
+  | {
+      id: string;
+      state: 'completed';
+      result: { walkthroughId: string; commit: string };
+    }
+  | { id: string; state: 'failed'; code: string };
+
+export function parseTaskDeviceRecordingJob(
+  value: unknown,
+): TaskDeviceRecordingJob | null {
+  if (
+    !isRecord(value) ||
+    typeof value.id !== 'string' ||
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(
+      value.id,
+    )
+  )
+    return null;
+  if (
+    (value.state === 'starting' ||
+      value.state === 'recording' ||
+      value.state === 'stopping') &&
+    onlyKeys(value, ['id', 'state'])
+  )
+    return { id: value.id, state: value.state };
+  if (
+    value.state === 'failed' &&
+    onlyKeys(value, ['id', 'state', 'code']) &&
+    typeof value.code === 'string' &&
+    /^[a-z0-9_-]{1,80}$/.test(value.code)
+  )
+    return { id: value.id, state: value.state, code: value.code };
+  if (
+    value.state === 'completed' &&
+    onlyKeys(value, ['id', 'state', 'result']) &&
+    isRecord(value.result) &&
+    onlyKeys(value.result, ['walkthroughId', 'commit']) &&
+    typeof value.result.walkthroughId === 'string' &&
+    /^[A-Za-z0-9_-]{1,128}$/.test(value.result.walkthroughId) &&
+    typeof value.result.commit === 'string' &&
+    /^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(value.result.commit)
+  )
+    return {
+      id: value.id,
+      state: value.state,
+      result: {
+        walkthroughId: value.result.walkthroughId,
+        commit: value.result.commit,
+      },
+    };
+  return null;
+}
+
 /** Every bound is a refusal, never truncation or eviction. Text uses UTF-16 code units. */
 export const TASK_REVIEW_LIMITS = Object.freeze({
   threadsPerTask: 500,

@@ -8,6 +8,7 @@ import {
   type DeviceToolAction,
   type DeviceToolsUnreadableReason,
 } from '@kontourai/station-contracts/device-tools';
+import { useFeaturePreviewsQuery } from '@kontourai/station-sdk';
 import type { ApiRequestScope } from '@kontourai/station-sdk/client';
 import {
   type KeyboardEvent,
@@ -19,14 +20,17 @@ import {
 } from 'react';
 import { Button } from '../../components/Button';
 import { CloseGlyph } from '../../components/icons/Glyph';
+import { ErrorState } from '../../components/state';
 import {
   axRectOnShownFrame,
   type DeviceFrameRotation,
 } from './deviceAxGeometry';
 import {
   type DeviceToolsTarget,
+  describeDeviceLogsFailure,
   describeDeviceToolsFailure,
   useDeviceAccessibilityTree,
+  useDeviceLogs,
   useDevicePermissions,
   useDeviceToolAction,
   useDeviceToolsSnapshot,
@@ -153,6 +157,11 @@ export interface DeviceToolsDrawerProps {
  */
 export function DeviceToolsDrawer(props: DeviceToolsDrawerProps) {
   const { requestScope, projectSlug, target } = props;
+  const previews = useFeaturePreviewsQuery(requestScope.apiBase);
+  const deviceLoopEnabled =
+    previews.data?.some(
+      (preview) => preview.id === 'device-developer-loop' && preview.enabled,
+    ) === true;
   const snapshot = useDeviceToolsSnapshot(requestScope, target, projectSlug);
   const action = useDeviceToolAction(requestScope, target, projectSlug);
   // Same cache entry the overlay polls; this observer never fetches.
@@ -166,6 +175,17 @@ export function DeviceToolsDrawer(props: DeviceToolsDrawerProps) {
     null,
   );
   const [notice, setNotice] = useState<string | null>(null);
+  const [logAppId, setLogAppId] = useState('');
+  const [logFilter, setLogFilter] = useState('');
+  const [logLevel, setLogLevel] = useState('all');
+  const [logsPaused, setLogsPaused] = useState(true);
+  const logs = useDeviceLogs(
+    requestScope,
+    target,
+    projectSlug,
+    logAppId,
+    deviceLoopEnabled && !logsPaused && APP_ID.test(logAppId),
+  );
   const headingId = useId();
   const drawerRef = useRef<HTMLElement>(null);
 
@@ -274,6 +294,75 @@ export function DeviceToolsDrawer(props: DeviceToolsDrawerProps) {
             )}
           </Row>
         </Section>
+
+        {deviceLoopEnabled ? (
+          <Section title="Logs">
+            <label className="device-tools__field">
+              <span className="device-tools__label">App ID</span>
+              <input
+                value={logAppId}
+                onChange={(event) => setLogAppId(event.target.value)}
+              />
+            </label>
+            <label className="device-tools__field">
+              <span className="device-tools__label">Filter</span>
+              <input
+                value={logFilter}
+                onChange={(event) => setLogFilter(event.target.value)}
+              />
+            </label>
+            <label className="device-tools__field">
+              <span className="device-tools__label">Level</span>
+              <select
+                value={logLevel}
+                onChange={(event) => setLogLevel(event.target.value)}
+              >
+                <option value="all">All</option>
+                <option value="error">Error</option>
+              </select>
+            </label>
+            <Button
+              size="sm"
+              disabled={!APP_ID.test(logAppId)}
+              onClick={() => setLogsPaused(!logsPaused)}
+            >
+              {logsPaused ? 'Start logs' : 'Pause logs'}
+            </Button>
+            {logs.isFetching ? <p role="status">Reading logs…</p> : null}
+            {logs.isError ? (
+              <ErrorState
+                variant="compact"
+                title="Logs unavailable"
+                description={describeDeviceLogsFailure(logs.error)}
+                action={
+                  <Button size="sm" onClick={() => void logs.refetch()}>
+                    Retry
+                  </Button>
+                }
+              />
+            ) : null}
+            {logs.data && !logs.data.output ? (
+              <p className="device-tools__muted">
+                No log entries in this sample.
+              </p>
+            ) : null}
+            {logs.data ? (
+              <pre className="device-tools__logs">
+                {logs.data.output
+                  .split('\n')
+                  .filter(
+                    (line) =>
+                      line.toLowerCase().includes(logFilter.toLowerCase()) &&
+                      (logLevel === 'all' ||
+                        /\b(error|fault)\b|(?:^|\s)(?:E|Er)(?:\s|\/)/i.test(
+                          line,
+                        )),
+                  )
+                  .join('\n')}
+              </pre>
+            ) : null}
+          </Section>
+        ) : null}
 
         {capabilities?.appearance ? (
           <Section title="Appearance">

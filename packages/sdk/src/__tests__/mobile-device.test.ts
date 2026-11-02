@@ -1,12 +1,17 @@
 import { afterEach, expect, test, vi } from 'vitest';
+import { _setApiBase } from '../api';
 import {
   captureMobileDevice,
   fetchDeviceAgentReveals,
   fetchMobileDeviceInventory,
   MobileDeviceRequestError,
 } from '../mobile-device';
+import { fetchTaskDeviceCaptureSessions } from '../query-domains/taskReview';
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  vi.unstubAllGlobals();
+  _setApiBase('');
+});
 const selected = {
   hostId: 'local',
   platform: 'android' as const,
@@ -53,6 +58,48 @@ test('device client uses the selected Station base and exact capture target', as
     method: 'POST',
     body: '{}',
   });
+});
+
+test('capture includes the active Project for a shared device', async () => {
+  const fetch = vi
+    .fn()
+    .mockResolvedValue(Response.json({ success: true, data: frame }));
+  vi.stubGlobal('fetch', fetch);
+  await captureMobileDevice(
+    'https://station.test',
+    selected,
+    undefined,
+    'project-one',
+  );
+  expect(String(fetch.mock.calls[0]?.[0])).toBe(
+    'https://station.test/api/mobile-devices/hosts/local/devices/android/emulator-5584/capture?projectSlug=project-one',
+  );
+});
+
+test('Task Device session listing refuses a mismatched host-qualified identity', async () => {
+  _setApiBase('https://station.test');
+  const row = {
+    hostId: 'ssh-123456abcdef',
+    sessionId: 'session',
+    sourceSessionId: 'local:session',
+    platform: 'ios',
+    deviceId: 'device',
+    surfaceId: 'surface',
+    name: 'iPhone',
+    runtime: 'iOS',
+    openedAt: '2026-01-01T00:00:00Z',
+  };
+  vi.stubGlobal(
+    'fetch',
+    vi
+      .fn()
+      .mockResolvedValue(
+        Response.json({ success: true, data: { sessions: [row] } }),
+      ),
+  );
+  await expect(
+    fetchTaskDeviceCaptureSessions('task', 'project'),
+  ).rejects.toThrow('Invalid Device capture sessions.');
 });
 
 test.each([

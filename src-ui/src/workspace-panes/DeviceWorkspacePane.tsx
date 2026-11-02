@@ -10,6 +10,12 @@ import type {
   MobileDeviceTarget,
 } from '@kontourai/station-contracts/mobile-device';
 import {
+  useDeviceRecordingQuery,
+  useFeaturePreviewsQuery,
+  useStopDeviceRecordingMutation,
+} from '@kontourai/station-sdk';
+import {
+  useCaptureMobileDeviceMutation,
   useCloseMobileDeviceSessionMutation,
   useMobileDeviceHostsQuery,
   useMobileDeviceInventoryQuery,
@@ -28,7 +34,7 @@ import {
   useState,
 } from 'react';
 import { Button } from '../components/Button';
-import { CloseGlyph, HomeGlyph } from '../components/icons/Glyph';
+import { CameraGlyph, CloseGlyph, HomeGlyph } from '../components/icons/Glyph';
 import { LazyBoundary } from '../components/LazyBoundary';
 import {
   describeReadFailure,
@@ -86,6 +92,10 @@ const loadDeviceToolsDrawer = () =>
   import('./device/DeviceToolsDrawer').then(({ DeviceToolsDrawer }) => ({
     default: DeviceToolsDrawer,
   }));
+const loadDeviceRecordingPicker = () =>
+  import('./device/DeviceRecordingPicker').then(
+    ({ DeviceRecordingPicker }) => ({ default: DeviceRecordingPicker }),
+  );
 const loadDeviceAccessibilityOverlay = () =>
   import('./device/DeviceToolsDrawer').then(
     ({ DeviceAccessibilityOverlay }) => ({
@@ -897,10 +907,108 @@ function DeviceStage({
   }, [toolsOpen]);
   const [axOverlay, setAxOverlay] = useState(false);
   const [streamLive, setStreamLive] = useState(false);
+  const [captureError, setCaptureError] = useState(false);
+  const previews = useFeaturePreviewsQuery(requestScope.apiBase);
+  const canRecord =
+    !!projectSlug &&
+    previews.data?.some(
+      (preview) => preview.id === 'device-developer-loop' && preview.enabled,
+    ) === true &&
+    previews.data?.some(
+      (preview) => preview.id === 'walkthroughs' && preview.enabled,
+    ) === true;
+  const [pickingTask, setPickingTask] = useState(false);
+  const recordButtonRef = useRef<HTMLButtonElement>(null);
+  const [recording, setRecording] = useState<{
+    taskId: string;
+    jobId: string;
+    projectSlug: string;
+    sourceSessionId: string;
+  } | null>(null);
+  const recordingStatus = useDeviceRecordingQuery(
+    requestScope,
+    recording?.projectSlug ?? projectSlug ?? '',
+    recording?.taskId ?? null,
+    recording?.jobId ?? null,
+  );
+  const stopRecording = useStopDeviceRecordingMutation(requestScope);
+  const recordingTarget = JSON.stringify([
+    projectSlug,
+    `${session.hostId}:${session.sessionId}`,
+  ]);
+  const currentRecordingTarget = useRef(recordingTarget);
+  const previousRecordingTarget = useRef(recordingTarget);
+  currentRecordingTarget.current = recordingTarget;
+  useEffect(() => {
+    if (previousRecordingTarget.current !== recordingTarget)
+      setPickingTask(false);
+    previousRecordingTarget.current = recordingTarget;
+  }, [recordingTarget]);
+  const recordingActive =
+    !!recording &&
+    (!recordingStatus.data ||
+      recordingStatus.data.state === 'starting' ||
+      recordingStatus.data.state === 'recording' ||
+      recordingStatus.data.state === 'stopping');
+  const recordingRef = useRef(recording);
+  const recordingActiveRef = useRef(recordingActive);
+  const stopRecordingRef = useRef(stopRecording.mutateAsync);
+  recordingRef.current = recording;
+  recordingActiveRef.current = recordingActive;
+  stopRecordingRef.current = stopRecording.mutateAsync;
+  const capture = useCaptureMobileDeviceMutation(requestScope, projectSlug);
+  const captureTarget = JSON.stringify([
+    session.hostId,
+    platform,
+    session.deviceId,
+  ]);
+  const currentCaptureTarget = useRef(captureTarget);
+  currentCaptureTarget.current = captureTarget;
+  const mounted = useRef(false);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      queueMicrotask(() => {
+        const job = recordingRef.current;
+        if (!mounted.current && recordingActiveRef.current && job)
+          void stopRecordingRef.current(job).catch(() => {});
+      });
+    };
+  }, []);
   const target = {
     hostId: session.hostId,
     platform,
     deviceId: session.deviceId,
+  };
+  const saveScreenshot = async () => {
+    setCaptureError(false);
+    try {
+      const shot = await capture.mutateAsync(target);
+      if (!mounted.current || currentCaptureTarget.current !== captureTarget)
+        return;
+      const bytes = Uint8Array.from(atob(shot.pngBase64), (ch) =>
+        ch.charCodeAt(0),
+      );
+      const url = URL.createObjectURL(
+        new Blob([bytes], { type: shot.mimeType }),
+      );
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `station-device-${shot.captureId}.png`;
+      document.body.append(link);
+      try {
+        link.click();
+      } finally {
+        link.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      }
+    } catch {
+      if (mounted.current && currentCaptureTarget.current === captureTarget)
+        setCaptureError(true);
+    } finally {
+      capture.reset();
+    }
   };
   // #90 D9: while this device is on screen here, the float-over-chat hides
   // it (and so never streams it a second time).
@@ -947,6 +1055,23 @@ function DeviceStage({
           ending={ending}
           floatAvailable={floatAvailable}
           onFloat={floatOverChat}
+          onScreenshot={() => void saveScreenshot()}
+          screenshotPending={capture.isPending}
+          canRecord={canRecord}
+          recordingActive={recordingActive}
+          recordingPending={
+            stopRecording.isPending ||
+            recordingStatus.data?.state === 'stopping'
+          }
+          recordButtonRef={recordButtonRef}
+          onRecord={() => {
+            setRecording(null);
+            setPickingTask(true);
+          }}
+          onStopRecording={() => {
+            if (recording)
+              void stopRecording.mutateAsync(recording).catch(() => {});
+          }}
           onStreamLive={setStreamLive}
           onToggleTools={() => setToolsOpen((open) => !open)}
           toolsButtonRef={toolsButtonRef}
@@ -990,6 +1115,68 @@ function DeviceStage({
     >
       <div className="device-pane__stage" ref={stageRef}>
         {canvas}
+        {recordingActive ? (
+          <p role="status">
+            {stopRecording.isPending ||
+            recordingStatus.data?.state === 'stopping'
+              ? 'Stopping recording…'
+              : recordingStatus.isError
+                ? 'Recording status unavailable.'
+                : recordingStatus.data?.state === 'recording'
+                  ? 'Recording to Task…'
+                  : 'Starting recording…'}
+          </p>
+        ) : null}
+        {recordingStatus.data?.state === 'completed' ? (
+          <p role="status">Recording saved to Task.</p>
+        ) : null}
+        {recordingStatus.data?.state === 'failed' ||
+        recordingStatus.isError ||
+        stopRecording.isError ? (
+          <p role="alert">
+            Recording failed or could not be checked. Open the Task or update
+            Station and try again.
+          </p>
+        ) : null}
+        {pickingTask && projectSlug ? (
+          <LazyBoundary
+            load={loadDeviceRecordingPicker}
+            componentProps={{
+              scope: requestScope,
+              projectSlug,
+              sourceSessionId: `${session.hostId}:${session.sessionId}`,
+              returnFocusTarget: recordButtonRef.current,
+              onClose: () => setPickingTask(false),
+              onStarted: (
+                taskId: string,
+                jobId: string,
+                capturedProject: string,
+                sourceSessionId: string,
+              ) => {
+                const job = {
+                  taskId,
+                  jobId,
+                  projectSlug: capturedProject,
+                  sourceSessionId,
+                };
+                if (mounted.current) {
+                  setRecording(job);
+                  setPickingTask(false);
+                }
+                if (
+                  !mounted.current ||
+                  currentRecordingTarget.current !==
+                    JSON.stringify([capturedProject, sourceSessionId])
+                )
+                  void stopRecording.mutateAsync(job).catch(() => {});
+              },
+            }}
+            pending={<SkeletonBlock count={1} label="Loading Task picker" />}
+          />
+        ) : null}
+        {captureError ? (
+          <ErrorState variant="compact" title="Screenshot could not be saved" />
+        ) : null}
       </div>
       {toolsOpen ? (
         <LazyBoundary
@@ -1054,6 +1241,14 @@ function DeviceToolbar({
   onToggleTools,
   floatAvailable,
   onFloat,
+  onScreenshot,
+  screenshotPending,
+  canRecord,
+  recordingActive,
+  recordingPending,
+  recordButtonRef,
+  onRecord,
+  onStopRecording,
   onStreamLive,
   onClose,
   onEndForEveryone,
@@ -1074,6 +1269,14 @@ function DeviceToolbar({
   /** A chat's floater is mounted (a chat with a Project is open). */
   floatAvailable: boolean;
   onFloat: () => void;
+  onScreenshot: () => void;
+  screenshotPending: boolean;
+  canRecord: boolean;
+  recordingActive: boolean;
+  recordingPending: boolean;
+  recordButtonRef: RefObject<HTMLButtonElement | null>;
+  onRecord: () => void;
+  onStopRecording: () => void;
   /** Whether the stream is live (the accessibility overlay polls only then). */
   onStreamLive: (live: boolean) => void;
   onClose: () => void;
@@ -1173,6 +1376,26 @@ function DeviceToolbar({
             expanded: toolsOpen,
             ref: toolsButtonRef,
           })}
+          {iconButton('Save screenshot', <CameraGlyph />, onScreenshot, {
+            pending: screenshotPending,
+            disabled: screenshotPending || ended,
+          })}
+          {canRecord || recordingActive
+            ? iconButton(
+                recordingActive ? 'Stop recording' : 'Record to Task',
+                recordingActive ? (
+                  <StopGlyph />
+                ) : (
+                  <span aria-hidden="true">●</span>
+                ),
+                recordingActive ? onStopRecording : onRecord,
+                {
+                  pending: recordingPending,
+                  disabled: recordingPending || (ended && !recordingActive),
+                  ref: recordButtonRef,
+                },
+              )
+            : null}
           {iconButton('Float over chat', <FloatGlyph />, onFloat, {
             disabled: !floatAvailable,
             // Disabled says why: only an open chat (in a Project) can float it.

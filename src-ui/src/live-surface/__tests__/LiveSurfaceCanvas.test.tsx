@@ -252,6 +252,27 @@ async function renderLive(
 }
 
 describe('LiveSurfaceCanvas', () => {
+  test('reports displayed dimensions when a frame rotates', async () => {
+    const h = harness();
+    const onFrameSize = vi.fn();
+    render(
+      <LiveSurfaceCanvas
+        apiBase={API}
+        surfaceId={SURFACE}
+        label="Device"
+        transport={h.transport as never}
+        onFrameSize={onFrameSize}
+      />,
+    );
+    await flush();
+    const stream = h.streams.at(-1)!;
+    await stream.push(stateRecord(lease(0)));
+    await stream.push(frameRecord(1, 0));
+    expect(onFrameSize).toHaveBeenLastCalledWith({ width: 1280, height: 800 });
+    const frame = frameRecord(2, 0) as FrameRecord;
+    await stream.push({ ...frame, header: { ...frame.header, rotation: 90 } });
+    expect(onFrameSize).toHaveBeenLastCalledWith({ width: 800, height: 1280 });
+  });
   test('measures the fitted stage before its first layout commit finishes', () => {
     const h = harness();
     let measured = false;

@@ -460,7 +460,7 @@ test('a row claiming another host is not trusted: nothing is shown', async () =>
   expect(calls.some((call) => call.startsWith(`GET ${FRAMES}`))).toBe(false);
 });
 
-test('Open in right panel opens the Device pane on this device and hands the float off', async () => {
+test('Open in right panel hides the float until the Device pane closes', async () => {
   openDevice.mockReturnValue({ ok: true });
   renderChat();
   await floatDevice();
@@ -476,7 +476,15 @@ test('Open in right panel opens the Device pane on this device and hands the flo
     { hostId: HOST, platform: 'ios', deviceId: DEVICE_ID },
     { region: 'right' },
   );
-  expect(getFloatingSource('conversation-1')).toBeNull();
+  expect(screen.queryByTestId('live-surface-canvas')).toBeNull();
+  let release = () => {};
+  act(() => {
+    release = announceShownSource(deviceFloatSourceKey(SOURCE));
+  });
+  expect(screen.queryByTestId('live-surface-canvas')).toBeNull();
+  act(() => release());
+  await screen.findByTestId('live-surface-canvas');
+  expect(getFloatingSource('conversation-1')).toMatchObject(SOURCE);
 });
 
 const refusal = (status: number, code: string) => () =>

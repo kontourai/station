@@ -49,6 +49,13 @@ function ClipPlayer({
       onClose={onClose}
       size="lg"
     >
+      {clip.source.device ? (
+        <p>
+          {clip.source.device.name} · {clip.source.device.hostId} ·{' '}
+          {clip.source.device.deviceId} · App at start:{' '}
+          {clip.source.device.appId ?? 'Unknown'}
+        </p>
+      ) : null}
       {video.error ? (
         <ErrorState
           variant="compact"
