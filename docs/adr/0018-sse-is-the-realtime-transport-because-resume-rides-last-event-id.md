@@ -119,8 +119,10 @@ do not use SSE. They travel as a length-prefixed binary `fetch` stream.
 
 **Amendment (2026-11-02, station#2760): a measured admission cap, not yet
 the multiplexed stream.** Every visible Browser or Device pane still holds its
-own frame stream, but a page admits at most **two** per origin
+own frame stream, but an origin admits at most **two** at once
 ([`liveSurfaceStreamAdmission.ts`](../../src-ui/src/live-surface/liveSurfaceStreamAdmission.ts)).
+The browser's pool is per origin across tabs, so the slots are too: each is a
+named Web Lock, and tabs of one browser profile share them.
 With the two always-on event streams that leaves two of the six HTTP/1.1
 connections: one for input and lease requests, and one for a view-scoped event
 stream. A pane past the cap shows that it is waiting (`queued`) and is admitted
@@ -133,13 +135,18 @@ so no stream or queued input crosses a credential, Project or origin change.
   viewers of four surfaces and two held event streams
   ([fixture](../../src-ui/src/live-surface/__tests__/liveSurfaceInputHeadroom.browser.test.ts)).
   Without the cap the pool filled and a tap did not reach the server within
-  2 s. With it, 20 taps arrived at p50 1 ms and p95 2 ms, and a lease claim
-  from a waiting pane arrived in 1 ms, while every stream stayed open. Hiding
-  a pane admitted the waiting one with one request each and no reconnect storm.
-  Revision `9a0c060aa1`, Apple M5 Pro, macOS 26.7.2, Chromium 156, host load
-  average about 12.
+  2 s. With it, 20 taps arrived at p50 1 ms, p95 2 ms and max 3 ms, and a lease
+  claim from a waiting pane arrived in 1 ms, while every stream stayed open.
+  Two tabs of one profile (one event stream each, two viewers each) shared the
+  two slots, and a tap from the waiting tab arrived in 1 ms. Hiding a pane
+  admitted the waiting one with one request each and no reconnect storm.
+  Revision `bb90331c21`, Apple M5 Pro, macOS 26.7.2, Chromium 156.0.8078.4,
+  host load average about 9.
 - **Still open.** With all three view-scoped event streams open at once, two
-  frame streams fill the pool again. The single multiplexed frame stream (one
+  frame streams fill the pool again. Admission counts frame streams only: each
+  tab opens its own always-on event streams, so three tabs of one Station fill
+  the pool with event streams alone, and a WebView without Web Locks caps
+  frame streams per page, not per profile. The single multiplexed frame stream (one
   connection for every visible surface, each surface authorized separately)
   removes that case and the third-pane wait; it is not built. Native-broker
   and relay transports are capped the same way but were not qualified

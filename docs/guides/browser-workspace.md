@@ -402,8 +402,9 @@ platform interaction require their own receipts.
 
 The [shared live-surface module](../architecture/module-map.md#shared-live-surface)
 also serves Device sessions. Frames use binary fetch streams rather than SSE
-replay. Each visible viewer opens its own stream, and a page holds at most two
-per origin so input always has a connection. A third visible pane waits,
+replay. Each visible viewer opens its own stream, and the tabs of one browser
+hold at most two per origin (shared through Web Locks) so input always has a
+connection. A third visible pane waits,
 saying so, until one is hidden or closed. Over HTTP/1.1 in a real browser that
 kept taps and lease claims arriving within milliseconds while the streams
 stayed open (the measurement and its limits are in

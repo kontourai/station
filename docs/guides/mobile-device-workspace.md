@@ -93,8 +93,9 @@ shares, current request credentials and the route's pairing scope all matter.
 
 The [producer](../../src-server/services/devices/device-live-surface-producer.ts)
 separates video and input liveness. iOS video uses MJPEG. Android video goes
-to a browser that can decode it (a secure context with WebCodecs and the
-stream's profile) as H.264, decoded on the viewer's machine; the pane shows
+to a browser that can decode it (a Station on loopback, a secure context with
+WebCodecs, and the stream's profile) as H.264, decoded on the viewer's
+machine; a viewer that cannot keep up is switched to images. The pane shows
 "H.264, decoded in this browser". Other viewers get server-side H.264
 decoding when a decoder is available; otherwise a PNG screenshot-poll
 fallback, reported as such. The server decoder runs only while such a viewer

@@ -352,7 +352,9 @@ connection (ADR 0018's 2026-11-02 amendment, measured over HTTP/1.1 only).
 A Device pane may take Android's H.264 access units instead of images
 (station#4418). Those cannot be dropped one by one: the hub queues them per
 viewer, bounded to about a second, and resynchronizes a viewer that falls
-further behind at the next keyframe. JPEG viewers keep latest-frame-wins.
+further behind at the next keyframe; a viewer that keeps falling behind is
+switched to images. JPEG viewers keep latest-frame-wins. H.264 is offered only
+to a loopback Station until relay and remote paths are qualified.
 
 Over the relay, throughput is bounded by stop-and-wait 16 KiB chunks (see
 Context). Streams therefore **adapt fps and quality** to what the path
