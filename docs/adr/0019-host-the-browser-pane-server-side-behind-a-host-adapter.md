@@ -318,7 +318,8 @@ Semantics:
   typed input (pointer, key, text).
 - **Fan-out.** A surface hub fans one producer out to N authorized viewers.
   **Latest-frame-wins:** a slow viewer skips frames and never receives a queue
-  of stale ones. The producer is suspended when the surface has **zero
+  of stale ones. (Images only: H.264 access units queue per viewer, bounded;
+  see Frame transport below.) The producer is suspended when the surface has **zero
   viewers**; the session itself stays alive (D6).
 - **Control lease.** There is one controller and any number of viewers, and
   watching never requires the lease.
@@ -344,12 +345,22 @@ Frames travel as a **length-prefixed binary fetch stream**, not SSE, and only
 while a pane is visible. Each client should use **one frame stream,
 multiplexing all its visible panes**. Input goes as ordinary authenticated
 requests and must never queue behind frames. ADR 0018 records how this fits
-the per-origin connection budget.
+the per-origin connection budget. Until the multiplexed stream exists, each
+visible pane keeps its own stream, and a per-origin cap of two leaves input a
+connection (ADR 0018's 2026-11-02 amendment, measured over HTTP/1.1 only).
+
+A Device pane may take Android's H.264 access units instead of images
+(station#4418). Those cannot be dropped one by one: the hub queues them per
+viewer, bounded to about a second, and resynchronizes a viewer that falls
+further behind at the next keyframe; a viewer that keeps falling behind is
+switched to images. JPEG viewers keep latest-frame-wins. H.264 is offered only
+to a loopback Station until relay and remote paths are qualified.
 
 Over the relay, throughput is bounded by stop-and-wait 16 KiB chunks (see
 Context). Streams therefore **adapt fps and quality** to what the path
-delivers. They keep latest-frame-wins end to end and never buffer stale
-frames to catch up. Improving relay throughput is separate work that overlaps
+delivers. Image streams keep latest-frame-wins end to end and never buffer
+stale frames to catch up; an H.264 viewer's queue is bounded to about a
+second and resynchronizes rather than catching up. Improving relay throughput is separate work that overlaps
 #1973.
 
 ## Consequences

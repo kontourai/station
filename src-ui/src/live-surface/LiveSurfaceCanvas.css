@@ -49,6 +49,13 @@
   margin: 0;
 }
 
+/* Pane diagnostics: the codec this viewer draws. Quiet, never a notice. */
+.live-surface__codec {
+  color: var(--k-text-muted);
+  font-size: 0.75rem;
+  margin: 0;
+}
+
 .live-surface__stage {
   background: var(--bg-secondary, #111);
   border-radius: var(--radius-md, 6px);
