@@ -1438,6 +1438,11 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // (the icon-only Open in pane beside OK and Cancel) against the real
   // cascade, in the float's compact card and the pane's card.
   'src-ui/src/workspace-panes/browser-pane/__tests__/BrowserPageDialog.touch-target.test.tsx',
+  // #2760: owns Chromium and a local HTTP/1.1 server that holds every
+  // response open, to measure input against a real browser connection pool.
+  'src-ui/src/live-surface/__tests__/liveSurfaceInputHeadroom.browser.test.ts',
+  // #4418: owns Chromium to decode a recorded H.264 stream with WebCodecs.
+  'src-ui/src/live-surface/__tests__/liveSurfaceVideoDecoder.browser.test.ts',
   'src-ui/src/__tests__/ImportedConversationPane.test.tsx',
   // station#4474 H1 (review round): same shape again — launches a real
   // Chromium via `@playwright/test` to measure real cascade-resolved
