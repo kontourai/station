@@ -155,7 +155,8 @@ test.describe('Dock bar bounds (#4401)', () => {
     await expect
       .poll(async () => Math.round((await dock.boundingBox())!.width))
       .toBe(280);
-    await dock.locator('.chat-dock__active-identity-title').hover();
+    // Any point of the bar reveals its hover-only controls.
+    await dock.getByRole('button', { name: /^More dock actions/ }).hover();
 
     const { bar: barBox, items } = await barGeometry(page);
     expect(overlappingPairs(items)).toEqual([]);
@@ -190,7 +191,8 @@ test.describe('Dock bar bounds (#4401)', () => {
     page,
   }) => {
     const dock = await openDockOnRight(page);
-    await dock.locator('.chat-dock__active-identity-title').hover();
+    // Any point of the bar reveals its hover-only controls.
+    await dock.getByRole('button', { name: /^More dock actions/ }).hover();
     await expect(dock.locator('.chat-dock__header')).not.toHaveClass(
       /is-compact/,
     );
