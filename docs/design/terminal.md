@@ -89,8 +89,9 @@ service and reads its journal after clean disposal. This provides
 filesystem persistence across service recreation, not power-loss qualification.
 
 The Settings controls for persistence/location, age and aggregate retention,
-clear-history actions, doctor reporting, explicit restart, and command sessions
-in the UI remain follow-ups within phase 1. `terminal:observe` is
+clear-history actions, doctor reporting, and restart and command sessions in
+the UI remain follow-ups within phase 1. The server side of command sessions
+and explicit restart is implemented (see Session kinds and Sessions below). `terminal:observe` is
 governed by the Admin ceiling; no preset gains it. Its description names future
 remote-watch admission. The complete scope vocabulary uses 253 of the parser's
 256 characters, leaving three characters. Part b1 adds the personal-operator socket
@@ -447,6 +448,34 @@ visible in the UI:
 Policy, authorization, and binding live in the core server; the supervisor
 only spawns, relays bytes, and writes journals.
 
+**Implemented (#3994, server side).** A command session is a
+`TerminalSessions` record with `kind: 'command'`, opened only by the server
+(`openInternal`) with a server-resolved program. Both hosts run it through
+[`command-process.ts`](../../src-server/services/terminal/command-process.ts):
+pipes, stdout and stderr together, its own process group on POSIX, a 16 MiB
+default output cap (a cap outside 1 KiB to 1 GiB is refused, not clamped).
+Output past the cap is not journaled; the command is ended, and its record
+reports `outputCapped`. The exit also records the signal number that ended it.
+
+An ACP agent's `terminal/create`, `terminal/output`, `terminal/wait_for_exit`,
+`terminal/kill` and `terminal/release` run on these sessions
+([`acp-session-terminals.ts`](../../src-server/services/acp/acp-session-terminals.ts))
+wherever the host has terminal sessions (a personal host). They are recorded
+under the agent session's Project (or `.agent-terminals` when it has none) and
+its `thread:<id>` binding, with the same journal and sanitizer as a user's
+shell, so the operator can list, read and type into them. The requested `cwd`
+must be inside the agent session's directory; anything else is refused with
+`-32602`. The ACP answers keep their protocol meaning: an exit is an exit code
+or a signal name, never both; a command that cannot start is exit 127 (not
+found) or 126 with the reason as its output; `outputByteLimit` truncates from
+the beginning on a character boundary. `truncated` is also true when retention
+or the cap dropped output, which the plain child-process path could not lose.
+Kill ends the command and keeps its output; release also forgets the id.
+Under the supervisor the command survives a core handoff and is reattached as
+a session; reattaching the engine that started it is not implemented, so its
+ACP connection does not survive. Hosted hosts have no terminal sessions and
+keep plain child processes for agent terminals.
+
 ### Sessions
 
 Every session has a server-generated `terminalId` that is unique across the
@@ -461,6 +490,17 @@ can never act on a session it was not granted.
 
 Restart and cwd changes are explicit operations. They end the shell and open
 a new journal segment; earlier segments stay readable.
+
+**Implemented (#3994, server side).** `TerminalSessions.restart`, the socket's
+`restart` command and `POST …/terminal-sessions/:id/restart` require operate
+authority. The session keeps its id; its program is resolved again (an agent
+tab's launch profile is re-resolved, never stored); an optional relative
+`subdirectory` is confined to the binding's root like `open`'s, and without
+one the current directory must still be inside that root. The old run ends,
+the journal is sealed so the next run starts a new segment (a journal reopened
+by a supervisor workload starts one too), and the record carries
+`restart: {count, afterSeq, at}`. Command sessions and server-owned launches
+are refused: no program is stored for them.
 
 ### Journal
 
@@ -673,7 +713,7 @@ plugin-supplied key:
 | `pane:builtin:coding:terminal` | Kept as an alias of the new terminal pane |
 | `station.terminal.operations` metric, `station doctor` PTY probe | Kept; doctor also reports shell hosts |
 | ACP agent interactive tabs | Interactive supervisor workloads |
-| ACP agent terminal commands | Command supervisor workloads |
+| ACP agent terminal commands | Command sessions; supervisor workloads under a supervisor (server side done) |
 
 ## Delivery
 

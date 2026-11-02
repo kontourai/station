@@ -334,8 +334,15 @@ product decisions.
     reads it from disk.
   - `interactive` workloads run in a PTY. `command` workloads run on pipes,
     with stdout and stderr journaled together up to an output cap (16 MiB by
-    default), after which they are ended. Agent commands do not use the
-    command kind yet; that is engine work (phase 3).
+    default), after which they are ended and their exit reports
+    `outputCapped`. The cap, signal reporting and group termination live in
+    [`command-process.ts`](../../src-server/services/terminal/command-process.ts),
+    shared with the in-process host. An ACP agent's terminals are command
+    sessions ([terminal design](terminal.md#session-kinds)). An exited
+    workload's id may be spawned again; that is how an explicit restart keeps
+    a session's id. Reattaching the engine that started a command is not
+    implemented: the command survives a handoff, but its ACP connection does
+    not.
   - `terminate` ends the whole tree. On POSIX that is the PTY adapter's
     process-group census for a shell, or the command's own process group,
     SIGTERM then SIGKILL after 3 s. On Windows it is `taskkill /T /F` before
