@@ -9,6 +9,10 @@ import {
 } from '../../../__test-utils__/synthetic-live-surface-producer.js';
 import { LiveSurfaceControlLeaseState } from '../control-lease.js';
 import {
+  H264_FALLBACK_OVERFLOWS,
+  H264_FALLBACK_WINDOW_MS,
+  H264_QUEUE_MAX_UNITS,
+  KEYFRAME_REQUEST_MIN_INTERVAL_MS,
   LiveSurfaceHub,
   type LiveSurfaceHubOptions,
   type LiveSurfaceViewer,
@@ -406,5 +410,273 @@ describe('live surface hub', () => {
     const after = viewer.next();
     viewer.close();
     expect(await after).toBeNull();
+  });
+});
+
+describe('live surface hub: H.264 viewers (#4418)', () => {
+  /** A producer whose frames the test emits by hand. */
+  async function videoHub() {
+    let publish!: (header: LiveSurfaceFrameHeader, body: Uint8Array) => void;
+    const producer = new SyntheticLiveSurfaceProducer('surface-1', {
+      backpressure: false,
+    });
+    const requestKeyframe = vi.fn();
+    const setCodecDemand = vi.fn();
+    producer.start = async (_params, onFrame) => {
+      publish = onFrame;
+    };
+    const hub = new LiveSurfaceHub(
+      Object.assign(producer, { requestKeyframe, setCodecDemand }),
+      new LiveSurfaceControlLeaseState('surface-1'),
+      { heartbeatMs: 60_000 },
+    );
+    let seq = 0;
+    const unit = (keyframe: boolean, tag: number) =>
+      publish(
+        {
+          surfaceId: 'surface-1',
+          seq: ++seq,
+          epoch: 0,
+          codec: 'h264',
+          keyframe,
+          width: 320,
+          height: 200,
+          deviceScaleFactor: 1,
+          capturedAt: 1,
+        },
+        new Uint8Array([tag]),
+      );
+    const jpeg = () =>
+      publish(
+        {
+          surfaceId: 'surface-1',
+          seq: ++seq,
+          epoch: 0,
+          codec: 'jpeg',
+          width: 320,
+          height: 200,
+          deviceScaleFactor: 1,
+          capturedAt: 1,
+        },
+        new Uint8Array([0xff]),
+      );
+    return { hub, unit, jpeg, requestKeyframe, setCodecDemand };
+  }
+
+  async function tagOf(viewer: LiveSurfaceViewer): Promise<number | string> {
+    const record = await viewer.next();
+    if (record?.kind !== 'frame') return `not a frame: ${record?.kind}`;
+    return record.header.codec === 'h264'
+      ? record.body[0]!
+      : `codec ${record.header.codec}`;
+  }
+
+  test('delivers units in order, never a delta before the first keyframe', async () => {
+    const { hub, unit } = await videoHub();
+    const viewer = hub.attach(PARAMS, undefined, { codec: 'h264' });
+    await hub.settled();
+    expect((await viewer.next())?.kind).toBe('state');
+    unit(false, 1);
+    unit(false, 2);
+    unit(true, 3);
+    unit(false, 4);
+    unit(false, 5);
+    expect(await tagOf(viewer)).toBe(3);
+    expect(await tagOf(viewer)).toBe(4);
+    expect(await tagOf(viewer)).toBe(5);
+    viewer.close();
+    await hub.dispose();
+  });
+
+  test('overflow drops the queue, asks for a keyframe and resumes only at one', async () => {
+    const { hub, unit, requestKeyframe } = await videoHub();
+    const viewer = hub.attach(PARAMS, undefined, { codec: 'h264' });
+    await hub.settled();
+    await viewer.next();
+    requestKeyframe.mockClear();
+    unit(true, 1);
+    // The viewer is not reading: fill its queue, then one more.
+    for (let i = 0; i < H264_QUEUE_MAX_UNITS; i++) unit(false, 2);
+    expect(requestKeyframe).toHaveBeenCalledTimes(1);
+    // Deltas after the overflow are undecodable without the dropped base:
+    // the first record the viewer gets is the next keyframe.
+    unit(false, 3);
+    unit(false, 4);
+    unit(true, 5);
+    unit(false, 6);
+    expect(await tagOf(viewer)).toBe(5);
+    expect(await tagOf(viewer)).toBe(6);
+    viewer.close();
+    await hub.dispose();
+  });
+
+  test('keyframe requests reach the encoder at most once per interval, and a suppressed one is deferred, not dropped', async () => {
+    const { hub, unit, requestKeyframe } = await videoHub();
+    const viewers = [0, 1, 2].map(() =>
+      hub.attach(PARAMS, undefined, { codec: 'h264' }),
+    );
+    await hub.settled();
+    vi.advanceTimersByTime(KEYFRAME_REQUEST_MIN_INTERVAL_MS);
+    requestKeyframe.mockClear();
+    // All three overflow on the same unit: one request, not three.
+    unit(true, 1);
+    for (let i = 0; i < H264_QUEUE_MAX_UNITS; i++) unit(false, 2);
+    expect(requestKeyframe).toHaveBeenCalledTimes(1);
+    // Inside the window: held back, then sent once when it opens.
+    unit(true, 3);
+    for (let i = 0; i < H264_QUEUE_MAX_UNITS; i++) unit(false, 4);
+    expect(requestKeyframe).toHaveBeenCalledTimes(1);
+    vi.advanceTimersByTime(KEYFRAME_REQUEST_MIN_INTERVAL_MS - 1);
+    expect(requestKeyframe).toHaveBeenCalledTimes(1);
+    vi.advanceTimersByTime(1);
+    expect(requestKeyframe).toHaveBeenCalledTimes(2);
+    vi.advanceTimersByTime(KEYFRAME_REQUEST_MIN_INTERVAL_MS * 4);
+    expect(requestKeyframe).toHaveBeenCalledTimes(2);
+    for (const viewer of viewers) viewer.close();
+    await hub.dispose();
+  });
+
+  test('a second viewer joining inside the window still gets its keyframe request', async () => {
+    const { hub, requestKeyframe } = await videoHub();
+    const first = hub.attach(PARAMS, undefined, { codec: 'h264' });
+    await hub.settled();
+    vi.advanceTimersByTime(KEYFRAME_REQUEST_MIN_INTERVAL_MS);
+    requestKeyframe.mockClear();
+    const second = hub.attach(PARAMS, undefined, { codec: 'h264' });
+    await hub.settled();
+    expect(requestKeyframe).toHaveBeenCalledTimes(1);
+    vi.advanceTimersByTime(100);
+    const third = hub.attach(PARAMS, undefined, { codec: 'h264' });
+    await hub.settled();
+    expect(requestKeyframe).toHaveBeenCalledTimes(1);
+    vi.advanceTimersByTime(KEYFRAME_REQUEST_MIN_INTERVAL_MS);
+    expect(requestKeyframe).toHaveBeenCalledTimes(2);
+    for (const viewer of [first, second, third]) viewer.close();
+    await hub.dispose();
+  });
+
+  test('a viewer that keeps overflowing is switched to images and stops asking for keyframes', async () => {
+    const { hub, unit, jpeg, requestKeyframe, setCodecDemand } =
+      await videoHub();
+    const viewer = hub.attach(PARAMS, undefined, { codec: 'h264' });
+    await hub.settled();
+    await viewer.next();
+    requestKeyframe.mockClear();
+    const overflow = () => {
+      unit(true, 1);
+      for (let i = 0; i < H264_QUEUE_MAX_UNITS; i++) unit(false, 2);
+      // Past the hub-wide rate window, so each request is sent at once.
+      vi.advanceTimersByTime(600);
+    };
+    for (let i = 0; i < H264_FALLBACK_OVERFLOWS; i++) overflow();
+    // Two overflows asked for keyframes; the third switched to images.
+    expect(requestKeyframe).toHaveBeenCalledTimes(H264_FALLBACK_OVERFLOWS - 1);
+    expect(setCodecDemand).toHaveBeenLastCalledWith({
+      image: true,
+      h264: false,
+    });
+    expect((await viewer.next())?.kind).toBe('state');
+    const next = tagOf(viewer);
+    unit(true, 9);
+    vi.advanceTimersByTime(1_000);
+    jpeg();
+    expect(await next).toBe('codec jpeg');
+    overflow();
+    expect(requestKeyframe).toHaveBeenCalledTimes(H264_FALLBACK_OVERFLOWS - 1);
+    viewer.close();
+    await hub.dispose();
+  });
+
+  test('overflows spread wider than the window keep the viewer on H.264', async () => {
+    const { hub, unit, setCodecDemand } = await videoHub();
+    const viewer = hub.attach(PARAMS, undefined, { codec: 'h264' });
+    await hub.settled();
+    await viewer.next();
+    for (let round = 0; round < H264_FALLBACK_OVERFLOWS + 1; round++) {
+      unit(true, 1);
+      for (let i = 0; i < H264_QUEUE_MAX_UNITS; i++) unit(false, 2);
+      vi.advanceTimersByTime(H264_FALLBACK_WINDOW_MS / 2 + 1);
+    }
+    expect(setCodecDemand).toHaveBeenLastCalledWith({
+      image: false,
+      h264: true,
+    });
+    viewer.close();
+    await hub.dispose();
+  });
+
+  test('a keyframe larger than the whole queue bound sends that viewer to images at once', async () => {
+    const { hub, setCodecDemand, requestKeyframe } = await videoHub();
+    let publish!: (header: LiveSurfaceFrameHeader, body: Uint8Array) => void;
+    (hub.producer as SyntheticLiveSurfaceProducer).start = async (_p, f) => {
+      publish = f;
+    };
+    const viewer = hub.attach(PARAMS, undefined, { codec: 'h264' });
+    await hub.settled();
+    await viewer.next();
+    requestKeyframe.mockClear();
+    publish(
+      {
+        surfaceId: 'surface-1',
+        seq: 1,
+        epoch: 0,
+        codec: 'h264',
+        keyframe: true,
+        width: 320,
+        height: 200,
+        deviceScaleFactor: 1,
+        capturedAt: 1,
+      },
+      new Uint8Array(4 * 1024 * 1024 + 1),
+    );
+    expect(requestKeyframe).not.toHaveBeenCalled();
+    expect(setCodecDemand).toHaveBeenLastCalledWith({
+      image: true,
+      h264: false,
+    });
+    viewer.close();
+    await hub.dispose();
+  });
+
+  test('keeps image and H.264 viewers apart and reports their demand', async () => {
+    const { hub, unit, jpeg, setCodecDemand, requestKeyframe } =
+      await videoHub();
+    const image = hub.attach(PARAMS);
+    await hub.settled();
+    expect(setCodecDemand).toHaveBeenLastCalledWith({
+      image: true,
+      h264: false,
+    });
+    await image.next();
+    const video = hub.attach(PARAMS, undefined, { codec: 'h264' });
+    await hub.settled();
+    // Joining a running stream asks for a decoding point at once.
+    expect(requestKeyframe).toHaveBeenCalled();
+    expect(setCodecDemand).toHaveBeenLastCalledWith({
+      image: true,
+      h264: true,
+    });
+    await video.next();
+    await image.next();
+    // Each viewer's next record is the first of its own codec: the image
+    // viewer skips the access unit, the H.264 viewer skips the JPEG.
+    const imageNext = tagOf(image);
+    unit(true, 7);
+    vi.advanceTimersByTime(1_000);
+    jpeg();
+    expect(await imageNext).toBe('codec jpeg');
+    expect(await tagOf(video)).toBe(7);
+    const videoNext = tagOf(video);
+    vi.advanceTimersByTime(1_000);
+    jpeg();
+    unit(false, 8);
+    expect(await videoNext).toBe(8);
+    image.close();
+    expect(setCodecDemand).toHaveBeenLastCalledWith({
+      image: false,
+      h264: true,
+    });
+    video.close();
+    await hub.dispose();
   });
 });
