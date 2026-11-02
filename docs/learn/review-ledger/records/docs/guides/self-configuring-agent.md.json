@@ -208,7 +208,15 @@
 
     "src-server/services/orchestration/__tests__/cancellation-fence-race.process.test.ts",
 
-    "src-server/services/orchestration/__tests__/ownership-cascade-review.test.ts"
+    "src-server/services/orchestration/__tests__/ownership-cascade-review.test.ts",
+
+    "packages/contracts/src/session-attention.ts",
+
+    "src-ui/src/views/home/work-facts.ts",
+
+    "src-ui/src/views/home/work-status.ts",
+
+    "src-ui/src/__tests__/owned-work-status.test.tsx"
   ],
 
   "checks": [
