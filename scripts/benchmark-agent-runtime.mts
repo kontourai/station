@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import {
+  copyFileSync,
   existsSync,
   mkdtempDisposableSync,
   readdirSync,
@@ -437,6 +438,7 @@ async function run(
       durable &&
       (onDiskBytes > journalBudgetBytes || bodiesBytes > bodyBudgetBytes)
     ) {
+      copyFileSync(journalPath, `${output}.failure.sqlite`);
       writeFileSync(
         `${output}.failure.json`,
         JSON.stringify(
