@@ -117,10 +117,12 @@ it.each([5, 130, 300, 389])(
       expect(prefix.slice(0, visible.length)).toEqual(visible);
       const frames = readSqliteAgentFrames({ database, key: lease.key });
       expect(
-        frames.map((frame) => JSON.parse(frame.wire.slice(6)).delta),
+        frames
+          .filter((frame) => frame.id.startsWith('answer:'))
+          .map((frame) => JSON.parse(frame.wire.slice(6)).delta),
       ).toEqual(visible);
       expect(new Set(frames.map((frame) => frame.id)).size).toBe(
-        visible.length,
+        2 * visible.length,
       );
       let calls = 0;
       const model = durableLanguageModel({

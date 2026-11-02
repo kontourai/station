@@ -68,12 +68,16 @@ function partialBatches(
     batches.push(agentWire(parts.slice(offset, offset + width)));
   return batches;
 }
-function readPartialBatch(database: DatabaseSync, ref: string): string[] {
+function readPartialBatch(
+  database: DatabaseSync,
+  ref: string,
+  width = 128,
+): string[] {
   const parts = readAgentWire(readAgentBody(database, ref));
   if (
     !Array.isArray(parts) ||
     parts.length < 1 ||
-    parts.length > 1024 ||
+    parts.length > width ||
     !parts.every((part) => typeof part === 'string')
   )
     throw new Error('DURABLE_AGENT_PARTIAL_BATCH_DAMAGED');
@@ -529,7 +533,7 @@ export function readAgentEffect(
           partials: [
             ...attempt.partials.flatMap((ref) => {
               if (!batched) return [readAgentBody(database, ref)];
-              const batch = readPartialBatch(database, ref);
+              const batch = readPartialBatch(database, ref, wide ? 1024 : 128);
               if (tailed && batch.length !== (wide ? 1024 : 128))
                 throw new Error('DURABLE_AGENT_PARTIAL_BATCH_DAMAGED');
               return batch;

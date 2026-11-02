@@ -297,7 +297,7 @@ The benchmark includes the actual in-process chat/SSE route and `projectFrame`/`
 
 
 Writer 11 appends foreground frames to bounded compressed tail blocks across commits while preserving every
-frame's original ID, wire, timestamp, digest and position. A compressed timestamp vector preserves the time of each committed frame. Nonterminal controls share ordered batches. An indexed group and
+frame's original ID, wire, timestamp, digest and position. Compressed timestamp and position vectors preserve each committed frame while coalescing interleaved groups. Nonterminal controls share ordered batches. An indexed group and
 ordinal locate individual frames without scanning previous blocks. Migration validates and packs legacy frame rows, preserving their IDs, wires, positions and timestamps before removing the legacy frame table. The 1,048,576-frame ceiling remains reachable: compression
 reduces storage, not logical frame counts. Two reserved positions carry a typed
 `DURABLE_AGENT_FRAME_CAPACITY` error and the terminal marker. The chat route shows

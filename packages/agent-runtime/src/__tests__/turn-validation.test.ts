@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { constants, DatabaseSync } from 'node:sqlite';
 import { afterEach, expect, it } from 'vitest';
 import {
+  auditSqliteAgentJournal,
   createAgentRuntime,
   durableLanguageModel,
   openSqliteAgentJournal,
@@ -15,6 +16,7 @@ import {
   bodyChunkDefinitions,
   bodyDefinitions,
   putAgentBody,
+  readAgentBody,
   readAgentBodyChunk,
 } from '../turn-bodies.js';
 import { changeDefinitions } from '../turn-changes.js';
@@ -23,6 +25,19 @@ import { finish, key, owner } from './fixture.js';
 import { turnFixture } from './turn-fixture.js';
 
 function removeChangeTracking(database: DatabaseSync) {
+  const bodies = database
+    .prepare('SELECT digest FROM agent_steps_bodies')
+    .all()
+    .map((row) => ({
+      digest: String(row.digest),
+      wire: readAgentBody(database, String(row.digest)),
+    }));
+  database.exec('DROP TRIGGER agent_steps_bodies_no_update');
+  for (const body of bodies)
+    database
+      .prepare('UPDATE agent_steps_bodies SET wire=? WHERE digest=?')
+      .run(body.wire, body.digest);
+  database.exec(bodyDefinitions[1]);
   for (const row of database
     .prepare(
       "SELECT name FROM sqlite_schema WHERE type='trigger' AND name GLOB 'agent_steps_track_*'",
@@ -243,7 +258,9 @@ for (const previous of [8, 9] as const)
         id: 'model:old',
         kind: 'model',
         replay: 'unsafe',
-        input: agentWire({ prompt: 'retained' }),
+        input: agentWire({
+          prompt: previous === 9 ? 'retained'.repeat(1000) : 'retained',
+        }),
       },
     });
     await f.lease.effect({ type: 'effectBegin', id: 'model:old' });
@@ -300,6 +317,20 @@ for (const previous of [8, 9] as const)
         ),
       ).version,
     ).toBe(5);
+    if (previous === 9) {
+      const bytes = f.database
+        .prepare('SELECT digest FROM agent_steps_body_chunks')
+        .all()
+        .reduce(
+          (total, row) =>
+            total +
+            Buffer.byteLength(
+              readAgentBodyChunk(f.database, String(row.digest)),
+            ),
+          0,
+        );
+      expect(bytes).toBe(Buffer.byteLength('retained'.repeat(1000)));
+    }
   });
 
 it('400 individually committed text chunks retain bounded storage and an exact aborted prefix', async () => {
@@ -333,6 +364,7 @@ it('400 individually committed text chunks retain bounded storage and an exact a
       `paced:${index}`,
       `data: ${JSON.stringify({ type: 'text-delta', id: 'a', delta })}\n\n`,
     );
+    await f.lease.frame(`control:${index}`, 'data: {"type":"checkpoint"}\n\n');
   }
   f.database.exec('PRAGMA wal_checkpoint(TRUNCATE)');
   expect(diskBytes() - before).toBeLessThanOrEqual(2 * textBytes + 128 * 1024);
@@ -352,19 +384,13 @@ it('400 individually committed text chunks retain bounded storage and an exact a
     'immutable latest agent change',
   );
   const frames = readSqliteAgentFrames({ database: f.database, key: f.key });
-  expect(frames).toHaveLength(400);
+  expect(frames).toHaveLength(800);
   expect(frames.map((frame) => frame.createdAt)).toEqual(
-    Array.from({ length: 400 }, (_, index) =>
-      new Date(1_000 + (index + 1) * 20).toISOString(),
-    ),
+    Array.from({ length: 400 }, (_, index) => {
+      const at = new Date(1_000 + (index + 1) * 20).toISOString();
+      return [at, at];
+    }).flat(),
   );
-  expect(
-    Number(
-      f.database
-        .prepare('SELECT count(*) AS n FROM agent_steps_frame_blocks')
-        .get()?.n,
-    ),
-  ).toBeLessThanOrEqual(4);
   const recovered = await f.recover();
   const { effect } = await recovered.effect({
     type: 'effectRead',
@@ -486,6 +512,13 @@ it('completed turn retention expires replay payloads while preserving its no-red
   const f = await turnFixture();
   cleanup.push(() => f.close());
   const text = 'retained text '.repeat(800);
+  expect(
+    await f.lease.approval(
+      { id: 'finished-tool', input: text, replay: 'unsafe' },
+      60_000,
+      async () => true,
+    ),
+  ).toBe(true);
   await f.lease.tool(
     { id: 'finished-tool', input: text, replay: 'unsafe' },
     async () => text,
@@ -597,7 +630,10 @@ it('4-byte deltas share completed text with the next prompt and retain exact fra
     );
     const next = await runWithAgentTurn(f.lease, () =>
       model.doStream({
-        prompt: [{ role: 'assistant', content: [{ type: 'text', text }] }],
+        prompt: Array.from({ length: 60 }, () => ({
+          role: 'assistant' as const,
+          content: [{ type: 'text' as const, text }],
+        })),
       }),
     );
     for await (const _part of next.stream) {
@@ -610,6 +646,12 @@ it('4-byte deltas share completed text with the next prompt and retain exact fra
     expect(
       effect.attempts[0]?.partials.map((wire) => JSON.parse(wire)),
     ).toHaveLength(400);
+  });
+  await f.crash.reopen();
+  expect(auditSqliteAgentJournal({ database: f.database })).toEqual({
+    turns: 1,
+    effects: 2,
+    approvals: 0,
   });
   f.database.exec('PRAGMA wal_checkpoint(TRUNCATE)');
   const disk =

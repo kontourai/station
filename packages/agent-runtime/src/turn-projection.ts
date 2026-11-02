@@ -115,6 +115,7 @@ function parseBlock(row: Record<string, unknown>): AgentFrame[] {
         .min(1)
         .max(1024),
       times: z.array(z.iso.datetime()).max(1024).optional(),
+      positions: z.array(z.number().int().nonnegative()).max(1024).optional(),
     })
     .strict()
     .parse(
@@ -137,7 +138,15 @@ function parseBlock(row: Record<string, unknown>): AgentFrame[] {
       ]),
     ) !== envelope.digest ||
     (raw.times !== undefined && raw.times.length !== raw.wires.length) ||
-    Number(row.last_position) !== Number(row.position) + raw.wires.length - 1 ||
+    (raw.positions !== undefined &&
+      (raw.positions.length !== raw.wires.length ||
+        raw.positions[0] !== row.position ||
+        raw.positions.some(
+          (position, index, positions) =>
+            index > 0 && position <= positions[index - 1]!,
+        ))) ||
+    Number(row.last_position) !==
+      (raw.positions?.at(-1) ?? Number(row.position) + raw.wires.length - 1) ||
     Number(row.last_ordinal) !==
       Number(row.first_ordinal) + raw.wires.length - 1
   )
@@ -148,7 +157,7 @@ function parseBlock(row: Record<string, unknown>): AgentFrame[] {
       id: String(row.group_id).startsWith('ordinal:')
         ? `${String(row.group_id).slice(8)}:${Number(row.first_ordinal) + index}`
         : String(row.group_id).slice(8),
-      position: Number(row.position) + index,
+      position: raw.positions?.[index] ?? Number(row.position) + index,
       wire,
       digest: hash(wire),
       createdAt: raw.times?.[index] ?? raw.at,
@@ -160,19 +169,18 @@ function putBlock(
   turnId: string,
   frames: AgentFrame[],
 ) {
-  const previous = agentStatement(
-    database,
-    'SELECT * FROM agent_steps_frame_blocks WHERE turn_id=? ORDER BY position DESC LIMIT 1',
-  ).get(turnId);
   const incoming = frames[0]!;
   const incomingAddress = frameAddress(incoming.id);
+  const previous = agentStatement(
+    database,
+    'SELECT * FROM agent_steps_frame_blocks WHERE turn_id=? AND group_id=? ORDER BY first_ordinal DESC LIMIT 1',
+  ).get(turnId, incomingAddress.group);
   let append =
     previous &&
     previous.group_id === incomingAddress.group &&
-    Number(previous.last_position) + 1 === incoming.position &&
     Number(previous.last_ordinal) + 1 === incomingAddress.ordinal &&
-    Number(previous.last_position) -
-      Number(previous.position) +
+    Number(previous.last_ordinal) -
+      Number(previous.first_ordinal) +
       1 +
       frames.length <=
       128;
@@ -196,6 +204,9 @@ function putBlock(
     at: first.createdAt,
     wires: frames.map((frame) => frame.wire),
     ...(times.some((at) => at !== first.createdAt) ? { times } : {}),
+    ...(frames.some((frame, index) => frame.position !== first.position + index)
+      ? { positions: frames.map((frame) => frame.position) }
+      : {}),
   };
   const digest = hash(
     canonical([
@@ -318,7 +329,7 @@ export function projectAgentFrames(
       Number(
         agentStatement(
           database,
-          'SELECT last_position AS n FROM agent_steps_frame_blocks WHERE turn_id=? ORDER BY position DESC LIMIT 1',
+          'SELECT max(last_position) AS n FROM agent_steps_frame_blocks WHERE turn_id=?',
         ).get(turnId)?.n ?? -1,
       ) + 1,
     );

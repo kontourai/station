@@ -2,11 +2,24 @@ import type { DatabaseSync } from 'node:sqlite';
 import { afterEach, expect, it } from 'vitest';
 import { canonical } from '../encoding.js';
 import { readSqliteAgentFrames } from '../internal.js';
-import { bodyDefinitions } from '../turn-bodies.js';
+import { bodyDefinitions, readAgentBody } from '../turn-bodies.js';
 import { framesDefinition } from '../turn-projection.js';
 import { turnFixture } from './turn-fixture.js';
 
 function removeChangeTracking(database: DatabaseSync) {
+  const bodies = database
+    .prepare('SELECT digest FROM agent_steps_bodies')
+    .all()
+    .map((row) => ({
+      digest: String(row.digest),
+      wire: readAgentBody(database, String(row.digest)),
+    }));
+  database.exec('DROP TRIGGER agent_steps_bodies_no_update');
+  for (const body of bodies)
+    database
+      .prepare('UPDATE agent_steps_bodies SET wire=? WHERE digest=?')
+      .run(body.wire, body.digest);
+  database.exec(bodyDefinitions[1]);
   for (const row of database
     .prepare(
       "SELECT name FROM sqlite_schema WHERE type='trigger' AND name GLOB 'agent_steps_track_*'",

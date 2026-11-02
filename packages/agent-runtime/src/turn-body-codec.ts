@@ -20,17 +20,18 @@ function delta(
     !['text-delta', 'reasoning-delta'].includes(String(type[1]))
   )
     return;
-  const field = node.findIndex(
-    (pair) =>
-      Array.isArray(pair) &&
-      ['delta', 'text'].includes(String(pair[0])) &&
-      typeof pair[1] === 'string',
-  );
-  if (field < 0) return;
-  const pair = node[field] as Node[];
-  const template = [...node];
-  template[field] = [pair[0]!, ''];
-  return { field, text: String(pair[1]), template };
+  for (let field = 0; field < node.length; field++) {
+    const pair = node[field];
+    if (
+      !Array.isArray(pair) ||
+      !['delta', 'text'].includes(String(pair[0])) ||
+      typeof pair[1] !== 'string'
+    )
+      continue;
+    const template = [...node];
+    template[field] = [pair[0]!, ''];
+    return { field, text: String(pair[1]), template };
+  }
 }
 function nested(value: string): Node | undefined {
   if (!value.startsWith('[')) return;
@@ -138,17 +139,20 @@ export function encodeAgentBody(
         run: [first.template, first.field, lengths, visit(texts.join(''))],
       });
     }
-    const packed: Node[] = [];
-    if (tape.length > 7) {
-      for (let offset = 0; offset < tape.length; offset += 7) {
-        const page = { page: tape.slice(offset, offset + 7) };
+    let packed = tape;
+    while (packed.length > 7) {
+      const pages: Node[] = [];
+      for (let offset = 0; offset < packed.length; offset += 7) {
+        const page = { page: packed.slice(offset, offset + 7) };
         const encoded = JSON.stringify(page);
         if (encoded.length <= 8192)
-          packed.push({ spread: putNode(encoded, agentBodyRefs(page)) });
-        else packed.push(...page.page);
+          pages.push({ spread: putNode(encoded, agentBodyRefs(page)) });
+        else pages.push(...page.page);
       }
+      if (pages.length === packed.length) break;
+      packed = pages;
     }
-    return intern({ tape: packed.length ? packed : tape, strings });
+    return intern({ tape: packed, strings });
   };
   const encoded = visit(JSON.parse(wire));
   const payload = deflateSync(JSON.stringify(encoded)).toString('base64');
@@ -201,25 +205,34 @@ export function decodeAgentBody(
     if (!Array.isArray(node.tape) || typeof node.strings !== 'boolean')
       throw new Error('DURABLE_AGENT_BODY_DAMAGED');
     const values: Node[] = [];
-    const tape = node.tape.flatMap((part) => {
-      if (
-        part &&
-        !Array.isArray(part) &&
-        typeof part === 'object' &&
-        typeof part.spread === 'string'
-      ) {
-        const page = load(part.spread);
+    const expand = (parts: Node[]): Node[] =>
+      parts.flatMap((part) => {
         if (
-          !page ||
-          Array.isArray(page) ||
-          typeof page !== 'object' ||
-          !Array.isArray(page.page)
-        )
-          throw new Error('DURABLE_AGENT_BODY_DAMAGED');
-        return page.page;
-      }
-      return [part];
-    });
+          part &&
+          !Array.isArray(part) &&
+          typeof part === 'object' &&
+          typeof part.spread === 'string'
+        ) {
+          if (active.has(part.spread) || active.size >= 128)
+            throw new Error('DURABLE_AGENT_BODY_DAMAGED');
+          active.add(part.spread);
+          try {
+            const page = load(part.spread);
+            if (
+              !page ||
+              Array.isArray(page) ||
+              typeof page !== 'object' ||
+              !Array.isArray(page.page)
+            )
+              throw new Error('DURABLE_AGENT_BODY_DAMAGED');
+            return expand(page.page);
+          } finally {
+            active.delete(part.spread);
+          }
+        }
+        return [part];
+      });
+    const tape = expand(node.tape);
     for (const part of tape) {
       if (
         part &&

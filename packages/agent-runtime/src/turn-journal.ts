@@ -32,6 +32,7 @@ import {
   readAgentBody,
   readAgentBodyChunk,
   readAgentBodyNode,
+  repackAgentBodies,
 } from './turn-bodies.js';
 import {
   changeDefinitions,
@@ -1086,6 +1087,9 @@ export function openSqliteAgentJournal(options: {
       database.exec(currentDefinitions[0]!);
       database.exec("INSERT INTO agent_steps_meta VALUES(1,'agent-steps/11')");
       migrateAgentEffectTails(database);
+      compactAgentBodies(database);
+      repackAgentBodies(database);
+      compactAgentBodies(database);
       database.exec('COMMIT');
     } catch (error) {
       if (database.isTransaction) database.exec('ROLLBACK');

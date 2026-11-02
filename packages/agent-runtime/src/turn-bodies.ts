@@ -302,3 +302,28 @@ export function putAgentBody(database: DatabaseSync, wire: string): string {
     throw new Error('DURABLE_AGENT_BODY_DAMAGED');
   return digest;
 }
+
+export function repackAgentBodies(database: DatabaseSync) {
+  database.exec('DROP TRIGGER agent_steps_bodies_no_update');
+  try {
+    for (const row of agentStatement(
+      database,
+      'SELECT digest FROM agent_steps_bodies',
+    ).iterate()) {
+      const digest = String(row.digest);
+      const wire = readAgentBody(database, digest);
+      const stored = encodeAgentBody(
+        wire,
+        (value) => putChunk(database, value),
+        (value, refs) => putNode(database, value, refs),
+      );
+      agentStatement(
+        database,
+        'UPDATE agent_steps_bodies SET wire=? WHERE digest=?',
+      ).run(stored, digest);
+    }
+  } finally {
+    database.exec(bodyDefinitions[1]);
+  }
+  clearAgentBodies(database);
+}

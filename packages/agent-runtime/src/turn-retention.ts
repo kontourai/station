@@ -53,11 +53,11 @@ export function retainAgentTurns(database: DatabaseSync, now: number) {
     ).run(canonical(turn), id);
     agentStatement(
       database,
-      'DELETE FROM agent_steps_effects WHERE turn_id=?',
+      'DELETE FROM agent_steps_approvals WHERE turn_id=?',
     ).run(id);
     agentStatement(
       database,
-      'DELETE FROM agent_steps_approvals WHERE turn_id=?',
+      'DELETE FROM agent_steps_effects WHERE turn_id=?',
     ).run(id);
     agentStatement(
       database,
