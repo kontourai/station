@@ -473,7 +473,11 @@ describe('pairing approve/deny auth tier over the real boundary (#765 D5)', () =
       harness.json(
         {
           // No host shell: access:approve alone, not owner standing.
-          scope: ['orchestration:read', 'orchestration:operate', 'access:approve'],
+          scope: [
+            'orchestration:read',
+            'orchestration:operate',
+            'access:approve',
+          ],
           expectedScope: paired.device.scope,
         },
         harness.operatorCredential,
@@ -705,7 +709,7 @@ describe('a request that asks for an elevated grant', () => {
   });
 });
 
-test('the desktop home-proven local grant can invite and approve a phone, which becomes one of the owner''s own devices', async () => {
+test("the desktop home-proven local grant can invite and approve a phone, which becomes one of the owner's own devices", async () => {
   const h = await createHarness();
   const mint = await h.request(
     '/.well-known/station/v1/pairing/local-grant',
