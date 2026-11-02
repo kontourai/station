@@ -71,7 +71,7 @@ function answer(
   };
 }
 
-function prompt(
+function userPrompt(
   content: string,
   overrides: Partial<ChatMessage> = {},
 ): ChatMessage {
@@ -87,9 +87,9 @@ const IMAGE_PART = {
 
 /** Two settled exchanges; the second message carries an image. */
 const TRANSCRIPT: ChatMessage[] = [
-  prompt('First question'),
+  userPrompt('First question'),
   answer('turn-1', 'First answer'),
-  prompt('Second question', {
+  userPrompt('Second question', {
     contentParts: [{ type: 'text', content: 'Second question' }, IMAGE_PART],
   }),
   answer('turn-2', 'Second answer'),
@@ -250,11 +250,11 @@ describe('Regenerate and Edit and resend (#4406)', () => {
     const onResend = vi.fn();
     renderList(
       [
-        prompt('Fix the login'),
+        userPrompt('Fix the login'),
         answer('turn-failed', 'OAuth session expired', {
           answerEligible: false,
         }),
-        prompt('Try again'),
+        userPrompt('Try again'),
         answer('turn-2', 'Done'),
       ],
       onResend,
@@ -362,9 +362,9 @@ describe('Regenerate and Edit and resend (#4406)', () => {
 describe('which message an action sends again (#4406)', () => {
   test('a steer inside a running turn is not re-sent on its own', () => {
     const messages = [
-      prompt('Start', { turnId: 'turn-1' }),
+      userPrompt('Start', { turnId: 'turn-1' }),
       answer('turn-1', 'Working'),
-      prompt('Also check tests', { turnId: 'turn-1' }),
+      userPrompt('Also check tests', { turnId: 'turn-1' }),
       answer('turn-1', 'Checked'),
     ];
     expect(messageResendSource(messages, 2)).toBeNull();
@@ -375,11 +375,11 @@ describe('which message an action sends again (#4406)', () => {
 
   test('another agent’s message and Station’s own sends are not the person’s to re-send', () => {
     expect(
-      messageResendSource([prompt('Ping', { stationCheckBack: true })], 0),
+      messageResendSource([userPrompt('Ping', { stationCheckBack: true })], 0),
     ).toBeNull();
     expect(
       messageResendSource(
-        [prompt('[SYSTEM_EVENT] Task finished', { turnId: 'turn-1' })],
+        [userPrompt('[SYSTEM_EVENT] Task finished', { turnId: 'turn-1' })],
         0,
       ),
     ).toBeNull();
@@ -387,7 +387,7 @@ describe('which message an action sends again (#4406)', () => {
 
   test('an answer no message of the person’s asked for has nothing to regenerate', () => {
     const messages = [
-      prompt('Question'),
+      userPrompt('Question'),
       answer('turn-1', 'Answer'),
       answer('turn-2', 'Scheduled follow-up'),
     ];

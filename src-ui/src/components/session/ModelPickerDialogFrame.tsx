@@ -104,8 +104,10 @@ export function ModelPickerDialogFrame({
     <div
       ref={panelRef}
       className="session-model-picker"
-      role={hostTitleId ? undefined : 'dialog'}
-      aria-labelledby={hostTitleId ? undefined : titleId}
+      // Inside a host dialog the host owns the dialog role and its name.
+      {...(hostTitleId
+        ? {}
+        : { role: 'dialog' as const, 'aria-labelledby': titleId })}
       tabIndex={-1}
       onKeyDownCapture={containFocus}
     >

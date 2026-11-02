@@ -464,79 +464,68 @@ export function UserMessageActionsMenu({
   // In the ⋯ popup the rows are menu items (with the menu's arrow-key
   // focus); inline in the phone's sheet they are plain buttons in a group,
   // since nothing there gives them menu keyboard behaviour.
-  const rows = (close: () => void, itemRole?: 'menuitem') => (
-    <>
-      {pinsToTask && taskTarget && (
-        <LazyBoundary
-          load={loadConnectedAttachUserInputToTaskButton}
-          componentProps={{
-            ...taskTarget,
-            menuItem: true,
-            onOpen: () => setView('picker'),
-            onClose: () => setView('closed'),
-            returnFocusTarget: triggerRef.current,
-          }}
-          pending={null}
-          unavailable={() => (
-            <span className="turn-footer__unavailable-note">
-              Add to Task is unavailable.
-            </span>
-          )}
-        />
-      )}
-      {onEditAndResend && (
-        <button
-          type="button"
-          role={itemRole}
-          onClick={() => {
+  const rows = (close: () => void, itemRole?: 'menuitem') => {
+    const item = (label: string, onSelect: () => void, className?: string) => (
+      <button
+        type="button"
+        role={itemRole}
+        className={className}
+        onClick={onSelect}
+      >
+        {label}
+      </button>
+    );
+    return (
+      <>
+        {pinsToTask && taskTarget && (
+          <LazyBoundary
+            load={loadConnectedAttachUserInputToTaskButton}
+            componentProps={{
+              ...taskTarget,
+              menuItem: true,
+              onOpen: () => setView('picker'),
+              onClose: () => setView('closed'),
+              returnFocusTarget: triggerRef.current,
+            }}
+            pending={null}
+            unavailable={() => (
+              <span className="turn-footer__unavailable-note">
+                Add to Task is unavailable.
+              </span>
+            )}
+          />
+        )}
+        {onEditAndResend &&
+          item('Edit and resend', () => {
             close();
             // In the phone sheet the fork's draft replaces the chat.
             closeSheet();
             onEditAndResend();
-          }}
-        >
-          Edit and resend
-        </button>
-      )}
-      {canFork && forkSource && onForkFromTurn && (
-        <button
-          type="button"
-          role={itemRole}
-          onClick={() => {
+          })}
+        {canFork &&
+          forkSource &&
+          onForkFromTurn &&
+          item('Fork from here…', () => {
             close();
             onForkFromTurn(forkSource);
-          }}
-        >
-          Fork from here…
-        </button>
-      )}
-      {newChatFromMessage && (
-        <button
-          type="button"
-          role={itemRole}
-          onClick={() => {
+          })}
+        {newChatFromMessage &&
+          item('New chat from this message', () => {
             close();
             newChatFromMessage();
-          }}
-        >
-          New chat from this message
-        </button>
-      )}
-      {onDiscardUnsent && (
-        <button
-          type="button"
-          role={itemRole}
-          className="turn-footer__overflow-item--danger"
-          onClick={() => {
-            close();
-            onDiscardUnsent();
-          }}
-        >
-          Discard unsent message
-        </button>
-      )}
-    </>
-  );
+          })}
+        {onDiscardUnsent &&
+          item(
+            'Discard unsent message',
+            () => {
+              close();
+              onDiscardUnsent();
+            },
+            'turn-footer__overflow-item--danger',
+          )}
+      </>
+    );
+  };
   if (inline)
     return (
       <fieldset className="message-details__menu" aria-label="Message actions">
