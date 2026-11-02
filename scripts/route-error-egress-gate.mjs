@@ -121,7 +121,6 @@ export const REVIEWED_DIRECT_ROUTE_MESSAGE_EGRESS = new Set([
 
 const TRANSPORT_AND_DIAGNOSTIC_BOUNDARIES = [
   'src-server/runtime/conversation/stream-orchestrator.ts',
-  'src-server/services/terminal/terminal-ws-server.ts',
   'src-server/voice/voice-session.ts',
   'src-server/runtime/mcp/mcp-ui-frame-server.ts',
 ];
