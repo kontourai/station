@@ -239,7 +239,10 @@ export function createReportInputRuntime(owners: {
                 const received =
                   input instanceof Request ? input : new Request(input, init);
                 requireInput(received.url === ENDPOINT);
-                return handler.fetch(received);
+                return owners.invokeCurrent(current, (check) => {
+                  check(() => requireInput(claim.isCurrent()));
+                  return handler.fetch(received);
+                });
               },
             }),
           onTransport: (transport) => {

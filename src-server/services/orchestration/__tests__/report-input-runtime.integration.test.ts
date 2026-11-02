@@ -36,6 +36,30 @@ import { sdkFixture } from './delegation-source-fixtures/sdk-source.js';
 import { subject } from './delegation-source-fixtures/source.js';
 import { controlledInputStream } from './delegation-source-fixtures/streamed-text.js';
 
+const handlerObserver = vi.hoisted(() => {
+  const state: { onFetch?: () => void } = {};
+  return state;
+});
+vi.mock('@modelcontextprotocol/server', async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import('@modelcontextprotocol/server')>();
+  return {
+    ...actual,
+    createMcpHandler: (...args: Parameters<typeof actual.createMcpHandler>) => {
+      const handler = actual.createMcpHandler(...args);
+      const fetch = handler.fetch;
+      const spy = vi
+        .spyOn(handler, 'fetch')
+        .mockImplementation((...request) => {
+          handlerObserver.onFetch?.();
+          return fetch(...request);
+        });
+      onTestFinished(() => spy.mockRestore());
+      return handler;
+    },
+  };
+});
+
 test.each([
   'accept',
   'decline',
@@ -48,6 +72,7 @@ test.each([
   'close-failed',
   'registration-failed',
   'publication-retire',
+  'delivery-withdrawn',
 ] as const)(
   'fixed MCP input preserves canonical answer and durable send custody: %s',
   async (scenario) => {
@@ -87,6 +112,19 @@ test.each([
       .mockRejectedValue(new Error('External transport forbidden'));
     onTestFinished(() => externalFetch.mockRestore());
     let binding: ReportInputBinding | undefined;
+    let answerSendStarted = false;
+    let deliveryWithdrawn = false;
+    let deliveryRefusals = 0;
+    let handlerCalls = 0;
+    let staleHandlerCalls = 0;
+    const deliveryFailure = new Error('controlled input delivery withdrawal');
+    handlerObserver.onFetch = () => {
+      handlerCalls++;
+      if (deliveryWithdrawn) staleHandlerCalls++;
+    };
+    onTestFinished(() => {
+      handlerObserver.onFetch = undefined;
+    });
     const sends: Array<{ ordinal: number; answer: boolean }> = [];
     const originalSend = StreamableHTTPClientTransport.prototype.send;
     const intercepted = vi
@@ -105,6 +143,8 @@ test.each([
             ordinal: retained.physicalSends,
             answer: retained.answer !== undefined,
           });
+          if (scenario === 'delivery-withdrawn' && retained.physicalSends === 2)
+            answerSendStarted = true;
           if (scenario === 'send-failed' && retained.physicalSends === 2)
             throw new Error('controlled physical send failure');
         }
@@ -162,8 +202,12 @@ test.each([
         return publication.retainCleanup(cleanup);
       },
       persistence,
-      check: (current, body) =>
-        publication.check({ owner: writer, current }, body),
+      check: async (current, body) => {
+        const value = await publication.check({ owner: writer, current }, body);
+        if (scenario === 'delivery-withdrawn' && answerSendStarted)
+          deliveryWithdrawn = true;
+        return value;
+      },
       withHome: (current, body) =>
         publication.withHome({ owner: writer, current }, body),
       invokeCurrent: (current, invoke) =>
@@ -215,7 +259,16 @@ test.each([
               return open(form, beforeOpen, requestSignal);
             },
             signal,
-            current,
+            scenario === 'delivery-withdrawn'
+              ? () => {
+                  current();
+                  if (deliveryWithdrawn) {
+                    deliveryRefusals++;
+                    throw deliveryFailure;
+                  }
+                  return undefined;
+                }
+              : current,
           );
         },
       },
@@ -339,7 +392,8 @@ test.each([
           decision:
             scenario === 'send-failed' ||
             scenario === 'storage-drift' ||
-            scenario === 'close-failed'
+            scenario === 'close-failed' ||
+            scenario === 'delivery-withdrawn'
               ? ('accept' as const)
               : scenario,
         };
@@ -360,7 +414,8 @@ test.each([
           ...(scenario === 'accept' ||
           scenario === 'send-failed' ||
           scenario === 'storage-drift' ||
-          scenario === 'close-failed'
+          scenario === 'close-failed' ||
+          scenario === 'delivery-withdrawn'
             ? { content: { answer: 'CONTROLLED_SCOPE' } }
             : {}),
         });
@@ -368,7 +423,8 @@ test.each([
         if (
           scenario === 'send-failed' ||
           scenario === 'storage-drift' ||
-          scenario === 'close-failed'
+          scenario === 'close-failed' ||
+          scenario === 'delivery-withdrawn'
         ) {
           assert.ok(driver.invocationFailure);
           const failed = read(binding);
@@ -378,6 +434,24 @@ test.each([
           );
           assert.equal(failed.result, undefined);
           assert.equal(sends.length, scenario === 'storage-drift' ? 1 : 2);
+          if (scenario === 'delivery-withdrawn') {
+            assert.equal(answerSendStarted, true);
+            assert.equal(deliveryWithdrawn, true);
+            assert.ok(
+              handlerCalls > 0,
+              'ordinary MCP handler delivery must be observed',
+            );
+            assert.equal(
+              staleHandlerCalls,
+              0,
+              'MCP handler must not receive a request after currentness withdrawal',
+            );
+            assert.ok(
+              deliveryRefusals > 0,
+              'controlled currentness refusal must execute',
+            );
+            assert.ok(failed.answer);
+          }
           if (scenario === 'close-failed') {
             assert.equal(closed.length, 1);
             done();
