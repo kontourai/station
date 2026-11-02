@@ -1,9 +1,16 @@
 import assert from 'node:assert/strict';
-import { readdirSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
+import fs, {
+  readdirSync,
+  readFileSync,
+  unlinkSync,
+  writeFileSync,
+} from 'node:fs';
+import { syncBuiltinESMExports } from 'node:module';
 import { join } from 'node:path';
 import { FileAuthorizationLedger } from '@kontourai/dispatch';
 import { flowRunHead, loadRun } from '@kontourai/flow';
 import { delegationAccountingDollarsV1 } from '@kontourai/flow-agents/delegation-dispatch';
+import { DelegationRoundsTransactionUncertainError } from '@kontourai/flow-agents/delegation-group-rounds';
 import { recoverReportGroupAccounting } from '@kontourai/station-sdk/client';
 import { prepareFileMutationOwner } from '@kontourai/station-shared/lifecycle-events';
 import { Hono } from 'hono';
@@ -362,7 +369,13 @@ test('accounting recovery refuses aborted admission and resumes a Dispatch-only 
   }
 }, 300_000);
 
-test.each(['exact-replay', 'shutdown-custody', 'shutdown-tail'] as const)(
+test.each([
+  'exact-replay',
+  'shutdown-custody',
+  'shutdown-tail',
+  'release-failed',
+  'body-and-release-failed',
+] as const)(
   'unknown physical usage stays reserved during %s',
   async (mode) => {
     const { h, owners, orchestration, eventStore, runtimeOwner } =
@@ -379,6 +392,28 @@ test.each(['exact-replay', 'shutdown-custody', 'shutdown-tail'] as const)(
     );
     assert.ok(ownedStore instanceof EventStore);
     const close = vi.spyOn(ownedStore, 'close');
+    const cleanupFailure = Error('controlled recovery Home retirement failure');
+    const bodyFailure = Error(
+      'controlled recovery body failure after retention',
+    );
+    const failedRetirements: string[] = [];
+    let blockRelease = false;
+    const remove = fs.rmSync;
+    const releaseFault = vi
+      .spyOn(fs, 'rmSync')
+      .mockImplementation((path, options) => {
+        if (
+          blockRelease &&
+          String(path).startsWith(
+            join(h.f.home, 'security', '.home-writer.mutation.guard.stale-'),
+          )
+        ) {
+          failedRetirements.push(String(path));
+          throw cleanupFailure;
+        }
+        return remove(path, options);
+      });
+    syncBuiltinESMExports();
     let resumeRecovery = () => {};
     let restoreRecovery = () => {};
     let closeProbe = async () => {};
@@ -421,6 +456,27 @@ test.each(['exact-replay', 'shutdown-custody', 'shutdown-tail'] as const)(
       const resume = new Promise<void>((resolve) => {
         resumeRecovery = resolve;
       });
+      const releaseFailure =
+        mode === 'release-failed' || mode === 'body-and-release-failed';
+      if (releaseFailure) {
+        const retain =
+          StationDelegationPersistence.prototype.retainReportAccountingRecovery;
+        const retained = vi
+          .spyOn(
+            StationDelegationPersistence.prototype,
+            'retainReportAccountingRecovery',
+          )
+          .mockImplementation(async function (
+            this: StationDelegationPersistence,
+            ...args
+          ) {
+            const result = await retain.apply(this, args);
+            blockRelease = true;
+            if (mode === 'body-and-release-failed') throw bodyFailure;
+            return result;
+          });
+        restoreRecovery = () => retained.mockRestore();
+      }
       if (mode === 'shutdown-custody') {
         const retain =
           StationDelegationPersistence.prototype.retainReportAccountingRecovery;
@@ -493,6 +549,51 @@ test.each(['exact-replay', 'shutdown-custody', 'shutdown-tail'] as const)(
         command,
       );
       void recovering.catch(() => {});
+      if (releaseFailure) {
+        await assert.rejects(recovering, (error: unknown) => {
+          assert.ok(error instanceof DelegationRoundsTransactionUncertainError);
+          assert.equal(error.status, 'publication-unknown');
+          const inner = error.errors[0];
+          assert.ok(inner instanceof DelegationRoundsTransactionUncertainError);
+          assert.equal(
+            inner.status,
+            mode === 'release-failed'
+              ? 'returned-cleanup-unknown'
+              : 'publication-unknown',
+          );
+          if (mode === 'body-and-release-failed')
+            assert.equal(inner.errors[0], bodyFailure);
+          assert.ok(inner.errors.includes(cleanupFailure));
+          return true;
+        });
+        assert.ok(
+          failedRetirements.length > 0,
+          'physical Home cleanup fault must fire',
+        );
+        const failedBeforeShutdown = failedRetirements.length;
+        await assert.rejects(runtimeOwner.shutdown(), {
+          code: 'runtime_publication_pending',
+        });
+        assert.equal(close.mock.calls.length, 0);
+        assert.ok(
+          failedRetirements.length > failedBeforeShutdown,
+          'shutdown must retry owned cleanup',
+        );
+        assert.equal(
+          new Set(failedRetirements).size,
+          1,
+          'retry must target the same guard quarantine',
+        );
+        blockRelease = false;
+        await runtimeOwner.shutdown();
+        assert.equal(close.mock.calls.length, 1);
+        assert.deepEqual(await dispatch.inspectInvocation(reservation), before);
+        assert.equal(settle.mock.calls.length, 0);
+        assert.equal(release.mock.calls.length, 0);
+        assert.equal(reserve.mock.calls.length, 1);
+        assert.equal(h.rawFetch.mock.calls.length, 1);
+        return;
+      }
       if (mode !== 'exact-replay') {
         await Promise.race([
           entered,
@@ -554,6 +655,9 @@ test.each(['exact-replay', 'shutdown-custody', 'shutdown-tail'] as const)(
       assert.equal(reserve.mock.calls.length, 1);
       assert.equal(h.rawFetch.mock.calls.length, 1);
     } finally {
+      blockRelease = false;
+      releaseFault.mockRestore();
+      syncBuiltinESMExports();
       resumeRecovery();
       await recovering?.catch(() => {});
       restoreRecovery();

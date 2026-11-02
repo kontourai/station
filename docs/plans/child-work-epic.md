@@ -53,6 +53,38 @@ at 120061 ms before its missing-terminal fault reaches the canonical event read.
 The sentinel rejects that insufficient evidence. The earlier green remains
 historical; there is no repeatability, latency-margin or combined-head pass claim.
 
+Later full-caller evidence remains red. The `67d792eb197` profiled run had
+one pass and one deadline failure. At `a2a89dbd629`, both original callers failed:
+the HTTP journey exhausted its create deadline and the direct caller received
+503 during sync. No assertion, product deadline or test budget was relaxed.
+These results do not isolate a cause or establish a regression from the parser
+change. A valid worker profile records substantial filesystem and route-check
+cost, but sampled elapsed stacks are not isolated CPU or recoverable seconds.
+Durability sync removal is outside the authorized repair.
+
+At `a2a89dbd629`, canonical parameterized route grammar is compiled once into
+bounded private token arrays. Unknown patterns parse fresh without insertion;
+request paths and policy winners are still evaluated on every lookup. No
+credential, authority or route decision is cached. The restored five-file
+selection passes 300 cases. Six clean-commit mutations catch restored parsing,
+wrong token semantics and insertion of unknown patterns. A same-process
+classifier diagnostic is narrower than an end-to-end latency result.
+
+At `b9b3000f8db` with fixture follow-up `4852b044d45`, the cold-start fixture
+forwards the actual route factory, Hono provider and VoltAgent constructor.
+A real loopback local grant reaches a paused missing-group recovery read.
+Shutdown refuses after its unchanged five-second publication drain, without
+closing the runtime EventStore, and Home backup remains refused. After release,
+the real read returns null and HTTP returns generic `report_group_unavailable`;
+a later shutdown closes the store and backup succeeds. The 38-case selection
+passes. Dropping the factory participant, deleting the drain or failing to await
+it each fails the new control; restored bytes pass. This proves retained custody
+for refused work, not applied recovery, success-path responses, GET publication
+or that the closed store is the same object served by the routes. The fixture
+controls native probes, consent and voice attachment and uses a fixed lock
+fingerprint. Background startup and network exclusion are not universally
+qualified by its global-fetch fence.
+
 A separate real-service selection at `94da16baaab` had 234 passes and four
 failures: one Room Agent publication wait and three native first-frame waits.
 The native failures occurred before the revocation assertions. A diagnostic
@@ -62,8 +94,9 @@ assessment as the sole cause, but establishes no underlying cause or acceptance.
 
 Accounting recovery retains publication and exact Home custody through its body
 and trailing read (`f09435644f3`, `b3f5bfecb80`). Its five-case selection and trailing
-inspection mutation establish constructor-level custody, not full initialized
-storage or boot/auth wiring. Those remain open, as does release-failure retry.
+inspection mutation establish constructor-level custody. The cold-start control
+above adds initialized refused-work custody; successful recovery and complete
+boot/auth wiring remain open, as does release-failure retry.
 
 Readiness remains failed on stale semantic documentation and capture reviews.
 An archived profiling source was preserved byte-for-byte under a non-test suffix,
