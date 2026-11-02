@@ -2546,11 +2546,14 @@ export function consentDecisionAuthority(
   return null;
 }
 
-function pathMatchesPrefix(path: string, prefix: string): boolean {
+function pathMatchesPrefix(
+  path: string,
+  prefix: string,
+  pathSegments: readonly string[],
+): boolean {
   if (prefix === '') return false;
   if (prefix.includes('/:')) {
     const prefixSegments = prefix.split('/').filter(Boolean);
-    const pathSegments = path.split('/').filter(Boolean);
     return (
       pathSegments.length >= prefixSegments.length &&
       prefixSegments.every(
@@ -2562,10 +2565,13 @@ function pathMatchesPrefix(path: string, prefix: string): boolean {
   return path === prefix || path.startsWith(`${prefix}/`);
 }
 
-function pathMatchesExact(path: string, prefix: string): boolean {
+function pathMatchesExact(
+  path: string,
+  prefix: string,
+  pathSegments: readonly string[],
+): boolean {
   if (prefix.includes('/:')) {
     const prefixSegments = prefix.split('/').filter(Boolean);
-    const pathSegments = path.split('/').filter(Boolean);
     return (
       pathSegments.length === prefixSegments.length &&
       prefixSegments.every(
@@ -3252,23 +3258,15 @@ export const EXTERNAL_SURFACE_CAPABILITY_TABLE: readonly ExternalSurfaceCapabili
     },
   ];
 
-function ruleMatchesExternalSurface(
-  rule: ExternalSurfaceCapabilityRule,
-  method: string,
-  path: string,
-): boolean {
-  if (rule.method !== '*' && rule.method !== method.toUpperCase()) return false;
-  return rule.match === 'exact'
-    ? exactRoutePathMatches(rule.prefix, path)
-    : pathMatchesPrefix(path, rule.prefix);
-}
-
 /** Hono's route inventory uses `:param`; live requests contain its value. */
-function exactRoutePathMatches(pattern: string, path: string): boolean {
+function exactRoutePathMatches(
+  pattern: string,
+  path: string,
+  actual: readonly string[],
+): boolean {
   if (pattern === path) return true;
   if (!pattern.includes(':')) return false;
   const expected = pattern.split('/');
-  const actual = path.split('/');
   return (
     expected.length === actual.length &&
     expected.every(
@@ -3287,10 +3285,19 @@ export function requiredExternalSurfaceCapability(
   method: string,
   path: string,
 ): ExternalSurfaceCapabilityRule | undefined {
+  const normalizedMethod = method.toUpperCase();
+  const pathSegments = path.split('/');
+  const nonemptyPathSegments = pathSegments.filter(Boolean);
   let best: ExternalSurfaceCapabilityRule | undefined;
   for (const rule of EXTERNAL_SURFACE_CAPABILITY_TABLE) {
     if (rule.transport !== transport) continue;
-    if (!ruleMatchesExternalSurface(rule, method, path)) continue;
+    if (rule.method !== '*' && rule.method !== normalizedMethod) continue;
+    if (
+      !(rule.match === 'exact'
+        ? exactRoutePathMatches(rule.prefix, path, pathSegments)
+        : pathMatchesPrefix(path, rule.prefix, nonemptyPathSegments))
+    )
+      continue;
     if (
       !best ||
       rule.prefix.length > best.prefix.length ||
@@ -3411,13 +3418,14 @@ export function matchPairingScopeRule(
   path: string,
 ): PairingScopeRouteRule | undefined {
   const normalizedMethod = method.toUpperCase();
+  const pathSegments = path.split('/').filter(Boolean);
   let best: PairingScopeRouteRule | undefined;
   for (const rule of PAIRING_SCOPE_ROUTE_TABLE) {
     if (rule.method !== '*' && rule.method !== normalizedMethod) continue;
     if (
       !(rule.exact
-        ? pathMatchesExact(path, rule.prefix)
-        : pathMatchesPrefix(path, rule.prefix))
+        ? pathMatchesExact(path, rule.prefix, pathSegments)
+        : pathMatchesPrefix(path, rule.prefix, pathSegments))
     )
       continue;
     if (

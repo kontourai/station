@@ -1264,13 +1264,16 @@ test('explicit report input crosses real Flow dispatch, canonical answer and ret
     throw Error('terminal required');
   const missingEventId = previousTerminal.observation.eventId;
   const readEvent = orchestration.readSessionEventById.bind(orchestration);
+  let terminalFaultApplied = false;
   const missingTerminal = vi
     .spyOn(orchestration, 'readSessionEventById')
-    .mockImplementation((threadId, eventId, authority) =>
-      eventId === missingEventId
-        ? null
-        : readEvent(threadId, eventId, authority),
-    );
+    .mockImplementation((threadId, eventId, authority) => {
+      if (eventId === missingEventId) {
+        terminalFaultApplied = true;
+        return null;
+      }
+      return readEvent(threadId, eventId, authority);
+    });
   const nextCheckpoint = await runtime.checkpoint(
     h.f.context(requestFor(h, 'POST')),
     result.group.groupId,
@@ -1290,6 +1293,11 @@ test('explicit report input crosses real Flow dispatch, canonical answer and ret
     ),
   );
   missingTerminal.mockRestore();
+  assert.equal(
+    terminalFaultApplied,
+    true,
+    `missing-terminal control must reach its canonical event read (elapsed=${Date.now() - NOW}ms)`,
+  );
   assert.equal(h.rawFetch.mock.calls.length, 4);
   const terminalHold = await persistence.readReportExecution(
     result.group.groupId,

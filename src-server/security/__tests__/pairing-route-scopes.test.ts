@@ -971,6 +971,39 @@ describe('pairing-route-scopes: leaf-level coverage (station#1131)', () => {
 });
 
 describe('pairing-route-scopes: table-driven lookups', () => {
+  test.each(['pairing', 'external'] as const)(
+    'bounds actual-path parsing per %s lookup',
+    (kind) => {
+      const path = '/api/orchestration/report-groups/cost-case/input/narrow';
+      const split = vi.spyOn(String.prototype, 'split');
+      try {
+        path.split('/');
+        const observed = split.mock.contexts.filter(
+          (receiver) => String(receiver) === path,
+        ).length;
+        split.mockClear();
+        const matched =
+          kind === 'pairing'
+            ? matchPairingScopeRule('post', path)
+            : requiredExternalSurfaceCapability('http', 'post', path);
+        const parsed = split.mock.contexts.filter(
+          (receiver) => String(receiver) === path,
+        ).length;
+        split.mockRestore();
+        expect(observed).toBe(1);
+        expect(matched).toMatchObject({ scope: 'orchestration:operate' });
+        expect(parsed).toBeLessThanOrEqual(1);
+        const readPath = '/api/orchestration/report-groups/another-group';
+        expect(
+          kind === 'pairing'
+            ? matchPairingScopeRule('get', readPath)
+            : requiredExternalSurfaceCapability('http', 'get', readPath),
+        ).toMatchObject({ scope: 'orchestration:read' });
+      } finally {
+        split.mockRestore();
+      }
+    },
+  );
   test.each([
     ['GET', '/api/projects', 'orchestration:read'],
     ['GET', '/api/skills/experiences', 'orchestration:read'],

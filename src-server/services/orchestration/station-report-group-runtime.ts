@@ -400,8 +400,7 @@ export class StationReportGroupRuntime {
       seatId,
       expectedRevision,
     );
-    current();
-    return result;
+    return this.withResponseCurrent(context, current, () => result);
   }
   async narrowAfterInput(
     context: RuntimeSourceRequestContext,

@@ -5,6 +5,7 @@ import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
 import {
   createReportGroup,
   narrowReportGroupAfterInput,
+  readReportGroupContextCheckpoint,
 } from '@kontourai/station-sdk/client';
 import { prepareFileMutationOwner } from '@kontourai/station-shared/lifecycle-events';
 import { Hono } from 'hono';
@@ -49,6 +50,7 @@ test.each([
   'revoked-after-renew',
   'response-contention',
   'response-revoked',
+  'checkpoint-contention',
 ] as const)(
   'input renewal keeps real caller custody: %s',
   async (scenario) => {
@@ -126,6 +128,7 @@ test.each([
             scenario === 'response-contention' ||
             scenario === 'response-revoked'
           ) {
+            responseRequest = args[0].req.raw;
             held = await writer.acquire();
             responseReady();
           }
@@ -177,10 +180,29 @@ test.each([
       join(h.f.home, 'security', '.home-writer.mutation'),
     );
     let held: Awaited<ReturnType<typeof writer.acquire>> | undefined;
+    let responseRequest: Request | undefined;
     let responseReady!: () => void;
     const responseEntered = new Promise<void>((resolve) => {
       responseReady = resolve;
     });
+    let responseQueued!: () => void;
+    const responseQueue = new Promise<void>((resolve) => {
+      responseQueued = resolve;
+    });
+    let onHomeAcquire = () => {};
+    const acquire = HomeWriterOwner.prototype.acquire;
+    const admissions = vi
+      .spyOn(HomeWriterOwner.prototype, 'acquire')
+      .mockImplementation(function (this: HomeWriterOwner, ...args) {
+        const work = acquire.apply(this, args);
+        if (this.homeDir === writer.homeDir) {
+          onHomeAcquire();
+          if (responseRequest && args[0] === responseRequest.signal)
+            responseQueued();
+        }
+        return work;
+      });
+    onTestFinished(() => admissions.mockRestore());
     let resumeCandidate = () => {};
     let cleanupAllowed = false;
     const pending: Promise<unknown>[] = [];
@@ -311,6 +333,56 @@ test.each([
     const created = await creating;
     assert.equal(created.group.members.length, 1);
     assert.equal(h.rawFetch.mock.calls.length, 1);
+    if (scenario === 'checkpoint-contention') {
+      const checkpoint = StationReportRetainedTurns.prototype.checkpoint;
+      const checkpointBody = vi
+        .spyOn(StationReportRetainedTurns.prototype, 'checkpoint')
+        .mockImplementation(async function (
+          this: StationReportRetainedTurns,
+          ...args
+        ) {
+          const result = await checkpoint.apply(this, args);
+          responseRequest = args[0].req.raw;
+          held = await writer.acquire();
+          responseReady();
+          return result;
+        });
+      onTestFinished(() => checkpointBody.mockRestore());
+      const checking = readReportGroupContextCheckpoint(
+        'http://renewal-control.test',
+        created.group.groupId,
+        { seatId: 'left', expectedRevision: created.group.revision },
+        options,
+      );
+      void checking.catch(() => {});
+      pending.push(checking);
+      await Promise.race([
+        responseEntered,
+        checking.then(() => {
+          throw Error('checkpoint returned before contention');
+        }),
+      ]);
+      const first = await Promise.race([
+        responseQueue.then(() => 'queued'),
+        checking.then(
+          () => 'returned',
+          () => 'refused',
+        ),
+      ]);
+      await held?.release();
+      held = undefined;
+      assert.equal(
+        first,
+        'queued',
+        'checkpoint currency must fairly wait after its actual body returns',
+      );
+      const checked = await checking;
+      assert.equal(checked.revision, created.group.revision);
+      assert.match(checked.flowHead, /^[a-f0-9]{64}$/);
+      assert.equal(h.rawFetch.mock.calls.length, 1);
+      assert.equal(starts.mock.calls.length, 1);
+      return;
+    }
     const observed: Array<{
       domain: string;
       phase: string;
@@ -484,21 +556,8 @@ test.each([
           throw Error('narrow returned before response contention');
         }),
       ]);
-      let queued!: () => void;
-      const queuedPromise = new Promise<void>((resolve) => {
-        queued = resolve;
-      });
-      const acquire = HomeWriterOwner.prototype.acquire;
-      const admission = vi
-        .spyOn(HomeWriterOwner.prototype, 'acquire')
-        .mockImplementation(function (this: HomeWriterOwner, ...args) {
-          const result = acquire.apply(this, args);
-          if (this.homeDir === writer.homeDir) queued();
-          return result;
-        });
-      onTestFinished(() => admission.mockRestore());
       const first = await Promise.race([
-        queuedPromise.then(() => 'queued'),
+        responseQueue.then(() => 'queued'),
         narrowing.then(
           () => 'returned',
           () => 'refused',
@@ -526,7 +585,6 @@ test.each([
         'queued',
         'response currency must fairly admit after sibling Home custody',
       );
-      admission.mockRestore();
       if (scenario === 'response-revoked') {
         await assert.rejects(
           narrowing,
@@ -642,15 +700,7 @@ test.each([
       const queuedPromise = new Promise<void>((resolve) => {
         queued = resolve;
       });
-      const acquire = HomeWriterOwner.prototype.acquire;
-      const admission = vi
-        .spyOn(HomeWriterOwner.prototype, 'acquire')
-        .mockImplementation(function (this: HomeWriterOwner, ...args) {
-          const result = acquire.apply(this, args);
-          if (this.homeDir === writer.homeDir) queued();
-          return result;
-        });
-      onTestFinished(() => admission.mockRestore());
+      onHomeAcquire = queued;
       resumeCandidate();
       const first = await Promise.race([
         queuedPromise.then(() => 'queued'),
