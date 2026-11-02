@@ -213,12 +213,13 @@ same in every mode and follows a mode, accent or branding change through the
 cascade without re-highlighting. The `@pierre/diffs` viewer renders in a shadow
 root, which custom properties cross.
 
-Two consumers cannot read the cascade directly: xterm paints a canvas, and MCP
-App and HTML-reply frames receive resolved token values by message. They re-read
-on [`observeRootTheme`/`useRootThemeVersion`](../../src-ui/src/lib/root-theme.ts),
+Two consumers cannot read the cascade directly. MCP App and HTML-reply frames
+receive resolved token values by message and re-read on
+[`observeRootTheme`/`useRootThemeVersion`](../../src-ui/src/lib/root-theme.ts),
 which reports changes to `data-theme`, the `data-color-theme*` attributes,
 `data-app-channel`, `data-brand-focus`, `class` and the non-geometry inline style
-on `<html>`. The terminal's colours are the `--terminal-*` variables, one set
+on `<html>`. The SDK terminal view paints a canvas and watches `data-theme`, the
+`data-color-theme*` attributes, `class` and `style` on `<html>` itself. The terminal's colours are the `--terminal-*` variables, one set
 per mode in [index.css](../../src-ui/src/index.css); the light mode has a light
 terminal. Monitoring's agent and conversation accents use the `--series-*`
 palette.

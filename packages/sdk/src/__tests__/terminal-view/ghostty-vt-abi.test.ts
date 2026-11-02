@@ -1,8 +1,11 @@
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { beforeAll, describe, expect, it } from 'vitest';
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import type { TerminalViewProps } from '../../terminal-view';
+import type { ControllerOptions } from '../../terminal-view/controller';
 import * as abi from '../../terminal-view/engine/abi';
+import { GHOSTTY_VT_SHA256 } from '../../terminal-view/engine/engine-client';
 import { GHOSTTY_KEY_BY_CODE } from '../../terminal-view/engine/keys.generated';
 import { GhosttyVtModule } from '../../terminal-view/engine/wasm';
 
@@ -73,6 +76,13 @@ describe('vendored libghostty-vt', () => {
       /^sha256 ([0-9a-f]{64})$/m,
     )?.[1];
     expect(createHash('sha256').update(wasm).digest('hex')).toBe(recorded);
+  });
+
+  it('is the module the loader accepts', () => {
+    const recorded = readFileSync(REVISION_PATH, 'utf8').match(
+      /^sha256 ([0-9a-f]{64})$/m,
+    )?.[1];
+    expect(GHOSTTY_VT_SHA256).toBe(recorded);
   });
 
   it('ships Ghostty’s MIT license beside the binary', () => {
@@ -166,5 +176,49 @@ describe('Station enum values match ghostty_type_json()', () => {
         .join('');
       expect(code, name).toBe(/^[A-Z]$/.test(name!) ? `Key${name}` : pascal);
     }
+  });
+});
+
+/** No public or controller option names a WebAssembly source. */
+type WasmSourceOption = Extract<
+  keyof TerminalViewProps | keyof ControllerOptions,
+  `${string}${'wasm' | 'Wasm' | 'module' | 'Module'}${string}`
+>;
+const noWasmSourceOption: [WasmSourceOption] extends [never] ? true : false =
+  true;
+
+describe('loadGhosttyVt', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.resetModules();
+  });
+
+  async function freshLoader(body: Uint8Array<ArrayBuffer>) {
+    const fetch = vi.fn(async (_url: URL) => new Response(body));
+    vi.stubGlobal('fetch', fetch);
+    vi.resetModules();
+    const { loadGhosttyVt } = await import(
+      '../../terminal-view/engine/engine-client'
+    );
+    return { loadGhosttyVt, fetch };
+  }
+
+  it('takes no source and fetches only the vendored file', async () => {
+    expect(noWasmSourceOption).toBe(true);
+    const { loadGhosttyVt, fetch } = await freshLoader(wasm);
+    expect(loadGhosttyVt.length).toBe(0);
+    await expect(loadGhosttyVt()).resolves.toBeInstanceOf(WebAssembly.Module);
+    expect(String(fetch.mock.calls[0]?.[0])).toMatch(
+      /\/vendor\/ghostty-vt\/ghostty-vt\.wasm$/,
+    );
+  });
+
+  it('refuses a module whose SHA-256 differs from the recorded digest', async () => {
+    const tampered = new Uint8Array(wasm);
+    tampered[tampered.length - 1] ^= 0xff;
+    const { loadGhosttyVt } = await freshLoader(tampered);
+    await expect(loadGhosttyVt()).rejects.toThrow(
+      /does not match its recorded SHA-256/,
+    );
   });
 });

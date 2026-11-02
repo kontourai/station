@@ -346,7 +346,8 @@ Coding stack motivates the replacement:
   replayed with terminal queries intact, so a reattach can type junk at the
   prompt.
 - The working directory is whatever the client sends.
-- xterm.js runs with only the fit addon and a hard-coded palette.
+- The Coding terminal ran xterm.js with only the fit addon and a hard-coded
+  palette; TerminalView replaces it.
 - Terminals belong to no thread, chat, or worktree, and the agent cannot use
   them.
 
@@ -572,7 +573,9 @@ Station writes its own browser adapter for Ghostty's official
 `libghostty-vt` C ABI, independently and from Ghostty's public headers and
 documentation. The WebAssembly is built from a pinned Ghostty revision by a
 reproducible Zig script, committed as a vendored asset with Ghostty's MIT
-license, and its revision is checked by a test. The adapter owns:
+license, and its revision is checked by a test. The engine loads only that
+vendored file, and only when its bytes match the SHA-256 recorded beside it;
+no SDK option names a different module. The adapter owns:
 
 - A per-terminal handle over the C ABI and a render snapshot of rows and
   styles.
@@ -599,9 +602,8 @@ the web surface.
 #### Accessibility
 
 A canvas-rendered terminal is invisible to assistive technology unless the
-adapter exposes its text separately. xterm.js's screen reader mode covers
-this today, so shipping the Ghostty surface without an equivalent would be a
-regression. The emulator phase does not ship until this exists:
+adapter exposes its text separately. xterm.js's screen reader mode covered
+this, so the Ghostty surface had to ship with an equivalent:
 
 - **Accessible output buffer.** A visually hidden, focusable text mirror of
   the screen and scrollback, built from the emulator's rows (not from raw

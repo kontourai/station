@@ -108,12 +108,8 @@ export class GhosttyVtModule {
   private constructor(readonly exports: GhosttyVtExports) {}
 
   static async instantiate(
-    source: BufferSource | WebAssembly.Module,
+    module: WebAssembly.Module,
   ): Promise<GhosttyVtModule> {
-    const module =
-      source instanceof WebAssembly.Module
-        ? source
-        : await WebAssembly.compile(source);
     // libghostty-vt is freestanding: it imports nothing. Refuse a module
     // that asks for host functions rather than inventing them.
     const imports = WebAssembly.Module.imports(module);

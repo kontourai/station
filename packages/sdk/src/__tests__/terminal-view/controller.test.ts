@@ -1,7 +1,7 @@
 /** @vitest-environment jsdom */
 
 import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { TerminalController } from '../../terminal-view/controller';
 import type { EnginePort } from '../../terminal-view/engine/engine-client';
@@ -17,11 +17,10 @@ import type {
   TerminalViewSessionListener,
 } from '../../terminal-view/session';
 
-const WASM_PATH = fileURLToPath(
-  new URL(
-    '../../terminal-view/vendor/ghostty-vt/ghostty-vt.wasm',
-    import.meta.url,
-  ),
+// jsdom gives `import.meta.url` a non-file scheme; `__dirname` stays a path.
+const WASM_PATH = join(
+  __dirname,
+  '../../terminal-view/vendor/ghostty-vt/ghostty-vt.wasm',
 );
 
 /** Draws nothing; records what the controller asked of it. */
@@ -144,7 +143,6 @@ async function startController() {
       font: { family: 'monospace', size: 13, lineHeight: 1.2 },
       screenReader: false,
       reducedMotion: true,
-      wasmUrl: 'http://station.test/ghostty-vt.wasm',
       createWorker: inThreadPort,
       createRenderer: () => renderer,
       measureCell,

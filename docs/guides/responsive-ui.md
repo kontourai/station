@@ -428,9 +428,10 @@ because a held finger there selects text. `useLongPress` is a different
 gesture: one control whose click it owns, plus a second act behind a hold.
 
 [`wantsNativeContextMenu`](../../src-ui/src/lib/native-context-menu.ts) leaves
-four cases to the platform: Shift held on a mouse right-click (`button === 2`),
-a text-entry field, the terminal (xterm.js offers Copy and Paste through the
-native menu), and a press on selected text. Because the Shift case requires
+three cases to the platform: Shift held on a mouse right-click (`button === 2`),
+a text-entry field, and a press on selected text. The terminal opens its own
+menu (Copy, Paste, Add to chat) and the guard leaves a menu it already
+answered alone. Because the Shift case requires
 the right mouse button, Shift+F10 is meant to open Station's menu. That rests on
 keyboard-raised events reporting `button: 0`, which jsdom tests assume and no
 desktop WebView run has confirmed. In the Tauri apps,
