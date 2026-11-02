@@ -1321,6 +1321,44 @@ test('actual prepared claims accept reused native ids without old or untagged te
   }
 });
 
+test('a delayed old invocation cannot retire a reused id while the new invocation starts under a backward clock', () => {
+  const store = new EventStore(':memory:');
+  try {
+    const old = begunIntent(store, 'invocation-early-reuse', 'old');
+    expect(old.claim.accepted('N', '2030-01-01T00:00:03Z')).toEqual({
+      kind: 'applied',
+    });
+    const completedOld = old.event('old-completed');
+    store.appendEvent(completedOld);
+    expect(old.authority.observe(completedOld)).toEqual({ kind: 'applied' });
+
+    const current = begunIntent(store, 'invocation-early-reuse', 'new');
+    const duplicate = {
+      ...completedOld,
+      eventId: 'old-delayed',
+      createdAt: '2100-01-01T00:00:00Z',
+    };
+    store.appendEvent(duplicate);
+    expect(current.authority.observe(duplicate)).toEqual({ kind: 'applied' });
+    expect(
+      current.authority.hasPossibleEffect('invocation-early-reuse'),
+    ).toEqual({ kind: 'available', active: true });
+    expect(current.claim.accepted('N', '2030-01-01T00:00:03Z')).toEqual({
+      kind: 'applied',
+    });
+    const completedCurrent = current.event('current-completed');
+    store.appendEvent(completedCurrent);
+    expect(current.authority.observe(completedCurrent)).toEqual({
+      kind: 'applied',
+    });
+    expect(
+      current.authority.hasPossibleEffect('invocation-early-reuse'),
+    ).toEqual({ kind: 'available', active: false });
+  } finally {
+    store.close();
+  }
+});
+
 test('early request-owned missing-native terminal keeps exact begun custody for late acknowledgement', () => {
   const store = new EventStore(':memory:');
   try {

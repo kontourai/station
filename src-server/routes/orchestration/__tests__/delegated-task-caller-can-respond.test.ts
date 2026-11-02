@@ -205,6 +205,7 @@ describe('the delegated continue route reports binding refusals as closed codes'
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
+        clientTurnId: 'fixture-turn-key',
         message: 'Use staging',
         expectedInputRequest: {
           threadId: 'thread-1',

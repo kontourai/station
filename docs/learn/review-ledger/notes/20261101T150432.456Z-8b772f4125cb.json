@@ -1,0 +1,9 @@
+{
+  "revision": "b85bab2daaf4591ba2d106dea7079d558d792e13",
+
+  "notes": [
+    {"path":"docs/design/terminal.md","note":"Scoped review: the API reference delta concerns direct chat input conflicts; the linked terminal control seam and its authority are unchanged. No terminal runtime was exercised.","inputs":["docs/design/terminal.md","docs/reference/api.md"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"Scoped review: the integration guide links the API reference and asks for authenticated evidence; the new direct-chat conflict description preserves that guidance. Live integrations were not exercised.","inputs":["docs/guides/integrating-station.md","docs/reference/api.md"]}
+  ]
+}

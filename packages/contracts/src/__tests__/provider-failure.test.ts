@@ -11,6 +11,9 @@ const expected: ReadonlyArray<readonly [string, ProviderFailureKind, boolean]> =
   [
     ['foreground_invocation_unavailable', 'conflict', false],
     ['delegation_attempt_capacity', 'busy', true],
+    ['create_request_capacity', 'busy', true],
+    ['create_request_conflict', 'conflict', false],
+    ['create_request_indeterminate', 'indeterminate', false],
     ['continuation_place_refused', 'input_unsupported', false],
     ['SESSION_START_INDETERMINATE', 'indeterminate', false],
     ['delegation_files_unsupported', 'input_unsupported', false],

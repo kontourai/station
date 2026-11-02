@@ -37,6 +37,7 @@ import {
   type ExecutionTargetExecutionDependencies,
   executeForegroundMessage,
 } from '../../../services/execution-target/execution-target-execution.js';
+import { FileDelegationAttemptClaimStore } from '../../../services/orchestration/delegation-attempt-claim-store.js';
 import { EventBus } from '../../../services/orchestration/event-bus.js';
 import { EventStore } from '../../../services/orchestration/event-store.js';
 import { OrchestrationService } from '../../../services/orchestration/orchestration-service.js';
@@ -556,6 +557,9 @@ async function experienceRuntime(
     createConversationId: () => 'experience-session',
   };
   const routes = createOrchestrationRoutes(service, {
+    delegationAttemptClaimStore: new FileDelegationAttemptClaimStore(
+      fixture.home,
+    ),
     eventBus,
     logger: { debug: vi.fn() },
     getUserId: () => 'experience-owner',
@@ -583,6 +587,7 @@ async function selectedTurn(
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({
+      conversationId: 'experience-session',
       target: { environment: { kind: 'current' }, agent: 'claude' },
       message: 'Start this interview',
       clientTurnId: 'experience-client-turn',
@@ -786,6 +791,7 @@ test('canonical project chat shape resolves omitted Environment locally and refu
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
+          conversationId: 'experience-session',
           target: {
             agent: agentId('claude'),
             workspace: { kind: 'project', projectSlug: 'project-one' },
@@ -1139,6 +1145,7 @@ test('initial and continued model input retain the declared attachment role assi
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
+        conversationId: 'experience-session',
         target: { environment: { kind: 'current' }, agent: 'claude' },
         message: 'Compare the documents',
         clientTurnId: 'attachment-role-turn',

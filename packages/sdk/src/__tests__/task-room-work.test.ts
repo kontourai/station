@@ -195,6 +195,7 @@ test.each([undefined, 'codex'])(
         ...(model ? { model } : {}),
         workspace: { kind: 'project', projectSlug: 'demo' },
       },
+      clientTurnId: input.operationId,
       taskRoomRequest: {
         taskId: 'task-1',
         taskCreatedAt: incarnation,

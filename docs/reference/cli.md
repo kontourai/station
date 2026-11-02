@@ -1384,17 +1384,25 @@ delegation uses, over `station-control-delegation.ts`'s service functions
 the already-wired `POST /delegations` and `POST /delegations/options`).
 
 ```
-station delegate --agent=<slug> [--attach=<path>]... [--on=<environment>] [--model=<id>] [--project=<slug>|--project-path=<path>|--cwd=<path>] [--parent-task=<task-id>] [--approval-mode=<ask|auto|never|connection-default>] [--effort=<level>] [--thinking=<true|false>] [--model-option=key=value]... [--on-request=<wait|fail>] [--json] <prompt|--data=<text>|--file=<path>|stdin>
-station delegate --session=<conversation-id> [--on=<environment>] [--model=<id>] [--approval-mode=<ask|auto|never|connection-default>] [--effort=<level>] [--thinking=<true|false>] [--model-option=key=value]... [--on-request=<wait|fail>] [--json] <message>
+station delegate --agent=<slug> [--client-turn-id=<key>] [--attach=<path>]... [--on=<environment>] [--model=<id>] [--project=<slug>|--project-path=<path>|--cwd=<path>] [--parent-task=<task-id>] [--approval-mode=<ask|auto|never|connection-default>] [--effort=<level>] [--thinking=<true|false>] [--model-option=key=value]... [--on-request=<wait|fail>] [--json] <prompt|--data=<text>|--file=<path>|stdin>
+station delegate --session=<conversation-id> [--client-turn-id=<key>] [--on=<environment>] [--model=<id>] [--approval-mode=<ask|auto|never|connection-default>] [--effort=<level>] [--thinking=<true|false>] [--model-option=key=value]... [--on-request=<wait|fail>] [--json] <message>
 station delegate status <task-id> [--on=<environment>] [--json]
 station delegate events <task-id> [--after=<cursor>] [--on=<environment>] [--json]
-station delegate continue <legacy-id> <message> [--on=<environment>] [--model=<id>] [--approval-mode=<ask|auto|never|connection-default>] [--effort=<level>] [--thinking=<true|false>] [--model-option=key=value]... [--on-request=<wait|fail>] [--json] # deprecated compatibility alias
+station delegate continue <legacy-id> <message> [--client-turn-id=<key>] [--on=<environment>] [--model=<id>] [--approval-mode=<ask|auto|never|connection-default>] [--effort=<level>] [--thinking=<true|false>] [--model-option=key=value]... [--on-request=<wait|fail>] [--json] # deprecated compatibility alias
 station delegate respond <task-id> <request-id> <accept|acceptForSession|decline|cancel> [--on=<environment>] [--json]
 station delegate interrupt <task-id> [--on=<environment>] [--json]
 station delegate wait <task-id> [--on=<environment>] [--timeout=<seconds>] [--interval=<seconds>] [--json]
 station delegate targets [--on=<environment>] [--project=<slug>|--project-path=<path>] [--json]
 station delegate list [--on=<environment>] [--limit=<1-100>] [--json]
 ```
+
+Create and continuation calls retain a key chosen before their send. Use
+`--client-turn-id=<key>` with the identical input for a deliberate retry.
+Successful JSON handles carry `clientTurnId`; JSON failures retain it with the
+known Conversation ID. Text failures print the request key. The CLI never
+resends automatically. A prepared create defaults to its stable `attemptId`.
+An uncertain create can retain a reservation even when no Session is visible;
+keep its key and inspect the original work before choosing another request.
 
 `list` reads your delegated tasks on one Environment (the current one, or
 `--on`): the inventory Station Control's `list_delegated_tasks` returns, from

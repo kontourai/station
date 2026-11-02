@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 /**
  * #2875 slice 1 — version-matched portable execution, receiver-local proof.
  *
@@ -20,7 +21,7 @@
  */
 
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { agentId } from '@kontourai/station-contracts/agent-identity';
 import { environmentId } from '@kontourai/station-contracts/execution-target';
@@ -165,6 +166,7 @@ function localService() {
   );
   return {
     readSession: vi.fn(async () => null),
+    hasSessionStartRecord: vi.fn(() => false),
     currentConversationSessionId: vi.fn(
       (conversationId: string) => conversationId,
     ),
@@ -204,6 +206,8 @@ const CLAIM_KEY = delegationAttemptClaimKey('dev-verified-1', 'attempt-1');
 function claimInput(preparation: Record<string, unknown>, overrides = {}) {
   return {
     prompt: 'Run at the requested commit',
+    userId: 'preparation-test-user',
+    clientTurnId: randomUUID(),
     target: preparedTarget(preparation),
     receiverAdmission: admissionStub(checkout),
     delegationAttemptId: 'attempt-1',
@@ -226,6 +230,11 @@ async function expectRefusedBeforeEffect(
   expect((error as ReceiverExecutionRefusal).code).toBe(code);
   expect(service.startSessionInternal).not.toHaveBeenCalled();
   expect(service.dispatchWithReceipt).not.toHaveBeenCalled();
+  const requests = join(dir, 'delegation-create-claims.json');
+  if (existsSync(requests))
+    expect(
+      Object.keys(JSON.parse(readFileSync(requests, 'utf8')).claims),
+    ).toHaveLength(0);
   return service;
 }
 
@@ -472,6 +481,9 @@ describe('receiver-local version check', () => {
     const handle = await delegateTask(
       {
         prompt: 'Run without a version requirement',
+        userId: 'preparation-test-user',
+        clientTurnId: randomUUID(),
+        delegationAttemptClaimStore: new FileDelegationAttemptClaimStore(dir),
         target: {
           environment: { kind: 'current' },
           agent: agentId('reviewer'),
@@ -555,6 +567,8 @@ describe('sender capability gate', () => {
     const error = await delegateTask(
       {
         prompt: 'Run at the requested commit',
+        userId: 'preparation-test-user',
+        clientTurnId: randomUUID(),
         target: preparedTarget(versionRequirement(head), savedRemote),
         isRequestAuthorityCurrent: () => true,
         delegationAttemptId: 'attempt-1',
@@ -579,6 +593,8 @@ describe('sender capability gate', () => {
     await delegateTask(
       {
         prompt: 'Run at the requested commit',
+        userId: 'preparation-test-user',
+        clientTurnId: randomUUID(),
         target: preparedTarget(versionRequirement(head), savedRemote),
         isRequestAuthorityCurrent: () => true,
         delegationAttemptId: 'attempt-1',

@@ -1,0 +1,11 @@
+{
+  "revision": "9ebea3423640f7ba6922a2074ae5c6e9c2a698ec",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the foreground create start-port keeper cleanup repair: the same real execution path and durable-start assertion now use trackTempDirs(), so failed assertions still remove the isolated home. No runtime or documented Session contract changed. The keeper passed 65 tests; the temp-dir ratchet and type-laundering gate passed.","inputs":["docs/architecture/module-map.md","src-server/services/execution-target/__tests__/execution-target-execution.test.ts"]},
+
+    {"path":"docs/design/isolated-agent-runs.md","note":"Reviewed the foreground create start-port keeper cleanup repair: the same real execution path and durable-start assertion now use trackTempDirs(), so failed assertions still remove the isolated home. No runtime or documented Session contract changed. The keeper passed 65 tests; the temp-dir ratchet and type-laundering gate passed.","inputs":["docs/design/isolated-agent-runs.md","src-server/services/execution-target/__tests__/execution-target-execution.test.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Reviewed the foreground create start-port keeper cleanup repair: the same real execution path and durable-start assertion now use trackTempDirs(), so failed assertions still remove the isolated home. No runtime or documented Session contract changed. The keeper passed 65 tests; the temp-dir ratchet and type-laundering gate passed.","inputs":["docs/reference/session-api.md","src-server/services/execution-target/__tests__/execution-target-execution.test.ts"]}
+  ]
+}

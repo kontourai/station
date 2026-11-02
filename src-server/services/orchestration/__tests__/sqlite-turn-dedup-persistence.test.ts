@@ -1,13 +1,14 @@
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
-import { describe, expect, test } from 'vitest';
+import { describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
+import { ClientTurnInputConflictError } from '../../../providers/adapter-shape.js';
 import { EventStore } from '../event-store.js';
 import { createSqliteSessionControlRequestKeys } from '../session-control-request-keys.js';
 import {
   chatTurnDedupKey,
   turnDedupKey,
-} from '../sqlite-turn-dedup-persistence.js';
+} from '../station-turn-dedup-bindings.js';
 
 /**
  * What Station keeps of the turn-dedup rules is where the rows live and how
@@ -32,6 +33,296 @@ describe('turn dedup over Station tables', () => {
     }
   };
 
+  test('another thread cannot evict a resolved key during its seven-day retry window', () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-01-01T00:00:00Z'));
+    const file = join(makeTempDir('turn-window-'), 'orchestration.sqlite');
+    const store = new EventStore(file, 3);
+    const otherStore = new EventStore(file, 3);
+    try {
+      const dedup = store.createTurnDeduplicator();
+      const other = otherStore.createTurnDeduplicator();
+      const first = dedup.claim({ threadId: 'A', clientTurnId: 'K' });
+      expect(first.kind).toBe('owner');
+      if (first.kind !== 'owner') throw new Error('expected owner');
+      first.claim.beginInvocation();
+      first.claim.resolve('turn-A');
+      const unresolved = dedup.claim({
+        threadId: 'A',
+        clientTurnId: 'unresolved',
+      });
+      expect(unresolved.kind).toBe('owner');
+      for (let i = 0; i < 4; i++) {
+        const claim = other.claim({ threadId: 'B', clientTurnId: `B-${i}` });
+        expect(claim.kind).toBe('owner');
+        if (claim.kind !== 'owner') throw new Error('expected owner');
+        claim.claim.beginInvocation();
+        claim.claim.resolve(`turn-B-${i}`);
+      }
+      expect(dedup.claim({ threadId: 'A', clientTurnId: 'K' })).toEqual({
+        kind: 'contended',
+        turnId: 'turn-A',
+      });
+      vi.setSystemTime(new Date('2026-01-09T00:00:00Z'));
+      const later = other.claim({ threadId: 'B', clientTurnId: 'later' });
+      expect(later.kind).toBe('owner');
+      expect(dedup.claim({ threadId: 'A', clientTurnId: 'K' })).toEqual({
+        kind: 'expired',
+      });
+      expect(
+        dedup.inspect({ threadId: 'A', clientTurnId: 'unresolved' }).state,
+      ).not.toBe('expired');
+    } finally {
+      store.close();
+      otherStore.close();
+      vi.useRealTimers();
+    }
+  });
+
+  test('starts the retry window on resolution and conservatively ages legacy rows', () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-01-01T00:00:00Z'));
+    const file = join(
+      makeTempDir('turn-window-legacy-'),
+      'orchestration.sqlite',
+    );
+    let store = new EventStore(file, 2);
+    try {
+      const pending = store
+        .createTurnDeduplicator()
+        .claim({ threadId: 'A', clientTurnId: 'long' });
+      if (pending.kind !== 'owner') throw new Error('expected owner');
+      pending.claim.beginInvocation();
+      vi.setSystemTime(new Date('2026-01-09T00:00:00Z'));
+      pending.claim.resolve('long-turn');
+      store.close();
+      const db = new DatabaseSync(file);
+      db.prepare(
+        'INSERT INTO orchestration_turn_dedup (dedup_key, value, created_at, owner_json) VALUES (?, ?, ?, NULL)',
+      ).run(turnDedupKey('legacy', 'key'), 'legacy-turn', 1);
+      db.close();
+      store = new EventStore(file, 2);
+      const dedup = store.createTurnDeduplicator();
+      expect(
+        dedup.claim({ threadId: 'B', clientTurnId: 'pressure' }).kind,
+      ).toBe('owner');
+      expect(dedup.claim({ threadId: 'A', clientTurnId: 'long' })).toEqual({
+        kind: 'contended',
+        turnId: 'long-turn',
+      });
+      expect(dedup.claim({ threadId: 'legacy', clientTurnId: 'key' })).toEqual({
+        kind: 'contended',
+        turnId: 'legacy-turn',
+      });
+      vi.setSystemTime(new Date('2026-01-17T00:00:00Z'));
+      expect(
+        dedup.claim({ threadId: 'B', clientTurnId: 'after-window' }).kind,
+      ).toBe('owner');
+      expect(dedup.claim({ threadId: 'A', clientTurnId: 'long' }).kind).toBe(
+        'expired',
+      );
+      expect(
+        dedup.claim({ threadId: 'legacy', clientTurnId: 'key' }).kind,
+      ).toBe('expired');
+    } finally {
+      store.close();
+      vi.useRealTimers();
+    }
+  });
+
+  test('an older writer changing a resolved row restarts its conservative window', () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-01-01T00:00:00Z'));
+    const file = join(
+      makeTempDir('turn-window-older-writer-'),
+      'orchestration.sqlite',
+    );
+    const store = new EventStore(file, 2);
+    try {
+      const dedup = store.createTurnDeduplicator();
+      const original = dedup.claim({ threadId: 'A', clientTurnId: 'key' });
+      if (original.kind !== 'owner') throw new Error('expected owner');
+      original.claim.resolve('original');
+      vi.setSystemTime(new Date('2026-01-09T00:00:00Z'));
+      const db = new DatabaseSync(file);
+      db.prepare(
+        'UPDATE orchestration_turn_dedup SET value = ? WHERE dedup_key = ?',
+      ).run('older-writer-turn', turnDedupKey('A', 'key'));
+      db.close();
+      expect(
+        dedup.claim({ threadId: 'B', clientTurnId: 'pressure' }).kind,
+      ).toBe('owner');
+      expect(dedup.claim({ threadId: 'A', clientTurnId: 'key' })).toEqual({
+        kind: 'contended',
+        turnId: 'older-writer-turn',
+      });
+    } finally {
+      store.close();
+      vi.useRealTimers();
+    }
+  });
+
+  test('an older writer cannot delete a resolved key, while explicit thread deletion can', () => {
+    const file = join(
+      makeTempDir('turn-window-delete-fence-'),
+      'orchestration.sqlite',
+    );
+    const store = new EventStore(file, 2);
+    try {
+      const dedup = store.createTurnDeduplicator();
+      const claim = dedup.claim({ threadId: 'A', clientTurnId: 'key' });
+      if (claim.kind !== 'owner') throw new Error('expected owner');
+      claim.claim.resolve('turn-A');
+      const older = new DatabaseSync(file);
+      try {
+        expect(() =>
+          older
+            .prepare('DELETE FROM orchestration_turn_dedup WHERE dedup_key = ?')
+            .run(turnDedupKey('A', 'key')),
+        ).toThrow();
+      } finally {
+        older.close();
+      }
+      expect(dedup.claim({ threadId: 'A', clientTurnId: 'key' })).toEqual({
+        kind: 'contended',
+        turnId: 'turn-A',
+      });
+      store.deleteThread('A');
+      expect(dedup.claim({ threadId: 'A', clientTurnId: 'key' }).kind).toBe(
+        'owner',
+      );
+    } finally {
+      store.close();
+    }
+  });
+
+  test('reopening clears a stale deletion permit before admitting writers', () => {
+    const file = join(
+      makeTempDir('turn-window-stale-permit-'),
+      'orchestration.sqlite',
+    );
+    let store = new EventStore(file, 2);
+    try {
+      const claim = store
+        .createTurnDeduplicator()
+        .claim({ threadId: 'A', clientTurnId: 'key' });
+      if (claim.kind !== 'owner') throw new Error('expected owner');
+      claim.claim.resolve('turn-A');
+      store.close();
+      const db = new DatabaseSync(file);
+      db.prepare(
+        'INSERT INTO orchestration_turn_dedup_delete_permits (dedup_key) VALUES (?)',
+      ).run(turnDedupKey('A', 'key'));
+      db.close();
+      store = new EventStore(file, 2);
+      const older = new DatabaseSync(file);
+      try {
+        expect(() =>
+          older
+            .prepare('DELETE FROM orchestration_turn_dedup WHERE dedup_key = ?')
+            .run(turnDedupKey('A', 'key')),
+        ).toThrow();
+      } finally {
+        older.close();
+      }
+      expect(
+        store
+          .createTurnDeduplicator()
+          .claim({ threadId: 'A', clientTurnId: 'key' }),
+      ).toEqual({ kind: 'contended', turnId: 'turn-A' });
+    } finally {
+      store.close();
+    }
+  });
+
+  test('failed expiry rolls back its permit and all claim changes', () => {
+    const file = join(
+      makeTempDir('turn-window-permit-rollback-'),
+      'orchestration.sqlite',
+    );
+    const store = new EventStore(file, 2);
+    try {
+      const dedup = store.createTurnDeduplicator();
+      const claim = dedup.claim({ threadId: 'A', clientTurnId: 'key' });
+      if (claim.kind !== 'owner') throw new Error('expected owner');
+      claim.claim.resolve('turn-A');
+      const db = new DatabaseSync(file);
+      try {
+        db.prepare(
+          'UPDATE orchestration_turn_dedup SET resolved_at = ? WHERE dedup_key = ?',
+        ).run(0, turnDedupKey('A', 'key'));
+        db.exec(
+          "CREATE TRIGGER fail_window_delete BEFORE DELETE ON orchestration_turn_dedup BEGIN SELECT RAISE(ABORT, 'injected expiry failure'); END",
+        );
+        expect(() =>
+          dedup.claim({ threadId: 'B', clientTurnId: 'new' }),
+        ).toThrow('injected expiry failure');
+        expect(
+          db
+            .prepare(
+              'SELECT count(*) AS count FROM orchestration_turn_dedup_delete_permits',
+            )
+            .get(),
+        ).toEqual({ count: 0 });
+        expect(dedup.inspect({ threadId: 'A', clientTurnId: 'key' })).toEqual({
+          state: 'resolved',
+          value: 'turn-A',
+        });
+        expect(dedup.inspect({ threadId: 'B', clientTurnId: 'new' })).toEqual({
+          state: 'absent',
+        });
+        db.exec('DROP TRIGGER fail_window_delete');
+      } finally {
+        db.close();
+      }
+      expect(dedup.claim({ threadId: 'B', clientTurnId: 'new' }).kind).toBe(
+        'owner',
+      );
+      expect(dedup.claim({ threadId: 'A', clientTurnId: 'key' }).kind).toBe(
+        'expired',
+      );
+    } finally {
+      store.close();
+    }
+  });
+
+  test('malformed resolution times cannot expire a resolved key', () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-01-01T00:00:00Z'));
+    const file = join(
+      makeTempDir('turn-window-corrupt-'),
+      'orchestration.sqlite',
+    );
+    const store = new EventStore(file, 2);
+    try {
+      const dedup = store.createTurnDeduplicator();
+      for (const key of ['negative', 'invalid']) {
+        const claim = dedup.claim({ threadId: 'A', clientTurnId: key });
+        if (claim.kind !== 'owner') throw new Error('expected owner');
+        claim.claim.resolve(`turn-${key}`);
+      }
+      const db = new DatabaseSync(file);
+      const update = db.prepare(
+        'UPDATE orchestration_turn_dedup SET resolved_at = ? WHERE dedup_key = ?',
+      );
+      update.run(-1, turnDedupKey('A', 'negative'));
+      update.run('invalid', turnDedupKey('A', 'invalid'));
+      db.close();
+      vi.setSystemTime(new Date('2026-02-01T00:00:00Z'));
+      expect(
+        dedup.claim({ threadId: 'B', clientTurnId: 'pressure' }).kind,
+      ).toBe('owner');
+      for (const key of ['negative', 'invalid'])
+        expect(dedup.claim({ threadId: 'A', clientTurnId: key })).toEqual({
+          kind: 'contended',
+          turnId: `turn-${key}`,
+        });
+    } finally {
+      store.close();
+      vi.useRealTimers();
+    }
+  });
+
   test('child steer keys bind child, turn and input across store restart', () => {
     const { store, file } = open();
     const input = {
@@ -48,24 +339,27 @@ describe('turn dedup over Station tables', () => {
     ).toBe(true);
     store.close();
     const reopened = new EventStore(file);
+    expect(reopened.claimSteerInput(input)).toBe(false);
+    expect(reopened.readSteerInput(input)?.outcome).toBe('indeterminate');
     for (const other of [
-      input,
       { ...input, childId: 'child-b' },
       { ...input, turnId: 'turn-b' },
       { ...input, input: 'different' },
       { ...input, childId: undefined },
     ]) {
       expect(reopened.claimSteerInput(other)).toBe(false);
-      expect(reopened.readSteerInput(other)?.outcome).toBe('indeterminate');
+      expect(() => reopened.readSteerInput(other)).toThrow(
+        ClientTurnInputConflictError,
+      );
     }
     reopened.confirmChildSteerInput(input);
     expect(reopened.readSteerInput(input)).toMatchObject({
       outcome: 'steered',
       turnId: 'turn-a',
     });
-    expect(
-      reopened.readSteerInput({ ...input, childId: 'child-b' })?.outcome,
-    ).toBe('indeterminate');
+    expect(() =>
+      reopened.readSteerInput({ ...input, childId: 'child-b' }),
+    ).toThrow(ClientTurnInputConflictError);
     expect(
       reopened.claimChildSteerInput(
         { ...input, threadId: 'other-parent' },

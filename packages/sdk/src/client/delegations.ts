@@ -57,6 +57,7 @@ import { getAttachmentStagingCapability } from './attachment-staging';
 import { type ClientRequestOptions, getJson, mutateJson } from './http';
 import type { ApprovalDecision } from './orchestration';
 import { rethrowDeadline } from './request-deadline';
+import { chooseSentTurnKey, rememberSentTurnKey } from './sent-turn-key';
 
 interface DelegationEnvelope<T> {
   success: boolean;
@@ -174,6 +175,8 @@ export interface DelegatedTaskEnvironment {
 }
 
 export interface DelegateTaskInput {
+  /** Retry key for one create; omission uses attemptId or a fresh key. */
+  clientTurnId?: string;
   /**
    * The entire authored request contract. Conversation/session identifiers
    * are server-produced handle fields, never caller-selected routing input.
@@ -203,6 +206,7 @@ function delegationRequestProjection(
 ): DelegateTaskInput {
   return {
     prompt: input.prompt,
+    clientTurnId: input.clientTurnId,
     ...(input.attachmentRefs ? { attachmentRefs: input.attachmentRefs } : {}),
     target: input.target,
     ...(input.parentTaskId === undefined
@@ -235,6 +239,7 @@ export type DelegationProjectSlugJoin =
   | 'unverified-cross-machine';
 
 export interface DelegatedTaskHandle {
+  clientTurnId?: string;
   /**
    * Durable identity for follow-up turns. `taskId` remains the legacy alias
    * for callers that already persisted it. Both it and every session field
@@ -291,26 +296,38 @@ export async function delegateTask(
   input: DelegateTaskInput,
   opts?: ClientRequestOptions,
 ): Promise<DelegatedTaskHandle> {
-  const request = input.attachmentRefs?.length
-    ? structuredClone(delegationRequestProjection(input))
-    : delegationRequestProjection(input);
-  if (request.attachmentRefs?.length) {
-    const capability = await getAttachmentStagingCapability(apiBase, opts);
-    if (capability.state !== 'supported' || capability.delegationFiles !== true)
-      throw new DelegationApiError(
-        'This Station does not support delegation files.',
-        'delegation_files_unsupported',
-      );
+  const clientTurnId = chooseSentTurnKey(input.clientTurnId ?? input.attemptId);
+  try {
+    const request = input.attachmentRefs?.length
+      ? structuredClone(delegationRequestProjection({ ...input, clientTurnId }))
+      : delegationRequestProjection({ ...input, clientTurnId });
+    if (request.attachmentRefs?.length) {
+      const capability = await getAttachmentStagingCapability(apiBase, opts);
+      if (
+        capability.state !== 'supported' ||
+        capability.delegationFiles !== true
+      )
+        throw new DelegationApiError(
+          'This Station does not support delegation files.',
+          'delegation_files_unsupported',
+        );
+    }
+    const response = await mutateJson(
+      `${apiBase}/api/orchestration/delegations`,
+      'POST',
+      opts,
+      request,
+    );
+    return {
+      ...normalizeDelegationIdentity(
+        await unwrapDelegationResponse<DelegatedTaskHandle>(response),
+      ),
+      clientTurnId,
+    };
+  } catch (error) {
+    rememberSentTurnKey(error, clientTurnId);
+    throw error;
   }
-  const response = await mutateJson(
-    `${apiBase}/api/orchestration/delegations`,
-    'POST',
-    opts,
-    request,
-  );
-  return normalizeDelegationIdentity(
-    await unwrapDelegationResponse<DelegatedTaskHandle>(response),
-  );
 }
 
 export interface DiscoverDelegationOptionsInput {
@@ -635,6 +652,8 @@ export async function observeDelegatedTaskEvents(
 
 export interface ContinueDelegatedTaskInput
   extends DelegatedTaskReferenceInput {
+  /** Retry key for one follow-up; Task Room replies default to operationId. */
+  clientTurnId?: string;
   taskRoomReply?: {
     taskId: string;
     taskCreatedAt: string;
@@ -660,6 +679,7 @@ export interface ContinueDelegatedTaskInput
 }
 
 export interface DelegatedTaskFollowUpHandle {
+  clientTurnId?: string;
   /** The turn can be accepted while its shared human reply could not be posted. */
   taskRoomReplyDelivery?: 'posted' | 'unpublished';
   conversationId: string;
@@ -682,15 +702,26 @@ export async function continueDelegatedTask(
   input: ContinueDelegatedTaskInput,
   opts?: ClientRequestOptions,
 ): Promise<DelegatedTaskFollowUpHandle> {
-  const response = await mutateJson(
-    `${apiBase}/api/orchestration/delegations/${encodeURIComponent(taskId)}/continue`,
-    'POST',
-    opts,
-    input,
+  const clientTurnId = chooseSentTurnKey(
+    input.clientTurnId ?? input.taskRoomReply?.operationId,
   );
-  return normalizeDelegationIdentity(
-    await unwrapDelegationResponse<DelegatedTaskFollowUpHandle>(response),
-  );
+  try {
+    const response = await mutateJson(
+      `${apiBase}/api/orchestration/delegations/${encodeURIComponent(taskId)}/continue`,
+      'POST',
+      opts,
+      { ...input, clientTurnId },
+    );
+    return {
+      ...normalizeDelegationIdentity(
+        await unwrapDelegationResponse<DelegatedTaskFollowUpHandle>(response),
+      ),
+      clientTurnId,
+    };
+  } catch (error) {
+    rememberSentTurnKey(error, clientTurnId);
+    throw error;
+  }
 }
 
 export interface RespondToDelegatedTaskRequestInput

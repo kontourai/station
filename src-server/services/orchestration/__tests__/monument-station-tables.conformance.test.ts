@@ -9,7 +9,7 @@ import {
   SESSION_CONTROL_REQUEST_KEY_KERNEL_TABLES,
   SESSION_CONTROL_REQUEST_KEY_SCHEMA,
 } from '../session-control-request-keys.js';
-import { STATION_TURN_DEDUP_KERNEL_TABLES } from '../sqlite-turn-dedup-persistence.js';
+import { STATION_TURN_DEDUP_KERNEL_TABLES } from '../station-turn-dedup-bindings.js';
 
 /**
  * Monument's own conformance suite, run against the adapter Station uses: the

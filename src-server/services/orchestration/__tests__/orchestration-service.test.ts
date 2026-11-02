@@ -17861,7 +17861,7 @@ describe('OrchestrationService', () => {
     });
 
     // #3559: retention must never turn an old key back into a new one.
-    test('a retry of an evicted clientTurnId is refused as indeterminate and never reaches the adapter', async () => {
+    test('an unexpired clientTurnId survives legacy cap pressure and replays without another adapter call', async () => {
       const cappedStore = new EventStore(join(tmp, 'capped-dedup.sqlite'), 2);
       const cappedService = new OrchestrationService({
         adapterRegistry: createRegistry([claude]),
@@ -17891,14 +17891,14 @@ describe('OrchestrationService', () => {
               clientTurnId,
             },
           });
-        // Same-millisecond rows are evicted in key order: `client-a` first.
+        // Legacy cap pressure cannot evict a key inside its retry window.
         for (const clientTurnId of ['client-a', 'client-b', 'client-c'])
           await send(clientTurnId);
         expect(claude.sendTurn).toHaveBeenCalledTimes(3);
 
-        await expect(send('client-a')).rejects.toMatchObject({
-          code: 'foreground_message_indeterminate',
-          outcome: 'indeterminate',
+        await expect(send('client-a')).resolves.toMatchObject({
+          threadId: 'thread-3559-evicted',
+          turnId: 'evicted-turn-1',
         });
         expect(claude.sendTurn).toHaveBeenCalledTimes(3);
       } finally {
@@ -27471,9 +27471,9 @@ describe('OrchestrationService', () => {
         eventStore: reopened,
       });
       expect(await restarted.dispatch(command, context)).toEqual(first);
-      expect(
-        await restarted.dispatch({ ...command, childId: 'other' }, context),
-      ).toMatchObject({ outcome: 'indeterminate' });
+      await expect(
+        restarted.dispatch({ ...command, childId: 'other' }, context),
+      ).rejects.toMatchObject({ code: 'client_turn_input_conflict' });
       expect(claude.steerChildWork).toHaveBeenCalledTimes(1);
       expect(claude.steerChildWork).toHaveBeenCalledWith(
         'child-parent',
@@ -27598,7 +27598,7 @@ describe('OrchestrationService', () => {
     try {
       const restarted = new OrchestrationService({ adapterRegistry: createRegistry([claude]), eventBus, eventStore: reopened, logger: { debug: vi.fn(), warn: vi.fn() } });
       expect(await restarted.dispatch({ ...command, clientInputId: 'another' }, context)).toMatchObject({ outcome: 'unsupported' });
-      expect(await restarted.dispatch({ ...command, clientInputId: 'another', input: 'changed' }, context)).toMatchObject({ outcome: 'indeterminate' });
+      await expect(restarted.dispatch({ ...command, clientInputId: 'another', input: 'changed' }, context)).rejects.toMatchObject({ code: 'client_turn_input_conflict' });
       expect(reopened.listChildSteerInstructions(command.threadId, command.childId, 0, 10).entries).toMatchObject([{ delivery: 'delivered' }, { delivery: 'refused' }]);
     } finally { reopened.close(); }
     claude.steerChildWork.mockResolvedValueOnce({ outcome: 'cancelled' } as never);
@@ -27698,9 +27698,9 @@ describe('OrchestrationService', () => {
       });
       expect(await restarted.dispatch(command)).toEqual(first);
       expect(claude.steerTurn).toHaveBeenCalledTimes(1);
-      expect(
-        await restarted.dispatch({ ...command, input: 'different input' }),
-      ).toMatchObject({ outcome: 'indeterminate' });
+      await expect(
+        restarted.dispatch({ ...command, input: 'different input' }),
+      ).rejects.toMatchObject({ code: 'client_turn_input_conflict' });
       expect(claude.steerTurn).toHaveBeenCalledTimes(1);
     } finally {
       reopened.close();

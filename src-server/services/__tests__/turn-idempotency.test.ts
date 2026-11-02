@@ -1,17 +1,27 @@
 import { DatabaseSync } from 'node:sqlite';
 import type { KernelCommand, OwnerLiveness } from '@kontourai/monument';
+import {
+  awaitTurnResolution,
+  TurnIdempotencyStore as MonumentTurnIdempotencyStore,
+  type TurnIdempotencyPersistence,
+} from '@kontourai/monument';
 import { openSqliteKernelStorage } from '@kontourai/monument/sqlite';
 import { afterEach, describe, expect, test } from 'vitest';
 import { ORCHESTRATION_EVENT_STORE_MIGRATION } from '../../domain/migrations/003-orchestration-events.js';
 import {
-  createSqliteTurnDedupPersistence,
   STATION_TURN_DEDUP_KERNEL_TABLES,
-} from '../orchestration/sqlite-turn-dedup-persistence.js';
-import {
-  awaitTurnResolution,
-  type TurnIdempotencyPersistence,
-  TurnIdempotencyStore,
-} from '../turn-idempotency.js';
+  stationTurnDedupHost,
+  type TurnIdempotencyProcessIdentity,
+} from '../orchestration/station-turn-dedup-bindings.js';
+
+class TurnIdempotencyStore extends MonumentTurnIdempotencyStore {
+  constructor(
+    persistence: TurnIdempotencyPersistence,
+    identity?: TurnIdempotencyProcessIdentity,
+  ) {
+    super(persistence, stationTurnDedupHost(identity));
+  }
+}
 
 const databases: DatabaseSync[] = [];
 afterEach(() => {
@@ -32,9 +42,13 @@ class InMemoryTurnIdempotencyPersistence implements TurnIdempotencyPersistence {
   constructor() {
     databases.push(this.database);
     this.database.exec(ORCHESTRATION_EVENT_STORE_MIGRATION);
-    this.persistence = createSqliteTurnDedupPersistence({
-      db: this.database,
+    const kernel = openSqliteKernelStorage({
+      database: this.database,
+      tables: STATION_TURN_DEDUP_KERNEL_TABLES,
     });
+    this.persistence = {
+      execute: (command, liveness) => kernel.executeSync(command, { liveness }),
+    };
   }
 
   execute<C extends KernelCommand>(command: C, liveness: OwnerLiveness) {

@@ -33,6 +33,10 @@ import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime
 import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
+import {
+  keyedTurnRequest,
+  keyedTurnToolArguments,
+} from '../../../__test-utils__/turn-admission-fixture.js';
 import type {
   ProviderAdapterMetadata,
   ProviderAdapterShape,
@@ -44,6 +48,7 @@ import { AsyncEventQueue } from '../../../providers/sessions/async-event-queue.j
 import { __resetStationServerSelfAttestationForTests } from '../../../security/station-server-scope.js';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../../services/identity/principal-resolver.js';
 import { NotificationService } from '../../../services/notifications/notification-service.js';
+import { FileDelegationAttemptClaimStore } from '../../../services/orchestration/delegation-attempt-claim-store.js';
 import {
   DISPATCH_CANONICAL_CWD_METADATA_KEY,
   DispatchCwdRefusedError,
@@ -442,6 +447,7 @@ describe('configureRuntimeRoutes: a station-control dispatch folder is decided a
 
     const app = new Hono();
     const context = deepStub({
+      delegationAttemptClaims: new FileDelegationAttemptClaimStore(homeDir),
       projectSharedTasks: undefined,
       deploymentAuthentication: undefined,
       localAccounts: undefined,
@@ -653,7 +659,11 @@ describe('configureRuntimeRoutes: a station-control dispatch folder is decided a
     const response = await fetch(`${base}${path}`, {
       method: 'POST',
       headers,
-      body: JSON.stringify(body),
+      body: JSON.stringify(
+        path.includes('/chat') || path.includes('/delegations')
+          ? keyedTurnRequest(body)
+          : body,
+      ),
     });
     const text = await response.text();
     let parsed: { code?: string; data?: Record<string, unknown> } = {};
@@ -684,6 +694,7 @@ describe('configureRuntimeRoutes: a station-control dispatch folder is decided a
     'POST /chat': (workspace?: Record<string, unknown>) => ({
       path: '/api/orchestration/chat',
       body: {
+        clientTurnId: randomUUID(),
         message: 'go',
         target: {
           environment: { kind: 'current' },
@@ -859,7 +870,10 @@ describe('configureRuntimeRoutes: a station-control dispatch folder is decided a
         () =>
           rpc('tools/call', {
             name,
-            arguments: { ...args, projectSlug: 'project-b-slug' },
+            arguments: keyedTurnToolArguments(name, {
+              ...args,
+              projectSlug: 'project-b-slug',
+            }),
           }),
       )) as {
         result?: { isError?: boolean; content?: { text?: string }[] };
@@ -937,7 +951,11 @@ describe('configureRuntimeRoutes: a station-control dispatch folder is decided a
       () =>
         rpc('tools/call', {
           name: 'send_message',
-          arguments: { agent: 'writer', message: 'go', projectPath: planted },
+          arguments: keyedTurnToolArguments('send_message', {
+            agent: 'writer',
+            message: 'go',
+            projectPath: planted,
+          }),
         }),
     )) as { result?: { isError?: boolean } };
     expect(response.result?.isError).not.toBe(true);
@@ -1406,7 +1424,7 @@ describe('configureRuntimeRoutes: a station-control dispatch folder is decided a
           base,
           request.path,
           as('delegated-custody', 'op-caller-global'),
-          request.body,
+          DISPATCH[route]().body,
         );
         expect([none.status, none.code]).toEqual([200, undefined]);
         expect(adapter.starts.map((start) => start.cwd)).toEqual([

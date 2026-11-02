@@ -23,6 +23,7 @@ import {
   test,
   vi,
 } from 'vitest';
+import { keyedTurnToolArguments } from '../../__test-utils__/turn-admission-fixture.js';
 import type { StationControlCallerRecordResolver } from '../../runtime/mcp/station-control-caller.js';
 import {
   claudeInProcessStationControlOptions,
@@ -473,7 +474,7 @@ describe('the authority table routes are the routes the tools call', () => {
         id += 1;
         const result = await request(id, 'tools/call', {
           name,
-          arguments: ARGS[name] ?? {},
+          arguments: keyedTurnToolArguments(name, ARGS[name] ?? {}),
         });
         if (name === 'list_knowledge_roots') {
           const envelope = JSON.parse(

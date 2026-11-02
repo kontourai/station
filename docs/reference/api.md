@@ -1191,7 +1191,11 @@ not create an arbitrary model binding. The response is SSE; failures before
 stream creation use HTTP errors, while failures during a stream must be handled
 as stream outcomes.
 
-`options.clientTurnId` is an optional retry key. A resolved key replays
+`options.clientTurnId` is a retry key. When omitted, Station generates one
+and returns it in the `X-Station-Client-Turn-Id` response header; cross-origin
+clients can read that header. Station flushes the response before creating the
+conversation or invoking the Agent. Reuse that key to retry the same request.
+A resolved key replays
 `conversation-started` with the original conversation ID and a `finish`
 frame whose `finishReason` is `completed`, without running the Agent or
 replaying its output. Read the conversation for the answer. Station resolves
@@ -1207,8 +1211,12 @@ key has expired. A contended request instead waits in the stream for up to
 five minutes, then replays a resolved conversation or ends with an error
 frame. A pre-invocation refusal releases the key for retry.
 
-The key is not bound to the caller, Agent, conversation or input
-([#3567](https://github.com/kontourai/station/issues/3567)). Inspect the
+New keyed sends bind the submitted Agent, plugin, input, ambient context,
+Project and request options (excluding the key) to a digest. Reusing a key
+with different known input returns HTTP 409 with
+`code: "client_turn_input_conflict"` before streaming. Older rows without a digest
+remain unknown, and the key is not separately bound to the authenticated caller.
+Inspect the
 conversation after an uncertain send; do not automatically send again with a
 new key. A new key means a deliberate new request. Retention, legacy-writer
 and tombstone limits are detailed under
@@ -2655,10 +2663,57 @@ unavailable-history behavior.
 Existing keyed foreground, background, continue and explicit handoff sends reject a different
 submission under the same key with HTTP `409` and
 `code: client_turn_input_conflict`, before any additional engine send. This
-bounded contract retains legacy unknown-input rows and optional-key behavior;
-it does not cover the private Station-engine stream ledger. See
+contract requires `clientTurnId` on orchestration sends, delegation creates and
+delegation continuations; legacy `/commands` steer requires `clientInputId`.
+A steer key with different input also returns `client_turn_input_conflict`.
+Legacy rows without input proof remain indeterminate. See
 [keyed send identity](session-api.md#find-out-what-became-of-a-send) and the
 [submission digest contract](../architecture/module-map.md#turndeduplicator).
+
+When a foreground send omits `conversationId`, or a delegation creates a new
+Session, Station reserves a durable create claim. Scope includes request kind,
+authenticated user, tenant and principal, plus the verified calling agent Session
+when present. Use a unique key for each intended request. Within seven days of
+completion, identical retries replay the original receipt and changed input
+returns HTTP `409` (`client_turn_input_conflict` for foreground,
+`create_request_conflict` for delegation).
+
+A live owner holds its request lock. After its owner dies, a reservation with
+no starting mark is reclaimable immediately under the same key and input, even
+when it targets an existing Session. The absence of this request's mark proves
+it did not invoke. Admission also frees abandoned unmarked reservations under
+other keys, without consulting Session existence. Station durably marks `starting` immediately before session
+start, an initial turn, or a forwarded create POST. A marked but unconfirmed
+create is indeterminate within its seven-day window. Inspect the returned
+Session reference with `get_session` or the Session API; Station has no automatic
+reconciliation path for an absent Session.
+
+A pre-start refusal releases this request's claim even when its target Session
+already exists. A standalone typed start-refusal error releases a marked claim
+only if `hasSessionStartRecord` proves no durable start exists. A confirmed typed
+rejection recorded through the request's rejection capability clears the mark.
+The original typed refusal is preserved.
+
+Completed receipts expire seven wall-clock days after completion; reusing one of
+those keys later is a new request. An expired starting claim is reclaimable only
+when `hasSessionStartRecord` finds no durable start. For the key being retried,
+Station retains its reserved Session identity and input proof for that reclaim.
+Otherwise it becomes a compact tombstone and keeps refusing the key with the
+original Session reference. A live or unverifiable owner prevents expiry while
+its request is running. Forward clock jumps can shorten elapsed retention.
+
+Tombstones are pruned only when a new admission would exceed the 1,024-record or
+4 MiB budget, oldest first. Live claims and completed receipts within their
+window are never pruned to admit a new request. If eligible tombstones cannot
+free enough capacity, HTTP 429 `create_request_capacity` refuses before effects.
+Each pending request reserves 3 KiB. An invalid or oversized returned receipt
+remains indeterminate rather than overflowing storage.
+
+A pruned tombstone no longer protects its key. Retain the original Session
+reference and never blindly retry an old key: pruning or absence does not prove
+failure or authorize an automatic resend. A deliberate separate request with a
+new key may duplicate existing work. These bounds are separate from the turn
+ledger's seven-day retention.
 
 An authorized delivery lookup for an explicitly settled prepared turn returns
 HTTP `409` with `code: client_turn_settled` and `disposition: cancelled` or

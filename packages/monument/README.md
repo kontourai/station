@@ -33,10 +33,11 @@ directory and checks all of this.
 | `@kontourai/monument/testing` | The conformance suite, the crash-point store, a fake process table, and the in-memory and `node:sqlite` harnesses | Node 24 (`node:assert`, `node:sqlite`) |
 
 Adapter authors must implement
-`turnDedup.evictResolved({ maxEntries, minResolvedEntries }, now)` in
-`KernelTransaction`. It replaces `pruneResolved(maxEntries, now)`; an existing
-custom adapter must update its implementation. The storage commands and
-persisted row format are unchanged. This source compatibility change is
+`turnDedup.evictResolved({ maxEntries, minResolvedEntries, resolvedRetentionMs? }, now)`
+and accept the optional resolution time on `turnDedup.put` in
+`KernelTransaction`. Custom adapters must implement timed retention before
+enabling that limit. SQLite's owned schema adds `resolved_at`; a bound host
+supplies its own nullable column. This source compatibility change is
 separate from on-disk compatibility.
 
 ## Message delivery
@@ -92,8 +93,8 @@ never reclaimed: the engine may already have accepted it.
 `steerReceipts.confirm` changes only an unconfirmed row with the same digest.
 It answers `stale` for a missing, changed-input or already-confirmed row and
 never replaces a confirmed turn. `steerReceipts.read` returns `confirmed` with
-the turn only for the matching digest, `indeterminate` for any other retained
-row, or `absent`. These commands do not place a steer or authorize a replay.
+the turn for a matching confirmed row, `indeterminate` for a matching pending
+row, `conflict` for a different digest, or `absent`. These commands do not place a steer or authorize a replay.
 Only the host's explicit thread deletion calls `steerReceipts.forgetThread`;
 there is no age-based expiry. All receipt command strings must be well-formed
 Unicode. Lone surrogates throw before receipt access or participant callbacks;
@@ -154,16 +155,30 @@ replacing the owner does not leave trusted stale proof. Owned SQLite tables
 upgrade additively on open. Older binaries and callers without digests cannot
 enforce this contract; legacy rows remain unknown.
 
+The synchronous `TurnIdempotencyStore` and `createTurnDeduplicator` compose
+these commands for hosts with synchronous transaction access. The host
+supplies owner identity, liveness, conflict errors, metrics, and private
+prepared-claim custody; the package does not probe a process or retain host
+credentials. This helper does not replace the Promise-based storage port.
+
 `turnDedupMaxEntries` remains a soft cap on all dedup rows. Only resolved rows
 can be evicted, oldest first; each eviction leaves an expired-key tombstone.
 An optional `turnDedupMinResolvedEntries` stops eviction once that many resolved
 rows remain. The floor must be a positive integer no greater than the soft cap;
-omitting it preserves the original all-row policy. Station sets the floor equal
-to its cap (2,000 by default), so unresolved rows cannot consume successful
-replay capacity. Unresolved rows can still grow without bound. This is a shared
-count budget, not a per-scope minimum retry duration. An older writer can evict
-below the floor. Writers with tombstone support still leave expired-key
+omitting it preserves the original all-row policy. A host may instead set
+`turnDedupResolvedRetentionMs` to retain each resolved row for that wall-clock
+duration after resolution, regardless of count. Legacy rows without a resolution
+time start a fresh window on first observation. Station uses seven days; live
+windows and unresolved rows can grow without bound. An older writer may evict below the window or floor unless the host fences
+its deletes. Station fences legacy resolved-row deletion with transaction-scoped
+permits; arbitrary older writes are not generally fenced. Writers with tombstone support still leave expired-key
 tombstones under their retention rules; writers from before #3559 may not.
+For timed retention, a SQLite host binding must supply a nullable
+`resolvedAtColumn`. The host must clear it when an older writer changes the
+row without updating the timestamp. A host that fences resolved-row deletes
+can bind a distinct `deletionPermitTable` with a `dedup_key` primary key;
+the kernel uses it only within the deletion transaction. A forward wall-clock step can shorten the
+elapsed window; this policy is not a trusted-clock guarantee.
 
 Read-only commands (`turnDedup.read`, `turnBoundary.list`,
 `turnBoundary.hasPossibleEffect`) run in a deferred transaction, so under WAL

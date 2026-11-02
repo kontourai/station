@@ -287,6 +287,7 @@ Content-Type: application/json
     }
   },
   "message": "Inspect this change",
+  "clientTurnId": "unique-key-for-this-turn",
   "conversationId": "optional caller-chosen continuation id"
 }
 ```
@@ -402,8 +403,10 @@ may refuse a retry with `client_turn_in_flight` before this comparison; that
 transient refusal accepts, queues and replays nothing. The legacy handoff marker
 alone binds prepared effects, including trimmed text; it cannot establish the original raw input. Legacy rows
 without original digest proof remain unknown, and older binaries cannot enforce
-these conflicts. Keys remain optional outside surfaces that already require
-one. See [TurnDeduplicator](../architecture/module-map.md#turndeduplicator) for
+these conflicts. Foreground, delegated, background and continuation sends
+require `clientTurnId`; a missing key is refused before dispatch with
+`client_turn_key_required`. Other surfaces retain their own key contracts.
+See [TurnDeduplicator](../architecture/module-map.md#turndeduplicator) for
 the exact submission scope, unsupported-input refusal and mixed-version limits.
 
 A send that names its own idempotency key (`clientTurnId`, up to 200
@@ -714,7 +717,7 @@ POST /api/orchestration/chat/<conversationId>/continue
   "message": "Continue",
   "ambientContext": "optional, max 4000 chars",
   "attachments": "optional ChatAttachmentInput[], max 5",
-  "clientTurnId": "optional idempotency key"
+  "clientTurnId": "required idempotency key"
 }
 ```
 
@@ -1109,18 +1112,18 @@ A client that folds raw events without the shared rule still sees it open.
 The remaining controls are defined by
 `src-server/routes/orchestration/orchestration.ts`:
 
-- `steerTurn`: `{ type: 'steerTurn', threadId, input, turnId?, clientInputId? }` sends steering
+- `steerTurn`: `{ type: 'steerTurn', threadId, input, turnId?, clientInputId }` sends steering
   input where the engine supports it. An ACP engine without a native steer
   method is steered by cancelling and re-prompting the running turn; that
   steer's `turn.started` carries `steerInterruptedRun: true`.
   On this server, a stable `clientInputId` makes acknowledgement retries safe: a durable claim
   precedes the adapter call, confirmed same-ID input returns its stored result,
-  and an unresolved or mismatched claim returns `outcome: 'indeterminate'`
-  without invoking the engine again. Retain the original `threadId`, `turnId`
+  and an unresolved claim returns `outcome: 'indeterminate'` without invoking
+  the engine again. Different input under the same key returns HTTP `409`
+  with `code: client_turn_input_conflict`. Retain the original `threadId`, `turnId`
   and input on retry. Never turn an indeterminate steer into an automatic new
   turn; retain it for review. The digest-only claim survives restart and is
-  removed with its Session. Calls without this optional ID retain the legacy
-  behavior and cannot claim transport idempotency.
+  removed with its Session. This server requires the key before dispatch.
 
 - `steerTurnOnce`: `{ type: 'steerTurnOnce', threadId, input, turnId?, clientInputId }`
   requires a stable ID and normalizes to the same internal `steerTurn` command
@@ -1136,8 +1139,9 @@ The remaining controls are defined by
   rechecked before dispatch. A missing or revoked authority is refused. The
   server requires durable storage and does not fall back to steering the parent.
   A stable `clientInputId` binds the parent, child, turn and input: an identical
-  confirmed retry returns its result without another engine call; a mismatched
-  or uncertain claim returns `indeterminate`. Deletion removes instruction text
+  confirmed retry returns its result without another engine call. Different
+  input under the same key returns HTTP `409` with
+  `code: client_turn_input_conflict`; an uncertain claim returns `indeterminate`. Deletion removes instruction text
   but retains a key tombstone so the ID cannot be reused for another Session.
   An acknowledgement timeout or lost acknowledgement is not proof of delivery;
   do not retry with a new ID automatically. Explicit `unsupported` and
@@ -2013,9 +2017,10 @@ wait_for_turn() {
   return 1
 }
 
-BODY=$(jq -n --arg agent "$STATION_AGENT_ID" --arg cwd "$STATION_SESSION_CWD" \
+FIRST_TURN_KEY=$(openssl rand -hex 16)
+BODY=$(jq -n --arg agent "$STATION_AGENT_ID" --arg cwd "$STATION_SESSION_CWD" --arg key "$FIRST_TURN_KEY" \
   --arg message "Read the file at $NONCE_FILE and reply with its exact contents." \
-  '{target:{environment:{kind:"current"},agent:$agent,workspace:{kind:"directory",cwd:$cwd}},message:$message}')
+  '{target:{environment:{kind:"current"},agent:$agent,workspace:{kind:"directory",cwd:$cwd}},message:$message,clientTurnId:$key}')
 FIRST=$(api -X POST "$BASE/api/orchestration/chat" -d "$BODY")
 CONVERSATION_ID=$(printf '%s' "$FIRST" | jq -er '.data.conversationId')
 SESSION_ID=$(printf '%s' "$FIRST" | jq -er '.data.sessionId')
@@ -2023,8 +2028,10 @@ TURN_ID=$(printf '%s' "$FIRST" | jq -er '.data.providerTurnId')
 wait_for_turn
 
 # Only continue after the first turn completed. A new Session may be returned.
+NEXT_TURN_KEY=$(openssl rand -hex 16)
+NEXT_BODY=$(jq -n --arg key "$NEXT_TURN_KEY" '{message:"Repeat the exact file contents from your previous answer.",clientTurnId:$key}')
 NEXT=$(api -X POST "$BASE/api/orchestration/chat/$CONVERSATION_ID/continue" \
-  -d '{"message":"Repeat the exact file contents from your previous answer."}')
+  -d "$NEXT_BODY")
 SESSION_ID=$(printf '%s' "$NEXT" | jq -er '.data.sessionId')
 TURN_ID=$(printf '%s' "$NEXT" | jq -er '.data.providerTurnId')
 wait_for_turn

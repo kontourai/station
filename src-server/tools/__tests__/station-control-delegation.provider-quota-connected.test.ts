@@ -1,3 +1,4 @@
+import { FileDelegationAttemptClaimStore } from '../../services/orchestration/delegation-attempt-claim-store.js';
 /**
  * #2265 connected projection test — the FULL storage/serving composition.
  *
@@ -302,6 +303,9 @@ describe('delegation provider-plan quota connected projection (#2265)', () => {
       {
         prompt: 'do the thing',
         userId: OWNER,
+        delegationAttemptClaimStore: new FileDelegationAttemptClaimStore(
+          fakeHome,
+        ),
         target: {
           environment: { kind: 'current' },
           agent: agentId('opencode-agent'),
@@ -499,6 +503,9 @@ describe('delegation provider-plan quota connected projection (#2265)', () => {
       {
         prompt: 'control run',
         userId: OWNER,
+        delegationAttemptClaimStore: new FileDelegationAttemptClaimStore(
+          fakeHome,
+        ),
         target: {
           environment: { kind: 'current' },
           agent: agentId('opencode-agent'),

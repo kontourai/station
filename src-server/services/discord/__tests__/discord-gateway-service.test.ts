@@ -499,6 +499,66 @@ describe('DiscordGatewayService', () => {
     await service.stop();
   });
 
+  test.each([
+    [
+      'indeterminate',
+      {
+        code: 'foreground_message_indeterminate',
+        outcome: 'indeterminate',
+        message: 'private provider detail',
+      },
+      'Station could not confirm that this turn started. Do not retry automatically.',
+    ],
+    [
+      'refused',
+      new Error('private provider detail'),
+      'Station could not start this turn.',
+    ],
+  ])(
+    'acknowledges %s dispatch without exposing content or errors',
+    async (_kind, failure, expected) => {
+      const directory = home();
+      new DiscordGatewayConfigurationStore(directory).write(
+        configuration({
+          enabled: true,
+          token: 'test-token',
+          sessionBindings: [
+            {
+              guildId: '1'.repeat(18),
+              channelId: '2'.repeat(18),
+              sessionId: 'session-a',
+            },
+          ],
+          identities: [
+            {
+              discordUserId: '3'.repeat(18),
+              stationIdentity: 'station-user',
+              capabilities: ['turn:start'],
+            },
+          ],
+        }),
+      );
+      const socket = new FakeSocket();
+      const delivered: string[] = [];
+      const executeForegroundMessage = vi.fn().mockRejectedValue(failure);
+      const service = new DiscordGatewayService({
+        homeDir: directory,
+        logger: silentLogger,
+        socketFactory: () => socket,
+        executeForegroundMessage,
+        deliverMessage: async ({ content }) => {
+          delivered.push(content);
+        },
+      });
+      service.start();
+      emitMessage(socket);
+      await settle();
+      expect(executeForegroundMessage).toHaveBeenCalledTimes(1);
+      expect(delivered).toEqual([expected]);
+      await service.stop();
+    },
+  );
+
   test('re-resolves revocation on the next message and retains the Station-persisted binding across reconnect', async () => {
     vi.useFakeTimers();
     const directory = home();

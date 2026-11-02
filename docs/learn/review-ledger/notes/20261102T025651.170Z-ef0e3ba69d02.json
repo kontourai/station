@@ -1,0 +1,7 @@
+{
+  "revision": "78ca25e98c31e09ee77fd86f1cbabf8eeea789b9",
+
+  "notes": [
+    {"path":"docs/reference/deploy-ledger.md","note":"Reviewed the inherited ledger update from the merge of main 2fc7b0dd00c: generated Markdown matches the JSON projection and retains exact source/workflow/artifact caveats. The create-admission change publishes nothing and changes no ledger schema, generator or release record. This source review does not qualify those release outcomes or this PR as a release.","inputs":["docs/reference/deploy-ledger.md","docs/reference/deploy-ledger.json"]}
+  ]
+}

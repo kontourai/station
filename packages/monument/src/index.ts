@@ -87,3 +87,15 @@ export {
   startUnlessDelivered,
 } from './session-message-delivery.js';
 export { resolveKernelLimits } from './step.js';
+export {
+  awaitTurnResolution,
+  createPreparedTurnClaim,
+  createTurnDeduplicator,
+  type TurnClaim,
+  type TurnClaimInspection,
+  type TurnDedupHost,
+  type TurnDeduplicator,
+  type TurnIdempotencyPersistence,
+  TurnIdempotencySettledError,
+  TurnIdempotencyStore,
+} from './turn-dedup.js';

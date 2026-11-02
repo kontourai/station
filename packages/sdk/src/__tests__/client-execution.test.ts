@@ -185,6 +185,49 @@ describe('client execution', () => {
     },
   );
 
+  test.each(['send', 'background', 'continue'] as const)(
+    '%s retains the exact wire input when an uncertain send is deliberately retried',
+    async (kind) => {
+      const failure = Object.freeze(
+        new TypeError('Response lost after sending.'),
+      );
+      const bodies: unknown[] = [];
+      vi.stubGlobal(
+        'fetch',
+        vi.fn<typeof fetch>(async (_url, init) => {
+          bodies.push(JSON.parse(String(init?.body)));
+          throw failure;
+        }),
+      );
+      const send = (clientTurnId?: string) =>
+        kind === 'continue'
+          ? continueExecutionMessage(
+              'http://station.test',
+              'retry-conversation',
+              { message: 'same input', clientTurnId },
+            )
+          : sendExecutionMessage('http://station.test', {
+              conversationId: 'retry-conversation',
+              message: 'same input',
+              target: {
+                environment: { kind: 'current' },
+                agent: agentId('station'),
+              },
+              ...(kind === 'background' ? { automaticBackground: true } : {}),
+              clientTurnId,
+            });
+      const first = await send().catch((error: unknown) => error);
+      expect(first).toBe(failure);
+      const key = sentTurnKey(first);
+      expect(key).toEqual(expect.any(String));
+      const second = await send(key).catch((error: unknown) => error);
+      expect(second).toBe(failure);
+      expect(sentTurnKey(second)).toBe(key);
+      expect(bodies).toHaveLength(2);
+      expect(bodies[1]).toEqual(bodies[0]);
+    },
+  );
+
   test('continuation preserves a frozen transport error and its supplied key', async () => {
     const failure = Object.freeze(new TypeError('The answer was lost.'));
     vi.stubGlobal('fetch', vi.fn<typeof fetch>().mockRejectedValue(failure));

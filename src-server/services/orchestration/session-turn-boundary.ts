@@ -16,6 +16,7 @@ import type {
   PreparedTurnIntent,
   PreparedTurnSettlement,
   TurnBoundaryRecord,
+  TurnClaim,
   TurnDedupRecord,
 } from '@kontourai/monument';
 import {
@@ -39,7 +40,6 @@ import type {
   RecoveryLedgerProcessIdentity,
   RecoveryOwner,
 } from './recovery-ledger.js';
-import type { TurnClaim } from './turn-deduplicator.js';
 
 type BoundaryState =
   | 'lifecycle'

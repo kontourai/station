@@ -20,6 +20,7 @@ import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { __resetStationServerSelfAttestationForTests } from '../../../security/station-server-scope.js';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../../services/identity/principal-resolver.js';
 import { NotificationService } from '../../../services/notifications/notification-service.js';
+import { FileDelegationAttemptClaimStore } from '../../../services/orchestration/delegation-attempt-claim-store.js';
 import { EventBus } from '../../../services/orchestration/event-bus.js';
 import {
   EventStore,
@@ -152,6 +153,7 @@ async function composeOver(
   const bus = new EventBus();
   const app = new Hono();
   const context = deepStub({
+    delegationAttemptClaims: new FileDelegationAttemptClaimStore(homeDir),
     projectSharedTasks: undefined,
     deploymentAuthentication: undefined,
     localAccounts: undefined,
@@ -368,6 +370,7 @@ describe('configureRuntimeRoutes: delegated result delivery wiring (#3158)', () 
       method: 'POST',
       headers: callerHeaders(channel),
       body: JSON.stringify({
+        clientTurnId: 'fixture-turn-key',
         prompt: 'write the notes',
         target: { environment: { kind: 'current' }, agent: 'writer' },
       }),

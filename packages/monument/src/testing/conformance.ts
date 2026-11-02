@@ -628,6 +628,50 @@ const turnDedup: KernelConformanceCase[] = [
       }),
   },
   {
+    name: 'turn dedup: resolved retry windows survive pressure and reopen',
+    areas: ['turnDedup'],
+    run: (harness) =>
+      withSession(
+        harness,
+        async (session) => {
+          const owner = session.processes.spawn();
+          await session.run(claim('thread-A:key', owner, 1));
+          await session.run({
+            type: 'turnDedup.resolve',
+            key: 'thread-A:key',
+            ownerId: owner.id,
+            now: 200,
+            value: 'turn-A',
+          });
+          await session.run(claim('thread-A:pending', owner, 201));
+          await settleDedup(session, owner, 'thread-B:1', 202);
+          await settleDedup(session, owner, 'thread-B:2', 203);
+          await session.store.reopen();
+          assert.equal(
+            (await dedupRecord(session, 'thread-A:key'))?.value,
+            'turn-A',
+          );
+          await session.run(claim('thread-B:3', owner, 299));
+          assert.equal(
+            (await dedupRecord(session, 'thread-A:key'))?.value,
+            'turn-A',
+          );
+          await session.run(claim('thread-B:4', owner, 300));
+          assert.deepEqual(
+            await session.run({ type: 'turnDedup.read', key: 'thread-A:key' }),
+            { kind: 'expired', expiredAt: 300 },
+          );
+          assert.equal(
+            (await dedupRecord(session, 'thread-A:pending'))?.value,
+            null,
+          );
+        },
+        {
+          limits: { turnDedupMaxEntries: 2, turnDedupResolvedRetentionMs: 100 },
+        },
+      ),
+  },
+  {
     name: 'turn dedup: retention evicts the oldest resolved rows and never an unresolved one',
     areas: ['turnDedup'],
     run: (harness) =>
@@ -4103,7 +4147,7 @@ const steerReceipts: readonly KernelConformanceCase[] = [
             ...key,
             inputDigest: 'digest-b',
           }),
-          { kind: 'indeterminate' },
+          { kind: 'conflict' },
         );
         assert.deepEqual(
           await session.run({

@@ -2,8 +2,7 @@
 
 import { EventStore } from '../../services/orchestration/event-store.js';
 
-// Re-exported from the store that enforces it, so the bound cannot drift
-// between the facade and the pruner.
+// Compatibility count hint; resolved entries expire by time, independent of this count.
 export { TURN_DEDUP_MAX_ENTRIES as CHAT_TURN_DEDUP_MAX_ENTRIES } from '../../services/orchestration/event-store.js';
 export type ChatTurnDedupClaim =
   | { claimed: true }
@@ -13,7 +12,7 @@ export type ChatTurnDedupClaim =
    * replayed: a dead owner passed its invocation point (`indeterminate`), or
    * retention evicted the resolved row (`expired`, #3559). Never run it again.
    */
-  | { claimed: false; outcome: 'indeterminate' | 'expired' };
+  | { claimed: false; outcome: 'indeterminate' | 'expired' | 'conflict' };
 
 export class ChatTurnDedupStore {
   private readonly eventStore: EventStore;
@@ -28,8 +27,8 @@ export class ChatTurnDedupStore {
         ? new EventStore(eventStore, maxEntries)
         : eventStore;
   }
-  claim(clientTurnId: string): ChatTurnDedupClaim {
-    const claim = this.eventStore.claimChatTurn(clientTurnId);
+  claim(clientTurnId: string, inputDigest?: string): ChatTurnDedupClaim {
+    const claim = this.eventStore.claimChatTurn(clientTurnId, inputDigest);
     if (claim.claimed) return { claimed: true };
     if ('outcome' in claim) return { claimed: false, outcome: claim.outcome };
     return { claimed: false, conversationId: claim.conversationId ?? null };
@@ -54,7 +53,13 @@ export class ChatTurnDedupStore {
     clientTurnId: string,
     timeoutMs?: number,
     intervalMs?: number,
+    inputDigest?: string,
   ): Promise<string | undefined> {
-    return this.eventStore.awaitChatTurn(clientTurnId, timeoutMs, intervalMs);
+    return this.eventStore.awaitChatTurn(
+      clientTurnId,
+      timeoutMs,
+      intervalMs,
+      inputDigest,
+    );
   }
 }

@@ -32,8 +32,8 @@ export interface TurnDedupTombstoneRule {
 /** Retention and capacity policy the decisions apply. */
 export interface KernelLimits {
   /**
-   * Soft cap on dedup rows; only resolved rows are ever evicted, and each
-   * eviction leaves a tombstone, which does not count toward the cap.
+   * Soft cap when no timed resolved retention is configured. Only resolved
+   * rows are ever evicted, and each leaves a tombstone outside the cap.
    */
   readonly turnDedupMaxEntries: number;
   /**
@@ -41,6 +41,8 @@ export interface KernelLimits {
    * soft cap. Positive and at most turnDedupMaxEntries; omitted means no floor.
    */
   readonly turnDedupMinResolvedEntries?: number;
+  /** Keep each resolved key for at least this many milliseconds after resolution. */
+  readonly turnDedupResolvedRetentionMs?: number;
   readonly turnDedupTombstoneRetention: readonly TurnDedupTombstoneRule[];
   /** Most boundary rows one thread may hold before new turns are refused. */
   readonly turnBoundaryAcceptedCapacity: number;
@@ -177,7 +179,7 @@ export interface KernelTransaction {
   };
   readonly turnDedup: {
     get(key: string): TurnDedupRecord | undefined;
-    put(record: TurnDedupRecord): void;
+    put(record: TurnDedupRecord, resolvedAt?: number): void;
     delete(key: string): void;
     /**
      * Delete every row and tombstone whose key starts with `prefix`; return
@@ -185,8 +187,9 @@ export interface KernelTransaction {
      */
     deletePrefix(prefix: string): number;
     /**
-     * Evict the oldest resolved rows (createdAt, then key in code-point order)
-     * while the all-row soft cap and resolved-row floor are both exceeded.
+     * Without a retry window, evict the oldest resolved rows while the
+     * all-row soft cap and resolved-row floor are both exceeded. With a
+     * window, expire resolved rows only after that window, regardless of cap.
      * Each eviction leaves a tombstone stamped now; an existing tombstone
      * keeps its time. Unresolved rows are never evicted. A zero floor retains
      * the original all-row soft-cap behavior.
@@ -195,6 +198,7 @@ export interface KernelTransaction {
       bounds: {
         readonly maxEntries: number;
         readonly minResolvedEntries: number;
+        readonly resolvedRetentionMs?: number;
       },
       now: number,
     ): void;

@@ -68,6 +68,45 @@ function context(processes = createFakeProcessTable()): KernelContext {
 }
 
 describe('node:sqlite adapter bound to a host schema', () => {
+  it('refuses a resolution-time column that aliases a claim field', () => {
+    const db = host();
+    expect(() =>
+      storage(db, {
+        ...BOUND,
+        turnDedup: {
+          ...(BOUND.turnDedup as Exclude<
+            SqliteKernelTables['turnDedup'],
+            'unused' | undefined
+          >),
+          resolvedAtColumn: 'CREATED_AT',
+        },
+      }),
+    ).toThrow('The resolution time must have its own dedup column.');
+  });
+  it('rolls back timed retention when the host has no resolution-time column', () => {
+    const db = host();
+    const kernel = storage(db);
+    const processes = createFakeProcessTable();
+    const owner = processes.spawn();
+    expect(() =>
+      kernel.executeSync(
+        {
+          type: 'turnDedup.claim',
+          key: 'k',
+          owner,
+          now: 5,
+          tracking: 'tracked',
+        },
+        {
+          ...context(processes),
+          limits: { turnDedupResolvedRetentionMs: 100 },
+        },
+      ),
+    ).toThrow('Timed turn dedup retention requires a resolvedAtColumn.');
+    expect(db.prepare('SELECT count(*) AS n FROM host_dedup').get()).toEqual({
+      n: 0,
+    });
+  });
   it('reads and writes the host tables, in the host encoding, and creates none of its own', () => {
     const db = host();
     const kernel = storage(db);

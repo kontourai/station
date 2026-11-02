@@ -53,6 +53,7 @@ import { AsyncEventQueue } from '../../providers/sessions/async-event-queue.js';
 import { AgentPolicyService } from '../../services/agents/agent-policy-service.js';
 import { WorkflowSidecarService } from '../../services/evidence/workflow-sidecar-service.js';
 import { FlowRunService } from '../../services/flow/flow-run-service.js';
+import { FileDelegationAttemptClaimStore } from '../../services/orchestration/delegation-attempt-claim-store.js';
 import { EventBus } from '../../services/orchestration/event-bus.js';
 import { EventStore } from '../../services/orchestration/event-store.js';
 import { OrchestrationService } from '../../services/orchestration/orchestration-service.js';
@@ -312,6 +313,7 @@ describe('station#4543: delegate create -> status/events binding survives for an
         // The delegating principal owns the task session; every later read
         // below is that principal's.
         userId: OWNER,
+        delegationAttemptClaimStore: new FileDelegationAttemptClaimStore(tmp),
         target: {
           environment: { kind: 'current' },
           agent: agentId('opencode-agent'),
@@ -392,6 +394,7 @@ describe('station#4543: delegate create -> status/events binding survives for an
         // The delegating principal owns the task session; every later read
         // below is that principal's.
         userId: OWNER,
+        delegationAttemptClaimStore: new FileDelegationAttemptClaimStore(tmp),
         target: {
           environment: { kind: 'current' },
           agent: agentId('opencode-agent'),

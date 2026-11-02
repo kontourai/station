@@ -24,13 +24,21 @@ export function rememberSentTurnKey(error: unknown, key: string): void {
   }
 }
 
-export function chooseSentTurnKey(supplied: unknown): string {
+export function chooseSentTurnKey(
+  supplied: unknown,
+  {
+    field = 'clientTurnId',
+    maxLength = 200,
+  }: { field?: string; maxLength?: number } = {},
+): string {
   if (
     supplied !== undefined &&
-    (typeof supplied !== 'string' || !supplied.trim() || supplied.length > 200)
+    (typeof supplied !== 'string' ||
+      !supplied.trim() ||
+      supplied.length > maxLength)
   )
     throw new TypeError(
-      'clientTurnId must be a non-empty string of at most 200 characters',
+      `${field} must be a non-empty string of at most ${maxLength} characters`,
     );
   return typeof supplied === 'string' ? supplied : randomCorrelationId();
 }

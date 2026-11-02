@@ -8,6 +8,7 @@ import type {
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { sendExecutionMessageWithInventory } from '../client/execution';
 import { sendExecutionMessage } from '../client/send-execution-message';
+import { sentTurnKey } from '../client/sent-turn-key';
 import {
   fetchSkillExperienceInventory,
   fetchSkillExperienceSession,
@@ -65,6 +66,40 @@ const session: SkillExperienceSessionViewV1 = {
 
 describe('visual skill HTTP boundary', () => {
   afterEach(() => vi.unstubAllGlobals());
+
+  test('a visual send keeps its key and input across an uncertain retry after source preflight', async () => {
+    const failure = Object.freeze(new TypeError('Lost visual send response.'));
+    const bodies: unknown[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn<typeof fetch>(async (url, init) => {
+        if (String(url).endsWith('/api/skills/experiences'))
+          return response({
+            executionContract: '1.0',
+            experiences: [entry],
+            diagnostics: [],
+          });
+        bodies.push(JSON.parse(String(init?.body)));
+        throw failure;
+      }),
+    );
+    const send = (clientTurnId?: string) =>
+      sendExecutionMessage('http://station.test', {
+        ...input,
+        skillExperience: start,
+        clientTurnId,
+      });
+    const first = await send().catch((error: unknown) => error);
+    expect(first).toBe(failure);
+    const key = sentTurnKey(first);
+    expect(key).toEqual(expect.any(String));
+    const second = await send(key).catch((error: unknown) => error);
+    expect(second).toBe(failure);
+    expect(sentTurnKey(second)).toBe(key);
+    expect(bodies).toHaveLength(2);
+    expect(bodies[1]).toEqual(bodies[0]);
+  });
+
   test('preflights current source and carries the source-bound start only through foreground chat', async () => {
     const fetchMock = vi
       .fn<typeof fetch>()

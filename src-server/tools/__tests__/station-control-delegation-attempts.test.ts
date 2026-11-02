@@ -1,3 +1,6 @@
+import { humanPrincipal } from '@kontourai/station-contracts/principal';
+import { sessionReadAuthorityFromRequest } from '@kontourai/station-contracts/tenancy';
+import { withStationControlCallerContext } from '../station-control-shared.js';
 /**
  * #485 receiver request-claim slice — receiver-local effect proof.
  *
@@ -29,7 +32,7 @@
  *   before).
  */
 
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { agentId } from '@kontourai/station-contracts/agent-identity';
@@ -108,11 +111,24 @@ function admissionStub(
 }
 
 function localService(
-  hooks: { onStart?: () => Promise<void>; onTurn?: () => Promise<void> } = {},
+  hooks: {
+    onStart?: () => Promise<void>;
+    onTurn?: () => Promise<void>;
+    rejectStartOnce?: boolean;
+  } = {},
 ) {
+  let rejected = false;
   const startSessionInternal = vi.fn(
     async (command: Record<string, unknown>, _context: unknown) => {
       await hooks.onStart?.();
+      if (hooks.rejectStartOnce && !rejected) {
+        rejected = true;
+        return {
+          status: 'rejected' as const,
+          code: 'provider_session_start_failed',
+          message: 'receiver unavailable',
+        };
+      }
       return {
         status: 'accepted' as const,
         receipt: { commandId: 'start-command-1', status: 'accepted' },
@@ -134,6 +150,7 @@ function localService(
   );
   return {
     readSession: vi.fn(async () => null),
+    hasSessionStartRecord: vi.fn(() => false),
     currentConversationSessionId: vi.fn(
       (conversationId: string) => conversationId,
     ),
@@ -176,6 +193,12 @@ function claimInput(overrides: Record<string, unknown> = {}) {
     prompt: 'Ship the portable thing',
     target: portableTarget(),
     receiverAdmission: admissionStub(resourcePath),
+    readAuthority: sessionReadAuthorityFromRequest(
+      'operator',
+      undefined,
+      undefined,
+    ),
+    principal: humanPrincipal('test', 'operator', 'Operator'),
     delegationAttemptId: 'attempt-1',
     delegationAttemptCaller: { deviceId: 'dev-verified-1' },
     delegationAttemptClaimStore: new FileDelegationAttemptClaimStore(dir),
@@ -247,6 +270,28 @@ describe('receiver-local claim → single effect', () => {
     const record = await probe.read(CLAIM_KEY);
     expect(record?.state).toBe('accepted');
     expect(record?.taskId).toBe(result.taskId);
+  });
+
+  test('a different portable attempt cannot reuse a claimed request key to create another session', async () => {
+    const { delegateTask } = await import('../station-control-delegation.js');
+    const service = localService();
+    const first = await delegateTask(
+      { ...claimInput(), clientTurnId: 'shared-create-key' },
+      service as never,
+    );
+    await expect(
+      delegateTask(
+        {
+          ...claimInput({ delegationAttemptId: 'attempt-2' }),
+          clientTurnId: 'shared-create-key',
+          prompt: 'different input',
+        },
+        service as never,
+      ),
+    ).rejects.toMatchObject({ code: 'create_request_conflict' });
+    expect(first.sessionId).toMatch(/^task:/);
+    expect(service.startSessionInternal).toHaveBeenCalledTimes(1);
+    expect(service.dispatchWithReceipt).toHaveBeenCalledTimes(1);
   });
 
   test('mismatched validated intent under the same key conflicts with NO effect', async () => {
@@ -638,12 +683,19 @@ describe('refusals before any claim — unsupported, unwired, legacy', () => {
         prompt: 'Ship the portable thing',
         target: portableTarget(),
         receiverAdmission: admissionStub(resourcePath),
+        principal: humanPrincipal('test', 'operator', 'Operator'),
+        readAuthority: sessionReadAuthorityFromRequest(
+          'operator',
+          undefined,
+          undefined,
+        ),
+        delegationAttemptClaimStore: new FileDelegationAttemptClaimStore(dir),
       },
       service as never,
     );
     expect(result.taskId).toMatch(/^task:/);
     expect(service.startSessionInternal).toHaveBeenCalledTimes(1);
-    // No claim owner was composed, so no claim file was even created.
+    // The portable attempt ledger is independent of ordinary create claims.
     const store = new FileDelegationAttemptClaimStore(dir);
     expect(await store.read(CLAIM_KEY)).toBeUndefined();
   });
@@ -802,5 +854,163 @@ describe('controller forwarding — capability gate + duplicate relay', () => {
     expect((error as PeerDelegationAttemptDuplicateError).taskId).toBe(
       'task:receiver-real-1',
     );
+  });
+});
+
+describe('ordinary local create request claims', () => {
+  function localInput() {
+    return {
+      prompt: 'first input',
+      target: {
+        environment: { kind: 'current' as const },
+        agent: agentId('reviewer'),
+      },
+      clientTurnId: 'local-create-key',
+      principal: humanPrincipal('test', 'operator', 'Operator'),
+      readAuthority: sessionReadAuthorityFromRequest(
+        'operator',
+        undefined,
+        undefined,
+      ),
+      delegationAttemptClaimStore: new FileDelegationAttemptClaimStore(dir),
+    };
+  }
+
+  test('a typed rejected session-start outcome releases the same request key', async () => {
+    const { delegateTask } = await import('../station-control-delegation.js');
+    const service = localService({ rejectStartOnce: true });
+
+    await expect(delegateTask(localInput(), service as never)).rejects.toThrow(
+      'receiver unavailable',
+    );
+    expect(
+      Object.keys(
+        JSON.parse(
+          readFileSync(join(dir, 'delegation-create-claims.json'), 'utf8'),
+        ).claims,
+      ),
+    ).toHaveLength(0);
+    await expect(
+      delegateTask(localInput(), service as never),
+    ).resolves.toMatchObject({ status: 'dispatched' });
+    expect(service.startSessionInternal).toHaveBeenCalledTimes(2);
+    expect(service.dispatchWithReceipt).toHaveBeenCalledTimes(1);
+  });
+
+  test('the durable starting mark precedes the real delegation start port', async () => {
+    const { delegateTask } = await import('../station-control-delegation.js');
+    const service = localService({
+      onStart: async () => {
+        const rows = JSON.parse(
+          readFileSync(join(dir, 'delegation-create-claims.json'), 'utf8'),
+        ).claims;
+        expect(Object.values(rows)).toEqual([
+          expect.objectContaining({ starting: true }),
+        ]);
+      },
+    });
+    await delegateTask(localInput(), service as never);
+    expect(service.startSessionInternal).toHaveBeenCalledTimes(1);
+  });
+
+  test('a restarted claim owner replays the original session and rejects changed input without another effect', async () => {
+    const { delegateTask } = await import('../station-control-delegation.js');
+    const service = localService();
+    const first = await delegateTask(localInput(), service as never);
+    const replay = await delegateTask(localInput(), service as never);
+    expect(replay).toEqual(first);
+    await expect(
+      delegateTask(
+        { ...localInput(), prompt: 'different input' },
+        service as never,
+      ),
+    ).rejects.toMatchObject({ code: 'create_request_conflict' });
+    expect(service.startSessionInternal).toHaveBeenCalledTimes(1);
+    expect(service.dispatchWithReceipt).toHaveBeenCalledTimes(1);
+  });
+
+  test('a create without its provider turn receipt stays indeterminate and never resends', async () => {
+    const { delegateTask } = await import('../station-control-delegation.js');
+    const service = localService();
+    service.dispatchWithReceipt.mockResolvedValueOnce({
+      receipt: { commandId: 'missing-turn', status: 'accepted' },
+      result: {},
+    });
+    await expect(
+      delegateTask(localInput(), service as never),
+    ).rejects.toMatchObject({ outcome: 'indeterminate' });
+    await expect(
+      delegateTask(localInput(), service as never),
+    ).rejects.toMatchObject({ outcome: 'indeterminate' });
+    expect(service.startSessionInternal).toHaveBeenCalledTimes(1);
+    expect(service.dispatchWithReceipt).toHaveBeenCalledTimes(1);
+  });
+
+  test('an exception before session creation releases the request for an unchanged retry', async () => {
+    const { delegateTask } = await import('../station-control-delegation.js');
+    const service = localService();
+    service.readSession.mockRejectedValueOnce(new Error('bind failure'));
+    await expect(delegateTask(localInput(), service as never)).rejects.toThrow(
+      'bind failure',
+    );
+    await expect(
+      delegateTask(localInput(), service as never),
+    ).resolves.toMatchObject({ status: 'dispatched' });
+    expect(service.startSessionInternal).toHaveBeenCalledTimes(1);
+    expect(service.dispatchWithReceipt).toHaveBeenCalledTimes(1);
+  });
+
+  test.each(['null', '{"version":1,"claims":[]}'])(
+    'a malformed durable create ledger refuses without creating a session: %s',
+    async (bytes) => {
+      const { delegateTask } = await import('../station-control-delegation.js');
+      writeFileSync(join(dir, 'delegation-create-claims.json'), bytes);
+      const service = localService();
+      await expect(
+        delegateTask(localInput(), service as never),
+      ).rejects.toThrow('Malformed create request claims');
+      expect(service.startSessionInternal).not.toHaveBeenCalled();
+      expect(service.dispatchWithReceipt).not.toHaveBeenCalled();
+    },
+  );
+
+  test('verified calling Sessions without principals have independent local delegation keys', async () => {
+    const { delegateTask } = await import('../station-control-delegation.js');
+    const service = localService();
+    const send = (sessionId: string, prompt = 'first input') =>
+      withStationControlCallerContext(
+        {
+          token: 'fixture',
+          resolve: () => ({ sessionId, assurance: 'bound' }),
+        },
+        () =>
+          delegateTask(
+            { ...localInput(), principal: undefined, prompt },
+            service as never,
+          ),
+      );
+    const first = await send('agent-a');
+    const second = await send('agent-b');
+    expect(first.sessionId).not.toBe(second.sessionId);
+    expect(await send('agent-a')).toEqual(first);
+    await expect(send('agent-a', 'changed')).rejects.toMatchObject({
+      code: 'create_request_conflict',
+    });
+    expect(service.startSessionInternal).toHaveBeenCalledTimes(2);
+  });
+
+  test('another authenticated caller has an independent claim namespace', async () => {
+    const { delegateTask } = await import('../station-control-delegation.js');
+    const service = localService();
+    const first = await delegateTask(localInput(), service as never);
+    const second = await delegateTask(
+      {
+        ...localInput(),
+        principal: humanPrincipal('test', 'another', 'Another'),
+      },
+      service as never,
+    );
+    expect(second.sessionId).not.toBe(first.sessionId);
+    expect(service.startSessionInternal).toHaveBeenCalledTimes(2);
   });
 });

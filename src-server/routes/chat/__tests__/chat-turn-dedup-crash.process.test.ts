@@ -20,7 +20,7 @@ import {
 } from '../../../__test-utils__/chat-primary-stream-harness.js';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { EventStore } from '../../../services/orchestration/event-store.js';
-import { chatTurnDedupKey } from '../../../services/orchestration/sqlite-turn-dedup-persistence.js';
+import { chatTurnDedupKey } from '../../../services/orchestration/station-turn-dedup-bindings.js';
 import { ChatTurnDedupStore } from '../chat-turn-dedup.js';
 
 const CHILD_TIMEOUT_MS = 60_000;
@@ -40,7 +40,7 @@ const OWNER_PROGRAM = `
   import { agentId } from '@kontourai/station-contracts/agent-identity';
   import { createNativeForegroundRelay } from ${moduleUrl('src-server/runtime/conversation/native-foreground-invocation.ts')};
   import { EventStore } from ${moduleUrl('src-server/services/orchestration/event-store.ts')};
-  import { chatTurnDedupKey } from ${moduleUrl('src-server/services/orchestration/sqlite-turn-dedup-persistence.ts')};
+  import { chatTurnDedupKey } from ${moduleUrl('src-server/services/orchestration/station-turn-dedup-bindings.ts')};
   import { ChatTurnDedupStore } from ${moduleUrl('src-server/routes/chat/chat-turn-dedup.ts')};
   import { buildChatHarnessApp, createHarnessConversationStore } from ${moduleUrl('src-server/__test-utils__/chat-primary-stream-harness.ts')};
   const [dbPath, mode, clientTurnId] = process.argv.slice(1);

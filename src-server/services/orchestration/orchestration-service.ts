@@ -3,6 +3,8 @@ import { existsSync } from 'node:fs';
 import { isAbsolute, relative, resolve } from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
 import type { FlowEvidenceEntry } from '@kontourai/flow';
+import type { TurnDeduplicator } from '@kontourai/monument';
+import { TurnIdempotencySettledError } from '@kontourai/monument';
 import {
   type AgentExecutionConfig,
   type AgentSpec,
@@ -304,7 +306,6 @@ import {
   TASK_BRIEF_MAX_CHARS,
   TASK_BRIEF_VERSION,
 } from '../projects/task-brief.js';
-import { TurnIdempotencySettledError } from '../turn-idempotency.js';
 import type { UsageTelemetryProperties } from '../usage-telemetry-inventory.js';
 import { AdapterRetirement } from './adapter-retirement.js';
 import type { ResolveAdoptedChildExecutionBinding } from './adopted-child-execution-binding.js';
@@ -540,7 +541,6 @@ import {
   readThreadUsageTree,
   type ThreadUsageTreeReadOutcome,
 } from './thread-usage-tree-read.js';
-import type { TurnDeduplicator } from './turn-deduplicator.js';
 import { TurnProgressTracker } from './turn-progress-tracker.js';
 import { TurnProvenanceSidecar } from './turn-provenance-sidecar.js';
 import {
@@ -8927,8 +8927,7 @@ export class OrchestrationService {
           // prior dispatch — hand that back verbatim instead of calling
           // `adapter.sendTurn` a second time — or (b) another dispatch with
           // the same key is still in flight (genuinely still executing —
-          // NEVER assumed stale by elapsed time, see
-          // `turn-idempotency.ts`'s file header) — wait (bounded) for it to
+          // NEVER assumed stale by elapsed time) — wait (bounded) for it to
           // resolve rather than racing a second execution. Only a genuinely
           // new claim falls through to actually calling the adapter below.
           const clientTurnId = turnInput.clientTurnId;
@@ -8937,7 +8936,7 @@ export class OrchestrationService {
           // dedup-hit/in-flight branch below returns before this is ever
           // set, so it never touches a claim it doesn't own.
           let ownedClientTurnClaim:
-            | import('./turn-deduplicator.js').TurnClaim
+            | import('@kontourai/monument').TurnClaim
             | undefined;
           let receiptStatus: 'persisted' | 'unavailable' = 'persisted';
           if (clientTurnId) {

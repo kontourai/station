@@ -71,6 +71,8 @@ describe('POST /chat with the production default-environment callback', () => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          clientTurnId: 'fixture-turn-key',
+          conversationId: 'existing-projection-conversation',
           message: 'Use the saved default',
           target: {
             agent: 'codex',
