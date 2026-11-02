@@ -324,7 +324,8 @@ function codexBoundToolResult(value: unknown) {
     throw new Error('bound-tool-result-refused');
   });
   const refused = items.some((item) => {
-    if (item.type !== 'inputText' || typeof item.text !== 'string') return false;
+    if (item.type !== 'inputText' || typeof item.text !== 'string')
+      return false;
     try {
       const parsed: unknown = JSON.parse(item.text);
       return (
