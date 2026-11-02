@@ -60,11 +60,11 @@ generation, caller, Task and preview again before publication. Dirty workspaces,
 unobservable submodules, changed authority, unavailable media tools, excess
 bytes or exhausted recording capacity refuse the operation. The shared recorder
 admits at most four active Browser and Device recordings per Station, with at
-most two per person (an Agent's recordings count against the person it acts for);
-finished clips do not count. A commit pin does not prove the displayed page was
-built from that commit. The manifest retains the commit, recording digest and
-byte length, and up to ten selected frames;
-audio and transcript coverage are absent.
+most two per person (an Agent's recordings count against the person it acts
+for); finished clips do not count. A commit pin does not prove the displayed
+page was built from that commit. The manifest retains the commit, recording
+digest and byte length, and up to ten selected frames; audio and transcript
+coverage are absent.
 
 Cancelling the recording request, closing its Browser surface, or stopping
 Station cancels an in-progress capture or encoding. The recorder releases its

@@ -262,7 +262,40 @@ test('pre-admitted slots release after cancellation and source failure', async (
   await recorder.dispose();
 });
 
-test('shared recorder bounds active recordings across different Task keys', async () => {
+test('disabled Walkthroughs takes precedence over recording capacity and releases a reserved slot', async () => {
+  let enabled = true;
+  const recorder = new TaskBrowserRecording({
+    preview: {
+      select: (choices: { enabled: () => boolean; disabled: () => boolean }) =>
+        enabled ? choices.enabled() : choices.disabled(),
+    },
+  } as never);
+  const task = access('alice');
+  const first = recorder.admit(task);
+  const second = recorder.admit(task);
+  enabled = false;
+  const source = vi.fn(async (): Promise<never> => {
+    throw new Error('unexpected');
+  });
+  await expect(
+    recorder.recordSource(task, { durationMs: 1000 }, source),
+  ).rejects.toMatchObject({ code: 'feature_preview_disabled' });
+  await expect(
+    recorder.recordSource(
+      task,
+      { durationMs: 1000, releaseAdmission: second },
+      source,
+    ),
+  ).rejects.toMatchObject({ code: 'feature_preview_disabled' });
+  expect(source).not.toHaveBeenCalled();
+  enabled = true;
+  const replacement = recorder.admit(task);
+  replacement();
+  first();
+  await recorder.dispose();
+});
+
+test('shared recorder bounds active recordings Station-wide across owners', async () => {
   let release!: () => void;
   const waiting = new Promise<void>((resolve) => {
     release = resolve;

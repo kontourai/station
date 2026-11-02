@@ -290,9 +290,7 @@ describe('opening a device', () => {
       within(dialog).getByRole('button', { name: 'Start recording' }),
     );
     expect(
-      await within(dialog).findByText(
-        'Could not start recording. Update Station or try again.',
-      ),
+      await within(dialog).findByText('Recording capacity is exhausted.'),
     ).toBeTruthy();
     expect(screen.queryByText('Recording to Task…')).toBeNull();
   });

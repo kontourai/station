@@ -413,12 +413,18 @@ export class TaskBrowserRecording {
     input: RecordingInput,
     resolveSource: () => Promise<RecordingSource>,
   ) {
-    const release =
-      input.releaseAdmission ?? this.admit(access, input.admissionKey);
+    let release = input.releaseAdmission;
     try {
+      if (input.signal?.aborted || input.stopSignal?.aborted) throw cancelled();
+      if (!this.enabled())
+        throw new TaskBrowserRecordingError(
+          'feature_preview_disabled',
+          'Enable Walkthroughs in feature previews.',
+        );
+      release ??= this.admit(access, input.admissionKey);
       return await this.recordAdmitted(access, input, resolveSource);
     } finally {
-      release();
+      release?.();
     }
   }
 
