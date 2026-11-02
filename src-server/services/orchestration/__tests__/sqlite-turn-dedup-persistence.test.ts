@@ -3,7 +3,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { describe, expect, test } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { EventStore } from '../event-store.js';
-import { createSqliteSessionControlRequestKeys } from '../session-control-request-keys.js';
+import { createSqliteSessionControlRequestKeys } from '../sqlite-session-control-request-keys.js';
 import {
   chatTurnDedupKey,
   turnDedupKey,

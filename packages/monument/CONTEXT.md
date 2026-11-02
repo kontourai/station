@@ -40,7 +40,9 @@ Control route and delegated-result service supply those ports and retain their
 existing durable request-key and consumption rows. This sequence is not a
 storage command and creates no new state or inbox. The separate `steerReceipts`
 commands own the no-reclaim/confirmation decisions over receipt rows. The
-recovery-ledger core remains open extraction work in #3565.
+recovery ledger's claim and reconciliation protocol and storage commands are
+in the package. Station supplies its existing table and event-terminal facts;
+the shared adapter conformance uses simulated faults, not physical power loss.
 
 Each storage operation is one command, executed as one atomic transaction by an
 adapter. The decision for a command is a pure function of the records it
@@ -113,7 +115,7 @@ names the package under any escape or case, refuses a module reference it
 cannot read. `scripts/monument-import-boundary-gate.mjs`
 enforces this in
 `ci:fast` and in `verify:static`. Station consumes the package only through
-its public entry points: `.`, `./sqlite`, `./adapter` and `./testing`.
+its public entry points: `.`, `./sqlite`, `./adapter`, `./testing`, `./session-control`, `./recovery` and `./session-boundary`.
 
 **Threat model** (owner decision): the gate stops *accidental* coupling
 between Station and Monument internals, the kind real code and agents

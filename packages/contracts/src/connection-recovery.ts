@@ -234,8 +234,19 @@ export interface ConnectionRecoveryIntent {
   updatedAt: string;
 }
 
+/** Bounded reasons why automatic recovery cannot establish admission. */
+export type RecoveryAdmissionRefusalReason =
+  | 'scan-unavailable'
+  | 'reconciliation-indeterminate';
+
 /** Shared API/CLI session detail projection; intentionally content-free. */
 export interface ConnectionRecoveryProjection {
+  /** Runtime admission status; it does not change the durable intent's outcome. */
+  admission?: {
+    state: 'blocked';
+    reason: RecoveryAdmissionRefusalReason;
+    retryAt?: string;
+  };
   failureKind: ConnectionRecoveryFailureKind;
   scope: ConnectionRecoveryScope;
   decision: ConnectionRecoveryDecision;

@@ -1,3 +1,7 @@
+import type {
+  RecoveryClaim,
+  RecoveryTransition,
+} from '@kontourai/monument/recovery';
 import type { ChatAttachmentInput } from '@kontourai/station-contracts/chat-attachment';
 import type {
   ConnectionRecoveryDecision,
@@ -5,6 +9,7 @@ import type {
   ConnectionRecoveryOutcome,
   ConnectionRecoveryOutcomeReason,
   ConnectionRecoveryProjection,
+  RecoveryAdmissionRefusalReason,
 } from '@kontourai/station-contracts/connection-recovery';
 import {
   type CanonicalRuntimeEvent,
@@ -17,6 +22,7 @@ import { dispatchableChatAttachments } from '../../providers/sessions/chat-attac
 import {
   attachmentReplayRefusals,
   connectionRecoveryOutcomes,
+  recoveryAdmissionRefused,
 } from '../../telemetry/metrics.js';
 import type { ClassifiedConnectionFailure } from '../connections/connection-recovery-policy.js';
 import {
@@ -28,11 +34,7 @@ import {
 import { type CredentialRecoveryModule } from './credential-recovery-module.js';
 import type { EventStore } from './event-store.js';
 import type { RecoveryDispatchAdapter } from './recovery-dispatch-adapter.js';
-import {
-  type RecoveryClaim,
-  type RecoveryLedger,
-  type RecoveryTransition,
-} from './recovery-ledger.js';
+import type { RecoveryLedger } from './recovery-ledger-binding.js';
 import type {
   UsageLimitResumeChoice,
   UsageLimitResumeChoices,
@@ -89,6 +91,8 @@ const CANCELLATION_RETRY_MS = 100;
  * takes. It never dispatches on an unread fence and never gives up.
  */
 const SOURCE_TERMINAL_FENCE_RETRY_MS = 60_000;
+const ADMISSION_RETRY_MIN_MS = 60_000;
+const ADMISSION_RETRY_MAX_MS = 10 * 60_000;
 
 /**
  * Small recovery owner for the orchestration event seam. It schedules only
@@ -113,6 +117,8 @@ export class SessionRecoveryCoordinator {
   private readonly cancellationResults = new Map<string, RecoveryTransition>();
   private credentialRecovery?: CredentialRecoveryModule;
   private disposed = false;
+  private dueScanRetry?: ReturnType<typeof setTimeout>;
+  private admissionRetry?: { delayMs: number; retryAt: string };
 
   constructor(
     private readonly options: {
@@ -163,7 +169,20 @@ export class SessionRecoveryCoordinator {
   }
 
   latestProjection(threadId: string): ConnectionRecoveryProjection | undefined {
-    return this.ledger.latestProjection(threadId);
+    const projection = this.ledger.latestProjection(threadId);
+    const reason = this.credentialRecovery?.admission();
+    return projection?.outcome === 'armed' && reason
+      ? {
+          ...projection,
+          admission: {
+            state: 'blocked',
+            reason,
+            ...(this.admissionRetry
+              ? { retryAt: this.admissionRetry.retryAt }
+              : {}),
+          },
+        }
+      : projection;
   }
 
   observe(event: CanonicalRuntimeEvent): void {
@@ -192,16 +211,7 @@ export class SessionRecoveryCoordinator {
     // profile attempt into candidate-profile compensation.  This coordinator
     // may settle ordinary recovery only; otherwise it would erase the
     // credential identity before its owner can make it safe.
-    const unsettled = this.ledger.reconcilePrepared(
-      this.now().toISOString(),
-      'due',
-    );
-    // An unreadable scan fences nothing, so there is no outcome to record.
-    // Its prepared rows stay durable for the next startup; this due-path
-    // sweep has no in-process retry (#2823 scopes that to credentials).
-    if (unsettled.kind === 'available')
-      for (const intent of unsettled.obligations)
-        this.recordIntentOutcome(intent, 'indeterminate');
+    this.reconcileDueClaims();
     // #3563: the bulk repair is defence in depth. Each timer re-checks the
     // same rule for its own intent before it can dispatch, so a failed
     // repair only needs to be said, not to pause every recovery.
@@ -216,6 +226,23 @@ export class SessionRecoveryCoordinator {
       this.schedule(intent.fingerprint, intent.dueAt);
     }
     void this.credentialRecovery?.reconcile();
+  }
+
+  private reconcileDueClaims(): void {
+    if (this.stopping || this.disposed) return;
+    const unsettled = this.ledger.reconcilePrepared(
+      this.now().toISOString(),
+      'due',
+    );
+    for (const intent of unsettled.obligations ?? [])
+      this.recordIntentOutcome(intent, 'indeterminate');
+    if (unsettled.kind === 'available') return;
+    if (this.dueScanRetry) return;
+    this.dueScanRetry = setTimeout(() => {
+      this.dueScanRetry = undefined;
+      this.reconcileDueClaims();
+    }, SOURCE_TERMINAL_FENCE_RETRY_MS);
+    this.dueScanRetry.unref();
   }
 
   /**
@@ -270,6 +297,8 @@ export class SessionRecoveryCoordinator {
   }
 
   async dispose(): Promise<void> {
+    if (this.dueScanRetry) clearTimeout(this.dueScanRetry);
+    this.dueScanRetry = undefined;
     if (this.disposed) return;
     this.stopping = true;
     for (const timer of this.timers.values()) clearTimeout(timer);
@@ -718,8 +747,10 @@ export class SessionRecoveryCoordinator {
 
   /**
    * A different enrolled account is actionable immediately; its adoption
-   * must not wait for the exhausted account's reset time. If no eligible
-   * profile can be staged, preserve the ordinary timing-based recovery.
+   * must not wait for the exhausted account's reset time. Unreadable or
+   * indeterminate credential readiness blocks all automatic recovery, including
+   * ordinary replay. After reconciliation, ordinary recovery remains available
+   * when no eligible profile can be staged.
    */
   private async tryProfileRecoveryOrSchedule(
     intent: ConnectionRecoveryIntent,
@@ -727,6 +758,15 @@ export class SessionRecoveryCoordinator {
   ): Promise<boolean> {
     const module = this.credentialRecovery;
     if (!module) return false;
+    const blocked = module.admission();
+    if (
+      blocked &&
+      (!this.admissionRetry ||
+        Date.parse(this.admissionRetry.retryAt) > this.now().getTime())
+    ) {
+      this.deferAdmission(intent, blocked);
+      return true;
+    }
     const controller = new AbortController();
     this.dispatchControllers.set(intent.fingerprint, controller);
     const outcome = await module.recover({
@@ -738,6 +778,7 @@ export class SessionRecoveryCoordinator {
         controller.signal,
       ),
     });
+    if (outcome.kind !== 'unavailable') this.admissionRetry = undefined;
     if (outcome.kind === 'unnecessary') {
       this.clearIntentRuntime(intent, false);
       return false;
@@ -749,6 +790,10 @@ export class SessionRecoveryCoordinator {
         this.activeByThread.set(intent.threadId, intent.fingerprint);
         this.recordIntentOutcome(claimed, 'resumed');
       }
+      return true;
+    }
+    if (outcome.kind === 'unavailable') {
+      this.deferAdmission(intent, outcome.reason);
       return true;
     }
     if (outcome.kind === 'conflicted') {
@@ -770,6 +815,25 @@ export class SessionRecoveryCoordinator {
       if (failed.kind === 'applied') this.recordIntentOutcome(intent, 'failed');
     }
     return true;
+  }
+
+  private deferAdmission(
+    intent: ConnectionRecoveryIntent,
+    reason: RecoveryAdmissionRefusalReason,
+  ): void {
+    const now = this.now().getTime();
+    const previous = this.admissionRetry;
+    const delayMs = previous
+      ? Math.min(previous.delayMs * 2, ADMISSION_RETRY_MAX_MS)
+      : ADMISSION_RETRY_MIN_MS;
+    const retry =
+      previous && Date.parse(previous.retryAt) > now
+        ? previous
+        : { delayMs, retryAt: new Date(now + delayMs).toISOString() };
+    this.admissionRetry = retry;
+    recoveryAdmissionRefused.add(1, { reason });
+    this.clearIntentRuntime(intent, false);
+    this.schedule(intent.fingerprint, retry.retryAt);
   }
 
   private async completeRecoveredIntent(

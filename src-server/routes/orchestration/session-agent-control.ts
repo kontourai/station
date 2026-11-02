@@ -1,4 +1,5 @@
 import { frameAgentMessage } from '@kontourai/station-shared/agent-message-frame';
+import { runWithSessionControlKey } from '../../services/orchestration/sqlite-session-control-request-keys.js';
 /**
  * #3160 (epic #3167): the REST side of Station Control's Session tools —
  * `send_to_session`, `interrupt_session` and `wait_session`. An agent can wait
@@ -37,6 +38,11 @@ import {
   type SessionMessageDeliveryPorts,
   type SessionSendMode,
 } from '@kontourai/monument';
+import {
+  type SessionControlAttempt,
+  sessionControlDeliveryId,
+  sessionControlRequestDigest,
+} from '@kontourai/monument/session-control';
 import { clientOriginSender } from '@kontourai/station-contracts/client-origin';
 import type { PrincipalRef } from '@kontourai/station-contracts/principal';
 import {
@@ -56,12 +62,6 @@ import { resolveClientOriginForRequest } from '../../security/runtime-request-se
 import { stationControlRequestAuthority } from '../../security/station-control-request-authority.js';
 import type { EventStore } from '../../services/orchestration/event-store.js';
 import type { OrchestrationService } from '../../services/orchestration/orchestration-service.js';
-import {
-  runWithSessionControlKey,
-  type SessionControlAttempt,
-  sessionControlDeliveryId,
-  sessionControlRequestDigest,
-} from '../../services/orchestration/session-control-request-keys.js';
 import { ACTIVE_TURN_FOLD_METHODS } from '../../services/orchestration/session-lifecycle-service.js';
 import type { StartOwnerAttribution } from '../../services/orchestration/session-owner-attribution.js';
 import { sessionSenderIdentity } from '../../services/orchestration/session-sender-identity.js';

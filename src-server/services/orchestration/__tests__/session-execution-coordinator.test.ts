@@ -9,7 +9,7 @@ import {
 import {
   createInMemorySessionTurnBoundaryAuthority,
   type SessionTurnBoundaryAuthority,
-} from '../session-turn-boundary.js';
+} from '../session-turn-boundary-binding.js';
 import { WorkspaceExecutionBusyError } from '../workspace-execution-barrier.js';
 
 function deferred() {
