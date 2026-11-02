@@ -38,6 +38,44 @@ incoming claims, and uses it only to retain bounded App envelopes in history
 windows. It grants no resource or execution authority. Older readers ignore the
 field; see [transcript previews](../design/mcp-ui-host.md#transcript-previews).
 
+### Delegated execution ownership
+
+`AgentDelegationContext.parentSessionId` identifies the initiating execution
+Session in the host-resolved caller context. `parentConversationId` keeps its
+naming role. Lifecycle ownership uses the start's server-derived provenance and
+exact Session identity; historical or conversation-only evidence stays claimed.
+The start metadata marker `backgroundBoundary: true` excludes an independent
+subtree from its parent's cascade. See [Session lifecycle](../architecture/module-map.md#sessionlifecyclemodule).
+
+`SessionCancellationRequestedEvent` records a durable Stop or cancel intention,
+with the requested turn when one is known. Adapter terminal and settlement
+events carry the execution outcome. `OrchestrationSessionSummary.ownedWork`
+reports `runningChildCount`, `pendingStopCount` and `ownLifecycleState` while
+aggregate owned work keeps the parent busy. `pendingStops` groups pending
+custody (`local`, `peer`, `unknown`), reason and count without exposing child IDs.
+`state` is `running`, `stopping`, `waiting-on-peer` or `unknown`; status views
+use it when cleanup is pending. The shared status ladder renders **Stopping**,
+**Waiting on another Station process**, or **Unknown**, including a closed
+parent whose child cleanup remains pending. Unknown cleanup stays visible after
+an ancestor's own Stop completes. The counts cover verified,
+non-background descendants and pending stop obligations.
+
+`releaseUnknownOwnedWork` is an orchestration command with `threadId` and
+`confirmation: 'child-process-may-still-be-running'`. It requires an at-rest
+Station-owned parent and checked unknown child custody. Station Control callers
+must satisfy the same recorded-owner, Project and host-confinement scope as
+`stopSession`; bound operators retain their existing reach. The writer rechecks the
+observed boundary snapshot, removes that parent's unknown obligations, and
+deletes the parent while retaining child history and cancellation fences against
+replay. It neither stops
+unknown processes nor records them as stopped. The UI asks for confirmation
+before sending it; older hosts reject the new wire type. Unresolved prepared,
+invoking or indeterminate boundaries always prevent ordinary stop settlement.
+
+New delegated-result request IDs are `dr-` followed by the first 40 hexadecimal
+characters of SHA-256 over JSON `[childSessionId, childTerminalEventId]`.
+Existing stored IDs and semantic transition keys are retained for replay.
+
 ### Delegation file refusals
 
 `@kontourai/station-contracts/attachment-staging` owns
