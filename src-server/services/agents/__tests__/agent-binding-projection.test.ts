@@ -293,6 +293,27 @@ describe('the Station identity binding is app state, not Agent state', () => {
       expect(spec.execution).toEqual({ agentConnectionId: 'codex' });
     });
 
+    test('the built-in Agent reads as "Station Assistant" without its file changing (#4388)', async () => {
+      writeAgent('station', { name: 'Station', prompt: '' });
+      writeAgent('writer', { name: 'Station', prompt: 'Write.' });
+
+      const agents = service();
+      expect((await agents.getAgent('station')).name).toBe('Station Assistant');
+      const listed = await agents.listAgents();
+      expect(listed.find((agent) => agent.slug === 'station')?.name).toBe(
+        'Station Assistant',
+      );
+      // Display only: the stored record and the id are untouched, and another
+      // Agent a person named "Station" keeps that name.
+      expect(readAgent('station').name).toBe('Station');
+      expect((await agents.getAgent('writer')).name).toBe('Station');
+    });
+
+    test('a name the person gave the built-in Agent is kept (#4388)', async () => {
+      writeAgent('station', { name: 'Ops desk', prompt: '' });
+      expect((await service().getAgent('station')).name).toBe('Ops desk');
+    });
+
     test('listAgents agrees with getAgent', async () => {
       writeAgent('station', { name: 'Station', prompt: '' });
 

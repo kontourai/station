@@ -116,7 +116,9 @@ describe.skipIf(!chromiumAvailable)('Appearance page keyboard', () => {
     /** Filled with every family sheet request, in order. */
     requests: string[] = [],
   ): Promise<Page> {
-    const page = await browser.newPage();
+    // A dark device: with no saved mode the page follows it (System, #4407),
+    // which keeps these tests on the dark mode they were written for.
+    const page = await browser.newPage({ colorScheme: 'dark' });
     const errors: string[] = [];
     page.on('pageerror', (error) => errors.push(error.message));
     await page.route(`${ORIGIN}/**`, (route) => {
@@ -568,7 +570,9 @@ describe.skipIf(!chromiumAvailable)('Appearance page keyboard', () => {
             }
           ).store.getSnapshot().theme,
       );
-    expect(await theme()).toBe('dark');
+    // No saved mode: System, showing the dark device's mode.
+    expect(await theme()).toBe('system');
+    expect(await rootAttribute(page, 'data-theme')).toBe('dark');
     await page.locator('body').click();
     await page.keyboard.press('ControlOrMeta+h');
     expect(await theme()).toBe('light');

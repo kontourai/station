@@ -63,7 +63,7 @@
   overflow: hidden;
   white-space: nowrap;
   color: var(--k-text-muted);
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
   font-weight: 500;
   text-transform: uppercase;
 }

@@ -4,7 +4,10 @@ import {
   STEERING_ENGINE_DURABILITY,
   UNKNOWN_ENGINE_DURABILITY,
 } from '@kontourai/station-contracts/engine-capability-matrix';
-import type { AgentConnectionView } from '@kontourai/station-contracts/tool';
+import type {
+  AgentConnectionView,
+  ConnectionConfig,
+} from '@kontourai/station-contracts/tool';
 import { describe, expect, test } from 'vitest';
 import {
   buildProviderOptions,
@@ -739,6 +742,25 @@ describe('execution utils', () => {
 
     expect(runtime?.id).toBe('codex');
     expect(runtime?.config.defaultModel).toBe('gpt-5-codex');
+  });
+
+  test("preferredChatRuntime names the Station's chosen engine before Claude Code (#4388)", () => {
+    const ready = (id: string): ConnectionConfig => ({
+      id,
+      kind: 'agent',
+      type: id,
+      name: id,
+      enabled: true,
+      capabilities: ['agent-runtime'],
+      config: { engineId: id },
+      status: 'ready',
+      prerequisites: [],
+    });
+    const connections = [ready('claude'), ready('codex')];
+    expect(preferredChatRuntime(connections, 'codex')?.id).toBe('codex');
+    // Nothing chosen (or a choice that is not ready): the old order holds.
+    expect(preferredChatRuntime(connections)?.id).toBe('claude');
+    expect(preferredChatRuntime(connections, 'opencode')?.id).toBe('claude');
   });
 
   test('preferredChatRuntime keeps ACP connections out of the "connected" bucket (station#1003 Phase B parity with the pre-rename executionClass literal)', () => {

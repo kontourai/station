@@ -33,12 +33,12 @@
 
 .ssh-computer-creator__resolved {
   color: var(--text-tertiary);
-  font-size: var(--text-sm);
+  font-size: var(--k-text-sm);
 }
 
 .ssh-computer-creator__failure {
   color: var(--error-text);
-  font-size: var(--text-sm);
+  font-size: var(--k-text-sm);
 }
 
 /* The unknown-host receipt: a fingerprint to read aloud and the command that
@@ -59,6 +59,6 @@
   border-radius: 6px;
   background: var(--bg-tertiary, var(--bg-primary));
   font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: var(--text-sm);
+  font-size: var(--k-text-sm);
   overflow-wrap: anywhere;
 }

@@ -349,7 +349,7 @@ describe('bootstrapRuntimeDefaultAgent', () => {
     expect(agentMetadataMap.get('default')).toEqual(
       expect.objectContaining({
         slug: 'default',
-        name: 'Station',
+        name: 'Station Assistant',
       }),
     );
   });

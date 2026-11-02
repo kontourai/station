@@ -204,7 +204,7 @@
 /* ── Plugin Cards ── */
 
 .plugins__card-version {
-  font-size: 0.7rem;
+  font-size: var(--k-text-sm);
   font-weight: 400;
   color: var(--text-muted);
   font-family: var(--font-mono);
@@ -218,7 +218,7 @@
 
 /* ── Capabilities ── */
 .plugins__cap {
-  font-size: 0.65rem;
+  font-size: var(--k-text-sm);
   padding: 0.15rem 0.5rem;
   border-radius: 3px;
   font-weight: 500;
@@ -766,7 +766,7 @@
   gap: 4px;
 }
 .plugins__cap--sm {
-  font-size: var(--text-sm);
+  font-size: var(--k-text-sm);
 }
 .plugins__preview-actions {
   display: flex;
@@ -847,7 +847,7 @@
   white-space: nowrap;
 }
 .plugins__changelog-meta {
-  font-size: 0.7rem;
+  font-size: var(--k-text-sm);
   color: var(--text-muted);
   flex-shrink: 0;
   white-space: nowrap;

@@ -3,6 +3,7 @@ import {
   type AccountPreferencesPatch,
   type InteractiveApprovalEngine,
 } from '@kontourai/station-contracts/account-preferences';
+import { useEngineConnectionsQuery } from '@kontourai/station-sdk';
 import { useState } from 'react';
 import { Button } from '../../components/Button';
 import { ConfirmModal } from '../../components/modals/ConfirmModal';
@@ -12,6 +13,7 @@ import {
   APPROVAL_MODE_OPTIONS,
   approvalModeDescription,
 } from '../../utils/approvalMode';
+import { connectionEngineId } from '../../utils/execution';
 import { SettingsPageRow as PageRow } from './SettingsPageRow';
 import { SettingsSection } from './SettingsSection';
 import { settingsRow } from './settings-catalog';
@@ -26,6 +28,16 @@ export function AccountPreferencesSection() {
     muse: settingsRow('personal-muse-approval'),
   };
   const defaults = account.data?.values.interactiveApprovalModes ?? {};
+  // #4402: Muse appears nowhere else in Station unless this Station has a
+  // Muse engine, so its row is offered only then (or while a saved Muse
+  // default still needs a way to be cleared).
+  const { data: engineConnections = [] } = useEngineConnectionsQuery();
+  const hasMuse = engineConnections.some(
+    (connection) => connectionEngineId(connection) === 'muse',
+  );
+  const engines = (['codex', 'claude', 'muse'] as const).filter(
+    (engine) => engine !== 'muse' || hasMuse || defaults.muse,
+  );
   const saveMode = (engine: InteractiveApprovalEngine, mode: string) => {
     if (
       mode === 'connection-default' ||
@@ -102,7 +114,7 @@ export function AccountPreferencesSection() {
           </Button>
         }
       />
-      {(['codex', 'claude', 'muse'] as const).map((engine) => (
+      {engines.map((engine) => (
         <PageRow
           key={engine}
           {...engineRows[engine]}
