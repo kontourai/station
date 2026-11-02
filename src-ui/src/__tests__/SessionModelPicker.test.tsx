@@ -104,6 +104,38 @@ function renderNestedPicker(onOuterClose = vi.fn()) {
 }
 
 describe('SessionModelPicker', () => {
+  test('does not guess runtime settings when the current provider route is unknown', () => {
+    renderPicker({
+      currentModel: 'shared',
+      models: [
+        {
+          id: 'shared',
+          name: 'Shared model',
+          providerId: 'first',
+          capabilities: {
+            supportsEffort: true,
+            supportedEffortLevels: ['low'],
+          },
+        },
+        {
+          id: 'shared',
+          name: 'Shared model',
+          providerId: 'second',
+          capabilities: {
+            supportsEffort: true,
+            supportedEffortLevels: ['high'],
+          },
+        },
+      ],
+    });
+    expect(screen.queryByRole('group', { name: 'Thinking effort' })).toBeNull();
+    expect(
+      within(screen.getByRole('listbox', { name: 'Models' })).getAllByRole(
+        'option',
+      ),
+    ).toHaveLength(2);
+  });
+
   test('shows settings only for the exact current provider route', () => {
     renderPicker({
       currentModel: 'shared',

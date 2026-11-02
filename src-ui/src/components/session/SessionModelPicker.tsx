@@ -112,13 +112,15 @@ export function SessionModelPicker({
   );
   const searchRef = useRef<HTMLInputElement>(null);
   const activeModel = currentModel || defaultModel;
-  const selectedModel = models.find(
+  const matchingModels = models.filter(
     (model) =>
       model.id === activeModel &&
       (!currentExecutionAgentId ||
         model.executionAgentId === currentExecutionAgentId) &&
       (!currentProviderId || model.providerId === currentProviderId),
   );
+  const selectedModel =
+    matchingModels.length === 1 ? matchingModels[0] : undefined;
   const capabilities = selectedModel?.capabilities;
   const hasRuntimeOptions = Boolean(
     (capabilities?.supportsEffort &&
