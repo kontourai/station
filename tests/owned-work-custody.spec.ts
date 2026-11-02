@@ -1,11 +1,14 @@
 import { copyFileSync, mkdirSync } from 'node:fs';
 import { resolve } from 'node:path';
+import type { AccountPreferencesView } from '@kontourai/station-contracts/account-preferences';
 import { agentId } from '@kontourai/station-contracts/agent-identity';
+import type { CoordinatorDesignationRead } from '@kontourai/station-contracts/coordinator';
 import type { OrchestrationSessionSummary } from '@kontourai/station-contracts/orchestration';
 import { expect } from '@playwright/test';
 import { seedMobileTaskSwitcher } from './helpers/chat-shell-fixture';
 import { rejectUnexpectedFixtureRequest, test } from './helpers/fixture-audit';
 import {
+  installMockOrchestrationConversationEventWindow,
   installMockOrchestrationEventWindow,
   installMockOrchestrationSse,
   seedActiveChats,
@@ -66,8 +69,40 @@ for (const width of [390, 1440])
           },
         ],
       });
+      await installMockOrchestrationConversationEventWindow(page, (id) =>
+        id === 'owned-parent' ? ['owned-parent'] : [],
+      );
+      await page.route('**/api/orchestration/coordinator', (route) =>
+        route.fulfill({
+          json: {
+            success: true,
+            data: { designation: null } satisfies CoordinatorDesignationRead,
+          },
+        }),
+      );
+      await page.route('**/api/me/preferences', (route) =>
+        route.fulfill({
+          json: {
+            success: true,
+            data: {
+              schemaVersion: 1,
+              values: { theme },
+              revision: `custody-${theme}`,
+            } satisfies AccountPreferencesView,
+          },
+        }),
+      );
       await page.addInitScript((value) => {
         localStorage.setItem('theme', value);
+        const settings = JSON.parse(
+          localStorage.getItem('station-device-settings-v1') ??
+            '{"version":3,"values":{}}',
+        );
+        settings.values.theme = value;
+        localStorage.setItem(
+          'station-device-settings-v1',
+          JSON.stringify(settings),
+        );
         localStorage.setItem('station:onboarding-setup-dismissed', '1');
       }, theme);
       let removed = false;
@@ -118,8 +153,11 @@ for (const width of [390, 1440])
         }
       };
       await page.goto('/?dock=open');
-      const row = page
-        .locator('.chat-dock-inbox')
+      const inbox =
+        width === 390
+          ? page.getByRole('region', { name: 'Inbox', exact: true })
+          : page.locator('.chat-dock-inbox');
+      const row = inbox
         .getByTestId('inbox-row')
         .filter({ hasText: 'Owned parent' });
       await expect(row).toBeVisible();
@@ -140,10 +178,12 @@ for (const width of [390, 1440])
         'The Station process that owned the child has exited.',
       );
       await cleanup
-        .getByRole('button', { name: 'Release and remove' })
+        .getByRole('button', { name: 'Release and remove', exact: true })
         .scrollIntoViewIfNeeded();
       await capture(`session-detail-${width}-${theme}.png`);
-      await cleanup.getByRole('button', { name: 'Release and remove' }).click();
+      await cleanup
+        .getByRole('button', { name: 'Release and remove', exact: true })
+        .click();
       const confirmation = page.getByRole('alertdialog');
       await expect(confirmation).toContainText(
         'Child processes may still be running and will no longer be tracked',
@@ -152,10 +192,12 @@ for (const width of [390, 1440])
       await capture(`confirmation-${width}-${theme}.png`);
       await confirmation.getByRole('button', { name: 'Keep tracking' }).click();
       expect(commands).toEqual([]);
-      await cleanup.getByRole('button', { name: 'Release and remove' }).click();
+      await cleanup
+        .getByRole('button', { name: 'Release and remove', exact: true })
+        .click();
       await page
         .getByRole('alertdialog')
-        .getByRole('button', { name: 'Release and remove' })
+        .getByRole('button', { name: 'Release and remove', exact: true })
         .click();
       await expect.poll(() => commands.length).toBe(1);
       await expect(detail).toHaveCount(0);
