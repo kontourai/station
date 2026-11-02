@@ -45,6 +45,7 @@ import {
   locateExecutable,
   runBoundedToolCapture,
 } from '../../services/devices/device-host-tools.js';
+import { jpegSize } from '../../services/live-surface/jpeg-size.js';
 import { LiveSurfaceRegistry } from '../../services/live-surface/registry.js';
 import {
   ActionOperationService,
@@ -107,6 +108,10 @@ const PNG = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAC0lEQVR4nGP4DwQACfsD/fteaysAAAAASUVORK5CYII=',
   'base64',
 );
+const PNG_64 = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAIAAAD8GO2jAAAACXBIWXMAAAABAAAAAQBPJcTWAAAAKklEQVR4nO3NQQ0AAAjEMEjwL5lggvt1AtbeyjbhPwAAAAAAAAAAAHjrAA+jAXywnK1EAAAAAElFTkSuQmCC',
+  'base64',
+);
 const FRAME_RED = Buffer.from(
   '/9j/4AAQSkZJRgABAgAAAQABAAD//gAPTGF2YzYzLjEuMTAyAP/bAEMACAQEBAQEBQUFBQUFBgYGBgYGBgYGBgYGBgcHBwgICAcHBwYGBwcICAgICQkJCAgICAkJCgoKDAwLCw4ODhERFP/EAE0AAQEAAAAAAAAAAAAAAAAAAAAGAQEBAQAAAAAAAAAAAAAAAAAABgcQAQAAAAAAAAAAAAAAAAAAAAARAQAAAAAAAAAAAAAAAAAAAAD/wAARCABAAEADASIAAhEAAxEA/9oADAMBAAIRAxEAPwCLASbfwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAH/2Q==',
   'base64',
@@ -158,6 +163,7 @@ async function harness(
     recording?: boolean;
     recordingPreview?: boolean;
     continuousFrames?: boolean;
+    stillFrame?: boolean;
     encoderPath?: string;
     beforeResolveFfmpeg?: () => Promise<void>;
     duringFrame?: (workspace: string) => void;
@@ -229,11 +235,13 @@ async function harness(
       if (method === 'Page.startScreencast' && options.recording) {
         streams++;
         notifyStreamStarted();
-        const frames = options.continuousFrames
-          ? Array.from({ length: 8 }, (_, i) =>
-              i % 2 === 0 ? FRAME_RED : FRAME_BLUE,
-            )
-          : [FRAME_RED, FRAME_BLUE];
+        const frames = options.stillFrame
+          ? [FRAME_RED]
+          : options.continuousFrames
+            ? Array.from({ length: 8 }, (_, i) =>
+                i % 2 === 0 ? FRAME_RED : FRAME_BLUE,
+              )
+            : [FRAME_RED, FRAME_BLUE];
         for (const [i, frame] of frames.entries()) {
           const timer = setTimeout(
             () => {
@@ -588,6 +596,138 @@ async function harness(
     browser,
     tool,
     record,
+    recordSyntheticDevice: async (
+      options: {
+        current?: () => boolean;
+        authorize?: () => Promise<boolean>;
+        stopSignal?: AbortSignal;
+        onStarted?: () => void;
+        rotation?: 90;
+        onFrameConsumed?: () => void;
+        pngFallback?: boolean;
+        pngWidth?: number;
+        onAttach?: (
+          codec: string | undefined,
+          freshOnly: boolean | undefined,
+        ) => void;
+        pngBurst?: Buffer;
+        durationMs?: number;
+        holdStill?: boolean;
+      } = {},
+    ) => {
+      const access = await room.sessionTaskReviewAccess('agent-a');
+      if (access.kind !== 'granted' || !recordings || !live)
+        throw new Error('Recording fixture unavailable');
+      const surfaceId = live.surfaceIdFor(browser.browserSessionId);
+      const entry = surfaceId ? surfaces.get(surfaceId) : undefined;
+      if (!entry) throw new Error('Recording surface unavailable');
+      const watching = options.holdStill
+        ? entry.hub.attach({
+            maxFps: 10,
+            quality: 70,
+            maxWidth: 1280,
+            maxHeight: 1280,
+          })
+        : undefined;
+      if (watching) {
+        let frame: Awaited<ReturnType<typeof watching.next>>;
+        do {
+          frame = await watching.next();
+        } while (frame && frame.kind !== 'frame');
+        if (!frame) throw new Error('Still fixture closed');
+      }
+      const hub =
+        options.rotation ||
+        options.onFrameConsumed ||
+        options.pngFallback ||
+        options.onAttach ||
+        options.pngBurst
+          ? (Object.assign(Object.create(entry.hub), {
+              attach: (...args: Parameters<typeof entry.hub.attach>) => {
+                options.onAttach?.(args[2]?.codec, args[2]?.freshOnly);
+                const viewer = entry.hub.attach(...args);
+                let burstFrame: Awaited<ReturnType<typeof viewer.next>>;
+                let burstCount = 0;
+                return {
+                  ...viewer,
+                  close: () => viewer.close(),
+                  next: async (...nextArgs: Parameters<typeof viewer.next>) => {
+                    const record =
+                      burstFrame && burstCount < 8
+                        ? burstFrame
+                        : await viewer.next(...nextArgs);
+                    if (
+                      record?.kind === 'frame' &&
+                      options.pngBurst &&
+                      burstCount < 8
+                    ) {
+                      burstFrame = {
+                        ...record,
+                        header: { ...record.header, codec: 'png' },
+                        body: options.pngBurst,
+                      };
+                      burstCount++;
+                      options.onFrameConsumed?.();
+                      return burstFrame;
+                    }
+                    if (record?.kind === 'frame') options.onFrameConsumed?.();
+                    if (
+                      record?.kind === 'frame' &&
+                      options.pngFallback &&
+                      record.header.seq % 2 === 0
+                    )
+                      return {
+                        ...record,
+                        header: {
+                          ...record.header,
+                          codec: 'png' as const,
+                          width: options.pngWidth ?? record.header.width,
+                        },
+                        body: PNG_64,
+                      };
+                    return record?.kind === 'frame' && options.rotation
+                      ? {
+                          ...record,
+                          header: {
+                            ...record.header,
+                            rotation: options.rotation,
+                          },
+                        }
+                      : record;
+                  },
+                };
+              },
+            }) as typeof entry.hub)
+          : entry.hub;
+      try {
+        return await recordings.recordSource(
+          access,
+          {
+            durationMs: options.durationMs ?? 500,
+            stopSignal: options.stopSignal,
+            onStarted: options.onStarted,
+          },
+          async () => ({
+            entry: { ...entry, hub },
+            current: options.current ?? (() => true),
+            authorize: options.authorize ?? (async () => true),
+            checkEachFrame: true,
+            platform: 'ios',
+            adapter: 'device-live-surface',
+            device: {
+              hostId: 'ssh-0123456789ab',
+              deviceId: 'device-1',
+              name: 'Test device',
+              runtime: 'iOS',
+              appId: null,
+              appObservedAt: null,
+            },
+          }),
+        );
+      } finally {
+        watching?.close();
+      }
+    },
     streamStarted,
     streams: () => streams,
     stopBrowser: () => live!.dispose(),
@@ -891,6 +1031,208 @@ test.skipIf(!mediaReady)(
     expect(readdirSync(root).some((name) => name.startsWith('.pending-'))).toBe(
       false,
     );
+  },
+);
+
+test.skipIf(!mediaReady)(
+  'the shared recorder stores a synthetic Device source with host and unknown app identity',
+  async () => {
+    const h = await harness({ recording: true });
+    const manifest = await h.recordSyntheticDevice();
+    expect(manifest.source.device).toMatchObject({
+      hostId: 'ssh-0123456789ab',
+      deviceId: 'device-1',
+      appId: null,
+      appObservedAt: null,
+    });
+    const response = await h.person(
+      `task-a/review/walkthroughs/${manifest.id}?deviceIdentity=1`,
+    );
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    if (
+      !body ||
+      typeof body !== 'object' ||
+      !('data' in body) ||
+      !body.data ||
+      typeof body.data !== 'object' ||
+      !('walkthrough' in body.data)
+    )
+      throw new Error('Task Walkthrough response has no document');
+    expect(parseWalkthrough(body.data.walkthrough).source.device).toEqual(
+      manifest.source.device,
+    );
+    const legacy = await (
+      await h.person(`task-a/review/walkthroughs/${manifest.id}`)
+    ).json();
+    if (
+      !legacy ||
+      typeof legacy !== 'object' ||
+      !('data' in legacy) ||
+      !legacy.data ||
+      typeof legacy.data !== 'object' ||
+      !('walkthrough' in legacy.data)
+    )
+      throw new Error('Task Walkthrough response has no document');
+    expect(
+      parseWalkthrough(legacy.data.walkthrough).source.device,
+    ).toBeUndefined();
+  },
+);
+
+test.skipIf(!mediaReady)(
+  'Device recorder requests image frames and converts PNG fallback to JPEG',
+  async () => {
+    const h = await harness({ recording: true });
+    let codec: string | undefined;
+    let freshOnly: boolean | undefined;
+    let count = 0;
+    const clip = await h.recordSyntheticDevice({
+      pngFallback: true,
+      onAttach: (value, fresh) => {
+        codec = value;
+        freshOnly = fresh;
+      },
+      onFrameConsumed: () => {
+        count++;
+      },
+    });
+    expect(codec).toBe('image');
+    expect(freshOnly).toBe(true);
+    expect(count).toBeGreaterThanOrEqual(2);
+    const frames = clip.events.filter((item) => item.kind === 'frame');
+    expect(frames.length).toBeGreaterThanOrEqual(2);
+    expect(
+      frames.every(
+        (frame) => frame.kind === 'frame' && frame.file.endsWith('.jpg'),
+      ),
+    ).toBe(true);
+    for (const frame of frames) {
+      const response = await h.person(
+        `task-a/review/walkthroughs/${clip.id}/frames/${frame.frameId}`,
+      );
+      expect(response.status).toBe(200);
+      const converted = Buffer.from(await response.arrayBuffer());
+      expect(converted.subarray(0, 2)).toEqual(Buffer.from([0xff, 0xd8]));
+      expect(jpegSize(converted)).toEqual({ width: 64, height: 64 });
+    }
+  },
+);
+
+test.skipIf(!mediaReady)(
+  'PNG conversion refuses invalid declared dimensions',
+  async () => {
+    const h = await harness({ recording: true });
+    await expect(
+      h.recordSyntheticDevice({ pngFallback: true, pngWidth: 0 }),
+    ).rejects.toMatchObject({
+      code: 'recording-unavailable',
+      message: 'Device image dimensions are invalid.',
+    });
+  },
+);
+
+test.skipIf(!mediaReady)(
+  'records a still surface already watched without waiting for a new frame',
+  async () => {
+    const h = await harness({ recording: true, stillFrame: true });
+    const clip = await h.recordSyntheticDevice({ holdStill: true });
+    expect(clip.source.recording?.mediaType).toBe('video/webm');
+    expect(clip.events.filter((event) => event.kind === 'frame')).toHaveLength(
+      1,
+    );
+  },
+);
+
+test.skipIf(!mediaReady)(
+  'many PNG frames below the byte cap remain recordable after conversion',
+  async () => {
+    const h = await harness({ recording: true });
+    const padded = Buffer.alloc(8 * 1024 * 1024 - 1);
+    PNG_64.copy(padded);
+    const stop = new AbortController();
+    let count = 0;
+    const clip = await h.recordSyntheticDevice({
+      pngBurst: padded,
+      durationMs: 5000,
+      stopSignal: stop.signal,
+      onFrameConsumed: () => {
+        if (++count === 8) stop.abort();
+      },
+    });
+    expect(clip.frameSelection?.candidates).toBe(8);
+    expect(clip.source.recording?.mediaType).toBe('video/webm');
+  },
+);
+
+test.skipIf(!mediaReady)(
+  'Device recording refuses per-frame revocation and rotation',
+  async () => {
+    for (const mode of ['authorize', 'current', 'rotation'] as const) {
+      let allowed = true;
+      let consumed = 0;
+      const h = await harness({
+        recording: true,
+        duringFrame: () => {
+          allowed = false;
+        },
+      });
+      const failure: unknown = await h
+        .recordSyntheticDevice({
+          current: () => mode !== 'current' || allowed,
+          authorize: async () => mode !== 'authorize' || allowed,
+          onFrameConsumed: () => {
+            consumed += 1;
+          },
+          ...(mode === 'rotation' ? { rotation: 90 } : {}),
+        })
+        .then(
+          () => null,
+          (error: unknown) => error,
+        );
+      expect.soft(failure, mode).toMatchObject({
+        code: 'recording-unavailable',
+        message:
+          mode === 'rotation'
+            ? 'Rotated Device recording is unavailable.'
+            : 'Recording authority changed during capture.',
+      });
+      expect.soft(consumed, `${mode} consumed frames`).toBe(1);
+    }
+  },
+);
+
+test.skipIf(!mediaReady)(
+  'a stopped Device recording publishes its shortened duration',
+  async () => {
+    const h = await harness({ recording: true });
+    const stop = new AbortController();
+    const clip = await h.recordSyntheticDevice({
+      stopSignal: stop.signal,
+      onStarted: () => setTimeout(() => stop.abort(), 250),
+    });
+    expect(clip.source.durationMs).toBeGreaterThan(0);
+    expect(clip.source.durationMs).toBeLessThan(500);
+  },
+);
+
+test.skipIf(!mediaReady)(
+  'Device recording cancels before start and when its surface closes',
+  async () => {
+    const before = await harness({ recording: true });
+    const stopped = new AbortController();
+    stopped.abort();
+    await expect(
+      before.recordSyntheticDevice({ stopSignal: stopped.signal }),
+    ).rejects.toMatchObject({ code: 'cancelled' });
+    const h = await harness({ recording: true });
+    const pending = h.recordSyntheticDevice();
+    const rejected = expect(pending).rejects.toMatchObject({
+      code: 'cancelled',
+    });
+    await h.streamStarted;
+    await h.stopBrowser();
+    await rejected;
   },
 );
 
