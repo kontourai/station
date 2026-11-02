@@ -140,6 +140,8 @@ except Exception:
 
 const MAX_BYTES = 128 * 1024 * 1024;
 const MAX_STORED_BYTES = 256 * 1024 * 1024;
+const MAX_GLOBAL_STORED_BYTES = 512 * 1024 * 1024;
+const MAX_GLOBAL_INSTALLS = 4;
 const RETENTION_MS = 10 * 60_000;
 const MAX_ARTIFACTS = 10;
 const BASE64 =
@@ -317,6 +319,9 @@ export class DeviceArtifactStaging {
       (entry) => entry.projectId === projectId,
     );
     if (
+      [...this.entries.values()].reduce((sum, entry) => sum + entry.bytes, 0) +
+        bytes >
+        MAX_GLOBAL_STORED_BYTES ||
       projectEntries.length >= MAX_ARTIFACTS ||
       projectEntries.reduce((sum, entry) => sum + entry.bytes, 0) + bytes >
         MAX_STORED_BYTES
@@ -331,7 +336,7 @@ export class DeviceArtifactStaging {
       revision: null,
       state: 'staged',
     };
-    const stored = copy(payload);
+    const stored = payload;
     const timer = setTimeout(() => {
       const entry = this.entries.get(handle);
       if (entry) {
@@ -357,47 +362,57 @@ export class DeviceArtifactStaging {
     authorize: () => Promise<boolean>,
     signal?: AbortSignal,
   ): Promise<StagedDeviceArtifact> {
-    return this.reserve(
-      projectId,
-      async (activeSignal) => {
-        if (!(await authorize()))
-          throw new DeviceArtifactError('not-authorized');
-        let archive: Awaited<ReturnType<typeof inspectDeviceArchive>>;
-        try {
-          archive = await inspectDeviceArchive(bytes, platform, activeSignal);
-        } catch {
-          if (activeSignal.aborted) throw new DeviceArtifactError('cancelled');
-          throw new DeviceArtifactError('invalid-artifact');
-        }
-        const payload: Payload =
-          platform === 'android'
-            ? { platform, apk: bytes }
-            : {
-                platform,
-                files: archive.map((entry) => {
-                  if (!entry.bytes)
-                    throw new DeviceArtifactError('invalid-artifact');
-                  return {
-                    path: entry.path,
-                    executable: entry.executable,
-                    bytes: entry.bytes,
-                  };
-                }),
-              };
-        try {
-          return await this.publish(
-            projectId,
-            payload,
-            'upload',
-            authorize,
-            activeSignal,
-          );
-        } finally {
-          if (platform === 'ios') wipe(payload);
-        }
-      },
-      signal,
-    );
+    try {
+      return await this.reserve(
+        projectId,
+        async (activeSignal) => {
+          if (!(await authorize()))
+            throw new DeviceArtifactError('not-authorized');
+          let archive: Awaited<ReturnType<typeof inspectDeviceArchive>>;
+          try {
+            archive = await inspectDeviceArchive(bytes, platform, activeSignal);
+          } catch {
+            if (activeSignal.aborted)
+              throw new DeviceArtifactError('cancelled');
+            throw new DeviceArtifactError('invalid-artifact');
+          }
+          const payload: Payload =
+            platform === 'android'
+              ? { platform, apk: bytes }
+              : {
+                  platform,
+                  files: archive.map((entry) => {
+                    if (!entry.bytes)
+                      throw new DeviceArtifactError('invalid-artifact');
+                    return {
+                      path: entry.path,
+                      executable: entry.executable,
+                      bytes: entry.bytes,
+                    };
+                  }),
+                };
+          let published = false;
+          try {
+            const receipt = await this.publish(
+              projectId,
+              payload,
+              'upload',
+              authorize,
+              activeSignal,
+            );
+            published = true;
+            return receipt;
+          } finally {
+            if (!published) wipe(payload);
+            if (platform === 'ios') bytes.fill(0);
+          }
+        },
+        signal,
+      );
+    } catch (error) {
+      bytes.fill(0);
+      throw error;
+    }
   }
   async stageWorkspace(
     projectId: string,
@@ -490,16 +505,19 @@ export class DeviceArtifactStaging {
           }
           payload = { platform, apk: files[0]!.bytes };
         }
+        let published = false;
         try {
-          return await this.publish(
+          const receipt = await this.publish(
             projectId,
             payload,
             'workspace',
             authorize,
             activeSignal,
           );
+          published = true;
+          return receipt;
         } finally {
-          wipe(payload);
+          if (!published) wipe(payload);
         }
       },
       signal,
@@ -530,7 +548,12 @@ export class DeviceArtifactStaging {
         if (!entry || entry.projectId !== projectId)
           throw new DeviceArtifactError('artifact-unavailable');
         const count = this.runningByProject.get(projectId) ?? 0;
-        if (count >= 2) throw new DeviceArtifactError('artifact-capacity');
+        if (
+          count >= 2 ||
+          [...this.runningByProject.values()].reduce((a, b) => a + b, 0) >=
+            MAX_GLOBAL_INSTALLS
+        )
+          throw new DeviceArtifactError('artifact-capacity');
         const payload = copy(entry.payload);
         this.runningByProject.set(projectId, count + 1);
         return { entry, payload };

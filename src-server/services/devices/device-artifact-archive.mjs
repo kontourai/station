@@ -35,7 +35,7 @@ export async function inspectDeviceArchive(bytes, kind, signal) {
     !['ios', 'android'].includes(kind) ||
     signal?.aborted
   )
-    throw new Error('invalid-artifact');
+    throw new Error('invalid-artifact', { cause: 'input-invalid' });
   const zip = await new Promise((resolve, reject) =>
     yauzl.fromBuffer(
       bytes,
@@ -46,7 +46,9 @@ export async function inspectDeviceArchive(bytes, kind, signal) {
         strictFileNames: true,
       },
       (error, value) =>
-        error ? reject(new Error('invalid-artifact')) : resolve(value),
+        error
+          ? reject(new Error('invalid-artifact', { cause: 'zip-open' }))
+          : resolve(value),
     ),
   );
   return await new Promise((resolve, reject) => {
@@ -62,9 +64,9 @@ export async function inspectDeviceArchive(bytes, kind, signal) {
     let timer;
     const cleanup = () => {
       clearTimeout(timer);
-      signal?.removeEventListener('abort', fail);
+      signal?.removeEventListener('abort', abort);
     };
-    const fail = () => {
+    const fail = (reason = 'archive-error') => {
       if (settled) return;
       settled = true;
       cleanup();
@@ -72,12 +74,13 @@ export async function inspectDeviceArchive(bytes, kind, signal) {
       for (const file of files) file.bytes?.fill(0);
       for (const chunk of pendingChunks) chunk.fill(0);
       zip.close();
-      reject(new Error('invalid-artifact'));
+      reject(new Error('invalid-artifact', { cause: reason }));
     };
-    signal?.addEventListener('abort', fail, { once: true });
-    timer = setTimeout(fail, 120_000);
-    if (signal?.aborted) return fail();
-    zip.on('error', fail);
+    const abort = () => fail('aborted');
+    signal?.addEventListener('abort', abort, { once: true });
+    timer = setTimeout(() => fail('timeout'), 120_000);
+    if (signal?.aborted) return fail('aborted');
+    zip.on('error', () => fail('zip-error'));
     zip.on('entry', (entry) => {
       entries += 1;
       const directory = entry.fileName.endsWith('/');
@@ -90,22 +93,24 @@ export async function inspectDeviceArchive(bytes, kind, signal) {
       const parents = parts
         .slice(0, -1)
         .map((_, index) => parts.slice(0, index + 1).join('/'));
-      if (
-        entries > MAX_ENTRIES ||
-        parts.length > 32 ||
-        unsafe(name) ||
-        names.has(key) ||
-        parents.some((parent) => fileNames.has(parent)) ||
-        (!directory && parentsWithChildren.has(key)) ||
-        (entry.generalPurposeBitFlag & 1) !== 0 ||
-        ![0, 8].includes(entry.compressionMethod) ||
-        (unix && type !== 0 && type !== (directory ? 0o040000 : 0o100000))
-      )
-        return fail();
+      if (entries > MAX_ENTRIES) return fail('entry-limit');
+      if (parts.length > 32) return fail('entry-depth');
+      if (unsafe(name)) return fail('entry-path');
+      if (names.has(key)) return fail('entry-duplicate');
+      if (parents.some((parent) => fileNames.has(parent)))
+        return fail('entry-parent-file');
+      if (!directory && parentsWithChildren.has(key))
+        return fail('entry-replaces-parent');
+      if ((entry.generalPurposeBitFlag & 1) !== 0)
+        return fail('entry-encrypted');
+      if (![0, 8].includes(entry.compressionMethod))
+        return fail('entry-compression');
+      if (unix && type !== 0 && type !== (directory ? 0o040000 : 0o100000))
+        return fail('entry-type');
       names.add(key);
       for (const parent of parents) parentsWithChildren.add(parent);
       if (directory) {
-        if (entry.uncompressedSize !== 0) return fail();
+        if (entry.uncompressedSize !== 0) return fail('directory-size');
         zip.readEntry();
         return;
       }
@@ -116,29 +121,32 @@ export async function inspectDeviceArchive(bytes, kind, signal) {
         entry.uncompressedSize < 0 ||
         declared > MAX_BYTES
       )
-        return fail();
+        return fail('declared-size-limit');
       zip.openReadStream(entry, (error, currentStream) => {
         if (settled) {
           currentStream?.destroy();
           return;
         }
-        if (error || !currentStream) return fail();
+        if (error || !currentStream) return fail('stream-open');
         stream = currentStream;
         let size = 0;
         let checksum = 0;
         const chunks = [];
         pendingChunks = chunks;
-        currentStream.on('error', fail);
+        currentStream.on('error', () => fail('stream-error'));
         currentStream.on('data', (chunk) => {
           if (settled) return;
           size += chunk.length;
           if (size > entry.uncompressedSize || size > MAX_BYTES) {
             currentStream.destroy();
-            fail();
+            fail('stream-size-limit');
             return;
           }
           checksum = crc32(chunk, checksum);
-          if (kind === 'ios') chunks.push(Buffer.from(chunk));
+          if (kind === 'ios')
+            chunks.push(
+              entry.compressionMethod === 0 ? Buffer.from(chunk) : chunk,
+            );
         });
         currentStream.on('end', () => {
           if (settled) return;
@@ -146,7 +154,7 @@ export async function inspectDeviceArchive(bytes, kind, signal) {
             size !== entry.uncompressedSize ||
             checksum >>> 0 !== entry.crc32 >>> 0
           )
-            return fail();
+            return fail('content-mismatch');
           const content = kind === 'ios' ? Buffer.concat(chunks) : undefined;
           for (const chunk of chunks) chunk.fill(0);
           files.push({
@@ -162,7 +170,7 @@ export async function inspectDeviceArchive(bytes, kind, signal) {
     });
     zip.on('end', () => {
       if (settled) return;
-      if (!files.length) return fail();
+      if (!files.length) return fail('archive-empty');
       if (kind === 'ios') {
         const candidates = new Set(
           files
@@ -175,18 +183,19 @@ export async function inspectDeviceArchive(bytes, kind, signal) {
             }),
         );
         if (candidates.size !== 1 || ![...candidates][0].endsWith('.app'))
-          return fail();
+          return fail('ios-root');
         const root = `${[...candidates][0]}/`;
         const retained = files.filter(
           (file) => !file.path.startsWith('__MACOSX/'),
         );
         if (!retained.every((file) => file.path.startsWith(root)))
-          return fail();
+          return fail('ios-path');
         files.splice(0, files.length, ...retained);
         for (const file of files) file.path = file.path.slice(root.length);
-        if (!files.some((file) => file.path === 'Info.plist')) return fail();
+        if (!files.some((file) => file.path === 'Info.plist'))
+          return fail('ios-plist');
       } else if (!files.some((file) => file.path === 'AndroidManifest.xml'))
-        return fail();
+        return fail('android-manifest');
       settled = true;
       cleanup();
       resolve(files);

@@ -203,7 +203,7 @@ macOS, `/private/tmp` rather than the `/tmp` symlink). Windows workspace
 snapshots currently refuse; an upload is the available intake path there.
 Archive traversal, symlinks, collisions, excess size and incompatible platform,
 ABI or minimum OS are refused. Staging is bounded and its Project-scoped handle
-expires; staging alone does not establish compatibility or installation. Each Project has its own staging quota; uploads must finish within ten minutes.
+expires; staging alone does not establish compatibility or installation. Each Project has its own staging quota, with a 512 MiB host-wide stored-byte ceiling and at most four concurrent install copies; uploads must finish within ten minutes.
 
 Station checks the artifact on the selected host, rechecks Project and device
 authority immediately before installation, and verifies the installed app ID,

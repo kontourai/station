@@ -1165,6 +1165,7 @@ export class DeviceToolsService {
       beforeRun?: () => Promise<void>;
       signal?: AbortSignal;
       declaredSchemes?: readonly string[];
+      onDispatch?: () => void;
     } = {},
   ): Promise<DeviceAppActionResult> {
     this.assertOwnHost(target);
@@ -1231,7 +1232,14 @@ export class DeviceToolsService {
                   action.appId,
                 ];
       try {
-        await this.exec(ios ? 'xcrun' : 'adb', args, runOptions);
+        await this.exec(ios ? 'xcrun' : 'adb', args, {
+          ...runOptions,
+          beforeRun: async () => {
+            await check();
+            options.onDispatch?.();
+          },
+        });
+        options.onDispatch?.();
       } catch (error) {
         if (
           !(

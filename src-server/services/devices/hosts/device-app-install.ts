@@ -28,6 +28,11 @@ export type DeviceInstallOutcome =
     }
   | { ok: false; code: string; effect: 'none' | 'unknown' };
 
+/** Transfer and host execution budgets plus time for SSH setup and cleanup. */
+export function deviceInstallDeadlineMs(bytes: number): number {
+  return 270_000 + Math.ceil(bytes / (128 * 1024)) * 1000;
+}
+
 /** Run the fixed host program. A lost transport after admission has an unknown effect. */
 export async function runDeviceAppInstall(input: {
   target: SshDeviceTarget;
@@ -87,12 +92,9 @@ export async function runDeviceAppInstall(input: {
     target: input.target,
     program: 'device-app-install',
     params,
-    timeoutMs:
-      240_000 +
-      Math.ceil(
-        files.reduce((sum, file) => sum + file.bytes.length, 0) / (128 * 1024),
-      ) *
-        1000,
+    timeoutMs: deviceInstallDeadlineMs(
+      files.reduce((sum, file) => sum + file.bytes.length, 0),
+    ),
     maxStdoutBytes: 16 * 1024,
     holdStdin: true,
     ...(input.signal ? { signal: input.signal } : {}),

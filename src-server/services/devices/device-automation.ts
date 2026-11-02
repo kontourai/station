@@ -290,6 +290,7 @@ export class DeviceAutomation {
         { ok: true }
       >,
     ) => Promise<T>,
+    wasDispatched?: () => boolean,
   ) {
     const key = JSON.stringify([
       id,
@@ -334,7 +335,9 @@ export class DeviceAutomation {
             action,
             'agent',
             state.effect === 'unknown' ||
-              (mutating && state.code === 'interrupted')
+              (mutating &&
+                state.code === 'interrupted' &&
+                state.effect !== 'none')
               ? 'unknown'
               : state.ok === false
                 ? 'failed'
@@ -348,10 +351,11 @@ export class DeviceAutomation {
             id,
             action,
             'agent',
-            error instanceof DeviceToolsAdmissionError ||
-              error instanceof DeviceHostBusyError ||
-              (error instanceof DeviceToolsError &&
-                error.code === 'invalid-request')
+            !wasDispatched?.() &&
+              (error instanceof DeviceToolsAdmissionError ||
+                error instanceof DeviceHostBusyError ||
+                (error instanceof DeviceToolsError &&
+                  error.code === 'invalid-request'))
               ? 'failed'
               : [
                     'input',
@@ -781,6 +785,7 @@ export class DeviceAutomation {
     enabled: () => boolean,
     signal?: AbortSignal,
   ) {
+    let dispatched = false;
     return this.withControl(
       access,
       authority,
@@ -834,6 +839,9 @@ export class DeviceAutomation {
             action,
             {
               beforeRun,
+              onDispatch: () => {
+                dispatched = true;
+              },
               declaredSchemes: (() => {
                 const receipt =
                   selected.services.sessions.latestInstallation(id);
@@ -846,15 +854,24 @@ export class DeviceAutomation {
                 : abort.signal,
             },
           );
-          if (!(await current())) return refused('interrupted');
+          if (!(await current()))
+            return {
+              ...refused('interrupted'),
+              effect: dispatched ? ('unknown' as const) : ('none' as const),
+            };
           return { ok: true as const, result };
         } catch (error) {
-          if (!(await current())) return refused('interrupted');
+          if (!(await current()))
+            return {
+              ...refused('interrupted'),
+              effect: dispatched ? ('unknown' as const) : ('none' as const),
+            };
           throw error;
         } finally {
           off();
         }
       },
+      () => dispatched,
     );
   }
 

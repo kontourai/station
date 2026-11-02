@@ -708,10 +708,14 @@ export function createDeviceToolsRoutes(options: DeviceToolsRouteOptions) {
           });
       };
       return run(c, async () => {
+        let dispatched = false;
         try {
           await readmit();
           const result = await service.appAction(target, action, {
             beforeRun: readmit,
+            onDispatch: () => {
+              dispatched = true;
+            },
             declaredSchemes: (() => {
               const receipt = options.actionHistory?.installed?.(target);
               return receipt?.metadata.appId === action.appId
@@ -727,10 +731,11 @@ export function createDeviceToolsRoutes(options: DeviceToolsRouteOptions) {
           options.actionHistory?.note(
             target,
             action.type,
-            error instanceof DeviceToolsAdmissionError ||
-              error instanceof DeviceHostBusyError ||
-              (error instanceof DeviceToolsError &&
-                error.code === 'invalid-request')
+            !dispatched &&
+              (error instanceof DeviceToolsAdmissionError ||
+                error instanceof DeviceHostBusyError ||
+                (error instanceof DeviceToolsError &&
+                  error.code === 'invalid-request'))
               ? 'failed'
               : 'unknown',
           );

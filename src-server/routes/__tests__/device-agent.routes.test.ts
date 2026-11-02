@@ -1680,3 +1680,28 @@ test.skipIf(process.platform === 'win32')(
     expect(h.installApp).toHaveBeenCalledOnce();
   },
 );
+
+test('agent history records unknown when authorization fails after app dispatch', async () => {
+  const h = harness();
+  const id = await h.open();
+  h.localTools.appAction.mockImplementationOnce(
+    async (_target, _action, options) => {
+      await options?.beforeRun?.();
+      options?.onDispatch?.();
+      h.revokeMember();
+      await options?.beforeRun?.();
+      throw new Error('expected authority refusal');
+    },
+  );
+  expect(
+    parsed(
+      await h.run('device_launch_app', {
+        deviceSessionId: id,
+        appId: 'com.example.app',
+      }),
+    ),
+  ).toMatchObject({ ok: false });
+  expect(h.sessions.actionHistory(id)).toContainEqual(
+    expect.objectContaining({ action: 'launch', outcome: 'unknown' }),
+  );
+});

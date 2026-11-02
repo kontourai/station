@@ -411,3 +411,30 @@ test('local install resolves SDK adb without PATH and uses it throughout the hos
     vi.unstubAllEnvs();
   }
 });
+
+test('SSH install deadlines scale with payload and reserve 30 seconds for setup', async () => {
+  const { home, bin } = fixture();
+  const { runDeviceAppInstall } = await import('../device-app-install.js');
+  const timer = vi.spyOn(globalThis, 'setTimeout');
+  try {
+    for (const [length, expected] of [
+      [1, 271_000],
+      [128 * 1024 + 1, 272_000],
+    ] as const) {
+      const bytes = Buffer.alloc(length, 7);
+      const result = await runDeviceAppInstall({
+        target: { host: 'example.invalid' },
+        platform: 'android',
+        deviceId: 'emulator-5554',
+        digest: request(bytes).digest,
+        files: [{ path: 'Application.apk', executable: false, bytes }],
+        spawn: localSshTransport(home, bin),
+        beforeInstall: async () => true,
+      });
+      expect(result.ok).toBe(true);
+      expect(timer.mock.calls.some((call) => call[1] === expected)).toBe(true);
+    }
+  } finally {
+    timer.mockRestore();
+  }
+});

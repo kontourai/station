@@ -41,6 +41,7 @@ import type { DeviceHubConnection } from '../toolchain/device-hub-connection.js'
 import { DEVICE_TOOL_PINS } from '../toolchain/device-tool-pins.js';
 import {
   type DeviceInstallOutcome,
+  deviceInstallDeadlineMs,
   runDeviceAppInstall,
 } from './device-app-install.js';
 import type { DeviceHostStore } from './device-host-store.js';
@@ -704,12 +705,9 @@ export class DeviceHostRegistry {
     const generation = this.#generation(hostId);
     const deadlineAt =
       Date.now() +
-      240_000 +
-      Math.ceil(
-        input.files.reduce((sum, file) => sum + file.bytes.length, 0) /
-          (128 * 1024),
-      ) *
-        1000;
+      deviceInstallDeadlineMs(
+        input.files.reduce((sum, file) => sum + file.bytes.length, 0),
+      );
     const slot = await this.#hostSlot(hostId, 'tool', {
       signal: input.signal,
       deadlineAt,

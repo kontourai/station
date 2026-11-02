@@ -35,7 +35,7 @@ async function apk(): Promise<Buffer> {
   return done;
 }
 
-test('uploaded APK bytes are scoped and copied under an immutable staged handle', async () => {
+test('uploaded APK bytes are scoped under an owned staged handle', async () => {
   const store = new DeviceArtifactStaging();
   const allowed = async () => true;
   const receipt = await store.stageUpload(
@@ -239,7 +239,12 @@ test('Project quotas are independent and an install does not block new staging',
   const store = new DeviceArtifactStaging();
   const bytes = await apk();
   const allowed = async () => true;
-  const first = await store.stageUpload('a', bytes, 'android', allowed);
+  const first = await store.stageUpload(
+    'a',
+    Buffer.from(bytes),
+    'android',
+    allowed,
+  );
   let started!: () => void, release!: () => void;
   const ready = new Promise<void>((resolve) => {
     started = resolve;
@@ -265,14 +270,85 @@ test('Project quotas are independent and an install does not block new staging',
     store.withArtifact('a', first.handle, allowed, async () => true),
   ).rejects.toMatchObject({ code: 'artifact-capacity' });
   for (let i = 1; i < 10; i++)
-    await store.stageUpload('a', bytes, 'android', allowed);
+    await store.stageUpload('a', Buffer.from(bytes), 'android', allowed);
   await expect(
-    store.stageUpload('a', bytes, 'android', allowed),
+    store.stageUpload('a', Buffer.from(bytes), 'android', allowed),
   ).rejects.toMatchObject({ code: 'artifact-capacity' });
   await expect(
-    store.stageUpload('b', bytes, 'android', allowed),
+    store.stageUpload('b', Buffer.from(bytes), 'android', allowed),
   ).resolves.toMatchObject({ state: 'staged' });
   release();
   await Promise.all([install, second]);
   await store.dispose();
+});
+
+test('global install-copy capacity is shared across three Projects', async () => {
+  const store = new DeviceArtifactStaging();
+  const allowed = async () => true;
+  const bytes = await apk();
+  const receipts = await Promise.all(
+    ['a', 'b', 'c'].map((id) =>
+      store.stageUpload(id, Buffer.from(bytes), 'android', allowed),
+    ),
+  );
+  let entered = 0;
+  let ready!: () => void;
+  let firstThree!: () => void;
+  let release!: () => void;
+  const allReady = new Promise<void>((resolve) => {
+    ready = resolve;
+  });
+  const threeReady = new Promise<void>((resolve) => {
+    firstThree = resolve;
+  });
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const launch = (project: string, handle: string) =>
+    store.withArtifact(project, handle, allowed, async () => {
+      if (++entered === 3) firstThree();
+      if (entered === 4) ready();
+      await gate;
+    });
+  const runs = [
+    launch('a', receipts[0]!.handle),
+    launch('b', receipts[1]!.handle),
+    launch('c', receipts[2]!.handle),
+  ];
+  await threeReady;
+  runs.push(launch('a', receipts[0]!.handle));
+  await allReady;
+  await expect(launch('b', receipts[1]!.handle)).rejects.toMatchObject({
+    code: 'artifact-capacity',
+  });
+  release();
+  await Promise.all(runs);
+  await store.dispose();
+});
+
+test('stored payload bytes have a host-wide ceiling across Projects', async () => {
+  const zip = new ZipFile();
+  const chunks: Buffer[] = [];
+  const done = new Promise<Buffer>((resolve, reject) => {
+    zip.outputStream.on('data', (chunk: Buffer) => chunks.push(chunk));
+    zip.outputStream.on('end', () => resolve(Buffer.concat(chunks)));
+    zip.outputStream.on('error', reject);
+  });
+  zip.addBuffer(Buffer.from('manifest'), 'AndroidManifest.xml');
+  zip.addBuffer(Buffer.alloc(110 * 1024 * 1024), 'assets/large', {
+    compress: false,
+  });
+  zip.end();
+  const bytes = await done;
+  const store = new DeviceArtifactStaging();
+  const allowed = async () => true;
+  try {
+    for (const project of ['a', 'b', 'c', 'a'])
+      await store.stageUpload(project, Buffer.from(bytes), 'android', allowed);
+    await expect(
+      store.stageUpload('b', Buffer.from(bytes), 'android', allowed),
+    ).rejects.toMatchObject({ code: 'artifact-capacity' });
+  } finally {
+    await store.dispose();
+  }
 });

@@ -1571,3 +1571,34 @@ test('iOS URL schemes are bound to the installed app identity', async () => {
   });
   expect(env.calls.some((call) => call.args.includes('openurl'))).toBe(true);
 });
+
+test('history records unknown when control changes after the app command dispatches', async () => {
+  let checks = 0;
+  const note = vi.fn();
+  const runner: DeviceToolRunner = {
+    async run(_tool, _args, options) {
+      await options.beforeRun?.();
+      return '';
+    },
+  };
+  const tools = new DeviceToolsService({
+    runner,
+    hub: { connect: async () => ({ ok: false, failure: 'hub-unavailable' }) },
+  });
+  const app = createDeviceToolsRoutes({
+    deviceLoopEnabled: () => true,
+    isRequestPrincipalCurrent: () => true,
+    access: fakeAccess,
+    tools,
+    resolveHumanCaller: () => ({ principal: 'user:ada', device: 'd' }),
+    controlConflict: () => (++checks <= 2 ? 'none' : 'other'),
+    actionHistory: { read: () => undefined, installation: () => {}, note },
+  });
+  const response = await app.request(`${toolsPath()}/app-actions`, {
+    method: 'POST',
+    headers: { 'x-test-actor': 'operator', 'content-type': 'application/json' },
+    body: JSON.stringify({ type: 'launch', appId: 'com.example.app' }),
+  });
+  expect(response.status).toBe(409);
+  expect(note).toHaveBeenCalledWith(expect.anything(), 'launch', 'unknown');
+});

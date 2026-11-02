@@ -126,7 +126,6 @@ export function createDeviceArtifactRoutes(deps: {
         );
         return c.json({ success: true, data: receipt }, 201);
       } finally {
-        bytes?.fill(0);
         receiving.delete(project.id);
         finish();
       }

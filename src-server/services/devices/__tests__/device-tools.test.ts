@@ -1024,3 +1024,34 @@ test.each([
     expect(runner.calls[0]?.args).toContain(`'${expected}'`);
   },
 );
+
+test('Android custom URL schemes require declaration and never permit intent URLs', async () => {
+  const app = 'com.example.app';
+  const runner = fakeRunner({
+    [`adb -s ${SERIAL} shell am start -W -a android.intent.action.VIEW -d 'sample://item' -p ${app}`]:
+      'Status: ok',
+    [`adb -s ${SERIAL} shell dumpsys window`]: `mCurrentFocus=Window{1 u0 ${app}/.Main}`,
+  });
+  const service = new DeviceToolsService({ runner, hub: hubAnswering() });
+  await expect(
+    service.appAction(ANDROID, {
+      type: 'open-url',
+      appId: app,
+      url: 'sample://item',
+    }),
+  ).rejects.toMatchObject({ code: 'invalid-request' });
+  await expect(
+    service.appAction(
+      ANDROID,
+      { type: 'open-url', appId: app, url: 'intent://item' },
+      { declaredSchemes: ['intent'] },
+    ),
+  ).rejects.toMatchObject({ code: 'invalid-request' });
+  await expect(
+    service.appAction(
+      ANDROID,
+      { type: 'open-url', appId: app, url: 'sample://item' },
+      { declaredSchemes: ['sample'] },
+    ),
+  ).resolves.toMatchObject({ observed: 'foreground' });
+});

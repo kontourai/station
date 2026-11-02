@@ -131,13 +131,40 @@ test('archive limits reject valid-looking unsafe paths and excessive entry count
       'invalid-artifact',
     );
   }
-  const entries = Array.from({ length: 10001 }, (_, i) => ({
-    name: `assets/${i}`,
-    bytes: 'x',
-  }));
+  const entries = [
+    { name: 'AndroidManifest.xml', bytes: 'manifest' },
+    ...Array.from({ length: 10000 }, (_, i) => ({
+      name: `assets/${i}`,
+      bytes: 'x',
+    })),
+  ];
   await expect(
     inspectDeviceArchive(await archive(entries), 'android'),
-  ).rejects.toThrow('invalid-artifact');
+  ).rejects.toMatchObject({
+    message: 'invalid-artifact',
+    cause: 'entry-limit',
+  });
+});
+
+test('honest entries exceed the cumulative declared size limit', async () => {
+  const zip = new ZipFile();
+  const chunks: Buffer[] = [];
+  const done = new Promise<Buffer>((resolve, reject) => {
+    zip.outputStream.on('data', (chunk: Buffer) => chunks.push(chunk));
+    zip.outputStream.on('end', () => resolve(Buffer.concat(chunks)));
+    zip.outputStream.on('error', reject);
+  });
+  const payload = Buffer.alloc(65 * 1024 * 1024);
+  zip.addBuffer(Buffer.from('manifest'), 'AndroidManifest.xml');
+  zip.addBuffer(payload, 'assets/a');
+  zip.addBuffer(payload, 'assets/b');
+  zip.end();
+  await expect(
+    inspectDeviceArchive(await done, 'android'),
+  ).rejects.toMatchObject({
+    message: 'invalid-artifact',
+    cause: 'declared-size-limit',
+  });
 });
 
 test('archive rejects declared and streamed size mismatches', async () => {
