@@ -48,9 +48,9 @@ export interface IPtyAdapter {
 
 /**
  * Thrown by an adapter whose PTY backend could not be loaded at all —
- * distinct from one shell candidate failing to spawn. `TerminalService`
- * rethrows it untouched so terminal routes report the specific degraded
- * reason instead of the generic "no viable shell found" (#1244).
+ * distinct from one shell candidate failing to spawn, so the terminal socket
+ * reports `pty-unavailable` with the specific degraded reason instead of the
+ * generic "no viable shell found" (#1244).
  */
 export class PtyUnavailableError extends Error {
   readonly code = 'PTY_UNAVAILABLE';

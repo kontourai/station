@@ -1,10 +1,7 @@
 import { rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import {
-  DEFAULT_GRANT_PAIRING_SCOPE,
-  pairingScopePresetString,
-} from '@kontourai/station-contracts';
+import { DEFAULT_GRANT_PAIRING_SCOPE } from '@kontourai/station-contracts';
 import { MCPLocalConnectionCustody } from '@kontourai/station-shared/mcp';
 import { afterAll, describe, expect, test, vi } from 'vitest';
 import { registerEngineConnection } from '../../../domain/agent-registry.js';
@@ -30,9 +27,8 @@ afterAll(() => {
 });
 
 describe('createRuntimeServiceBundle', () => {
-  test('creates storage-backed services and defers terminal WS until secure startup', () => {
+  test('creates storage-backed services', () => {
     const storageAdapter = { kind: 'storage' };
-    const terminalWsServer = { start: vi.fn() };
     const usageAggregatorRef = { get: vi.fn(() => ({ id: 'usage' })) };
     const createAgentService = vi.fn(() => ({ kind: 'agent-service' }));
     const createProviderService = vi.fn(() => ({ kind: 'provider-service' }));
@@ -82,7 +78,6 @@ describe('createRuntimeServiceBundle', () => {
         integrationMetadata: new Map(),
         toolNameMapping: new Map(),
         usageAggregatorRef,
-        getTerminalShell: () => '/bin/zsh',
         persistEvent: vi.fn(async () => {}),
         resetAllRuntimeProjections: async (reset) => reset(),
         bootstrapVoiceAgent: vi.fn(async () => {}),
@@ -100,9 +95,6 @@ describe('createRuntimeServiceBundle', () => {
         createKnowledgeService: () => ({ kind: 'knowledge-service' }),
         createFileTreeService: () => ({ kind: 'file-tree-service' }),
         createPtyAdapter: () => ({ kind: 'pty' }),
-        createHistoryStore: () => ({ kind: 'history' }),
-        createTerminalService: () => ({ kind: 'terminal-service' }),
-        createTerminalWsServer: () => terminalWsServer,
         createVoiceService: () => ({ kind: 'voice-service' }),
         createMonitoringEmitter: () => ({ kind: 'monitoring' }),
         createACPManager,
@@ -138,7 +130,6 @@ describe('createRuntimeServiceBundle', () => {
       .calls[0] as unknown as unknown[];
     expect(acpManagerArgs[1]).toBe('/tmp/project');
     expect(acpManagerArgs[1]).not.toBe(process.cwd());
-    expect(terminalWsServer.start).not.toHaveBeenCalled();
     expect(bundle.storageAdapter).toBe(storageAdapter);
     expect(bundle.agentService).toEqual({ kind: 'agent-service' });
   });
@@ -188,7 +179,6 @@ describe('createRuntimeServiceBundle', () => {
       integrationMetadata: new Map(),
       toolNameMapping: new Map(),
       usageAggregatorRef: { get: vi.fn(() => ({ id: 'usage' })) },
-      getTerminalShell: () => '/bin/zsh',
       persistEvent: vi.fn(async () => {}),
       bootstrapVoiceAgent: vi.fn(async () => {}),
       resolveVectorDbProvider: vi.fn(),
@@ -205,9 +195,6 @@ describe('createRuntimeServiceBundle', () => {
       createKnowledgeService: () => ({}),
       createFileTreeService: () => ({}),
       createPtyAdapter: () => ({}),
-      createHistoryStore: () => ({}),
-      createTerminalService: () => ({}),
-      createTerminalWsServer: () => ({ start: vi.fn() }),
       createVoiceService: () => ({}),
       createMonitoringEmitter: () => ({}),
       createACPManager: () => ({ getStatus: () => ({}) }),
@@ -270,7 +257,6 @@ describe('createRuntimeServiceBundle', () => {
         integrationMetadata: new Map(),
         toolNameMapping: new Map(),
         usageAggregatorRef: { get: vi.fn(() => ({ id: 'usage' })) },
-        getTerminalShell: () => '/bin/zsh',
         persistEvent: vi.fn(async () => {}),
         resetAllRuntimeProjections: async (reset) => reset(),
         bootstrapVoiceAgent: vi.fn(async () => {}),
@@ -279,7 +265,6 @@ describe('createRuntimeServiceBundle', () => {
       },
       {
         createStorageAdapter: () => storageAdapter,
-        createTerminalWsServer: () => ({ start: vi.fn() }),
       },
     );
 
@@ -342,7 +327,6 @@ describe('createRuntimeServiceBundle', () => {
         integrationMetadata: new Map(),
         toolNameMapping: new Map(),
         usageAggregatorRef: { get: vi.fn(() => ({ id: 'usage' })) },
-        getTerminalShell: () => '/bin/zsh',
         persistEvent: vi.fn(async () => {}),
         resetAllRuntimeProjections: async (reset) => reset(),
         bootstrapVoiceAgent: vi.fn(async () => {}),
@@ -351,157 +335,11 @@ describe('createRuntimeServiceBundle', () => {
       },
       {
         createStorageAdapter: () => ({ kind: 'storage' }),
-        createTerminalWsServer: () => ({ start: vi.fn() }),
       },
     );
 
     expect(
       (bundle.projectService as unknown as { manifests?: unknown }).manifests,
     ).toBeInstanceOf(ProjectManifestStore);
-  });
-});
-
-describe('terminal WebSocket scope gating (station#1098)', () => {
-  function baseContext(security: {
-    verifyCredential: (credential: string) => boolean | Promise<boolean>;
-    resolveGrantedScope: (
-      credential: string,
-    ) => string | undefined | Promise<string | undefined>;
-    identifyDevice?: (credential: string) => unknown;
-  }) {
-    const environmentSecurityService = {
-      identifyDevice: () => null,
-      ...security,
-    };
-    return {
-      projectHomeDir: '/tmp/project',
-      port: 4123,
-      host: '127.0.0.1',
-      logger: { info: vi.fn(), warn: vi.fn() },
-      configLoader: {
-        getProjectHomeDir: () => '/tmp/project',
-        loadACPConfig: vi.fn(async () => ({ connections: [] })),
-        loadAppConfig: vi.fn(async () => ({})),
-        updateAppConfig: vi.fn(async () => ({})),
-      } as any,
-      approvalRegistry: {} as any,
-      eventBus: new EventBus(),
-      orchestrationEventStore: {
-        createCredentialApplicationFactory: vi.fn(() => ({})),
-        voiceTurnRunAuthority: vi.fn(() => ({})),
-      } as any,
-      environmentSecurityService,
-      monitoringEvents: {} as any,
-      memoryAdapters: new Map(),
-      activeAgents: new Map(),
-      agentMetadataMap: new Map(),
-      agentSpecs: new Map(),
-      agentTools: new Map(),
-      agentHooks: new Map(),
-      mcpCustody: new MCPLocalConnectionCustody(),
-      mcpConfigs: new Map(),
-      mcpConnectionStatus: new Map(),
-      integrationMetadata: new Map(),
-      toolNameMapping: new Map(),
-      usageAggregatorRef: { get: vi.fn(() => ({ id: 'usage' })) },
-      getTerminalShell: () => '/bin/zsh',
-      persistEvent: vi.fn(async () => {}),
-      bootstrapVoiceAgent: vi.fn(async () => {}),
-      resolveVectorDbProvider: vi.fn(),
-      resolveEmbeddingProvider: vi.fn(),
-    };
-  }
-
-  /** Captures the exact `auth` option `TerminalWebSocketServer` was constructed with. */
-  function captureTerminalAuth() {
-    let captured: {
-      verifyCredential: (credential: string) => boolean | Promise<boolean>;
-    } | null = null;
-    const factories = {
-      createTerminalWsServer: (_terminalService: unknown, auth: any) => {
-        captured = auth;
-        return { start: vi.fn() };
-      },
-    };
-    return { factories, getAuth: () => captured! };
-  }
-
-  test('a device credential scoped to terminal:operate authenticates the terminal WS', async () => {
-    const scope = pairingScopePresetString('standard'); // includes terminal:operate
-    const { factories, getAuth } = captureTerminalAuth();
-    createRuntimeServiceBundle(
-      baseContext({
-        verifyCredential: async (credential) => credential === 'device-1',
-        resolveGrantedScope: async (credential) =>
-          credential === 'device-1' ? scope : undefined,
-      }) as any,
-      factories,
-    );
-
-    await expect(getAuth().verifyCredential('device-1')).resolves.toBe(true);
-  });
-
-  test('#3586: an account-bound device is refused the terminal WS despite terminal:operate', async () => {
-    const { factories, getAuth } = captureTerminalAuth();
-    createRuntimeServiceBundle(
-      baseContext({
-        verifyCredential: async () => true,
-        resolveGrantedScope: async () => pairingScopePresetString('standard'),
-        identifyDevice: () => ({
-          principalBinding: {
-            kind: 'account',
-            issuer: 'urn:x',
-            subject: 'dana',
-          },
-        }),
-      }) as any,
-      factories,
-    );
-
-    await expect(getAuth().verifyCredential('device-1')).resolves.toBe(false);
-  });
-
-  test('a read-only device credential authenticates the boundary but is denied terminal:operate', async () => {
-    const scope = pairingScopePresetString('read-only');
-    const { factories, getAuth } = captureTerminalAuth();
-    createRuntimeServiceBundle(
-      baseContext({
-        verifyCredential: async (credential) => credential === 'device-1',
-        resolveGrantedScope: async (credential) =>
-          credential === 'device-1' ? scope : undefined,
-      }) as any,
-      factories,
-    );
-
-    await expect(getAuth().verifyCredential('device-1')).resolves.toBe(false);
-  });
-
-  test('the operator (full-scope) credential authenticates the terminal WS', async () => {
-    const { factories, getAuth } = captureTerminalAuth();
-    createRuntimeServiceBundle(
-      baseContext({
-        verifyCredential: async (credential) => credential === 'operator',
-        resolveGrantedScope: async (credential) =>
-          credential === 'operator' ? DEFAULT_GRANT_PAIRING_SCOPE : undefined,
-      }) as any,
-      factories,
-    );
-
-    await expect(getAuth().verifyCredential('operator')).resolves.toBe(true);
-  });
-
-  test('an invalid credential is rejected before any scope lookup', async () => {
-    const resolveGrantedScope = vi.fn(async () => DEFAULT_GRANT_PAIRING_SCOPE);
-    const { factories, getAuth } = captureTerminalAuth();
-    createRuntimeServiceBundle(
-      baseContext({
-        verifyCredential: async () => false,
-        resolveGrantedScope,
-      }) as any,
-      factories,
-    );
-
-    await expect(getAuth().verifyCredential('anything')).resolves.toBe(false);
-    expect(resolveGrantedScope).not.toHaveBeenCalled();
   });
 });

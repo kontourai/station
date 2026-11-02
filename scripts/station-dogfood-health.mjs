@@ -408,7 +408,6 @@ export function assertListenerOwnership(
   const supervised = record.supervised === true;
   const expected = [
     ['api', record.serverPort, record.serverPid, supervised],
-    ['terminal', record.serverPort + 1, record.serverPid, supervised],
     ['voice', record.serverPort + 2, record.serverPid, supervised],
     ['consent', record.serverPort + 3, record.serverPid, supervised],
     ['ui', record.uiPort, record.uiPid, false],
@@ -548,10 +547,6 @@ export async function probeDogfoodHealth(
           identity,
           controller.signal,
         ),
-    ],
-    [
-      'terminal',
-      () => websocketHealthUpgrade(record.serverPort + 1, controller.signal),
     ],
     [
       'voice',

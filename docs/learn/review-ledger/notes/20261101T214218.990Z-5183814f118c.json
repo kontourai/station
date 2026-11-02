@@ -1,0 +1,7 @@
+{
+  "revision": "fa0ea053b817453a309a69d129fe9e3b7cf12db4",
+
+  "notes": [
+    {"path":"deploy/public-ingress/README.md","note":"The UI proxy bridges only the ticket-admitted /api/terminal/socket upgrade; the only dedicated listener it does not bridge is voice now that the legacy terminal listener is removed. Checked lifecycle.ts upgrade forwarding.","inputs":["deploy/public-ingress/README.md"]}
+  ]
+}

@@ -271,7 +271,8 @@ export function createRuntimeSystemRouteDeps(
     // #1244: the terminal surface's live PTY capability, so a Station whose
     // node-pty never built reports a specific degraded reason on the same
     // readiness record that carries chat/runtime/acp.
-    probeTerminalCapability: () => context.terminalService.probeCapability(),
+    probeTerminalCapability: async () =>
+      (await context.ptyAdapter.probeCapability?.()) ?? { state: 'available' },
   };
 }
 

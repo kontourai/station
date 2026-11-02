@@ -18,8 +18,6 @@
 
     "src-server/services/terminal/terminal-output-sanitizer.ts",
 
-    "src-server/services/terminal/terminal-service.ts",
-
     "src-server/services/terminal/__tests__/terminal-sessions.process.test.ts",
 
     "src-server/adapters/file-terminal-history-store.ts",

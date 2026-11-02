@@ -424,32 +424,6 @@ function stationBrowserOriginsFor(port: number) {
 
 const MCPManager = await import('../mcp/mcp-manager.js');
 
-function replaceTerminalListener(
-  runtime: InstanceType<typeof StationRuntime>,
-): {
-  start: ReturnType<typeof vi.fn>;
-  stop: ReturnType<typeof vi.fn>;
-} {
-  let running = false;
-  const start = vi.fn((port: number, host?: string) => {
-    if (running) throw new Error('terminal listener is already running');
-    running = true;
-    return { port, host };
-  });
-  const stop = vi.fn(async () => {
-    running = false;
-  });
-  (
-    runtime as unknown as {
-      terminalWsServer: {
-        start: ReturnType<typeof vi.fn>;
-        stop: ReturnType<typeof vi.fn>;
-      };
-    }
-  ).terminalWsServer = { start, stop };
-  return { start, stop };
-}
-
 /**
  * Wait for the boot under test to reach route configuration (#1791).
  *
@@ -642,22 +616,19 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
     journal.close();
 
     const virtualReady = vi.fn();
-    const terminal = replaceTerminalListener(
-      (runtime = new StationRuntime({
-        projectHomeDir: home,
-        port: TEST_PORT,
-        virtualApplication: {
-          origin: 'https://virtual.example.test',
-          ready: virtualReady,
-        },
-      })),
-    );
+    runtime = new StationRuntime({
+      projectHomeDir: home,
+      port: TEST_PORT,
+      virtualApplication: {
+        origin: 'https://virtual.example.test',
+        ready: virtualReady,
+      },
+    });
     routeMocks.deferServerFactory = true;
 
     await expect(runtime.initialize()).rejects.toThrow(
       'Relay enrollment cleanup is unconfirmed',
     );
-    expect(terminal.start).not.toHaveBeenCalled();
     expect(routeMocks.configureRuntimeRoutes).not.toHaveBeenCalled();
     expect(virtualReady).not.toHaveBeenCalled();
   });
@@ -686,7 +657,6 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
       port: TEST_PORT,
       host: '127.0.0.1',
     });
-    replaceTerminalListener(runtime);
     routeMocks.deferServerFactory = true;
 
     let bootSettled = false;
@@ -733,7 +703,6 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
       port: TEST_PORT,
       host: '127.0.0.1',
     });
-    replaceTerminalListener(runtime);
     vi.spyOn(
       runtime as unknown as { resolveBuiltinEngineBinding: () => unknown },
       'resolveBuiltinEngineBinding',
@@ -886,7 +855,6 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
                 ready: virtualReady,
               },
       });
-      replaceTerminalListener(runtime);
       // This receipt-composition proof does not cover native-engine discovery.
       // Match the existing archive#2365 cold-start harness so unavailable sandbox CLIs
       // cannot consume the test's timeout budget.
@@ -1040,7 +1008,6 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
       port,
       host: '127.0.0.1',
     });
-    replaceTerminalListener(runtime);
     const resolveModelId = vi
       .spyOn(BedrockModelCatalog.prototype, 'resolveModelId')
       .mockResolvedValue('anthropic.test-model');
@@ -1164,7 +1131,6 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
           port: TEST_PORT,
           host: '127.0.0.1',
         });
-        replaceTerminalListener(runtime);
         // A namespaced workItemRef routes dispatch through the assignment
         // claim; stub that gate (and the workspace it needs) so this case
         // observes the brief. Both are read when the dispatcher is composed.
@@ -1316,7 +1282,6 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
       port: TEST_PORT,
       host: '127.0.0.1',
     });
-    replaceTerminalListener(runtime);
     // Native-engine readiness probes are unrelated to managed-agent hook
     // composition and can take tens of seconds in the sandbox. Keep the
     // built-in agent on Station's engine, which is the production path this
@@ -1409,7 +1374,6 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
   it('schedules store integrity verification against the store it opened (#3218)', async () => {
     home = await createSchemaHome('station-coldstart-store-integrity-');
     runtime = new StationRuntime({ projectHomeDir: home, port: TEST_PORT });
-    replaceTerminalListener(runtime);
 
     await expect(runtime.initialize()).resolves.toBeUndefined();
 
@@ -1450,7 +1414,6 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
       projectSharing: true,
       localAccounts: { publicOrigin: `http://localhost:${TEST_PORT}` },
     });
-    replaceTerminalListener(runtime);
     vi.mocked(attachVoiceWebSocket).mockClear();
     await expect(runtime.initialize()).resolves.toBeUndefined();
 
@@ -1550,7 +1513,6 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
         port: TEST_PORT,
         host: '127.0.0.1',
       });
-      replaceTerminalListener(runtime);
       await expect(runtime.initialize()).resolves.toBeUndefined();
     };
     const stop = async () => {
@@ -1789,29 +1751,6 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
     });
   });
 
-  it('hosted tenant isolation never binds the unauthorised terminal port', async () => {
-    home = await createSchemaHome('station-coldstart-hosted-terminal-');
-    const registryPath = join(home, 'hosted-tenants.json');
-    writeFileSync(
-      registryPath,
-      JSON.stringify({
-        schemaVersion: 1,
-        tenants: [{ id: 'alpha', authority: 'alpha.station.test' }],
-      }),
-    );
-    process.env[hostedRegistryFileEnv] = registryPath;
-    runtime = new StationRuntime({
-      projectHomeDir: home,
-      port: TEST_PORT,
-      host: '0.0.0.0',
-    });
-    const terminalListener = replaceTerminalListener(runtime);
-
-    await expect(runtime.initialize()).resolves.toBeUndefined();
-
-    expect(terminalListener.start).not.toHaveBeenCalled();
-  });
-
   it('external-engine-bound agent records (incl. promoted defaults) do not build managed runtime instances and log no errors (station#954)', async () => {
     home = await createSchemaHome('station-coldstart-external-');
     // Byte-for-byte the zero-override shape a promoted default
@@ -1852,7 +1791,6 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
       port: TEST_PORT,
       host: '127.0.0.1',
     });
-    replaceTerminalListener(runtime);
     const logger = (
       runtime as unknown as {
         logger: {
@@ -1887,7 +1825,7 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
     runtime = undefined;
   });
 
-  it('releases terminal and defers voice when initialization fails, then retries cleanly', async () => {
+  it('defers voice when initialization fails, then retries cleanly', async () => {
     home = await createSchemaHome('station-coldstart-retry-');
     await new ConfigLoader({ projectHomeDir: home }).mutateAppConfig(() => ({
       registryTrust: { profiles: [] },
@@ -1898,7 +1836,6 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
       port,
       host: '127.0.0.1',
     });
-    const terminalListener = replaceTerminalListener(runtime);
     const policies = (
       runtime as unknown as { orchestrationEventStore: EventStore }
     ).orchestrationEventStore.createRegistryTrustPolicyDecisions();
@@ -1908,7 +1845,7 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
       }
     ).eventLog;
     const originalLoad = eventLog.loadRecentEvents.bind(eventLog);
-    const failure = new Error('deterministic post-terminal startup failure');
+    const failure = new Error('deterministic startup failure');
     eventLog.loadRecentEvents = vi
       .fn()
       .mockRejectedValueOnce(failure)
@@ -1918,13 +1855,6 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
 
     await expect(runtime.initialize()).rejects.toBe(failure);
     expect(policies.read()).toBeNull();
-    expect(terminalListener.stop).toHaveBeenCalledTimes(1);
-    expect(terminalListener.start).toHaveBeenNthCalledWith(
-      1,
-      port + 1,
-      '127.0.0.1',
-      stationBrowserOriginsFor(port),
-    );
     expect(attachVoiceWebSocket).not.toHaveBeenCalled();
     expect(routeMocks.servicePairs).toHaveLength(1);
     const failedVoltAgent = (
@@ -1942,12 +1872,6 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
 
     await expect(runtime.initialize()).resolves.toBeUndefined();
     expect(policies.read()?.identity.configured).toBe(true);
-    expect(terminalListener.start).toHaveBeenNthCalledWith(
-      2,
-      port + 1,
-      '127.0.0.1',
-      stationBrowserOriginsFor(port),
-    );
     expect(attachVoiceWebSocket).toHaveBeenCalledTimes(1);
     expect(attachVoiceWebSocket).toHaveBeenCalledWith(
       port + 2,
@@ -1981,7 +1905,6 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
       port: TEST_PORT,
       host: '127.0.0.1',
     });
-    replaceTerminalListener(runtime);
     const subject = runtime as unknown as {
       eventLog: { loadRecentEvents(): Promise<void> };
       orchestrationEventStore: EventStore;
@@ -2105,7 +2028,6 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
       port: TEST_PORT,
       host: '127.0.0.1',
     });
-    replaceTerminalListener(runtime);
 
     const captureSpy = vi.spyOn(
       runtime as unknown as {
@@ -2137,7 +2059,6 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
       port: TEST_PORT,
       host: '127.0.0.1',
     });
-    replaceTerminalListener(runtime);
     await expect(runtime.initialize()).resolves.toBeUndefined();
     expect(globals.__stationSignedStartupImports).toBeGreaterThan(before);
     const internal = runtime as unknown as {
@@ -2174,7 +2095,6 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
       port: TEST_PORT,
       host: '127.0.0.1',
     });
-    replaceTerminalListener(runtime);
     const peer = new EventStore(getOrchestrationDatabasePath(home));
     const internal = runtime as any;
     await internal.configLoader.mutateAppConfig(() => ({
@@ -2234,7 +2154,6 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
       port: TEST_PORT,
       host: '127.0.0.1',
     });
-    replaceTerminalListener(runtime);
 
     let settled = false;
     const initialization = runtime.initialize().finally(() => {
@@ -2264,7 +2183,6 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
       port: TEST_PORT,
       host: '127.0.0.1',
     });
-    replaceTerminalListener(runtime);
 
     const initialization = runtime
       .initialize()
@@ -2308,7 +2226,6 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
       port: TEST_PORT,
       host: '127.0.0.1',
     });
-    replaceTerminalListener(runtime);
     const primaryFailure = new Error('initialization failed');
     (
       runtime as unknown as {

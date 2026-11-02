@@ -22,7 +22,6 @@ import {
   TerminalJournal,
   type TerminalJournalOptions,
 } from '../terminal-journal.js';
-import { TerminalService } from '../terminal-service.js';
 import { TerminalSessions } from '../terminal-sessions.js';
 
 vi.mock('node:fs/promises', async (importOriginal) => {
@@ -605,46 +604,6 @@ describe.skipIf(process.platform === 'win32')(
       expect(
         (await history.loadForProject('alpha:big', 'project-a')).state,
       ).toBe('unavailable');
-    });
-
-    test('legacy provenance keeps the Project incarnation captured at shell open', async () => {
-      const history = new FileTerminalHistoryStore(
-        join(home, 'terminal-history'),
-      );
-      let projectId = 'project-a';
-      const legacy = new TerminalService(
-        new NodePtyAdapter(),
-        history,
-        () => '/bin/sh',
-        () => projectId,
-      );
-      try {
-        const opened = await legacy.open({
-          projectSlug: 'alpha',
-          terminalId: 'captured',
-          cwd: root,
-          ...dimensions,
-        });
-        projectId = 'project-b';
-        legacy.write(
-          opened.sessionId,
-          "printf '%s%s' 'incarnation:' 'first'\r",
-        );
-        await expect
-          .poll(() => legacy.readProcess(opened.sessionId)?.history, {
-            timeout: 10000,
-          })
-          .toContain('incarnation:first');
-        await legacy.close(opened.sessionId);
-        expect(
-          (await history.loadForProject(opened.sessionId, 'project-a')).state,
-        ).toBe('owned');
-        expect(
-          (await history.loadForProject(opened.sessionId, 'project-b')).state,
-        ).toBe('unavailable');
-      } finally {
-        await legacy.dispose();
-      }
     });
 
     test('a wrong first claimant, an unowned raw history and changed history bytes cannot be imported', async () => {

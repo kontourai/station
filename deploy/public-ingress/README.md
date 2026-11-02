@@ -92,9 +92,9 @@ healthy internal container alone does not prove public ingress or enrollment.
 Caddy can handle WebSocket upgrades and stream SSE, but this profile's upstream
 is Station's port-3000 UI/HTTP proxy. That proxy forwards only the ticket-admitted
 `/api/terminal/socket` upgrade to the API listener (#3994); it does not bridge
-the dedicated legacy terminal or voice listeners, and the overlay publishes no
-direct Station ports. A Caddy upgrade capability or generic smoke result
-therefore does not qualify real terminal/voice access through this profile. [#2769](https://github.com/kontourai/station/issues/2769)
+the dedicated voice listener, and the overlay publishes no direct Station
+ports. A Caddy upgrade capability or generic smoke result therefore does not
+qualify real terminal/voice access through this profile. [#2769](https://github.com/kontourai/station/issues/2769)
 tracks that separate ingress contract; do not expose a raw listener as a
 workaround without its authentication, origin, scope and TLS boundaries.
 

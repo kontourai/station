@@ -1662,18 +1662,21 @@ describe('Project Routes', () => {
   });
 
   test('DELETE /:slug/terminals/:terminalId closes only the route-bound Project terminal', async () => {
-    const terminalService = {
-      closeForProject: vi.fn(async (projectSlug: string, terminalId: string) =>
-        projectSlug === 'test' && terminalId === 'term-1'
-          ? { sessionId: 'test:term-1', projectSlug, terminalId }
-          : null,
-      ),
-    };
+    const storage = createMockStorageAdapter();
+    storage.getProject.mockImplementation(((slug: string) => {
+      if (slug === 'test') return { id: 'project-test', slug };
+      if (slug === 'other') return { id: 'project-other', slug };
+      throw new Error(`Project '${slug}' not found`);
+    }) as any);
+    const closeScopedTerminal = vi.fn(
+      async (_request: Request, projectId: string, terminalId: string) =>
+        projectId === 'project-test' && terminalId === 'term-1',
+    );
     const app = createProjectRoutes(
       createMockProjectService() as any,
-      createMockStorageAdapter() as any,
+      storage as any,
       createTempProjectHome(),
-      { terminalService },
+      { closeScopedTerminal },
     );
 
     const accepted = await app.request('/test/terminals/term-1', {
@@ -1683,7 +1686,7 @@ describe('Project Routes', () => {
     expect(await json(accepted)).toEqual({
       success: true,
       data: {
-        sessionId: 'test:term-1',
+        sessionId: 'term-1',
         projectSlug: 'test',
         terminalId: 'term-1',
       },
@@ -1693,15 +1696,25 @@ describe('Project Routes', () => {
       method: 'DELETE',
     });
     expect(wrongProject.status).toBe(404);
-    expect(terminalService.closeForProject).toHaveBeenCalledTimes(2);
-    expect(terminalService.closeForProject).toHaveBeenCalledWith(
-      'test',
+    expect(closeScopedTerminal).toHaveBeenCalledTimes(2);
+    expect(closeScopedTerminal).toHaveBeenLastCalledWith(
+      expect.any(Request),
+      'project-other',
       'term-1',
     );
-    expect(terminalService.closeForProject).toHaveBeenLastCalledWith(
-      'other',
-      'term-1',
+  });
+
+  test('DELETE /:slug/terminals/:terminalId answers 503 without terminal sessions', async () => {
+    const app = createProjectRoutes(
+      createMockProjectService() as any,
+      createMockStorageAdapter() as any,
+      createTempProjectHome(),
+      {},
     );
+    const response = await app.request('/test/terminals/term-1', {
+      method: 'DELETE',
+    });
+    expect(response.status).toBe(503);
   });
 
   test('GET /:slug/panes binds the canonical Project id rather than its route slug', async () => {

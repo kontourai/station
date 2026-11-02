@@ -2484,14 +2484,9 @@ injected seams, so it runs identically on a machine whose `node-pty` works:
   `() => Promise.reject(new Error('Failed to load native module: …'))` to
   exercise `probeCapability()` and the `PtyUnavailableError` spawn rejection
   (`src-server/adapters/__tests__/node-pty-adapter.test.ts`).
-- `TerminalService` receives a mock `IPtyAdapter` whose `spawn` rejects with
-  `PtyUnavailableError`; assert `open()` rethrows the specific reason rather
-  than the generic "no viable shell found"
-  (`src-server/services/terminal/__tests__/terminal-service.test.ts`).
-- The WebSocket transport must answer an `open` with
-  `{ type: 'error', code: 'terminal-unavailable' }` carrying only the fixed
-  product-owned text
-  (`src-server/services/terminal/__tests__/terminal-ws-server.test.ts`).
+- The terminal socket must answer an `open` on a host without a PTY backend
+  with the distinct `pty-unavailable` error carrying the server's reason
+  (`src-server/services/terminal/__tests__/terminal-gateway-admission.test.ts`).
 - `/api/system/status` takes `probeTerminalCapability` in its deps; assert
   the `capabilities.terminal` record and its `reason`
   (`src-server/routes/system/__tests__/system.routes.test.ts`), and the

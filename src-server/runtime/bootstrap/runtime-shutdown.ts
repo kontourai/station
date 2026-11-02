@@ -34,8 +34,7 @@ export async function shutdownRuntimeServices({
   voiceService,
   mcpUiFrameServer,
   consentListener,
-  terminalWsServer,
-  terminalService,
+  terminalSessions,
   monitoringEmitter,
   sshEnvironmentService,
   configLoader,
@@ -61,8 +60,7 @@ export async function shutdownRuntimeServices({
   voiceService: { stop(): Promise<void> };
   mcpUiFrameServer?: { close(): Promise<void> };
   consentListener?: { close(): Promise<void> };
-  terminalWsServer: { stop(): void | Promise<void> };
-  terminalService: { dispose(): Promise<void> };
+  terminalSessions?: { dispose(): Promise<void> };
   monitoringEmitter?: { flush(): Promise<void> };
   sshEnvironmentService?: { shutdown(): Promise<void> };
   /**
@@ -224,8 +222,7 @@ export async function shutdownRuntimeServices({
     'consentListener.close',
     consentListener ? () => consentListener.close() : undefined,
   );
-  await attempt('terminalWsServer.stop', () => terminalWsServer.stop());
-  await attempt('terminalService.dispose', () => terminalService.dispose());
+  await attempt('terminalSessions.dispose', () => terminalSessions?.dispose());
   await attempt('sshEnvironmentService.shutdown', () =>
     sshEnvironmentService?.shutdown(),
   );

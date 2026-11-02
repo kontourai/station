@@ -245,9 +245,9 @@ malformed identity never produce verified provenance.
 | Pairing-authenticated HTTP request with a credential-like query parameter | `401` | `401` | `401` |
 | HTTP request from a disallowed Origin | `403` | `403` | `403` |
 | Repeated authentication failures | Subject to bounded limiting | `429` with `Retry-After` | A valid credential clears the peer's failure window |
-| Terminal or voice `WS /__station/health` | Identity-only; no business session | Identity-only; no business session | Identity-only; no business session |
+| Voice `WS /__station/health` | Identity-only; no business session | Identity-only; no business session | Identity-only; no business session |
 | `WS /api/terminal/socket` on the main API listener | `401` before upgrade unless it redeems a single-use ticket | Same | Same; the ticket's minting request must be the operator in person or one of the operator's own paired devices ([terminal socket](#terminal-socket-on-operator-devices-3994)) |
-| Other terminal or voice WebSocket paths (the legacy terminal listener on `port + 1`, voice) | Existing local flow | Closed before session allocation | Requires the first-frame protocol below |
+| Voice WebSocket paths other than health | Existing local flow | Closed before session allocation | Requires the first-frame protocol below |
 
 Account-bound Knowledge access is limited to GET/HEAD source capabilities,
 root and adapter listings, record listings/details, graph reads and exact
@@ -368,8 +368,8 @@ not permit an operator or Device credential in a URL. Inbound webhooks verify
 their named HMAC token, timestamp and nonce; an attachment stage grant authorizes
 only its exact short-lived upload.
 
-The terminal and voice listeners still accept their direct-loopback business
-path without the remote first-frame credential check. Browser-shaped upgrades
+The voice listener still accepts its direct-loopback business path without
+the remote first-frame credential check. Browser-shaped upgrades
 must present an allowed Station Origin, while non-browser local clients have
 no Origin requirement. This retained local path is distinct from protected HTTP
 authorization and is not a paired-Device scope boundary.
@@ -1109,9 +1109,8 @@ non-operator members is a separate program and is not widened here.
   before minting a ticket. That egress stays closed until a broker transport
   for the socket exists and this model is updated.
 
-The legacy terminal WebSocket requires `terminal:operate`, and the voice WebSocket
-requires `orchestration:operate`; both refuse an account-bound device and any
-personal access token whatever its scope (#3586). The terminal socket ticket
+The voice WebSocket requires `orchestration:operate` and refuses an
+account-bound device and any personal access token whatever its scope (#3586). The terminal socket ticket
 requires `terminal:observe` or `terminal:operate` and refuses the same callers. Pairing-family routes
 have additional credential-kind and explicit approval-leaf rules described
 above; a generic operate grant cannot reach them. A
@@ -1120,9 +1119,8 @@ log — rather than defaulting to allowed; a test enumerates the live route
 surface against the table so a new authenticated route shipped without a
 scope entry is caught before merge. A read-only credential can therefore read
 and stream permitted HTTP state but receives `403 insufficient_scope` for
-pairing-scoped mutations. The remote terminal first-frame check refuses it
-because it lacks `terminal:operate`; the retained direct-loopback WebSocket
-path in the matrix is a separate exception. Although the Station operator bootstrap credential
+pairing-scoped mutations. The terminal socket ticket mint refuses it because it
+lacks `terminal:observe` and `terminal:operate`. Although the Station operator bootstrap credential
 is not itself a pairing grant,
 [`resolveGrantedScope`](../../src-server/services/ssh/environment-security-service.ts)
 reports `DEFAULT_GRANT_PAIRING_SCOPE` for it: the frozen four tokens, excluding
@@ -2116,15 +2114,14 @@ require an exact allowed browser `Origin`; originless mutations fail closed.
 Operator and Device credentials in URLs, query parameters, logs, screenshots, WebSocket negotiated
 subprotocols, or public handshake responses are forbidden.
 
-The legacy terminal listener and voice WebSockets send this as the first
-application frame (the main-listener terminal socket uses a single-use ticket
-instead; see [Terminal socket on operator devices](#terminal-socket-on-operator-devices-3994)):
+The voice WebSocket sends this as the first application frame (the terminal
+socket uses a single-use ticket instead; see [Terminal socket on operator devices](#terminal-socket-on-operator-devices-3994)):
 
 ```json
 {"type":"auth","protocolVersion":1,"credential":"<credential>"}
 ```
 
-No terminal or voice business state is allocated before successful
+No voice business state is allocated before successful
 authentication. Success returns
 `{"type":"authenticated","protocolVersion":1}`. Invalid, oversized, late,
 or repeated frames close the socket with a deterministic secret-free reason;
