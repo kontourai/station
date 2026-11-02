@@ -159,6 +159,12 @@ function setup(
           ? { sessionId: session.sessionId, entries }
           : undefined;
       },
+      installed: (target) => {
+        const session = sessions.forDevice(target.platform, target.deviceId);
+        return session
+          ? sessions.latestInstallation(session.sessionId)
+          : undefined;
+      },
       installation: (target, value) => {
         const session = sessions.forDevice(target.platform, target.deviceId);
         if (session) sessions.noteInstallation(session.sessionId, value);
@@ -1527,4 +1533,41 @@ test('history marks pre-execution busy and invalid app actions as failed', async
       expect.objectContaining({ action: 'open-url', outcome: 'failed' }),
     ]),
   );
+});
+
+test('iOS URL schemes are bound to the installed app identity', async () => {
+  const env = setup();
+  const session = await env.sessions.open({
+    hostId: 'local',
+    platform: 'ios',
+    deviceId: IOS,
+  });
+  env.sessions.noteInstallation(session.sessionId, {
+    ok: true,
+    digest: 'sha256:fixture',
+    source: 'upload',
+    metadata: {
+      platform: 'ios',
+      abi: 'arm64',
+      appId: 'com.example.owner',
+      version: '1',
+      build: '1',
+      revision: null,
+      urlSchemes: ['example'],
+    },
+  });
+  const path = `${toolsPath()}/app-actions`;
+  const action = {
+    type: 'open-url',
+    appId: 'com.example.other',
+    url: 'example://item',
+  };
+  const rejected = await env.call('POST', path, 'operator', action);
+  expect(await rejected.json()).toMatchObject({ code: 'invalid-request' });
+  expect(env.calls).toHaveLength(0);
+  await env.call('POST', path, 'operator', {
+    ...action,
+    appId: 'com.example.owner',
+  });
+  expect(env.calls.some((call) => call.args.includes('openurl'))).toBe(true);
 });
