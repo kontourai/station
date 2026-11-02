@@ -134,6 +134,7 @@ function parseBlock(row: Record<string, unknown>): AgentFrame[] {
         .min(1)
         .max(1024),
       times: z.array(z.iso.datetime()).max(1024).optional(),
+      elapsed: z.array(z.number().int()).max(1024).optional(),
       positions: z.array(z.number().int().nonnegative()).max(1024).optional(),
     })
     .strict()
@@ -157,6 +158,10 @@ function parseBlock(row: Record<string, unknown>): AgentFrame[] {
       ]),
     ) !== envelope.digest ||
     (raw.times !== undefined && raw.times.length !== raw.wires.length) ||
+    (raw.elapsed !== undefined &&
+      (raw.times !== undefined ||
+        raw.elapsed.length !== raw.wires.length ||
+        raw.elapsed[0] !== 0)) ||
     (raw.positions !== undefined &&
       (raw.positions.length !== raw.wires.length ||
         raw.positions[0] !== row.position ||
@@ -179,7 +184,9 @@ function parseBlock(row: Record<string, unknown>): AgentFrame[] {
       position: raw.positions?.[index] ?? Number(row.position) + index,
       wire,
       digest: hash(wire),
-      createdAt: raw.times?.[index] ?? raw.at,
+      createdAt: raw.elapsed
+        ? new Date(Date.parse(raw.at) + raw.elapsed[index]!).toISOString()
+        : (raw.times?.[index] ?? raw.at),
     }),
   );
 }
@@ -221,7 +228,13 @@ function putBlock(
   const raw = {
     at: first.createdAt,
     wires: frames.map((frame) => frame.wire),
-    ...(times.some((at) => at !== first.createdAt) ? { times } : {}),
+    ...(times.some((at) => at !== first.createdAt)
+      ? {
+          elapsed: times.map(
+            (at) => Date.parse(at) - Date.parse(first.createdAt),
+          ),
+        }
+      : {}),
     ...(frames.some((frame, index) => frame.position !== first.position + index)
       ? { positions: frames.map((frame) => frame.position) }
       : {}),

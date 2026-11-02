@@ -426,6 +426,10 @@ async function run(
         database.close();
       }
     }
+    const bodyNodeBytes =
+      tables.find((table) => table.name === 'agent_steps_body_nodes')
+        ?.payloadBytes ?? 0;
+    bodiesBytes += bodyNodeBytes;
     const inspectionSidecarBytes = diskBytes(dir.path) - onDiskBytes;
     const journalBudgetBytes = 128 * 1024 + steps * 16 * 1024 + 3 * textBytes;
     const bodyBudgetBytes = steps * 8 * 1024 + 2 * textBytes;
@@ -507,11 +511,12 @@ async function run(
         inspectionSidecarBytes,
         tables,
         fixedBytesPerStep:
-          Math.max(0, journalBytes - 3 * textBytes - 128 * 1024) / steps,
+          Math.max(0, onDiskBytes - 3 * textBytes - 128 * 1024) / steps,
         onDiskBytes,
         journalBytes,
         bodiesBytes,
         bodyChunkBytes,
+        bodyNodeBytes,
         framesBytes,
         frames,
         walPeakBytes,

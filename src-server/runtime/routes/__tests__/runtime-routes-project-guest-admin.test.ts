@@ -1579,11 +1579,11 @@ describe('project guest administration over the production composition', () => {
     const started = performance.now();
     const phases: Array<{ phase: string; ms: number }> = [];
     const phase = (name: string) => {
-      if (phases.length < 24)
-        phases.push({
-          phase: name,
-          ms: Math.round(performance.now() - started),
-        });
+      if (phases.length === 24) phases.shift();
+      phases.push({
+        phase: name,
+        ms: Math.round(performance.now() - started),
+      });
     };
     testContext.onTestFinished(({ task }) => {
       if (task.result?.state === 'fail')

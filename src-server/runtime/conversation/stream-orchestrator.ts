@@ -501,8 +501,8 @@ export function outwardTurnFailureText(error: unknown): string {
 /**
  * Write SSE error.
  *
- * The text is always the fixed outward generic; the provider's own message
- * never crosses. What may cross is the HTTP status (`outwardFailureStatus`):
+ * Provider failures use the fixed outward generic; a typed durable output limit
+ * uses Station's fixed limit sentence. The provider's own message never crosses. What may cross is the HTTP status (`outwardFailureStatus`):
  * a bare integer carries no provider-controlled text, and it is what lets
  * the station-agent relay tell the user WHY the turn failed ("rejected the
  * credentials", "rate-limited") instead of only that it did. An inferred
