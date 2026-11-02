@@ -61,6 +61,7 @@ export const STATION_KNOWLEDGE_MCP_PATH = '/mcp/station-knowledge';
 export type BuiltinStationApiMcpId = 'station-control' | 'station-knowledge';
 export type StationMcpCredentialPurpose =
   | BuiltinStationApiMcpId
+  | 'codex-tools'
   | 'coordinator-control'
   | 'coordinator-knowledge'
   | `oauth-proxy:${string}`;
@@ -434,6 +435,18 @@ function revokeRuntimeToken(
     const entry = tokensByDigest.get(tokenDigest);
     if (entry) removeTokenEntry(tokenDigest, entry);
   }
+}
+
+/** Retire only this credential; a successor for the same session survives. */
+export function revokeStationControlMcpTokenIfCurrent(
+  token: string,
+  sessionId: string,
+  serverId: StationMcpCredentialPurpose,
+): void {
+  const tokenDigest = digest(token);
+  const entry = tokensByDigest.get(tokenDigest);
+  if (entry?.sessionId === sessionId && entry.serverId === serverId)
+    removeTokenEntry(tokenDigest, entry);
 }
 
 /** Session shutdown revokes its runtime credentials and independent client leases. */
