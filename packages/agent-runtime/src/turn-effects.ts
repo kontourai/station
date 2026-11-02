@@ -123,7 +123,7 @@ export const effectCommands = [
       type: z.literal('effectPartialBatch'),
       ...owned,
       id: text,
-      parts: z.array(payload).min(1).max(256),
+      parts: z.array(payload).min(1).max(1024),
     })
     .strict(),
   z

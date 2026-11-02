@@ -231,6 +231,7 @@ function createStationOwner(home: string) {
     if (!handle) {
       const database = openPrivateSqlite(path, 'Durable Station agent');
       try {
+        database.exec('PRAGMA cache_size=-65536');
         handle = {
           database,
           journal: openSqliteAgentJournal({ database }),

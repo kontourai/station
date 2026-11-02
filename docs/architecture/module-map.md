@@ -138,7 +138,7 @@ and where to start reading; it is a pointer, not a reviewed interface contract.
 ## Durable Station Agent
 
 The [runtime owner](../../src-server/runtime/agents/durable-agent-owner.ts)
-consumes `@kontourai/agent-runtime` through its root contract and explicit `/internal` host integration entry. Its retained SQLite connection uses immutable effect bodies, indexed control headers and per-turn SQL change cursors. Prefix commits batch at 16 ms, 64 KiB or 128 parts; owner checks and dispatch grants remain transactional. It is bound during
+consumes `@kontourai/agent-runtime` through its root contract and explicit `/internal` host integration entry. Its retained SQLite connection uses immutable effect bodies, indexed control headers and per-turn SQL change cursors. Prefix commits batch at 16 ms, 64 KiB or 1024 parts; owner checks and dispatch grants remain transactional. It is bound during
 [runtime initialization](../../src-server/runtime/bootstrap/runtime-initialize.ts)
 behind the off-by-default **Crash-durable Station Agent** preview. The private
 SQLite journal owns the conversation fence, tool/model receipts, approval
