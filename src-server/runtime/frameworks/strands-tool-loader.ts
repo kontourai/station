@@ -9,6 +9,7 @@ import {
   originalMcpToolName,
 } from '@kontourai/station-shared/mcp-tool-selection';
 import { FunctionTool, McpClient } from '@strands-agents/sdk';
+import { z } from 'zod';
 import { wrapPlatformMutationGatedTools } from '../../services/evidence/platform-mutation-gate.js';
 import { createMCPToolProvenanceGeneration } from '../../services/orchestration/mcp-tool-provenance.js';
 import {
@@ -16,6 +17,7 @@ import {
   requireToolServerResult,
 } from '../../services/plugins/tool-server-oauth.js';
 import { establishMcpSecretChild } from '../../services/secrets/mcp-secret-child-env.js';
+import { executeDurableTool } from '../agents/durable-agent-tools.js';
 import {
   currentTenantExecutionContext,
   isHostedTenantExecutionRequired,
@@ -209,7 +211,17 @@ export function createStrandsFunctionTools(
           : { input };
         return runWithCurrentNativeOutputCall(
           toolContext?.toolUse?.toolUseId,
-          () => tool.execute(purposeful.input, toolContext),
+          () =>
+            executeDurableTool(
+              {
+                name: tool.name,
+                id: toolContext?.toolUse?.toolUseId,
+                args: purposeful.input,
+                replay: tool.replay,
+              },
+              () => tool.execute(purposeful.input, toolContext),
+              (value) => z.json().parse(value),
+            ),
         );
       },
     });
