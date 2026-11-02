@@ -1,0 +1,9 @@
+{
+  "revision": "d5c7750859830d7f796f3e0b543f487c00af76fd",
+
+  "notes": [
+    {"path":"docs/design/chat-composer.md","note":"Refs #3568 and #3575. Rechecked the held-copy UI fixture delta after the committed inbox contract review: the fixture now declares ChatSession directly and uses its canonical sending status, retaining orchestrationTurnOpen and the same closed-window outbound key. This removes an invalid running-status assertion without changing runtime behavior or the documented durable-outbox release path. Local typecheck:ui and all 7 focused offline-settling cases pass. Prior purpose, classification and qualification limits remain.","inputs":["docs/design/chat-composer.md","src-ui/src/__tests__/ChatDockBody.offlineSettling.test.tsx"]},
+
+    {"path":"docs/reference/contracts.md","note":"Refs #3568 and #3575. Rechecked the held-copy UI fixture delta after the committed inbox contract review: the fixture now declares ChatSession directly and uses its canonical sending status, retaining orchestrationTurnOpen and the same closed-window outbound key. This removes an invalid running-status assertion without changing runtime behavior or the documented durable-outbox release path. Local typecheck:ui and all 7 focused offline-settling cases pass. Prior purpose, classification and qualification limits remain.","inputs":["docs/reference/contracts.md","src-ui/src/__tests__/ChatDockBody.offlineSettling.test.tsx"]}
+  ]
+}

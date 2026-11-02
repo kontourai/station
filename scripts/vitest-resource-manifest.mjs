@@ -1054,6 +1054,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // throwaway git repos (known-bad fixtures and false-positive controls) and
   // against this repository, same shape as the entry above.
   'scripts/__tests__/test-path-import-gate.test.ts',
+  // Runs the durability branch gate in a throwaway Git repository.
+  'scripts/__tests__/durability-provider-branches.test.ts',
   'scripts/__tests__/trust-reconcile-manifest.test.ts',
   // station#3465 review (second pass): one assertion shells a real `git
   // ls-files` child process as an independent oracle for packages/connect's
@@ -1467,6 +1469,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Same shape again: launches a real Chromium to prove a long Dialog body
   // scrolls and keeps the footer's commit action on screen and hittable.
   'src-ui/src/__tests__/Dialog.chrome.geometry.test.tsx',
+  // Owns Chromium for the durable inbox's responsive actions and display notes.
+  'src-ui/src/__tests__/ConversationInboxMessages.geometry.test.tsx',
   // Same shape again: launch a real Chromium to measure the Coding layout's
   // rail (scrolling inside the window) and the Chat column's edges (8px
   // borderless splitters, the folded inbox strip's rule colour) against the

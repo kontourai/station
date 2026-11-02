@@ -1508,7 +1508,15 @@
 
     "src-server/services/terminal/terminal-tickets.ts",
 
-    "packages/sdk/src/client/terminal-session-store.ts"
+    "packages/sdk/src/client/terminal-session-store.ts",
+
+    "src-server/services/orchestration/post-tool-inbox.ts",
+
+    "src-server/runtime/conversation/inbox-model-step.ts",
+
+    "src-ui/src/components/chat/ConversationInboxMessages.css",
+
+    "src-ui/src/__tests__/ConversationInboxMessages.geometry.test.tsx"
   ],
 
   "checks": [
