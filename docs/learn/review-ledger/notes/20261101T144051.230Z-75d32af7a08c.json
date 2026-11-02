@@ -1,0 +1,7 @@
+{
+  "revision": "649f1cd372cace3dea1cfbb01b663459d700f01d",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed the continuity handoff section against conversation-lineage and the scripted qualification test: the second return excludes already delivered text. Focused test and range mutation executed; live provider retention not verified.","inputs":["docs/architecture/module-map.md","src-server/routes/orchestration/__tests__/conversation-handoff.qualification.test.ts"]}
+  ]
+}

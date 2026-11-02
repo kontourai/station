@@ -1,0 +1,7 @@
+{
+  "revision": "649f1cd372cace3dea1cfbb01b663459d700f01d",
+
+  "notes": [
+    {"path":"docs/reference/session-api.md","note":"Reviewed native return seed and delivery claims against conversation-lineage and scripted handoff qualification; the second return excludes earlier delivered text in the adapter fixture. Live provider and native restart not verified.","inputs":["docs/reference/session-api.md","src-server/routes/orchestration/__tests__/conversation-handoff.qualification.test.ts"]}
+  ]
+}

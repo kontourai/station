@@ -62,6 +62,7 @@ import {
 } from './http';
 import { fetchPublicStationCapabilities } from './publicStationCapabilities';
 import { rethrowDeadline } from './request-deadline';
+import { chooseSentTurnKey, rememberSentTurnKey } from './sent-turn-key';
 import { isStationAnswer } from './station-envelope';
 
 interface OrchestrationEnvelope<T> {
@@ -626,20 +627,28 @@ async function dispatchSteerCommand<T>(
   return result.data as T;
 }
 
-/** ID-bearing calls fail closed on servers without receipt-protected steering. */
-export function steerTurn(
+/** Every call carries a receipt-protected key; older hosts refuse before invocation. */
+export async function steerTurn(
   apiBase: string,
   input: SteerInput,
-): Promise<SteerTurnResult> {
-  return dispatchSteerCommand(apiBase, {
-    type: input.clientInputId !== undefined ? 'steerTurnOnce' : 'steerTurn',
-    threadId: input.threadId,
-    input: input.text,
-    ...(input.clientInputId !== undefined
-      ? { clientInputId: input.clientInputId }
-      : {}),
-    ...(input.turnId ? { turnId: input.turnId } : {}),
+): Promise<SteerTurnResult & { clientInputId: string }> {
+  const clientInputId = chooseSentTurnKey(input.clientInputId, {
+    field: 'clientInputId',
+    maxLength: 128,
   });
+  try {
+    const result = await dispatchSteerCommand<SteerTurnResult>(apiBase, {
+      type: 'steerTurnOnce',
+      threadId: input.threadId,
+      input: input.text,
+      clientInputId,
+      ...(input.turnId ? { turnId: input.turnId } : {}),
+    });
+    return { ...result, clientInputId };
+  } catch (error) {
+    rememberSentTurnKey(error, clientInputId);
+    throw error;
+  }
 }
 
 /** Looks up a receipt without claiming an input or invoking an engine. */

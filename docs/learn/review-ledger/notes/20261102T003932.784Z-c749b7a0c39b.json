@@ -1,0 +1,29 @@
+{
+  "revision": "c7dffedfef44552545dd9dc67cf95fde00800cfb",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed request-scoped release on existing Sessions, independent current caller namespaces and seven-day starting expiry with live-owner retention against the owner and tests. The separate Monument turn ledger is unchanged; only its comment layout and the Station separator-collision example changed. No module-map prose change is needed.","inputs":["docs/architecture/module-map.md"]},
+
+    {"path":"docs/design/event-store-ledger-migration.md","note":"The turn-dedup diff restores comment layout and a concrete Station key-collision example. Kernel commands, table bindings, turn retention and extraction remain unchanged; Station CreateRequestClaims is separate from this migration inventory.","inputs":["docs/design/event-store-ledger-migration.md"]},
+
+    {"path":"docs/design/terminal.md","note":"The transitive API-reference delta changes foreground/delegation create-claim scope, release and expiry only. Terminal routes, custody and retention remain unchanged; no terminal-design prose change is needed.","inputs":["docs/design/terminal.md","docs/reference/api.md"]},
+
+    {"path":"docs/guides/delegation-attempt-claims.md","note":"Updated the general create contract for existing-Session pre-start release, seven-day starting expiry and duplicate-risk key reuse. Session inspection replaces the invented operator reconciliation path. The separate grant-scoped portable attempt protocol and finite tombstone bound remain unchanged.","inputs":["docs/guides/delegation-attempt-claims.md","src-server/services/orchestration/create-request-claims.ts"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"This guide routes callers to the updated API and SDK contracts and requires retry, error and retention evidence. It declares no independent create window or reconciliation capability. Hosted architecture remains a target, not a shipped deployment recipe.","inputs":["docs/guides/integrating-station.md","docs/reference/api.md","docs/reference/sdk.md"]},
+
+    {"path":"docs/reference/api.md","note":"Reviewed CreateRequestClaims and owner tests for scope-inclusive keys, request-specific starting state, seven-day starting expiry with live-owner retention and bounded pre-effect admission. Updated existing-Session refusal release and Session-inspection wording. Expiry may duplicate effects and never authorizes automatic retry; turn retention and terminal APIs are separate.","inputs":["docs/reference/api.md","src-server/services/orchestration/__tests__/create-request-claims.test.ts","src-server/services/orchestration/create-request-claims.ts"]},
+
+    {"path":"docs/reference/cli.md","note":"Reproduced all 24 hosted delegation-files failures and repaired the harness with a real file-backed claim store, defined test caller and required HTTP keys. All 38 integration cases pass through CLI staging, real routes and orchestration. Original refusal objects and stable delegation_files and stage codes are preserved; process.exit(3) came from missing harness storage. No CLI contract changed.","inputs":["docs/reference/cli.md","src-server/routes/orchestration/__tests__/delegation-files.integration.test.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Updated and reviewed new-foreground create release, independent caller scope, seven-day starting expiry and duplicate-risk key reuse against the shared owner. Session inspection cannot automatically reconcile an absent Session. SDK exports, signatures and key custody remain unchanged.","inputs":["docs/reference/sdk.md","src-server/services/orchestration/create-request-claims.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"The selected turn-dedup and Station binding delta restores comment layout and the concrete separator-collision example only. Encoding, typed conflicts, delivery lookup and per-turn retention are unchanged; no Session API prose change is needed.","inputs":["docs/reference/session-api.md","packages/monument/src/turn-dedup.ts","src-server/services/orchestration/station-turn-dedup-bindings.ts"]},
+
+    {"path":"packages/monument/CONTEXT.md","note":"Reviewed the turn-dedup comment-layout restoration and Station separator-collision example. No kernel command, owner, invocation or tombstone behavior changed. Station create-request expiry is separate from Monument turn retention.","inputs":["packages/monument/CONTEXT.md","packages/monument/src/turn-dedup.ts","src-server/services/orchestration/station-turn-dedup-bindings.ts"]},
+
+    {"path":"packages/monument/README.md","note":"Reviewed the comment-only Monument and Station binding delta. Package exports, commands, retry semantics and release qualifications are unchanged; CreateRequestClaims remains a Station service outside this package.","inputs":["packages/monument/README.md","packages/monument/src/turn-dedup.ts","src-server/services/orchestration/station-turn-dedup-bindings.ts"]},
+
+    {"path":"packages/sdk/AGENTS.md","note":"The canonical SDK reference now describes the changed Station create-release, namespace and expiry contract. SDK exports, cancellation and cache semantics remain unchanged; this instruction file needs no prose change.","inputs":["packages/sdk/AGENTS.md","docs/reference/sdk.md"]}
+  ]
+}
