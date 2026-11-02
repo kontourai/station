@@ -2017,7 +2017,7 @@ crowded and that nothing said what belonged in it. The rule:
 | Inbox toggle at the far left, before the region tabs or Coding breadcrumb, with the working chats' count (the inbox's Running rows) as a badge and unread as a dot; both are in its name. While it shows a number, the More trigger shows its background-task count as a dot, not a second number. | "N chats working" dropdown: the working chats are the More menu's first rows (with their ⌘1–9 chords); the unread pill: the toggle. |
 | Icon-only New chat. The start composer owns its Project choice. | Future-project selector: removed from an active conversation’s header. The chat’s fixed project and branch remain in session context. |
 | One overflow (⋯). Where the region host offers its commands (`RegionMenu` in `RegionChromeSlots`), Chat folds the region's Move to …, Add pane… and Maximize/Restore size into it as a last group. | Region Move, "+" and maximize buttons: rows of that menu. The bar drops its own buttons only while a pane absorbs the rows; other panes keep them. |
-| The region's ⋮⋮ grab (shown on hover or focus) and the show/hide chevron. | — |
+| The region's ⋮⋮ grab (shown on hover or focus) and the show/hide chevron. | In a side region narrower than its 400px default, the grab and the agent avatar step aside and the spacing tightens, so the title keeps room beside the × (#4401); Move to … stays in the overflow. |
 | The "This chat" chip, only while the card is folded away. | — |
 | — | Context meter: an unboxed ring with its percentage inside, beside Send; on a phone, also the Actions sheet's Conversation stats row. |
 
@@ -2030,6 +2030,10 @@ switching stays direct, while the start composer owns Project selection. An
 active conversation does not offer a future-project switcher. A region host decides per pane:
 Chat absorbs the region's rows; Activity and the other panes keep the bar's
 buttons, so their bars are unchanged.
+
+A collapsed side region is a 36px strip holding only the region's own
+controls. The chat's identity and the "This chat" chip are rows the strip
+cannot fit, so they return with the open bar (#4401).
 
 ## The session context card beside Chat (2026-10-19)
 
