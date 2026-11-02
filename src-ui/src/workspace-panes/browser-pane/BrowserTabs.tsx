@@ -123,7 +123,7 @@ export function BrowserTabs({
     },
   };
   useLayoutEffect(() => {
-    if (!shortcutStore || !browserFocused || !experienceEnabled) return;
+    if (!shortcutStore || !browserFocused) return;
     const entries = [
       {
         id: 'newTab',
@@ -150,7 +150,9 @@ export function BrowserTabs({
         id: `browser.${entry.id}`,
         modifiers: [...entry.modifiers],
         when: 'browserFocused',
-        handler: () => actions.current[entry.id]?.(),
+        handler: () => {
+          if (experienceEnabled) actions.current[entry.id]?.();
+        },
       }),
     );
     return () => {

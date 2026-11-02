@@ -416,6 +416,53 @@ describe('BrowserPane honest states', () => {
     },
   );
 
+  test('tab shortcuts consume their chords without acting when the preview is off', async () => {
+    preview.enabled = false;
+    const station = fakeStation({
+      'GET /api/browser/projects/alpha/access': OPERATOR_ACCESS,
+      'GET /api/browser/sessions?projectSlug=alpha': ok([sessionView()]),
+      [`GET /api/browser/sessions/${SESSION}?view=summary`]: ok(sessionView()),
+    });
+    render(
+      <KeyboardShortcutsProvider>
+        <QueryClientProvider
+          client={
+            new QueryClient({ defaultOptions: { queries: { retry: false } } })
+          }
+        >
+          <BrowserPane
+            projectSlug="alpha"
+            browserSessionIds={[SESSION]}
+            target={{ kind: 'session', browserSessionId: SESSION }}
+            transport={station.transport as never}
+            onAttach={() => {}}
+            onTabsChange={() => {}}
+          />
+        </QueryClientProvider>
+      </KeyboardShortcutsProvider>,
+    );
+    const tab = await screen.findByRole('tab');
+    act(() => tab.focus());
+    for (const [key, shiftKey] of [
+      ['t', false],
+      ['w', false],
+      ['t', true],
+    ] as const) {
+      const isMac = navigator.platform.toUpperCase().includes('MAC');
+      const event = new KeyboardEvent('keydown', {
+        key,
+        shiftKey,
+        ctrlKey: !isMac,
+        metaKey: isMac,
+        bubbles: true,
+        cancelable: true,
+      });
+      tab.dispatchEvent(event);
+      expect(event.defaultPrevented).toBe(true);
+    }
+    expect(station.calls.some((call) => call.method !== 'GET')).toBe(false);
+  });
+
   test('zoom shortcut and appearance menu act on the selected session generation', async () => {
     const session = sessionView();
     const { calls } = renderPane({
