@@ -1,3 +1,4 @@
+import { readProviderDurabilityProfile } from '@kontourai/station-contracts/provider';
 import type { QueryClient } from '@tanstack/react-query';
 import type { ChatUIState } from '../../contexts/active-chats-store';
 import { activeChatsStore } from '../../contexts/active-chats-store';
@@ -460,6 +461,7 @@ function planSnapshot(
               }
             : {}),
           orchestrationProvider: session.provider,
+          orchestrationDurability: readProviderDurabilityProfile(session),
           orchestrationModel:
             session.reportedModel ?? session.effectiveModel ?? session.model,
           orchestrationSessionStarted: true,

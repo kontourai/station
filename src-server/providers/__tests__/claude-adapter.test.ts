@@ -1100,6 +1100,11 @@ describe('ClaudeAdapter', () => {
     mockQuery.mockReturnValue(createMockQuery([]));
     const adapter = new ClaudeAdapter();
     expect(adapter.metadata.durability.steerPlacement.state).toBe('native');
+    expect(
+      Object.entries(adapter.metadata.durability)
+        .filter(([, cell]) => cell.state === 'native')
+        .map(([key]) => key),
+    ).toEqual(['steerPlacement']);
     const events = adapter.streamEvents()[Symbol.asyncIterator]();
     await adapter.startSession({
       provider: 'claude',

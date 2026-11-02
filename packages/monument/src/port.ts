@@ -57,7 +57,9 @@ export interface KernelLimits {
    * hold. A submission past it is refused, never truncated.
    */
   readonly inboxMaxUnsettled: number;
-  /** A settled inbox entry older than this is forgotten on the inbox's next submit. */
+  /** Retained display notes per inbox, counted after expiry runs. */
+  readonly inboxMaxDisplay: number;
+  /** Display notes and safe settled follow-ups older than this expire on the next submit. */
   readonly inboxSettledRetentionMs: number;
 }
 
@@ -70,6 +72,7 @@ export const DEFAULT_KERNEL_LIMITS: KernelLimits = Object.freeze({
   requestKeyMaxRowsPerCaller: 300,
   requestKeyMaxRows: 10_000,
   inboxMaxUnsettled: 50,
+  inboxMaxDisplay: 50,
   inboxSettledRetentionMs: 7 * 24 * 60 * 60 * 1000,
 });
 
@@ -259,8 +262,8 @@ export interface KernelTransaction {
     /** Insert, or replace the entry with the same inbox and key. */
     put(record: InboxEntryRecord): void;
     /**
-     * Delete the inbox's `placed`, `refused` and `cancelled` entries last
-     * updated before `cutoff`.
+     * Delete settled follow-ups before `cutoff`, preserving dismissed claims.
+     * Steer keys and display notes live until inbox deletion.
      */
     deleteSettledBefore(inboxId: string, cutoff: number): void;
     /** Delete every entry of the inbox; return how many there were. */

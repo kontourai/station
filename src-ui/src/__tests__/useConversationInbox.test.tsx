@@ -101,15 +101,21 @@ function entry(
   };
 }
 
-function response(entries: ConversationInboxEntry[]) {
-  return new Response(JSON.stringify({ success: true, data: { entries } }), {
-    headers: { 'content-type': 'application/json' },
-  });
+function response(entries: ConversationInboxEntry[], currentHead?: string) {
+  return new Response(
+    JSON.stringify({ success: true, data: { entries, currentHead } }),
+    {
+      headers: { 'content-type': 'application/json' },
+    },
+  );
 }
 
 type Local = { messages: string[]; metadata?: PendingMessageMetadata[] };
 
-function mount(local: Local = { messages: [] }) {
+function mount(
+  local: Local = { messages: [] },
+  onResend?: (message: string) => boolean,
+) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
@@ -125,6 +131,7 @@ function mount(local: Local = { messages: [] }) {
         sessionId="session"
         messages={local.messages}
         metadata={local.metadata}
+        onResend={onResend}
       />
     </QueryClientProvider>
   );
@@ -160,6 +167,94 @@ test('shows actual server states and keeps keyless entries read-only without per
   expect(shouldPersistQuery(query)).toBe(false);
 });
 
+test('retains the observed head only in the current authority cache', async () => {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () => response([], '["session",4]')),
+  );
+  const { client } = mount();
+  await waitFor(() =>
+    expect(
+      client.getQueryData([
+        'conversation-inbox',
+        'http://station.test',
+        'device-a',
+        'conversation',
+        'head',
+      ]),
+    ).toBe('["session",4]'),
+  );
+  expect(
+    shouldPersistQuery(
+      client.getQueryCache().find({
+        queryKey: [
+          'conversation-inbox',
+          'http://station.test',
+          'device-a',
+          'conversation',
+          'head',
+        ],
+      })!,
+    ),
+  ).toBe(false);
+});
+
+test('shows display notes, discloses a lost read and recovers without counting notes as sends', async () => {
+  const read = () =>
+    response([{ ...entry('sent', 'visible note'), kind: 'display' }]);
+  const fetcher = vi.fn(async () => read());
+  vi.stubGlobal('fetch', fetcher);
+  const { client } = mount();
+  expect(await screen.findByText('visible note')).toBeTruthy();
+  expect(screen.getByText('Display only')).toBeTruthy();
+  expect(screen.queryByText(/pending/)).toBeNull();
+  fetcher.mockRejectedValue(new Error('offline'));
+  await act(() => client.refetchQueries({ queryKey: ['conversation-inbox'] }));
+  expect(await screen.findByText('Couldn’t load inbox entries.')).toBeTruthy();
+  fetcher.mockImplementation(async () => read());
+  fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+  expect(await screen.findByText('visible note')).toBeTruthy();
+});
+
+test('an unknown steer offers explicit review and resend without automatically sending it', async () => {
+  let dismissed = false;
+  const fetcher = vi.fn(async (_url: unknown, options?: RequestInit) => {
+    if (options?.method === 'DELETE') {
+      dismissed = true;
+      return new Response(
+        JSON.stringify({
+          success: true,
+          data: { ...entry('cancelled', 'uncertain'), kind: 'steer' },
+        }),
+      );
+    }
+    return response(
+      dismissed
+        ? []
+        : [
+            {
+              ...entry('unconfirmed', 'uncertain'),
+              kind: 'steer',
+              message: 'change direction',
+            },
+          ],
+    );
+  });
+  vi.stubGlobal('fetch', fetcher);
+  const review = vi.fn(() => true);
+  mount({ messages: [] }, review);
+  await screen.findByText('1 pending');
+  expand();
+  expect(screen.getByText('May have been sent')).toBeTruthy();
+  expect(review).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: 'Review and resend' }));
+  await waitFor(() => expect(dismissed).toBe(true));
+  expect(review).toHaveBeenCalledExactlyOnceWith('change direction');
+  expect(
+    fetcher.mock.calls.some(([, options]) => options?.method === 'POST'),
+  ).toBe(false);
+});
+
 test('a failed refresh makes a previously available count unavailable, never zero', async () => {
   let failed = false;
   vi.stubGlobal(
@@ -177,7 +272,7 @@ test('a failed refresh makes a previously available count unavailable, never zer
   await screen.findByText('1 pending');
   failed = true;
   await act(() => client.refetchQueries({ queryKey: ['conversation-inbox'] }));
-  await screen.findByText('Couldn’t load held messages.');
+  await screen.findByText('Couldn’t load inbox entries.');
   expect(screen.queryByText(/0 pending/)).toBeNull();
   // The last-read rows are not shown as if current; they collapse away.
   await waitFor(() => expect(screen.queryByText('own')).toBeNull());

@@ -46,11 +46,15 @@ export interface DurabilityCapability {
 
 /** Every capability is explicit; an omitted cell is an invalid declaration. */
 export interface ProviderDurabilityProfile {
-  steerPlacement: DurabilityCapability;
+  steerPlacement: DurabilityCapability & {
+    boundary?: 'engine-defined' | 'station-observed';
+  };
   crashContinuation: DurabilityCapability;
   toolReplay: DurabilityCapability;
   pendingApprovals: DurabilityCapability;
-  contextCarriage: DurabilityCapability;
+  contextCarriage: DurabilityCapability & {
+    history?: 'station-memory' | 'seed';
+  };
   fork: DurabilityCapability;
   /** State describes Station's recovery support; ownership is independent. */
   compaction: DurabilityCapability & {
@@ -58,6 +62,13 @@ export interface ProviderDurabilityProfile {
   };
   partialOutput: DurabilityCapability;
   usage: DurabilityCapability;
+}
+
+/** Read a declared profile; an absent carrier remains unknown. */
+export function readProviderDurabilityProfile<T>(
+  source: { readonly durability?: T } | null | undefined,
+): T | undefined {
+  return source?.durability;
 }
 
 export const NATIVE_RESUME_IDENTITY_METADATA_KEY = 'nativeResumeIdentity';
@@ -994,6 +1005,25 @@ export const PROVIDER_SESSION_START_FAILED_CODE =
 export const CLIENT_TURN_IN_FLIGHT_CODE = 'client_turn_in_flight';
 /** The key already names a different submitted intent. No turn was accepted. */
 export const CLIENT_TURN_INPUT_CONFLICT_CODE = 'client_turn_input_conflict';
+
+/** A steer request with this refusal did not acquire a new input claim. */
+export const INBOX_KEY_CONFLICT_CODE = 'inbox_key_conflict';
+
+export function errorCodeOf(error: unknown): string | undefined {
+  return typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    typeof error.code === 'string'
+    ? error.code
+    : undefined;
+}
+
+export function isSteerConflictCode(code: unknown): boolean {
+  return (
+    code === CLIENT_TURN_INPUT_CONFLICT_CODE || code === INBOX_KEY_CONFLICT_CODE
+  );
+}
+
 /** This keyed input cannot be represented completely by the supported digest. */
 export const CLIENT_TURN_INPUT_UNSUPPORTED_CODE =
   'client_turn_input_unsupported';

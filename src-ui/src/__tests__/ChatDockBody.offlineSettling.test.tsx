@@ -1,11 +1,13 @@
+import { STATION_ENGINE_DURABILITY } from '@kontourai/station-contracts/engine-capability-matrix';
 /** @vitest-environment jsdom */
 
 import { agentId } from '@kontourai/station-contracts/agent-identity';
-import { ENGINE_CAPABILITY_MATRICES } from '@kontourai/station-contracts/engine-capability-matrix';
+import { STEERING_ENGINE_DURABILITY } from '@kontourai/station-contracts/engine-capability-matrix';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor } from '@testing-library/react';
 import { type ReactNode, useEffect, useState } from 'react';
 import { describe, expect, test, vi } from 'vitest';
+import { outboundDispatch } from '../lib/outboundQueue';
 
 const fetchCapability = vi.hoisted(() => vi.fn());
 const fetchWindow = vi.hoisted(() => vi.fn());
@@ -134,7 +136,6 @@ vi.mock('../components/chat/OutboundQueuedMessages', () => ({
 }));
 
 import { ChatDockBody } from '../components/chat-dock/ChatDockBody';
-import { activeChatsStore } from '../contexts/active-chats-store';
 import type { ChatSession } from '../types';
 
 const chatInput = {
@@ -187,6 +188,7 @@ function session(revision: number): ChatSession {
     updatedAt: revision,
     messages: [],
     orchestrationSessionStarted: true,
+    orchestrationDurability: STATION_ENGINE_DURABILITY,
     orchestrationHistoryRevision: revision,
     outboundQueuedTurns: [
       {
@@ -301,10 +303,11 @@ describe('the outbox facts the pending list reads', () => {
     );
   });
 
-  test('Send on a copy from a closed window joins this window’s queue while a turn runs, under its own key', async () => {
+  test('Send on a closed-window copy releases its outbox key for server inbox handoff', async () => {
+    const send = vi.spyOn(outboundDispatch, 'sendHeld').mockResolvedValue();
     const closed = {
       clientTurnId: 'held-closed',
-      content: 'queued in a window that closed',
+      content: 'saved input',
       createdAt: 1,
       status: 'pending' as const,
       heldElsewhere: true as const,
@@ -312,76 +315,27 @@ describe('the outbox facts the pending list reads', () => {
     };
     const running: ChatSession = {
       ...session(0),
-      status: 'running',
+      status: 'sending',
       orchestrationTurnOpen: true,
-      queuedMessages: ['queued here'],
-      queuedMessageMetadata: [{ id: 'local-1', mode: 'queue' }],
+      queuedMessages: [],
       outboundQueuedTurns: [closed],
-    } as unknown as ChatSession;
-    updateChatSpy.mockClear();
-    outboxProps.mockClear();
-    render(dock(running));
-    await waitFor(() => expect(outboxProps).toHaveBeenCalled());
-    const { onSendHeld } = outboxProps.mock.lastCall![0] as {
-      onSendHeld: (turn: typeof closed) => Promise<void>;
     };
-    await onSendHeld(closed);
-    // It sends after what is already queued here, in that order, and keeps
-    // its key, so the queue's durable copy takes the held row over.
-    expect(updateChatSpy).toHaveBeenCalledWith('offline-thread', {
-      queuedMessages: ['queued here', 'queued in a window that closed'],
-      queuedMessageMetadata: [
-        { id: 'local-1', mode: 'queue' },
-        { id: 'held-closed', mode: 'queue' },
-      ],
-    });
-  });
-  test('a second Send on the same closed-window copy before the re-render queues it once', async () => {
-    const closed = {
-      clientTurnId: 'held-twice',
-      content: 'queued in a window that closed',
-      createdAt: 1,
-      status: 'pending' as const,
-      heldElsewhere: true as const,
-      heldByClosedWindow: true as const,
-    };
-    const running: ChatSession = {
-      ...session(0),
-      status: 'running',
-      orchestrationTurnOpen: true,
-      queuedMessages: ['queued here'],
-      queuedMessageMetadata: [{ id: 'local-1', mode: 'queue' }],
-      outboundQueuedTurns: [closed],
-    } as unknown as ChatSession;
-    // The real store owns the queue; this render's props stay stale.
-    activeChatsStore.initChat(running.id);
-    activeChatsStore.updateChat(running.id, {
-      queuedMessages: running.queuedMessages,
-      queuedMessageMetadata: running.queuedMessageMetadata,
-    });
-    updateChatSpy.mockReset();
-    updateChatSpy.mockImplementation((id, updates) =>
-      activeChatsStore.updateChat(id, updates),
-    );
-    outboxProps.mockClear();
     try {
+      outboxProps.mockClear();
+      updateChatSpy.mockClear();
       render(dock(running));
       await waitFor(() => expect(outboxProps).toHaveBeenCalled());
       const { onSendHeld } = outboxProps.mock.lastCall![0] as {
         onSendHeld: (turn: typeof closed) => Promise<void>;
       };
-      await Promise.all([onSendHeld(closed), onSendHeld(closed)]);
-      expect(updateChatSpy).toHaveBeenCalledTimes(1);
-      expect(
-        activeChatsStore.getChatForExecutionSession(running.id)
-          ?.queuedMessageMetadata,
-      ).toEqual([
-        { id: 'local-1', mode: 'queue' },
-        { id: 'held-twice', mode: 'queue' },
-      ]);
+      await onSendHeld(closed);
+      expect(send).toHaveBeenCalledExactlyOnceWith('held-closed');
+      expect(updateChatSpy).not.toHaveBeenCalledWith(
+        'offline-thread',
+        expect.objectContaining({ queuedMessages: expect.anything() }),
+      );
     } finally {
-      updateChatSpy.mockReset();
-      activeChatsStore.removeChat(running.id);
+      send.mockRestore();
     }
   });
 });
@@ -580,6 +534,7 @@ describe('ChatDockBody offline settling (station#2605)', () => {
     // ChatDockBody derivation, not just the row component's prop handling.
     const idle = session(0);
     idle.orchestrationProvider = 'claude';
+    idle.orchestrationDurability = STEERING_ENGINE_DURABILITY;
     idle.queuedMessages = ['queued steer'];
     const view = render(dock(idle));
     // Wait for the ASSERTION, not merely for the first call: the derivation
@@ -597,6 +552,7 @@ describe('ChatDockBody offline settling (station#2605)', () => {
     queuedMessagesProps.mockClear();
     const active = session(0);
     active.orchestrationProvider = 'claude';
+    active.orchestrationDurability = STEERING_ENGINE_DURABILITY;
     active.queuedMessages = ['queued steer'];
     active.status = 'sending';
     view.rerender(dock(active));
@@ -606,24 +562,45 @@ describe('ChatDockBody offline settling (station#2605)', () => {
       ),
     );
 
-    const profile = ENGINE_CAPABILITY_MATRICES.claude.durability;
-    const originalSteering = profile.steerPlacement;
-    try {
-      for (const state of ['emulated', 'none'] as const) {
-        profile.steerPlacement = {
-          state,
-          detail: 'Native steering is unavailable for this connection.',
-        };
-        queuedMessagesProps.mockClear();
-        view.rerender(dock({ ...active }));
-        await waitFor(() =>
-          expect(queuedMessagesProps).toHaveBeenLastCalledWith(
-            expect.objectContaining({ canSteer: false }),
-          ),
-        );
-      }
-    } finally {
-      profile.steerPlacement = originalSteering;
+    queuedMessagesProps.mockClear();
+    view.rerender(dock({ ...active, orchestrationDurability: undefined }));
+    await waitFor(() =>
+      expect(queuedMessagesProps).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          canSteer: false,
+          steeringUnavailableReason:
+            'Steering unavailable: the host did not report a durability profile.',
+        }),
+      ),
+    );
+
+    expect(composerProps).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        busyFollowUp: 'queue',
+        busySteeringUnavailableReason:
+          'Steering unavailable: the host did not report a durability profile.',
+      }),
+    );
+
+    for (const state of ['emulated', 'none'] as const) {
+      queuedMessagesProps.mockClear();
+      view.rerender(
+        dock({
+          ...active,
+          orchestrationDurability: {
+            ...STEERING_ENGINE_DURABILITY,
+            steerPlacement: {
+              state,
+              detail: 'The server reports no native steering channel.',
+            },
+          },
+        }),
+      );
+      await waitFor(() =>
+        expect(queuedMessagesProps).toHaveBeenLastCalledWith(
+          expect.objectContaining({ canSteer: false }),
+        ),
+      );
     }
   });
 });

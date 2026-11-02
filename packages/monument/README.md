@@ -119,7 +119,12 @@ Station binds `orchestration_steer_inputs` on its existing EventStore connection
 keeps its original input/target digest, authorization and engine invocation,
 and maps the results to its existing steer outcomes. Host transaction rollback
 also rolls back receipt writes. This extraction does not implement durable
-steer input storage or post-tool placement; those remain #3568 work. Separately,
+steer input storage or post-tool placement by itself. Station's separate
+conversation inbox now owns that text, head fence and placement. Display notes
+have a separate `inboxMaxDisplay` capacity (50 by default) and use
+`inboxSettledRetentionMs` expiry on submission; matching retained keys remain
+idempotent at capacity. Steer replay fences remain until inbox deletion. See the
+[Session API](../../docs/reference/session-api.md#submit-steer-follow-up-or-display-input). Separately,
 Station owns a child-instruction journal and target-bound child-steer keys around
 the same receipt primitive; that journal is not a Monument storage command.
 

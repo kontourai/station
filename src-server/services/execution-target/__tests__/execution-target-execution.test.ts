@@ -11,6 +11,7 @@ import {
   agentId,
   engineConnectionId,
 } from '@kontourai/station-contracts/agent-identity';
+import { STATION_ENGINE_DURABILITY } from '@kontourai/station-contracts/engine-capability-matrix';
 import { environmentId } from '@kontourai/station-contracts/execution-target';
 import type { WorktreeSessionMetadata } from '@kontourai/station-contracts/workspace-isolation';
 import { describe, expect, test, vi } from 'vitest';
@@ -78,6 +79,55 @@ function dependencies(): ExecutionTargetExecutionDependencies {
 }
 
 describe('executeForegroundMessage', () => {
+  test.each(['station-memory', 'seed'] as const)(
+    'context carriage follows the declared %s ownership instead of the provider name',
+    async (history) => {
+      const deps = dependencies();
+      const adapter = deps.getProviderAdapter('station-agent')!;
+      deps.getProviderAdapter = () => ({
+        ...adapter,
+        metadata: {
+          ...adapter.metadata,
+          durability: {
+            ...STATION_ENGINE_DURABILITY,
+            contextCarriage: {
+              ...STATION_ENGINE_DURABILITY.contextCarriage,
+              history,
+            },
+          },
+        },
+      });
+      deps.nativeMemoryOwnsTranscript = true;
+      deps.readSessionBinding = async () => ({
+        environmentId: 'environment-kontour',
+        agentId: 'station',
+        userId: 'test-user',
+      });
+      deps.resolveConversationSession = async () => ({
+        sessionId: 'conversation:test',
+        startRequired: false,
+        transcriptSeed: 'authorized prior transcript',
+      });
+      await executeForegroundMessage(
+        {
+          userId: 'test-user',
+          target: {
+            environment: { kind: 'current' },
+            agent: agentId('station'),
+          },
+          conversationId: 'conversation:test',
+          message: 'continue',
+        },
+        deps,
+      );
+      expect(vi.mocked(deps.sendTurn).mock.calls[0][1].ambientContext).toBe(
+        history === 'station-memory'
+          ? undefined
+          : 'authorized prior transcript',
+      );
+    },
+  );
+
   test('carries a prompt origin to the authorized local turn and refuses a remote target', async () => {
     const deps = dependencies();
     deps.readSessionBinding = vi.fn(async () => ({

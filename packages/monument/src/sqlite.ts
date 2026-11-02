@@ -1299,7 +1299,7 @@ function decodeInboxEntry(row: Record<string, unknown>): InboxEntryRecord {
   if (!INBOX_STATES.has(state))
     throw new Error(`Invalid monument inbox state: ${state}`);
   const kind = String(row.kind);
-  if (kind !== 'follow-up')
+  if (kind !== 'follow-up' && kind !== 'steer' && kind !== 'display')
     throw new Error(`Invalid monument inbox kind: ${kind}`);
   return {
     inboxId: String(row.inbox_id),
@@ -1864,8 +1864,9 @@ function sqliteTransaction(
       deleteSettledBefore: (inboxId, cutoff) => {
         run(
           `DELETE FROM monument_inbox_entries
-            WHERE inbox_id = ? AND updated_at < ?
-              AND state IN ('placed', 'refused', 'cancelled')`,
+            WHERE inbox_id = ? AND updated_at < ? AND kind IN ('follow-up', 'display')
+              AND (state IN ('placed', 'refused')
+                OR (state = 'cancelled' AND placement IS NULL))`,
           inboxId,
           cutoff,
         );

@@ -4,6 +4,7 @@ import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display'
 import {
   ENGINE_MEMORY_EXHAUSTED_CODE,
   ENGINE_SIGN_IN_REQUIRED_CODE,
+  isSteerConflictCode,
 } from '@kontourai/station-contracts/provider';
 import { MCP_SIGN_IN_REQUIRED_CODE } from '@kontourai/station-contracts/provider-failure';
 import { isFirstSendFailure } from '@kontourai/station-contracts/session-attention';
@@ -15,7 +16,7 @@ import {
   type OrchestrationSessionSummary,
   steerOrchestrationTurn,
 } from '@kontourai/station-sdk';
-import { randomCorrelationId } from '@kontourai/station-shared/random-id';
+import { listConversationInbox } from '@kontourai/station-sdk/client';
 import {
   TURN_INTERRUPTED_CONTINUE_PROMPT,
   turnInterruptedContinueClientTurnId,
@@ -90,6 +91,7 @@ import {
   isSessionExecutionActive,
   isTurnStreamLive,
   sessionAdapterSupportsSteering,
+  sessionSteeringPlacement,
 } from '../../utils/execution';
 import type {
   ModelProviderOption,
@@ -1131,13 +1133,16 @@ export function ChatDockBody({
       queueOnBusy: true,
     });
   }, [getComposedContext, chatInput]);
-  const nativeSteering = sessionAdapterSupportsSteering(
-    activeSession.agentConnectionId,
-    [],
-    activeSession.orchestrationProvider,
-  );
+  const nativeSteering =
+    sessionSteeringPlacement(activeSession.orchestrationDurability).state ===
+    'native';
+  const steeringUnavailableReason = activeSession.orchestrationDurability
+    ? undefined
+    : 'Steering unavailable: the host did not report a durability profile.';
   const busyFollowUp =
-    isTurnInFlight(activeSession) && chatInput.attachments.length === 0
+    isTurnInFlight(activeSession) &&
+    chatInput.attachments.length === 0 &&
+    sessionAdapterSupportsSteering(activeSession.orchestrationDurability)
       ? 'steer'
       : 'queue';
   const isExecutionActive = isSessionExecutionActive(activeSession);
@@ -1757,50 +1762,7 @@ export function ChatDockBody({
   // This browser's outbox: rows in the one pending-message list above the
   // composer, not a list of its own.
   const outboundTurns = activeSession.outboundQueuedTurns ?? [];
-  // Send on a copy a closed window held. While a turn runs or this window's
-  // queue holds follow-ups, it joins that queue (whose durable copy then takes
-  // the key over), so it sends in the queue's order and takes its number;
-  // otherwise it goes now. An open window's copy is released as before: that
-  // window's queue holds it too, and one message has one sender.
-  const sendHeldCopy = async (turn: {
-    clientTurnId: string;
-    content: string;
-    heldByClosedWindow?: true;
-  }) => {
-    // The queue as stored, not as this render saw it: a second click lands
-    // before the re-render.
-    const latest: Pick<
-      ChatSession,
-      'queuedMessages' | 'queuedMessageMetadata'
-    > =
-      activeChatsStore.getChatForExecutionSession(activeSession.id) ??
-      activeSession;
-    if (
-      turn.heldByClosedWindow &&
-      (isTurnInFlight(activeSession) || latest.queuedMessages.length)
-    ) {
-      // One key, one queue entry: a repeat click, or a window restored from
-      // the back/forward cache and read as closed, finds it already queued.
-      if (
-        latest.queuedMessageMetadata?.some(
-          (entry) => entry.id === turn.clientTurnId,
-        )
-      )
-        return;
-      updateChat(activeSession.id, {
-        queuedMessages: [...latest.queuedMessages, turn.content],
-        queuedMessageMetadata: [
-          ...(latest.queuedMessageMetadata ??
-            latest.queuedMessages.map(() => ({
-              id: randomCorrelationId(),
-              mode: 'queue' as const,
-            }))),
-          // Its own key: the queue's durable copy takes the held row over.
-          { id: turn.clientTurnId, mode: 'queue' },
-        ],
-      });
-      return;
-    }
+  const sendHeldCopy = async (turn: { clientTurnId: string }) => {
     const { outboundDispatch } = await import('../../lib/outboundQueue');
     await outboundDispatch.sendHeld(turn.clientTurnId);
   };
@@ -2097,6 +2059,12 @@ export function ChatDockBody({
               ? undefined
               : activeSession.conversationId,
             conversationActive: isExecutionActive,
+            onResend: (message: string) => {
+              const latest = activeChatsStore.getSnapshot()[activeSession.id];
+              if (!latest || latest.input.trim()) return false;
+              updateChat(activeSession.id, { input: message });
+              return true;
+            },
             sessionId: activeSession.id,
             messages: activeSession.queuedMessages,
             metadata: activeSession.queuedMessageMetadata,
@@ -2115,6 +2083,29 @@ export function ChatDockBody({
             sendNowPending:
               activeSession.queueSendNowPending ||
               activeSession.queueDrainSettling,
+            onReviewOrigin: (messageId: string) => {
+              const latest = activeChatsStore.getSnapshot()[activeSession.id];
+              const index =
+                latest?.queuedMessageMetadata?.findIndex(
+                  (entry) => entry.id === messageId,
+                ) ?? -1;
+              if (
+                !latest ||
+                latest.input.trim() ||
+                index < 0 ||
+                !latest.queuedMessageMetadata?.[index]?.originUnverified
+              )
+                return;
+              updateChat(activeSession.id, {
+                input: latest.queuedMessages[index],
+                queuedMessages: latest.queuedMessages.filter(
+                  (_, position) => position !== index,
+                ),
+                queuedMessageMetadata: latest.queuedMessageMetadata.filter(
+                  (_, position) => position !== index,
+                ),
+              });
+            },
             onSendMessageNow: (messageId: string) =>
               sendPendingMessageNow(apiBase, activeSession.id, messageId),
             failure: activeSession.queuedMessageFailure,
@@ -2132,6 +2123,7 @@ export function ChatDockBody({
                 // #2309: an explicit request; not held back by the record.
                 true,
               ),
+            steeringUnavailableReason,
             canSteer:
               Boolean(
                 isExecutionActive ||
@@ -2140,9 +2132,7 @@ export function ChatDockBody({
                   ),
               ) &&
               sessionAdapterSupportsSteering(
-                activeSession.agentConnectionId,
-                [],
-                activeSession.orchestrationProvider,
+                activeSession.orchestrationDurability,
               ),
             onPendingSettled: () => {
               const latest = activeChatsStore.getSnapshot()[activeSession.id];
@@ -2176,6 +2166,7 @@ export function ChatDockBody({
               const metadata = latest.queuedMessageMetadata?.[metadataIndex];
               if (
                 !metadata ||
+                metadata.originUnverified ||
                 latest.queuedMessages[metadataIndex] !== message
               ) {
                 addEphemeralMessage(activeSession.id, {
@@ -2206,6 +2197,40 @@ export function ChatDockBody({
                 });
               };
               try {
+                if (metadata.inboxSteerConversationId) {
+                  if (
+                    !mentionRequestScope?.isCurrent() ||
+                    mentionRequestScope.apiBase !== apiBase
+                  )
+                    throw new Error('Station authority changed.');
+                  const entries = await listConversationInbox(
+                    apiBase,
+                    metadata.inboxSteerConversationId,
+                    { requestScope: mentionRequestScope },
+                  );
+                  if (!mentionRequestScope.isCurrent())
+                    throw new Error('Station authority changed.');
+                  if (
+                    entries.some(
+                      (entry) =>
+                        metadata.inboxSteerHead !== undefined &&
+                        entry.kind === 'steer' &&
+                        entry.ownedByCaller === true &&
+                        entry.clientTurnId === clientInputId &&
+                        entry.message === message &&
+                        entry.expectedHead === metadata.inboxSteerHead,
+                    )
+                  ) {
+                    retireConfirmedById();
+                    return true;
+                  }
+                  addEphemeralMessage(activeSession.id, {
+                    role: 'system',
+                    content:
+                      'Station has not confirmed this steer. It remains held for review.',
+                  });
+                  return false;
+                }
                 const steeringInput = {
                   // Steering is a command on the live execution Session. The
                   // tab id remains the durable conversation identity after a
@@ -2348,7 +2373,11 @@ export function ChatDockBody({
                   sendFailure: true,
                   content: steerRefusalMessage(result),
                 });
-              } catch {
+              } catch (error) {
+                const conflict =
+                  (error as { stationEnvelope?: unknown })?.stationEnvelope ===
+                    true &&
+                  isSteerConflictCode((error as { code?: unknown })?.code);
                 const held = activeChatsStore.getSnapshot()[activeSession.id];
                 activeChatsStore.updateChat(activeSession.id, {
                   queuedMessageMetadata: held?.queuedMessageMetadata?.map(
@@ -2360,8 +2389,10 @@ export function ChatDockBody({
                 });
                 addEphemeralMessage(activeSession.id, {
                   role: 'system',
-                  content:
-                    'Station could not confirm steering delivery. Your message remains held.',
+                  ...(conflict ? { sendFailure: true } : {}),
+                  content: conflict
+                    ? 'That steer key names different input. Review the held message before resending.'
+                    : 'Station could not confirm steering delivery. Your message remains held.',
                 });
               } finally {
                 activeChatsStore.updateChat(activeSession.id, {
@@ -2776,6 +2807,7 @@ export function ChatDockBody({
             sendRefused={!callerMayContinue || workspaceRefusedWithoutNewChat}
             turnInFlight={isTurnInFlight(activeSession)}
             busyFollowUp={busyFollowUp}
+            busySteeringUnavailableReason={steeringUnavailableReason}
             busySteeringKind={nativeSteering ? 'native' : 'safe-stop'}
             onQueueFollowUp={handleQueueFollowUp}
             stopPending={!!activeSession.stopPending}

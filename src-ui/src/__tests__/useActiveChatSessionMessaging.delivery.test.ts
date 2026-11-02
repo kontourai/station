@@ -469,7 +469,7 @@ describe('useSendMessage: durable before the request', () => {
     ['the engine is busy', 'provider_turn_in_progress'],
     ['its session is still starting', 'provider_session_starting'],
   ])(
-    'refused because %s: moved into the local queue with its durable row kept, same key',
+    'refused because %s: restores the draft without a local automatic queue',
     async (_why, code) => {
       // Hold the drain's own settle timer so the held state can be read.
       vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
@@ -484,18 +484,11 @@ describe('useSendMessage: durable before the request', () => {
         clientTurnId: string;
       };
       const held = activeChatsStore.getSnapshot()[chat];
-      // In the queue, or just popped by the drain that the turn's end allows.
-      expect([
-        ...(held?.queuedMessageMetadata ?? []).map((entry) => entry.id),
-        held?.pendingQueueDispatch?.metadata.id,
-      ]).toContain(body.clientTurnId);
-      expect(await outboundDispatch.snapshot()).toEqual([
-        expect.objectContaining({
-          clientTurnId: body.clientTurnId,
-          status: 'pending',
-          heldBy: expect.objectContaining({ bootId: expect.any(String) }),
-        }),
-      ]);
+      expect(body.clientTurnId).toEqual(expect.any(String));
+      expect(held.queuedMessages).toEqual([]);
+      expect(held.pendingQueueDispatch).toBeUndefined();
+      expect(held.input).toBe('wait your turn');
+      expect(await outboundDispatch.snapshot()).toEqual([]);
     },
   );
 
@@ -1121,7 +1114,7 @@ describe('useSendMessage: durable before the request', () => {
     expect(state()?.localSendKeys).toEqual([]);
   });
 
-  it('a send that waited on a starting session and went back to the queue loses its earlier "received"', async () => {
+  it('a definitive starting-session refusal clears its earlier received observation', async () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
     let refuse!: (error: unknown) => void;
     sendExecutionMessageMock.mockImplementationOnce(
@@ -1156,16 +1149,13 @@ describe('useSendMessage: durable before the request', () => {
       );
       await pending;
     });
-    // Queued to be sent again: nothing may still say Station has it.
+    // The newer definitive refusal outranks the earlier received observation.
     expect(
       activeChatsStore.getSnapshot()[chat]?.deliveryChecks?.[body.clientTurnId],
     ).toBeUndefined();
-    const [row] = await outboundDispatch.snapshot();
-    expect(row).toMatchObject({
-      clientTurnId: body.clientTurnId,
-      status: 'pending',
-    });
-    expect(row?.deliveryCheck).toBeUndefined();
+    expect(activeChatsStore.getSnapshot()[chat]?.input).toBe('slow session');
+    expect(activeChatsStore.getSnapshot()[chat]?.queuedMessages).toEqual([]);
+    expect(await outboundDispatch.snapshot()).toEqual([]);
   });
 
   it('a resend of a key drops the earlier "received": a refusal lost in transit does not label the lookup-driven resend', async () => {

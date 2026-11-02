@@ -1,13 +1,14 @@
 import type { AgentExecutionConfig } from '@kontourai/station-contracts/agent';
 import {
-  ENGINE_CAPABILITY_MATRICES,
   type ModelImageSupport,
-  resolveEngineCapabilityMatrix,
-  UNKNOWN_EXTERNAL_ENGINE_MATRIX,
+  UNKNOWN_ENGINE_DURABILITY,
 } from '@kontourai/station-contracts/engine-capability-matrix';
 import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
 import type { ConversationOpenResolution } from '@kontourai/station-contracts/orchestration';
-import type { EngineId } from '@kontourai/station-contracts/provider';
+import type {
+  EngineId,
+  ProviderDurabilityProfile,
+} from '@kontourai/station-contracts/provider';
 import {
   isSessionLifecycleStateStopped,
   SESSION_LIFECYCLE_STATES,
@@ -705,21 +706,19 @@ type SessionExecutionActivity = SessionExecutionSummary & {
  * channel (`steerTurn` / `turn.started` with `inputKind: 'steer'`).
  * Only native steering fidelity permits this action. Emulated steering can
  * cancel and reprompt, so it cannot promise an additive live input channel.
+ * Station-owned placement is held for an observed boundary.
  */
+export function sessionSteeringPlacement(profile?: ProviderDurabilityProfile) {
+  return (profile ?? UNKNOWN_ENGINE_DURABILITY).steerPlacement;
+}
+
 export function sessionAdapterSupportsSteering(
-  agentConnectionId?: string | null,
-  agentConnections: ConnectionConfig[] = [],
-  orchestrationProvider?: string | null,
+  profile?: ProviderDurabilityProfile,
 ): boolean {
-  const connection = agentConnectionId
-    ? agentConnections.find((candidate) => candidate.id === agentConnectionId)
-    : undefined;
-  const matrix = orchestrationProvider
-    ? Object.hasOwn(ENGINE_CAPABILITY_MATRICES, orchestrationProvider)
-      ? ENGINE_CAPABILITY_MATRICES[orchestrationProvider]
-      : UNKNOWN_EXTERNAL_ENGINE_MATRIX
-    : resolveEngineCapabilityMatrix(agentConnectionId, connection);
-  return matrix.durability?.steerPlacement.state === 'native';
+  const placement = sessionSteeringPlacement(profile);
+  return (
+    placement.state === 'native' || placement.boundary === 'station-observed'
+  );
 }
 
 export function defaultManagedRuntimeConnection(

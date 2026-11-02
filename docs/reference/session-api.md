@@ -553,8 +553,9 @@ refusal; a request alone does not prove storage.
   `code: "conversation_inbox_full"`.
 - Only a plain continuation can be held: no attachments, approval pick, input
   reply, visual skill start, engine or Agent-definition precondition
-  (`expectedEngine`, `expectedDefinitionFingerprint`), delegated or background
-  send, and no target on another Station. Its `target.agent` and
+  (`expectedEngine`, `expectedDefinitionFingerprint`), delegated send, and no
+  target on another Station. Plain automatic replay may queue; its background
+  resource-admission class persists through placement. Its `target.agent` and
   `target.workspace` must name exactly the conversation's binding, since that
   binding is what the message is sent through later. The sender must be one
   Station would let send it then: the conversation's owner, or a reader the
@@ -642,6 +643,64 @@ Background polling pauses; HTTP 401/403/404 stops interval retries.
 Deleting the conversation deletes its held messages. `@kontourai/station-sdk/client`
 exposes these as `queueExecutionMessage`, `listConversationInbox` and
 `cancelConversationInboxEntry`.
+
+### Submit steer, follow-up or display input
+
+Read `GET /api/orchestration/conversations/<conversationId>/inbox` for
+`data.currentHead` and `data.entries`. The head is opaque and identifies both
+the current execution Session and its event sequence.
+
+`POST` to that same path accepts `{kind, key, message, expectedHead?}`.
+`kind` is `steer`, `follow-up` or `display`; steer requires the observed head.
+The key is idempotent over kind, sender, text and the supplied head. A matching
+retry returns its retained entry even after the head advances. Changed input
+returns HTTP409 `inbox_key_conflict`. A new entry with a stale head returns
+HTTP409 `inbox_stale_head` and `currentHead`, without a write.
+
+- **Steer:** text and head are durable before handoff. Native Claude/Codex
+  placement is engine-defined and disclosed. Where Station owns the loop,
+  input waits for its next observed post-tool boundary; otherwise it waits
+  for the next turn boundary. The current VoltAgent loop observes the boundary
+  after the preceding step's tools settle. Prompt injection leaves the entry
+  claimed. It becomes sent only after the carrying model request returns and
+  its user message and steer event are recorded durably. A crash before that
+  acknowledgement remains unknown; a failed placement-policy check is refused.
+  A request error or a turn ending before acknowledgement also becomes
+  `unconfirmed` immediately. It can be reviewed and dismissed without a restart;
+  follow-ups resume after that review barrier and the turn's terminal.
+  Later model steps retain the steer after its tool-result boundary and before
+  the model's response to it, including when earlier history is compacted.
+  Missing adapter durability is treated as no declared steering support. During
+  a running turn this settles the inbox entry `refused`, with reason code
+  `unsupported-engine`, before any handoff; it does not block later follow-ups.
+  Direct steer dispatch also returns the typed `unsupported-engine` outcome.
+  A missing registered adapter also refuses before effect. A confirmed missing
+  Session returns `no-active-turn`; a Session still materializing retains its
+  existing unavailable outcome rather than claiming no turn can arrive.
+- **Follow-up:** waits for the current turn's terminal, then starts the next
+  turn through the conversation's recorded binding.
+- **Display:** appears immediately as a server inbox note and is never model
+  input. An inbox retains at most 50 display notes (`inboxMaxDisplay`); a new
+  note at capacity returns HTTP409 `conversation_inbox_full`. Matching-key
+  retries still answer the retained note. The next submission prunes display
+  notes older than seven days (`inboxSettledRetentionMs`). Steer replay fences
+  remain until conversation deletion.
+
+A handoff occurs at most once per durable claim. A crash between claim and
+acknowledgement leaves `unconfirmed`: the UI says **May have been sent** and
+never automatically replays it. **Review and resend** restores text into an
+empty composer and dismisses the old entry; sending again requires an explicit
+new action and key. Dismissed uncertain claims retain their replay fence.
+A confirmed receipt settles the outcome without another handoff. Exactly-once
+external effects are not claimed without an engine idempotency or receipt
+protocol.
+
+The browser hands eligible busy sends and IndexedDB replay to the server inbox
+with `whenBusy: 'queue'`; a definitive unqueued refusal restores the draft.
+Legacy sessionStorage records lack a Station/authority identity and remain
+review-only, without automatic drain or reassignment to the current account.
+Offline steering can retain an already observed, authority-scoped head; without
+one the text stays in the composer.
 
 ### State the engine you expect
 

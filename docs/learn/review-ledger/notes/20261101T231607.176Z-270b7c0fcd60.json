@@ -1,0 +1,7 @@
+{
+  "revision": "f70b1b1e8b34eb485099c293b2cd2fbdfbe2dac1",
+
+  "notes": [
+    {"path":"packages/contracts/AGENTS.md","note":"Refs #3568 and #3575. Re-read the complete contracts instructions and their linked reference after the diagnostic-table addition. inbox_key_conflict is classified by the existing pure provider-failure module as conflict with retryable false; the matching independent wire expectation now pins that decision. Domain-specific imports, pure-helper restrictions, compatibility obligations and focused consumer checks remain applicable. No package export path or contributor policy changed. The combined wire-contract and inventory selection passes 96 cases; this note reviews the reference delta and does not claim universal contributor compliance.","inputs":["packages/contracts/AGENTS.md","docs/reference/contracts.md"]}
+  ]
+}

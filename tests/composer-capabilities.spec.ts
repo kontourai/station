@@ -1,5 +1,7 @@
 import { copyFile, mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
+import { STEERING_ENGINE_DURABILITY } from '@kontourai/station-contracts/engine-capability-matrix';
+import type { ProviderDurabilityProfile } from '@kontourai/station-contracts/provider';
 import { expect, type Page, type TestInfo } from '@playwright/test';
 import { agentConnectionFixture } from './helpers/connection-fixtures';
 import { foregroundMessageReceiptEnvelope } from './helpers/execution-receipt';
@@ -69,6 +71,7 @@ async function seedRoutes(
   page: Page,
   executionRequests: Array<Record<string, unknown>>,
   textOnly = false,
+  declaredProfile: ProviderDurabilityProfile | null = STEERING_ENGINE_DURABILITY,
 ) {
   const prepared = new Map<string, Record<string, unknown>>();
   await Promise.all([
@@ -190,6 +193,7 @@ async function seedRoutes(
             threadId: request.conversationId,
             conversationId: request.conversationId,
             provider: 'codex',
+            ...(declaredProfile ? { durability: declaredProfile } : {}),
             model: 'gpt-6.1-sol',
             assignedAgentSlug: 'codex',
             status: 'running',
@@ -215,6 +219,7 @@ async function seedRoutes(
         provider: 'codex',
         model: 'gpt-6.1-sol',
         canContinue: true,
+        durability: declaredProfile ?? undefined,
         turns: () => [
           [
             {
@@ -322,7 +327,10 @@ async function openDockStartComposer(page: Page) {
   });
   await page.goto('/?dock=open&maximize=true');
   await dismissSetupLauncher(page);
-  const add = page.locator('.chat-dock__tab-actions .chat-dock__new').last();
+  const add = page
+    .locator('#chat-dock')
+    .getByRole('button', { name: 'New chat', exact: true })
+    .last();
   await expect(add).toBeVisible({ timeout: 15_000 });
   await add.click();
   const modal = page.getByRole('region', { name: 'New chat', exact: true });
@@ -384,6 +392,54 @@ async function evidence(page: Page, testInfo: TestInfo, name: string) {
     await copyFile(testInfo.outputPath(name), join(directory, name));
   }
 }
+
+test('a missing host durability profile disables steering and explains it at both widths and themes', async ({
+  page,
+}, testInfo) => {
+  const executionRequests: Array<Record<string, unknown>> = [];
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await installMockOrchestrationSse(page);
+  await seedRoutes(page, executionRequests, false, null);
+  const { composer, started } = await openStartComposer(page, 'desktop');
+  await composer
+    .getByRole('textbox', { name: 'What would you like done?' })
+    .fill('start without a profile');
+  await composer.getByRole('button', { name: 'Start', exact: true }).click();
+  await started();
+  await waitForMockOrchestrationSse(page);
+  const input = page.getByRole('group', {
+    name: 'Message composer',
+    exact: true,
+  });
+  await input.getByRole('textbox').fill('keep this follow-up');
+  for (const width of [390, 1440]) {
+    for (const theme of ['dark', 'light']) {
+      await page.setViewportSize({ width, height: 900 });
+      await page.evaluate(
+        (value) => document.documentElement.setAttribute('data-theme', value),
+        theme,
+      );
+      await page.getByRole('button', { name: 'Send mode: Queue' }).click();
+      const mode = page.getByRole('dialog', { name: 'Send mode', exact: true });
+      await expect(
+        mode.getByRole('button', { name: /Steer (this turn|when safe)/ }),
+      ).toBeDisabled();
+      await expect(
+        mode.getByText(
+          'Steering unavailable: the host did not report a durability profile.',
+        ),
+      ).toBeVisible();
+      await evidence(
+        page,
+        testInfo,
+        `steering-unavailable-${width}-${theme}.png`,
+      );
+      await page.keyboard.press('Escape');
+      await expect(mode).toBeHidden();
+    }
+  }
+  expect(executionRequests).toHaveLength(1);
+});
 
 for (const [label, viewport] of [
   ['desktop', { width: 1280, height: 860 }],
@@ -532,14 +588,14 @@ for (const [label, viewport] of [
     await evidence(page, testInfo, `running-turn-empty-${label}.png`);
 
     // The Agent chip's name ends before its caret, in an ellipsis.
-    const agentChip = page.locator('.chat-input__agent-btn');
+    const agentChip = page.locator('#chat-dock .chat-input__agent-btn');
     await expect(agentChip.locator('.chat-input__agent-name')).toHaveText(
       AGENTS[0].name,
     );
-    await expect(page.locator('.chat-input__model-name')).toHaveText(
+    await expect(page.locator('#chat-dock .chat-input__model-name')).toHaveText(
       'CODEX (BRIAN-MEDIA PROXY) / GPT 6.1 Sol',
     );
-    const modelName = page.locator('.chat-input__model-name');
+    const modelName = page.locator('#chat-dock .chat-input__model-name');
     expect(
       await modelName.evaluate(
         (element) => getComputedStyle(element).textOverflow,

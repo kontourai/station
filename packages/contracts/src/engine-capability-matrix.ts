@@ -338,6 +338,7 @@ export const EXTERNAL_ENGINE_DURABILITY: ProviderDurabilityProfile = {
   },
   contextCarriage: {
     state: 'emulated',
+    history: 'seed',
     detail:
       'Station can supply context as text; delivery is not acknowledged across restarts.',
   },
@@ -380,6 +381,12 @@ export const ACP_ENGINE_DURABILITY: ProviderDurabilityProfile = {
 
 export const STATION_ENGINE_DURABILITY: ProviderDurabilityProfile = {
   ...EXTERNAL_ENGINE_DURABILITY,
+  steerPlacement: {
+    state: 'emulated',
+    boundary: 'station-observed',
+    detail:
+      'Held until Station observes a post-tool boundary, otherwise the next turn boundary.',
+  },
   compaction: {
     state: 'none',
     owner: 'station',
@@ -388,6 +395,7 @@ export const STATION_ENGINE_DURABILITY: ProviderDurabilityProfile = {
   },
   contextCarriage: {
     state: 'emulated',
+    history: 'station-memory',
     detail:
       'Station supplies conversation history; mid-turn recovery and delivery acknowledgement are unavailable.',
   },

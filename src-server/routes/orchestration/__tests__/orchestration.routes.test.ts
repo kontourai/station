@@ -1,4 +1,5 @@
 import { mkdtempSync, rmSync } from 'node:fs';
+import { STEERING_ENGINE_DURABILITY } from '@kontourai/station-contracts/engine-capability-matrix';
 import { vi as vitestConfigVi } from 'vitest';
 
 // This file exercises REAL SQLite EventStores per test (one writes 401
@@ -31,7 +32,10 @@ import { readJson } from '../../../__test-utils__/read-json.js';
 import { readStreamUntil } from '../../../__test-utils__/sse-helpers.js';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { ORCHESTRATION_STREAM_RESUME_GAP_THRESHOLD } from '../../../constants.js';
-import type { ProviderAdapterModelCatalog } from '../../../providers/adapter-shape.js';
+import type {
+  ProviderAdapterMetadata,
+  ProviderAdapterModelCatalog,
+} from '../../../providers/adapter-shape.js';
 import { AsyncEventQueue } from '../../../providers/sessions/async-event-queue.js';
 import { createHostedTenantMiddleware } from '../../../runtime/bootstrap/runtime-tenant-context.js';
 import { setRuntimeAuthenticatedRequestPrincipal } from '../../../security/runtime-request-security.js';
@@ -615,6 +619,12 @@ describe('Orchestration Routes', () => {
     steerFixtureStores.push(eventStore);
     const eventBus = new EventBus();
     class SteerAdapter extends GateTestAdapter {
+      override readonly metadata: ProviderAdapterMetadata = {
+        displayName: 'Scripted native steer',
+        description: 'Receipted live steer fixture',
+        capabilities: ['agent-runtime'],
+        durability: STEERING_ENGINE_DURABILITY,
+      };
       private loaded = false;
       readonly steerTurn = vi.fn(async () => {});
       async startSession(input: ProviderSessionStartInput) {
@@ -669,6 +679,7 @@ describe('Orchestration Routes', () => {
       prompt: 'initial',
     });
     let loseReceipt = true;
+    let lostResponse: unknown;
     const fetchSpy = vi
       .spyOn(globalThis, 'fetch')
       .mockImplementation(async (input, init) => {
@@ -678,10 +689,7 @@ describe('Orchestration Routes', () => {
         );
         expect(response.status).toBe(200);
         if (loseReceipt) {
-          expect(await response.clone().json()).toMatchObject({
-            success: true,
-            data: { outcome: 'steered', threadId, turnId: 'live' },
-          });
+          lostResponse = await response.clone().json();
           loseReceipt = false;
           throw new TypeError('HTTP acknowledgement lost');
         }
@@ -698,6 +706,10 @@ describe('Orchestration Routes', () => {
       await expect(steerTurn(input.apiBase, input)).rejects.toThrow(
         'HTTP acknowledgement lost',
       );
+      expect(lostResponse).toMatchObject({
+        success: true,
+        data: { outcome: 'steered', threadId, turnId: 'live' },
+      });
       expect(adapter.steerTurn).toHaveBeenCalledTimes(1);
       eventStore.appendEvent({
         eventId: 'steer-http-complete',
