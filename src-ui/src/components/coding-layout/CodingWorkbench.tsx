@@ -50,6 +50,7 @@ import { useKeyboardShortcut } from '../../hooks/useKeyboardShortcut';
 import { useLayoutSessionPanels } from '../../hooks/useLayoutSessionPanels';
 import { useMenuFocus } from '../../hooks/useMenuFocus';
 import { useMobileVisualViewport } from '../../hooks/useMobileVisualViewport';
+import { useSurfaceVisibilityFlags } from '../../hooks/useSurfaceVisibilityFlags';
 import { NO_SESSION_PANELS_KEY } from '../../lib/layout-panels-record';
 import { BrowserPreviewPaneLauncher } from '../../workspace-panes/BrowserPreviewPaneLauncher';
 import { createEmptyBrowserPreviewPaneInstance } from '../../workspace-panes/browserPreviewPaneInstance';
@@ -336,8 +337,14 @@ export function CodingWorkbench({
     paneId: string | null;
   } | null>(null);
   const [browserNotice, setBrowserNotice] = useState<string | null>(null);
+  const browserExperienceEnabled =
+    useSurfaceVisibilityFlags().has('browser-experience');
   const openBrowser = () => {
-    if (!hostOpen || browserPreviewAvailability?.state !== 'available')
+    if (
+      !browserExperienceEnabled ||
+      !hostOpen ||
+      browserPreviewAvailability?.state !== 'available'
+    )
       return false;
     const existing = instances.find(
       (item) =>
@@ -368,7 +375,7 @@ export function CodingWorkbench({
     ['cmd', 'shift'],
     'Open or focus Browser',
     openBrowser,
-    !!browserPreviewAvailability,
+    !!browserPreviewAvailability && browserExperienceEnabled,
     0,
     undefined,
     !hostOpen || browserPreviewAvailability?.state !== 'available',
@@ -1361,7 +1368,7 @@ export function CodingWorkbench({
               ref={setBarTrailing}
             />
           ) : null}
-          {browserPreviewAvailability ? (
+          {browserExperienceEnabled && browserPreviewAvailability ? (
             <Button
               variant="ghost"
               size="sm"

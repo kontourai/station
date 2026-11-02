@@ -46,8 +46,10 @@ import {
 import { navigationStore } from '../../contexts/navigation-store';
 import { browserFloatSourceKey } from '../../float-over-chat/floatSource';
 import {
+  isFloatSourceOpen,
   requestFloat,
   useFloatHostAvailable,
+  useFloatStoreVersion,
 } from '../../float-over-chat/floatStore';
 import {
   agentInputOf,
@@ -225,6 +227,7 @@ function BrowserDriverChip({
     queryKey: browserPaneKeys.fullHistory(apiBase, browserSessionId),
     queryFn: ({ signal }) => api.session(browserSessionId, signal),
     enabled: open,
+    refetchInterval: open ? 3000 : false,
   });
   if (tone === 'none')
     return (
@@ -740,6 +743,12 @@ function BrowserSessionPane({
   const [shot, setShot] = useState<BrowserScreenshotShot | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [floating, setFloating] = useState(false);
+  const floatVersion = useFloatStoreVersion();
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the store version signals float closure.
+  useEffect(() => {
+    if (floating && !isFloatSourceOpen(browserFloatSourceKey(browserSessionId)))
+      setFloating(false);
+  }, [floating, browserSessionId, floatVersion]);
   const floatAvailable = useFloatHostAvailable();
   const [draft, setDraft] = useState<string | null>(null);
   const stageRef = useRef<HTMLDivElement>(null);
@@ -1005,6 +1014,9 @@ function BrowserSessionPane({
         history.mutate('forward');
     },
     screenshot: () => {
+      if (live && !screenshot.isPending) screenshot.mutate();
+    },
+    screenshotChat: () => {
       if (live && !screenshotToChat.isPending) screenshotToChat.mutate();
     },
     zoomIn: () => changeZoom(1),
@@ -1019,7 +1031,7 @@ function BrowserSessionPane({
     },
   };
   useLayoutEffect(() => {
-    if (!shortcutStore || !browserFocused || !experienceEnabled) return;
+    if (!shortcutStore || !browserFocused) return;
     setShortcutContext('browserFocused', true);
     const definitions: Array<
       [string, string, string, KeyboardShortcut['modifiers'], string, boolean]
@@ -1085,6 +1097,14 @@ function BrowserSessionPane({
         'screenshot',
         's',
         ['cmd', 'shift'],
+        'Take Browser screenshot',
+        !live || screenshot.isPending,
+      ],
+      [
+        'screenshotChat',
+        'screenshotChat',
+        '',
+        [],
         'Screenshot Browser to chat',
         !live || screenshotToChat.isPending,
       ],
@@ -1129,18 +1149,26 @@ function BrowserSessionPane({
         !canDriveLive || control?.tone !== 'you' || !!pendingDialog,
       ],
     ];
-    const releases = definitions.map(
-      ([id, action, key, modifiers, description, disabled]) =>
+    const releases = definitions
+      .filter(
+        ([id, , key]) =>
+          (experienceEnabled || key !== '') &&
+          !(IS_MAC && (id === 'backAlt' || id === 'forwardAlt')),
+      )
+      .map(([id, action, key, modifiers, description, disabled]) =>
         shortcutStore.register({
           id: `browser.${id}`,
           key,
           modifiers,
           description,
-          disabled,
+          disabled: key ? false : disabled,
           when: 'browserFocused',
-          handler: () => shortcutActions.current[action]?.(),
+          handler: () => {
+            if (experienceEnabled || id === 'screenshot')
+              shortcutActions.current[action]?.();
+          },
         }),
-    );
+      );
     return () => {
       for (const release of releases) release();
       setShortcutContext('browserFocused', false);
@@ -1153,6 +1181,7 @@ function BrowserSessionPane({
     busy,
     live,
     screenshotToChat.isPending,
+    screenshot.isPending,
     zoom.isPending,
     control,
     pendingDialog,
@@ -1296,6 +1325,8 @@ function BrowserSessionPane({
       id: 'screenshot',
       label: 'Screenshot',
       glyph: <CameraGlyph />,
+      hint: SCREENSHOT_SHORTCUT.label,
+      hintKeys: SCREENSHOT_SHORTCUT.aria,
       disabled: !live || screenshot.isPending,
       onSelect: () => screenshot.mutate(),
     },
@@ -1306,8 +1337,6 @@ function BrowserSessionPane({
             id: 'screenshot-chat',
             label: 'Screenshot to chat',
             glyph: <CameraGlyph />,
-            hint: SCREENSHOT_SHORTCUT.label,
-            hintKeys: SCREENSHOT_SHORTCUT.aria,
             disabled: !live || screenshotToChat.isPending,
             onSelect: () => screenshotToChat.mutate(),
           },

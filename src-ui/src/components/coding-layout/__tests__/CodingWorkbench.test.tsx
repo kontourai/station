@@ -42,6 +42,7 @@ const BUILTIN_CODING_DRILL_INS = BUILTIN_CODING_LAYOUT.drillIns ?? [];
 
 const harness = vi.hoisted(() => ({
   isMobile: false,
+  browserPreview: true,
   chatTitle: 'Fix the flaky login test',
   shortcuts: new Map<
     string,
@@ -102,6 +103,11 @@ vi.mock('../../chat-dock/ChatDock', () => ({
     );
   },
 }));
+vi.mock('../../../hooks/useSurfaceVisibilityFlags', () => ({
+  useSurfaceVisibilityFlags: () =>
+    new Set(harness.browserPreview ? ['browser-experience'] : []),
+}));
+
 vi.mock('../../../hooks/useKeyboardShortcut', () => ({
   useKeyboardShortcut: (
     id: string,
@@ -266,6 +272,7 @@ async function historyBackSettled() {
 
 beforeEach(() => {
   harness.isMobile = false;
+  harness.browserPreview = true;
   harness.chatMounts = 0;
   harness.chatSlots = null;
   harness.needsYou = 0;
@@ -1871,6 +1878,39 @@ describe('CodingWorkbench — design audit round: the flyout, Escape, the way ba
     expect(open.mock.calls[0]![0].boundContext?.projectId).toBe('project-uuid');
     act(() => harness.shortcuts.get('browser.open')?.handler());
     expect(open).toHaveBeenCalledTimes(2);
+  });
+
+  test('the Coding Browser entry point is unavailable while its preview is off', () => {
+    harness.browserPreview = false;
+    const open = vi.fn(() => WORKSPACE_PANE_OPENED);
+    render(
+      <NavigationProvider>
+        <CodingWorkbench
+          stackName="Coding"
+          drillInOrder={BUILTIN_CODING_DRILL_INS}
+          projectId="project-uuid"
+          projectSlug="demo"
+          centerChat
+          wide
+          location={{ page: 'chat', paneId: null }}
+          scope={scope}
+          instances={instances}
+          hostDocument={() => document}
+          paneLabel={label}
+          hostOpen={{ open }}
+          onOpenCatalog={vi.fn()}
+          browserPreviewAvailability={{
+            state: 'available',
+            reason: { code: 'ready', source: 'resolver' },
+          }}
+        >
+          <div />
+        </CodingWorkbench>
+      </NavigationProvider>,
+    );
+    expect(screen.queryByRole('button', { name: /^Open Browser$/ })).toBeNull();
+    act(() => harness.shortcuts.get('browser.open')?.handler());
+    expect(open).not.toHaveBeenCalled();
   });
 
   test('a File Preview beside Chat offers the way back to Files in its head; other panels do not (U5)', async () => {

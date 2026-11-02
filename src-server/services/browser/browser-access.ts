@@ -27,6 +27,7 @@ export type BrowserProjectAuthorizer = (
   request: Request,
   projectId: string,
   purpose: BrowserAccessPurpose,
+  options?: { allowOperatorDeviceView?: boolean },
 ) => Promise<BrowserSessionActor | undefined>;
 
 /** Host-level operations (Chromium acquisition): the operator only. */
@@ -70,11 +71,12 @@ export function createBrowserProjectAuthorizer(
   deps: BrowserAccessDeps,
 ): BrowserProjectAuthorizer {
   const isOperator = createBrowserOperatorAuthorizer(deps);
-  return async (request, projectId, purpose) => {
+  return async (request, projectId, purpose, options) => {
     if (await isOperator(request)) return { kind: 'operator' };
-    if (purpose === 'view') {
+    if (purpose === 'view' && options?.allowOperatorDeviceView === true) {
       try {
-        if (deps.operatorDeviceMayView?.(request)) return { kind: 'operator' };
+        if (deps.operatorDeviceMayView?.(request))
+          return { kind: 'operator-device' };
       } catch {
         return undefined;
       }

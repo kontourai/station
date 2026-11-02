@@ -327,6 +327,15 @@ describe('BrowserAutomation: a session id is only a selector', () => {
   test('a successful agent click publishes target geometry on its live surface', async () => {
     const h = await harness();
     scriptButton(h.fake);
+    h.fake.handle('Page.getLayoutMetrics', () => ({
+      cssLayoutViewport: { clientWidth: 800, clientHeight: 600 },
+      cssVisualViewport: {
+        offsetX: 20,
+        offsetY: 30,
+        clientWidth: 600,
+        clientHeight: 400,
+      },
+    }));
     const session = await h.open();
     const entry = h.entryOf(session.browserSessionId);
     const viewer = entry.hub.attach(
@@ -349,7 +358,8 @@ describe('BrowserAutomation: a session id is only a selector', () => {
       expect(record.state.agentActions?.events.at(-1)).toMatchObject({
         kind: 'click',
         generation: session.generation,
-        point: { x: 100, y: 50 },
+        point: { x: 120, y: 80 },
+        viewport: { x: 20, y: 30, width: 600, height: 400 },
       });
     } finally {
       viewer.close();

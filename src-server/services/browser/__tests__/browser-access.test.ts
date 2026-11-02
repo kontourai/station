@@ -146,9 +146,12 @@ describe('browser access (D5) with the real membership service', () => {
     const request = new Request(
       'http://station.test/api/browser/projects/alpha/access',
     );
-    expect(await authorize(request, 'alpha', 'view')).toEqual({
-      kind: 'operator',
-    });
+    expect(await authorize(request, 'alpha', 'view')).toBeUndefined();
+    expect(
+      await authorize(request, 'alpha', 'view', {
+        allowOperatorDeviceView: true,
+      }),
+    ).toEqual({ kind: 'operator-device' });
     expect(await authorize(request, 'alpha', 'drive')).toBeUndefined();
     own = false;
     expect(await authorize(request, 'alpha', 'view')).toBeUndefined();

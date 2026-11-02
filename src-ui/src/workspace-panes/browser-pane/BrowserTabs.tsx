@@ -167,6 +167,7 @@ export function BrowserTabs({
             );
             const url = session?.url;
             const favicon =
+              experienceEnabled &&
               session?.favicon &&
               session.favicon.length <= 43764 &&
               /^data:image\/(?:png|jpeg|gif|webp|x-icon);base64,[A-Za-z0-9+/]+=*$/.test(

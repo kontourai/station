@@ -279,9 +279,11 @@ function harness(
           slug === 'alpha' ? { id: 'project' } : undefined,
         authorizeProject: async () =>
           active
-            ? operator
-              ? { kind: 'operator' }
-              : { kind: 'project-admin', principalId }
+            ? operatorDevice
+              ? { kind: 'operator-device' }
+              : operator
+                ? { kind: 'operator' }
+                : { kind: 'project-admin', principalId }
             : undefined,
       },
       list: (projectId, conversation, principal) =>

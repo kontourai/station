@@ -383,7 +383,9 @@ export function createBrowserRoutes(deps: BrowserRoutesDeps) {
     for (const projectId of new Set(all.map((s) => s.projectId))) {
       actors.set(
         projectId,
-        await deps.authorizeProject(c.req.raw, projectId, 'view'),
+        await deps.authorizeProject(c.req.raw, projectId, 'view', {
+          allowOperatorDeviceView: true,
+        }),
       );
     }
     if (!deps.isRequestPrincipalCurrent(c.req.raw)) return c.json(denied, 403);
@@ -392,7 +394,11 @@ export function createBrowserRoutes(deps: BrowserRoutesDeps) {
       data: all
         .filter((session) => {
           const actor = actors.get(session.projectId);
-          return actor !== undefined && actorOwnsSessionProfile(session, actor);
+          return (
+            actor !== undefined &&
+            (actor.kind === 'operator-device' ||
+              actorOwnsSessionProfile(session, actor))
+          );
         })
         .map(present),
     });
@@ -486,8 +492,13 @@ export function createBrowserRoutes(deps: BrowserRoutesDeps) {
       request,
       session.projectId,
       purpose,
+      { allowOperatorDeviceView: purpose === 'view' },
     );
-    if (!actor || !actorOwnsSessionProfile(session, actor))
+    if (
+      !actor ||
+      (!(actor.kind === 'operator-device' && purpose === 'view') &&
+        !actorOwnsSessionProfile(session, actor))
+    )
       return { status: 403 as const };
     return { status: 200 as const, session, actor };
   };
@@ -897,8 +908,9 @@ export function createBrowserRoutes(deps: BrowserRoutesDeps) {
     const allowed =
       need === 'operator'
         ? await deps.authorizeOperator(request)
-        : (await deps.authorizeProject(request, project.id, 'view')) !==
-          undefined;
+        : (await deps.authorizeProject(request, project.id, 'view', {
+            allowOperatorDeviceView: true,
+          })) !== undefined;
     return allowed ? project : undefined;
   };
 
@@ -922,7 +934,9 @@ export function createBrowserRoutes(deps: BrowserRoutesDeps) {
         403,
       );
     }
-    const actor = await deps.authorizeProject(c.req.raw, project.id, 'view');
+    const actor = await deps.authorizeProject(c.req.raw, project.id, 'view', {
+      allowOperatorDeviceView: true,
+    });
     if (!actor) {
       if (!deps.isRequestPrincipalCurrent(c.req.raw))
         return c.json(staleSignIn, 403);
@@ -942,6 +956,7 @@ export function createBrowserRoutes(deps: BrowserRoutesDeps) {
       c.req.raw,
       project.id,
       'view',
+      { allowOperatorDeviceView: true },
     );
     if (
       !currentActor ||
@@ -956,7 +971,10 @@ export function createBrowserRoutes(deps: BrowserRoutesDeps) {
       success: true,
       data: {
         projectId: project.id,
-        role: actor.kind === 'operator' ? 'operator' : 'project-admin',
+        role:
+          actor.kind === 'operator' || actor.kind === 'operator-device'
+            ? 'operator'
+            : 'project-admin',
         // The profile this caller's sessions run in (D7).
         principalKey: browserProfileFor(project.id, actor)?.principalKey,
         operator,

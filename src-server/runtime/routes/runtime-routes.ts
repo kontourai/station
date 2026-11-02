@@ -4801,7 +4801,6 @@ export function configureRuntimeRoutes(
     const deviceMembershipAccess = {
       operator: (request: Request) =>
         projectMembershipAuthority(request).operator(),
-      operatorDeviceMayView: admitOperatorDeviceView,
       authority: (request: Request) => projectMembershipAuthority(request),
       ...(context.projectMembership
         ? { membership: context.projectMembership }
@@ -4976,9 +4975,14 @@ export function configureRuntimeRoutes(
         ...(revealAutomation && deviceShareAccess
           ? {
               agentReveals: {
-                projectAccess: deviceShareAccess,
-                operatorDeviceMayView:
-                  deviceMembershipAccess.operatorDeviceMayView,
+                projectAccess: {
+                  ...deviceShareAccess,
+                  authorizeProject: createBrowserProjectAuthorizer({
+                    ...deviceMembershipAccess,
+                    operatorDeviceMayView: admitOperatorDeviceView,
+                  }),
+                },
+                operatorDeviceMayView: admitOperatorDeviceView,
                 list: (projectId, conversationId, principalId) =>
                   revealAutomation.revealRequests(
                     projectId,

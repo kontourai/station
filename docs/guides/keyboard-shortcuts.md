@@ -110,9 +110,9 @@ or native shell.
 
 ## Browser shortcuts
 
-With the Browser experience Feature Preview enabled, use Mod+Shift+J in Coding to open or focus Browser. When the Browser pane is focused, Mod+L focuses the address, Mod+R reloads, Mod+Shift+R reloads without cache, Alt+Left/Right or Mod+[/] moves through history, and Mod+T, Mod+W and Mod+Shift+T open, close and reopen tabs. Mod+=, Mod+- and Mod+0 change or reset page zoom. Mod+Shift+S attaches a screenshot to the active Project chat. Mod means Command on macOS and Control elsewhere.
+With the Browser experience Feature Preview enabled, Mod+Shift+J opens or focuses Browser from Coding. When Browser has focus, Mod+L focuses the address, Mod+R reloads, Mod+Shift+R reloads without cache, Mod+[/] moves through history, and Alt+Left/Right moves through history on non-macOS platforms. Mod+=, Mod+- and Mod+0 change or reset page zoom. Mod+T, Mod+W and Mod+Shift+T open, close and reopen Browser tabs in the desktop shell; web browsers reserve these keys. Mod means Command on macOS and Control elsewhere.
 
-The command palette also offers take control and hand back; these commands have no default binding. Keys sent to the streamed page do not trigger Station shortcuts. Find in page is not available through the streamed host yet.
+Mod+Shift+S takes a Browser screenshot even with the preview off and while the live page has focus. Screenshot to chat is a separate menu and palette action. The command palette also offers take control and hand back without default bindings. While the live page has focus, Station shortcuts, including kernel shortcuts such as Mod+K, are suppressed except the screenshot shortcut; Tab moves focus out of the page. Find in page is not available on the streamed host yet.
 
 ## Plugin shortcuts
 

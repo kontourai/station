@@ -650,6 +650,7 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
   const sendKey = (type: 'down' | 'up', event: ReactKeyboardEvent) => {
     if (
       !canInteract ||
+      event.defaultPrevented ||
       event.key === 'Tab' ||
       composingRef.current ||
       event.key === 'Process'

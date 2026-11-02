@@ -292,6 +292,7 @@ export interface ChromiumServerHostOptions {
   /** Refuse startup unless Chromium reports the restrictive effective policy. */
   requireRestrictedWebRtc?: boolean;
   executablePath: string;
+  faviconEnabled?: () => boolean;
   /**
    * The profile's egress policy (Station listeners plus the actor's reach,
    * D7), re-read for every connection. Required so no caller can forget it.
@@ -629,11 +630,12 @@ export class ChromiumServerHost implements BrowserHost {
       if (pending) clearTimeout(pending);
       running.pendingUntracked.delete(targetId);
       await transport.send('Page.enable', {}, sessionId);
-      await transport.send(
-        'Network.enable',
-        { maxTotalBufferSize: 262144, maxResourceBufferSize: 32768 },
-        sessionId,
-      );
+      if (this.options.faviconEnabled?.() === true)
+        await transport.send(
+          'Network.enable',
+          { maxTotalBufferSize: 262144, maxResourceBufferSize: 32768 },
+          sessionId,
+        );
       await transport.send(
         'Emulation.setDeviceMetricsOverride',
         {
@@ -1303,11 +1305,12 @@ export class ChromiumServerHost implements BrowserHost {
         viewport: { ...opener.viewport },
       });
       await transport.send('Page.enable', {}, sessionId);
-      await transport.send(
-        'Network.enable',
-        { maxTotalBufferSize: 262144, maxResourceBufferSize: 32768 },
-        sessionId,
-      );
+      if (this.options.faviconEnabled?.() === true)
+        await transport.send(
+          'Network.enable',
+          { maxTotalBufferSize: 262144, maxResourceBufferSize: 32768 },
+          sessionId,
+        );
       await transport.send(
         'Emulation.setDeviceMetricsOverride',
         { ...opener.viewport, mobile: opener.viewport.mobile === true },
@@ -1364,6 +1367,7 @@ export class ChromiumServerHost implements BrowserHost {
         )
         .catch(() => {});
     };
+    let iconNetworkEnabled = this.options.faviconEnabled?.() === true;
     let documentUrl = '';
     let iconUrl = '';
     let documentVersion = 0;
@@ -1371,11 +1375,15 @@ export class ChromiumServerHost implements BrowserHost {
       string,
       { requestId: string; mime: string; size?: number }
     >();
+    let lastIcon: string | undefined;
     const emitIcon = (icon: string | undefined) => {
+      if (icon === lastIcon) return;
       if (this.running !== running || !running.targets.has(targetId)) return;
+      lastIcon = icon;
       for (const listener of this.faviconListeners) listener(targetId, icon);
     };
     const publishIcon = async () => {
+      if (this.options.faviconEnabled?.() !== true) return;
       const version = documentVersion;
       const candidate = responses.get(iconUrl);
       if (!candidate || candidate.size === undefined || candidate.size > 32768)
@@ -1390,6 +1398,7 @@ export class ChromiumServerHost implements BrowserHost {
           sessionId,
         );
         if (
+          this.options.faviconEnabled?.() !== true ||
           !result.base64Encoded ||
           result.body.length > 43692 ||
           documentVersion !== version ||
@@ -1436,6 +1445,18 @@ export class ChromiumServerHost implements BrowserHost {
         if (!frame?.url || frame.parentId !== undefined) return;
         documentVersion++;
         responses.clear();
+        if (!iconNetworkEnabled && this.options.faviconEnabled?.() === true) {
+          iconNetworkEnabled = true;
+          void transport
+            .send(
+              'Network.enable',
+              { maxTotalBufferSize: 262144, maxResourceBufferSize: 32768 },
+              sessionId,
+            )
+            .catch(() => {
+              iconNetworkEnabled = false;
+            });
+        }
         documentUrl = frame.url;
         try {
           iconUrl = new URL('/favicon.ico', documentUrl).href;
@@ -1448,7 +1469,11 @@ export class ChromiumServerHost implements BrowserHost {
     const offIconResponse = transport.on(
       'Network.responseReceived',
       (params, eventSession) => {
-        if (eventSession !== sessionId) return;
+        if (
+          eventSession !== sessionId ||
+          this.options.faviconEnabled?.() !== true
+        )
+          return;
         const event = params as {
           requestId?: string;
           response?: { url?: string; mimeType?: string };
@@ -1477,14 +1502,22 @@ export class ChromiumServerHost implements BrowserHost {
           requestId?: string;
           encodedDataLength?: number;
         };
-        for (const candidate of responses.values())
-          if (candidate.requestId === event.requestId)
-            candidate.size = event.encodedDataLength;
-        void publishIcon();
+        if (this.options.faviconEnabled?.() !== true) return;
+        for (const [url, candidate] of responses) {
+          if (candidate.requestId !== event.requestId) continue;
+          candidate.size = event.encodedDataLength;
+          if (url === iconUrl) void publishIcon();
+          break;
+        }
       },
     );
     const readIcon = async (_: unknown, eventSession?: string) => {
-      if (eventSession !== sessionId || !documentUrl) return;
+      if (
+        eventSession !== sessionId ||
+        !documentUrl ||
+        this.options.faviconEnabled?.() !== true
+      )
+        return;
       const version = documentVersion;
       try {
         const { root } = await transport.send<{ root: { nodeId: number } }>(

@@ -263,6 +263,7 @@ describe('ChromiumServerHost against a real installed Chromium', () => {
     });
     host = new ChromiumServerHost({
       executablePath,
+      faviconEnabled: () => true,
       egressPolicy: {
         listeners: () => listeners,
         interfaceAddresses: localInterfaceAddresses,

@@ -1458,9 +1458,14 @@ export class BrowserAutomation {
           ),
         );
       return {
-        x: target.x,
-        y: target.y,
-        box: { x: target.x, y: target.y, width: 0, height: 0 },
+        x: target.x + view.offsetX,
+        y: target.y + view.offsetY,
+        box: {
+          x: target.x + view.offsetX,
+          y: target.y + view.offsetY,
+          width: 0,
+          height: 0,
+        },
         viewport: {
           x: view.offsetX,
           y: view.offsetY,

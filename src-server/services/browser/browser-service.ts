@@ -174,6 +174,7 @@ export function createBrowserService(
       }
       return new ChromiumServerHost({
         executablePath,
+        faviconEnabled: options.experienceEnabled,
         egressPolicy: egressPolicyFor(profile, listeners, localTargets),
         onEvent: (event) => {
           if (

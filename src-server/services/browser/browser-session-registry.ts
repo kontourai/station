@@ -55,6 +55,7 @@ export type BrowserSessionEndReason =
 /** Who caused a session action. Authority is decided by the caller, not here. */
 export type BrowserSessionActor =
   | { kind: 'operator' }
+  | { kind: 'operator-device' }
   | { kind: 'project-admin'; principalId: string }
   | { kind: 'agent'; principalId?: string; sessionId: string }
   | { kind: 'system' };
@@ -426,6 +427,7 @@ export function isValidBrowserProjectId(
 function principalKeyFor(actor: BrowserSessionActor): string | undefined {
   switch (actor.kind) {
     case 'operator':
+    case 'operator-device':
       return 'operator';
     case 'project-admin':
       return `principal:${actor.principalId}`;
@@ -472,6 +474,7 @@ export function actorOwnsSessionProfile(
   actor: BrowserSessionActor,
 ): boolean {
   if (actor.kind === 'operator') return true;
+  if (actor.kind === 'operator-device') return false;
   const key = principalKeyFor(actor);
   return key !== undefined && key === record.principalKey;
 }

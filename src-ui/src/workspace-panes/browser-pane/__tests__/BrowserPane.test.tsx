@@ -25,8 +25,10 @@ vi.mock('../../../contexts/ApiBaseContext', () => ({
     isCurrent: () => true,
   }),
 }));
+const preview = vi.hoisted(() => ({ enabled: true }));
 vi.mock('../../../hooks/useSurfaceVisibilityFlags', () => ({
-  useSurfaceVisibilityFlags: () => new Set(['browser-experience']),
+  useSurfaceVisibilityFlags: () =>
+    new Set(preview.enabled ? ['browser-experience'] : []),
 }));
 const canvasState = vi.hoisted(() => ({
   report: undefined as
@@ -66,6 +68,8 @@ import { KeyboardShortcutsProvider } from '../../../contexts/KeyboardShortcutsCo
 import { navigationStore } from '../../../contexts/navigation-store';
 import { browserFloatSourceKey } from '../../../float-over-chat/floatSource';
 import {
+  dismissFloat,
+  openFloat,
   registerFloatHost,
   takeFloatRequest,
 } from '../../../float-over-chat/floatStore';
@@ -188,6 +192,8 @@ function renderPane(
 afterEach(() => {
   cleanup();
   canvasState.report = undefined;
+  preview.enabled = true;
+  vi.restoreAllMocks();
   vi.useRealTimers();
 });
 
@@ -242,6 +248,21 @@ describe('BrowserPane honest states', () => {
     );
     expect(within(actions).getByText(/target 25/)).toBeTruthy();
     expect(within(actions).queryByText(/target 1\)/)).toBeNull();
+    entries.push({
+      seq: 26,
+      at: '2026-09-22T12:00:01.000Z',
+      kind: 'clicked',
+      actor: { kind: 'agent', sessionId: 'agent-1' },
+      detail: 'target 26',
+    });
+    vi.useFakeTimers();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(3000);
+    });
+    vi.useRealTimers();
+    await waitFor(() =>
+      expect(within(actions).getByText(/target 26/)).toBeTruthy(),
+    );
   });
 
   test('a person can float the session and return it to the pane', async () => {
@@ -260,11 +281,15 @@ describe('BrowserPane honest states', () => {
         kind: 'browser',
         browserSessionId: SESSION,
       });
-      act(() => request?.onTaken?.());
+      act(() => {
+        if (request)
+          openFloat('test-chat', request.source, { requested: true });
+        request?.onTaken?.();
+      });
       await waitFor(() =>
         expect(isSourceShown(browserFloatSourceKey(SESSION))).toBe(false),
       );
-      fireEvent.click(screen.getByRole('button', { name: 'Return to pane' }));
+      act(() => dismissFloat('test-chat', browserFloatSourceKey(SESSION)));
       await waitFor(() =>
         expect(isSourceShown(browserFloatSourceKey(SESSION))).toBe(true),
       );
@@ -273,7 +298,7 @@ describe('BrowserPane honest states', () => {
     }
   });
 
-  test('screenshot shortcut hands the image to the active Project chat', async () => {
+  test('screenshot to chat menu hands the image to the active Project chat', async () => {
     const received = vi.fn(async (files: File[]) => ({
       added: files.length,
       errors: [],
@@ -302,20 +327,7 @@ describe('BrowserPane honest states', () => {
           }),
       });
       await screen.findByTestId('live-canvas');
-      const reload = screen.getByRole('button', { name: 'Reload' });
-      act(() => reload.focus());
-      fireEvent.keyDown(reload, {
-        key: 's',
-        ctrlKey: true,
-        shiftKey: true,
-        bubbles: true,
-      });
-      fireEvent.keyDown(reload, {
-        key: 's',
-        metaKey: true,
-        shiftKey: true,
-        bubbles: true,
-      });
+      await chooseFromMenu('Screenshot to chat');
       await waitFor(() => expect(received).toHaveBeenCalledOnce());
       expect(received.mock.calls[0]![0][0]).toMatchObject({
         name: 'browser-screenshot.png',
@@ -327,6 +339,83 @@ describe('BrowserPane honest states', () => {
       navigationStore.setActiveChat(null);
     }
   });
+  test.each([false, true])(
+    'Mod+Shift+S opens a screenshot when the page keyboard has focus (preview %s)',
+    async (enabled) => {
+      preview.enabled = enabled;
+      vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:fixture');
+      vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
+      const { calls } = renderPane({
+        'GET /api/browser/projects/alpha/access': OPERATOR_ACCESS,
+        [`GET /api/browser/sessions/${SESSION}?view=summary`]: ok(
+          sessionView(),
+        ),
+        [`GET /api/browser/sessions/${SESSION}/screenshot`]: () =>
+          new Response(new Blob(['png'], { type: 'image/png' }), {
+            headers: { 'content-type': 'image/png' },
+          }),
+      });
+      const canvas = await screen.findByTestId('live-canvas');
+      const keyboard = document.createElement('textarea');
+      keyboard.setAttribute('data-live-surface-keyboard', '');
+      canvas.appendChild(keyboard);
+      act(() => keyboard.focus());
+      fireEvent.keyDown(keyboard, {
+        key: 's',
+        ctrlKey: true,
+        shiftKey: true,
+        bubbles: true,
+      });
+      fireEvent.keyDown(keyboard, {
+        key: 's',
+        metaKey: true,
+        shiftKey: true,
+        bubbles: true,
+      });
+      await waitFor(() =>
+        expect(
+          calls.filter((call) => call.path.endsWith('/screenshot')),
+        ).toHaveLength(1),
+      );
+      expect(await screen.findByText(/Screenshot taken/)).toBeTruthy();
+    },
+  );
+
+  test.each([false, true])(
+    'unavailable Browser shortcuts consume host bindings (preview %s)',
+    async (enabled) => {
+      preview.enabled = enabled;
+      const { calls } = renderPane({
+        'GET /api/browser/projects/alpha/access': ok({
+          projectId: 'p-alpha',
+          role: 'operator',
+          operator: false,
+          canDrive: false,
+          browser: 'ready',
+          experiencePreviewEnabled: true,
+        }),
+        [`GET /api/browser/sessions/${SESSION}?view=summary`]: ok(
+          sessionView(),
+        ),
+      });
+      await screen.findByTestId('live-canvas');
+      const toolbar = screen.getByRole('form', { name: 'Browser toolbar' });
+      fireEvent.focusIn(toolbar);
+      for (const key of ['r', '=', '-', '0']) {
+        const event = new KeyboardEvent('keydown', {
+          key,
+          ctrlKey: !navigator.platform.toUpperCase().includes('MAC'),
+          metaKey: navigator.platform.toUpperCase().includes('MAC'),
+          bubbles: true,
+          cancelable: true,
+        });
+        toolbar.dispatchEvent(event);
+        expect(event.defaultPrevented).toBe(true);
+      }
+      expect(calls.some((call) => call.method === 'POST')).toBe(false);
+    },
+  );
+
   test('zoom shortcut and appearance menu act on the selected session generation', async () => {
     const session = sessionView();
     const { calls } = renderPane({

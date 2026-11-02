@@ -113,13 +113,17 @@ export async function authorizeBrowserSurfaceAction(
     request,
     record.projectId,
     action === 'view' ? 'view' : 'drive',
+    { allowOperatorDeviceView: action === 'view' },
   );
   if (!actor) return false;
   // The live-surface layer's principal and the Project authority must be the
   // same person, or the lease would attribute one person's input to another.
   if (actor.kind === 'project-admin' && actor.principalId !== principal)
     return false;
-  return actorOwnsSessionProfile(record, actor);
+  return (
+    (actor.kind === 'operator-device' && action === 'view') ||
+    actorOwnsSessionProfile(record, actor)
+  );
 }
 
 /**
