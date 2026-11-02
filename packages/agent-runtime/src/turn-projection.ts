@@ -76,7 +76,7 @@ export type FrameBatchResult = {
 export const framesDefinition =
   'CREATE TABLE agent_steps_frames(turn_id TEXT NOT NULL REFERENCES agent_steps_turns(id), id TEXT NOT NULL, position INTEGER NOT NULL CHECK(position>=0), record TEXT NOT NULL, PRIMARY KEY(turn_id,id), UNIQUE(turn_id,position)) STRICT';
 export const frameBlockDefinitions = [
-  'CREATE TABLE agent_steps_frame_blocks(turn_id TEXT NOT NULL REFERENCES agent_steps_turns(id), position INTEGER NOT NULL CHECK(position>=0), last_position INTEGER NOT NULL CHECK(last_position>=position), group_id TEXT NOT NULL, first_ordinal INTEGER NOT NULL, last_ordinal INTEGER NOT NULL, record BLOB NOT NULL, PRIMARY KEY(turn_id,position)) STRICT',
+  'CREATE TABLE agent_steps_frame_blocks(turn_id TEXT NOT NULL REFERENCES agent_steps_turns(id), position INTEGER NOT NULL CHECK(position>=0), last_position INTEGER NOT NULL CHECK(last_position>=position), group_id BLOB NOT NULL CHECK(length(group_id)>1), first_ordinal INTEGER NOT NULL, last_ordinal INTEGER NOT NULL, record BLOB NOT NULL, PRIMARY KEY(turn_id,position)) STRICT',
   'CREATE INDEX agent_steps_frame_block_ids ON agent_steps_frame_blocks(turn_id,group_id,first_ordinal,last_ordinal)',
 ];
 function blockFormat(database: DatabaseSync) {
@@ -97,7 +97,28 @@ function frameAddress(id: string) {
     ? { group: `ordinal:${id.slice(0, boundary)}`, ordinal }
     : { group: `literal:${id}`, ordinal: 0 };
 }
+function storedFrameGroup(group: string): Buffer {
+  const match = /^ordinal:([a-f0-9]{64})$/.exec(group);
+  return match
+    ? Buffer.concat([Buffer.from([1]), Buffer.from(match[1]!, 'hex')])
+    : Buffer.concat([Buffer.from([0]), Buffer.from(JSON.stringify(group))]);
+}
+function logicalFrameGroup(value: unknown): string {
+  if (!(value instanceof Uint8Array))
+    throw new Error('DURABLE_AGENT_FRAME_DAMAGED');
+  const bytes = Buffer.from(value);
+  const group =
+    bytes[0] === 1 && bytes.length === 33
+      ? `ordinal:${bytes.subarray(1).toString('hex')}`
+      : bytes[0] === 0
+        ? JSON.parse(bytes.subarray(1).toString('utf8'))
+        : undefined;
+  if (typeof group !== 'string' || !storedFrameGroup(group).equals(bytes))
+    throw new Error('DURABLE_AGENT_FRAME_DAMAGED');
+  return group;
+}
 function parseBlock(row: Record<string, unknown>): AgentFrame[] {
+  const group = logicalFrameGroup(row.group_id);
   if (!(row.record instanceof Uint8Array) || row.record.byteLength <= 32)
     throw new Error('DURABLE_AGENT_FRAME_DAMAGED');
   const record = Buffer.from(row.record);
@@ -129,7 +150,7 @@ function parseBlock(row: Record<string, unknown>): AgentFrame[] {
         row.turn_id,
         row.position,
         row.last_position,
-        row.group_id,
+        group,
         row.first_ordinal,
         row.last_ordinal,
         raw,
@@ -152,9 +173,9 @@ function parseBlock(row: Record<string, unknown>): AgentFrame[] {
   return raw.wires.map((wire, index) =>
     frameSchema.parse({
       version: 1,
-      id: String(row.group_id).startsWith('ordinal:')
-        ? `${String(row.group_id).slice(8)}:${Number(row.first_ordinal) + index}`
-        : String(row.group_id).slice(8),
+      id: group.startsWith('ordinal:')
+        ? `${group.slice(8)}:${Number(row.first_ordinal) + index}`
+        : group.slice(8),
       position: raw.positions?.[index] ?? Number(row.position) + index,
       wire,
       digest: hash(wire),
@@ -172,10 +193,9 @@ function putBlock(
   const previous = agentStatement(
     database,
     'SELECT * FROM agent_steps_frame_blocks WHERE turn_id=? AND group_id=? ORDER BY first_ordinal DESC LIMIT 1',
-  ).get(turnId, incomingAddress.group);
+  ).get(turnId, storedFrameGroup(incomingAddress.group));
   let append =
     previous &&
-    previous.group_id === incomingAddress.group &&
     Number(previous.last_ordinal) + 1 === incomingAddress.ordinal &&
     Number(previous.last_ordinal) -
       Number(previous.first_ordinal) +
@@ -225,7 +245,7 @@ function putBlock(
       turnId,
       first.position,
       last.position,
-      address.group,
+      storedFrameGroup(address.group),
       address.ordinal,
       frameAddress(last.id).ordinal,
       Buffer.concat([
@@ -243,7 +263,7 @@ function putBlock(
     turnId,
     first.position,
     last.position,
-    address.group,
+    storedFrameGroup(address.group),
     address.ordinal,
     frameAddress(last.id).ordinal,
     Buffer.concat([
@@ -279,7 +299,7 @@ export function readAgentFrame(
   const block = agentStatement(
     database,
     'SELECT * FROM agent_steps_frame_blocks WHERE turn_id=? AND group_id=? AND first_ordinal<=? ORDER BY first_ordinal DESC LIMIT 1',
-  ).get(turnId, address.group, address.ordinal);
+  ).get(turnId, storedFrameGroup(address.group), address.ordinal);
   return block && Number(block.last_ordinal) >= address.ordinal
     ? parseBlock(block).find((frame) => frame.id === id)
     : undefined;

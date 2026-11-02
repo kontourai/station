@@ -561,7 +561,10 @@ it.each([65_536, 1_048_576, 1_048_573])(
           turn.id,
           start,
           end,
-          'ordinal:prefix',
+          Buffer.concat([
+            Buffer.from([0]),
+            Buffer.from(JSON.stringify('ordinal:prefix')),
+          ]),
           start,
           end,
           Buffer.concat([

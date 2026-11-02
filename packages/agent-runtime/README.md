@@ -334,3 +334,7 @@ is retained. Control nodes use ordinary rowid tables to avoid index-page overflo
 Private control-node keys store all 32 SHA-256 bytes; public wire digests and
 identities retain their original textual representation. The offline audit
 checks the binary keys against reconstructed node bytes and declared references.
+
+Native frame-group keys also retain their full 32-byte hash in a tagged binary
+encoding. Arbitrary caller IDs use lossless JSON-string encoding. The reader
+rejects noncanonical group encodings before reconstructing frame identities.
