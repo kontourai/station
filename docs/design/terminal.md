@@ -316,7 +316,10 @@ are checked against the module's own `ghostty_type_json()` manifest.
 
 The emulator runs in a Web Worker. Only rows the render state marks dirty
 cross to the UI thread, named by stable row ids; one frame is in flight at a
-time and hidden terminals produce none. Replayed journal output updates the
+time and hidden terminals produce none. A view copies the output it posts to
+its worker, so views sharing one store session (a put-away dock region and
+the lower panel) each keep theirs, and a view with no box never resizes the
+shared PTY. Replayed journal output updates the
 screen with the reply writer and bell detached, so a reattach cannot type
 query answers at the prompt. Program titles stay untrusted text. Links admit
 only `http:`/`https:` URLs and `path:line[:col]`; OSC 8 targets are read

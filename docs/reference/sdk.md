@@ -104,7 +104,11 @@ from before this attachment. The view renders replayed output but answers none
 of its device queries and rings none of its bells. Terminal replies (device
 attributes, status reports) for live output are written back through
 `session.write` only while the session is `ready`. A `readOnly` session never
-receives input, pastes or resizes.
+receives input, pastes or resizes. Several views may subscribe to one session:
+the view copies output before handing it to its worker, so a session may give
+every listener, and later subscribers, the same array. A view with no box (a
+hidden tab, a dock region put away) keeps its last grid and never resizes the
+session.
 
 `toTerminalViewSession(session)` adapts a `TerminalSession` from the
 [terminal session store](#terminal-output-sessions). Output the store hands a
@@ -121,7 +125,7 @@ Optional props:
 | `fontSize`, `fontFamily` | Font in CSS pixels; the default stack ends in a bundled Nerd Font symbols face |
 | `screenReaderMode` | Keeps a navigable text mirror and polite announcements; off means no mirror is kept |
 | `detectScreenReader` | Host signal used when `screenReaderMode` is unset; browsers expose none themselves |
-| `touchKeys` | Shows the Ctrl+C, Esc, Tab, arrow and sticky Ctrl key row (44px targets) |
+| `touchKeys` | Shows the Ctrl+C (`^C`), Esc, Tab, arrow and sticky Ctrl key row: 44px targets that fit a 390px phone; narrower, the row scrolls and fades at the edge with more keys |
 | `onOpenLink(target)` | Receives `{ kind: 'url', url }` (http and https only) or `{ kind: 'path', path, line, column? }` |
 | `onAddToChat(text)` | Adds an Add to chat item to the context menu |
 | `onTitleChange`, `onBell`, `onReconnect` | Program title (untrusted text), bell, and retry of an exited or failed session |
