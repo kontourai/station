@@ -150,6 +150,7 @@ export async function runRuntimeHealthChecks(
 }
 
 export async function startRuntimeHealthChecks(context: {
+  maintainOwnedWork: () => Promise<void>;
   timers: NodeJS.Timeout[];
   logger: {
     debug: (message: string, metadata?: Record<string, unknown>) => void;
@@ -164,6 +165,7 @@ export async function startRuntimeHealthChecks(context: {
   });
   const interval = context.interval ?? MS_PER_MINUTE;
   const runHealthChecks = async () => {
+    await context.maintainOwnedWork();
     await context.runHealthChecks();
   };
 

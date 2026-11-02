@@ -154,7 +154,23 @@
 
     "scripts/__tests__/verified-pnpm-bootstrap.test.ts",
 
-    "patches/modelcontextprotocol-client-2.4.0.patch"
+    "patches/modelcontextprotocol-client-2.4.0.patch",
+
+    "src-server/providers/adapters/codex-adapter.ts",
+
+    "src-server/services/infra/managed-engine-workspace.ts",
+
+    "src-server/providers/__tests__/codex-adapter.test.ts",
+
+    "src-server/services/orchestration/orchestration-session-state.ts",
+
+    "src-server/services/orchestration/__tests__/session-summary-managed-workspace.test.ts",
+
+    "src-server/services/acp/managed-acp-workspace.ts",
+
+    "src-server/providers/__tests__/acp-adapter.test.ts",
+
+    "scripts/run-test-mutations.mjs"
   ],
 
   "checks": [

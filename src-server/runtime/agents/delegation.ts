@@ -58,6 +58,7 @@ class DelegationDepthLimitError extends Error {
 export function createChildDelegationContext(options: {
   agentSlug: AgentId | string;
   conversationId?: string;
+  sessionId?: string;
   spec?: AgentSpec | null;
   current?: AgentDelegationContext;
 }): AgentDelegationContext {
@@ -73,6 +74,7 @@ export function createChildDelegationContext(options: {
     maxDepth: policy.maxDepth,
     parentAgentSlug: agentId(options.agentSlug),
     parentConversationId: options.conversationId,
+    ...(options.sessionId ? { parentSessionId: options.sessionId } : {}),
     rootAgentSlug: options.current?.rootAgentSlug ?? agentId(options.agentSlug),
     rootConversationId:
       options.current?.rootConversationId ?? options.conversationId,

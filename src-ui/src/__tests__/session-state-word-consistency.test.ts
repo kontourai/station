@@ -48,8 +48,15 @@ const LANE_VOCABULARY: Record<SessionLaneId, ReadonlySet<string>> = {
     'Blocked',
     'Waiting on you',
   ]),
-  // In flight. The only words that may claim work is happening.
-  running: new Set(['Running', 'No progress', '1 sub-agent']),
+  // Busy execution or retained cleanup; custody words do not claim progress.
+  running: new Set([
+    'Running',
+    'No progress',
+    '1 sub-agent',
+    'Stopping',
+    'Waiting on another Station process',
+    'Unknown',
+  ]),
   // Idle or stranded — not finished, not in flight, not yours to discharge.
   // "Read only" belongs to this lane by design (archive#1783: an
   // unanswerable session did not FINISH, it stopped being reachable, so it
@@ -99,6 +106,32 @@ const UNANSWERABLE = {
  * empty and no state is unrepresented.
  */
 const MIXED_FIXTURE: OrchestrationSessionSummary[] = [
+  ...(['stopping', 'waiting-on-peer', 'unknown'] as const).map((state) =>
+    session({
+      threadId: `cleanup-${state}`,
+      lifecycleState: 'running',
+      status: 'closed',
+      hasActiveTurn: false,
+      ownedWork: {
+        state,
+        ownLifecycleState: 'canceled',
+        runningChildCount: 0,
+        pendingStopCount: 1,
+        pendingStops: [
+          {
+            custody:
+              state === 'stopping'
+                ? 'local'
+                : state === 'waiting-on-peer'
+                  ? 'peer'
+                  : 'unknown',
+            reason: 'retained-owner',
+            count: 1,
+          },
+        ],
+      },
+    }),
+  ),
   // A1 shape 1 (#1069): lane Idle, row used to say "Running".
   session({
     threadId: 'a1-idle-running',

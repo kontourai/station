@@ -411,6 +411,9 @@ export class MuseServeSession {
   private plan: MuseServeApprovalPlan = museServeApprovalPlan(undefined);
   private model?: string;
   private stopped = false;
+  private stopHost?: ServeHost;
+  private stopTask?: Promise<{ terminationConfirmed: boolean }>;
+  private stopConfirmed = false;
   private sending = false;
   private readonly turns = new Map<string, ServeTurn>();
   private readonly itemKinds = new Map<string, string>();
@@ -450,7 +453,7 @@ export class MuseServeSession {
   }
 
   get hostPid(): number | undefined {
-    return this.host?.spawned.process.pid;
+    return (this.host ?? this.stopHost)?.spawned.process.pid;
   }
 
   /** Spawns the host, verifies the handshake, and starts the MSP session. */
@@ -696,29 +699,51 @@ export class MuseServeSession {
   }
 
   /**
-   * Ends the session. Always completes the teardown; resolves with whether
-   * the host's termination was confirmed (an unconfirmed host keeps its
-   * owned-process record for the startup sweep).
+   * Retain an unconfirmed host and retry only its original live leader.
    */
   async stop(): Promise<{ terminationConfirmed: boolean }> {
-    if (this.stopped) return { terminationConfirmed: true };
-    this.stopped = true;
-    for (const pending of this.approvals.values()) {
-      this.clearDeadline(pending);
-      this.clearEscalation(pending);
-      this.settleUnanswered(pending, 'cancelled');
+    if (this.stopConfirmed) return { terminationConfirmed: true };
+    if (this.stopTask) return this.stopTask;
+    this.stopTask = this.stopOnce().finally(() => {
+      this.stopTask = undefined;
+    });
+    return this.stopTask;
+  }
+
+  private async stopOnce(): Promise<{ terminationConfirmed: boolean }> {
+    if (!this.stopped) {
+      this.stopHost = this.host;
+      this.stopped = true;
+      for (const pending of this.approvals.values()) {
+        this.clearDeadline(pending);
+        this.clearEscalation(pending);
+        this.settleUnanswered(pending, 'cancelled');
+      }
+      this.approvals.clear();
+      for (const turn of this.turns.values()) {
+        if (turn.settled) continue;
+        this.closeOpenTools(turn);
+        this.settle(turn, {
+          method: 'turn.aborted',
+          reason: 'session-stopped',
+        });
+      }
+      settleOpenMuseChildren(this.childWork, { close: true });
     }
-    this.approvals.clear();
-    for (const turn of this.turns.values()) {
-      if (turn.settled) continue;
-      this.closeOpenTools(turn);
-      this.settle(turn, {
-        method: 'turn.aborted',
-        reason: 'session-stopped',
-      });
+    if (this.stopHost) {
+      const processHandle = this.stopHost.spawned.process;
+      if (
+        processHandle.exitCode !== null ||
+        processHandle.signalCode !== null
+      ) {
+        this.stopHost.connection.close();
+        return { terminationConfirmed: false };
+      }
+      this.host = this.stopHost;
     }
-    settleOpenMuseChildren(this.childWork, { close: true });
-    return { terminationConfirmed: await this.closeHost() };
+    this.stopConfirmed = await this.closeHost(true);
+    if (this.stopConfirmed) this.stopHost = undefined;
+    return { terminationConfirmed: this.stopConfirmed };
   }
 
   // --------------------------------------------------------------- host
@@ -867,12 +892,10 @@ export class MuseServeSession {
   }
 
   /**
-   * Ends the current host. Returns whether its termination was confirmed.
-   * Only a confirmed stop drops the owned-process record: a host Station
-   * could not confirm stopped keeps it, so the startup sweep can still reap
-   * it if it outlives Station, and it is released if it exits later.
+   * Close the transport and ask its owner to terminate the host. A Stop
+   * retains unconfirmed custody; leader exit alone cannot settle that stop.
    */
-  private async closeHost(): Promise<boolean> {
+  private async closeHost(retainUnconfirmed = false): Promise<boolean> {
     const host = this.host;
     if (!host) return true;
     this.host = undefined;
@@ -886,6 +909,7 @@ export class MuseServeSession {
         pid: host.spawned.process.pid,
         error: error instanceof Error ? error.message : String(error),
       });
+      if (retainUnconfirmed) return false;
       const processHandle = host.spawned.process;
       if (
         processHandle.exitCode === null &&
