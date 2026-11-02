@@ -449,6 +449,9 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
   );
   const decodeVideo = useCallback(
     async (frame: LiveSurfaceFrame) => {
+      // Geometry first, as for images: overlays and input follow the
+      // stream even before (or without) a decoded picture.
+      adoptFrame(frame.header);
       let decoder = videoDecoderRef.current;
       if (!decoder) {
         decoder = new LiveSurfaceH264Decoder({
@@ -481,7 +484,7 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
         surfaceRef.current.declineH264();
       }
     },
-    [paint, closeVideoDecoder, resyncVideo, cancelResync],
+    [adoptFrame, paint, closeVideoDecoder, resyncVideo, cancelResync],
   );
   useEffect(() => closeVideoDecoder, [closeVideoDecoder]);
 

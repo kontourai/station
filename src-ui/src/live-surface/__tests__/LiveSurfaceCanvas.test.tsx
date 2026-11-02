@@ -424,18 +424,30 @@ describe('LiveSurfaceCanvas', () => {
   test('a frame whose picture cannot be decoded here still sets the frame geometry', async () => {
     // Overlays (the Device accessibility outline) and input wait on the
     // frame size, which must not hang on this browser decoding the picture.
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue(
+      new DOMRect(0, 0, 640, 400),
+    );
     for (const decode of [
       undefined,
       vi.fn(async () => Promise.reject(new Error('no'))),
     ]) {
       vi.stubGlobal('createImageBitmap', decode);
       const h = harness();
+      const overlay = vi.fn(
+        (geometry: { shown: { width: number; height: number } }) => (
+          <span data-testid="overlay-shown">
+            {`${geometry.shown.width}x${geometry.shown.height}`}
+          </span>
+        ),
+      );
       const view = render(
         <LiveSurfaceCanvas
           apiBase={API}
           surfaceId={SURFACE}
           label="Browser: example.com"
           transport={h.transport as never}
+          fit={{ aspect: 1 }}
+          renderOverlay={overlay}
         />,
       );
       await flush();
@@ -445,6 +457,11 @@ describe('LiveSurfaceCanvas', () => {
         'live-surface-canvas',
       ) as HTMLCanvasElement;
       expect([canvas.width, canvas.height]).toEqual([1280, 800]);
+      expect(screen.getByTestId('live-surface-overlay')).toBeTruthy();
+      expect(overlay).toHaveBeenLastCalledWith(
+        expect.objectContaining({ shown: { width: 1280, height: 800 } }),
+      );
+      expect(screen.getByTestId('overlay-shown').textContent).toBe('1280x800');
       expect(drawImage).not.toHaveBeenCalled();
       view.unmount();
     }
@@ -1779,6 +1796,63 @@ describe('LiveSurfaceCanvas: client H.264 (#4418)', () => {
     codecs.releaseWithheld();
     expect(codecs.pictures[2]!.close).toHaveBeenCalledTimes(1);
     expect(drawImage).toHaveBeenCalledTimes(1);
+  });
+
+  test('an H.264 frame gives the overlay and input its geometry before any picture is decoded', async () => {
+    const codecs = webCodecs(true);
+    codecs.withholdOutput = true;
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue(
+      new DOMRect(0, 0, 576, 1280),
+    );
+    const h = harness();
+    const overlay = vi.fn(
+      (geometry: { shown: { width: number; height: number } }) => (
+        <span data-testid="overlay-shown">
+          {`${geometry.shown.width}x${geometry.shown.height}`}
+        </span>
+      ),
+    );
+    render(
+      <LiveSurfaceCanvas
+        apiBase={API}
+        surfaceId={SURFACE}
+        label="Device: emulator"
+        transport={h.transport as never}
+        fit={{ aspect: 1 }}
+        renderOverlay={overlay}
+      />,
+    );
+    await flush();
+    const stream = h.streams.at(-1)!;
+    await stream.push(stateRecord(lease(0)));
+    await stream.push(videoRecord(1, true));
+    // The decoder holds the unit: no picture has come out.
+    expect(codecs.pictures).toHaveLength(0);
+    expect(drawImage).not.toHaveBeenCalled();
+    const canvas = screen.getByTestId(
+      'live-surface-canvas',
+    ) as HTMLCanvasElement;
+    expect([canvas.width, canvas.height]).toEqual([576, 1280]);
+    expect(screen.getByTestId('overlay-shown').textContent).toBe('576x1280');
+    // Input maps against that geometry already.
+    layoutCanvas({ left: 0, top: 0, width: 576, height: 1280 });
+    fireEvent.pointerDown(canvas, {
+      clientX: 288,
+      clientY: 320,
+      button: 0,
+      pointerId: 1,
+    });
+    fireEvent.pointerUp(canvas, {
+      clientX: 288,
+      clientY: 320,
+      button: 0,
+      pointerId: 1,
+    });
+    await flush();
+    expect(h.inputs.flatMap((batch) => batch.events)).toEqual([
+      expect.objectContaining({ type: 'down', x: 288, y: 320 }),
+      expect.objectContaining({ type: 'up', x: 288, y: 320 }),
+    ]);
   });
 
   test('a profile the browser refuses reconnects for images', async () => {
