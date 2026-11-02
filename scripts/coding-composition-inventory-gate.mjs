@@ -254,6 +254,16 @@ const expectedDependencies = new Map(
     // display-only — a renderer-name → SVG-glyph lookup that authorises
     // nothing and reaches no privileged surface.
     'src-ui/src/workspace-panes/workspacePaneGlyphs.tsx': 'presentation',
+    // A terminal a plugin opened through related panes
+    // (docs/design/terminal.md, "Plugins"): the pane attaches to the one
+    // session its record names with the existing terminal renderer as a
+    // leaf, read-only without the viewer's `terminal:operate`, and the host
+    // adapter lists sessions or starts the server-resolved `shell` profile on
+    // the shared session store. Like engine sign-in, the server chooses the
+    // program and the working directory; neither file names one.
+    'src-ui/src/workspace-panes/TerminalSessionPane.tsx': 'terminal-process',
+    'src-ui/src/workspace-panes/relatedTerminalSessions.ts':
+      'terminal-process',
   }),
 );
 const semantic =
