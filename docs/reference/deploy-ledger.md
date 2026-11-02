@@ -28,6 +28,7 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 
 | Date (UTC) | Channel | Version | Ship SHA | Gate | Run |
 | --- | --- | --- | --- | --- | --- |
+| 2026-11-02T00:57:48Z | nightly-desktop | 0.1.11-nightly.2497 | `a5fcd6b` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/41364353618) |
 | 2026-11-02T00:57:46Z | nightly-android | 0.1.11-nightly.2497 | `a5fcd6b` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/41364353618) |
 | 2026-11-02T00:06:14Z | nightly-npm | 0.11.0-nightly.2496.41364353618 | `a5fcd6b` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/41364353618) |
 | 2026-11-01T16:34:35Z | nightly-desktop | 0.1.11-nightly.2496.1 | `8911724` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/41321345603) |
@@ -399,6 +400,28 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 | 2026-08-28T16:30:48Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-28T16:25:30Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-27T10:54:02Z | nightly-android | 0.1.2-nightly.2430 | `c4229f4` | no test gate existed for this ship: the nightly test gate landed after it (station#4565 merged 2026-08-27T16:04:07Z, this nightly job completed 2026-08-27T10:54:02Z) | [run](https://github.com/kontourai/station-archive/actions/runs/33064078473) |
+
+## 2026-11-02T00:57:48Z · nightly-desktop · 0.1.11-nightly.2497
+
+- Ship SHA: `a5fcd6bb2a9ecb72f82e85a0f6239fb7b031937f`
+- Artifact built at: `2026-11-02T00:04:18.231Z` (not provider upload/record time)
+- Artifact: github-release:nightly-desktop (cohort-finalized)
+- Note: ios: TestFlight delivery success (run 41364353618)
+
+### Changelog
+
+Commits since `8911724` ([full sha](https://github.com/kontourai/station/commit/891172481529f95c32261ba0a98df65679b21b86)):
+
+**Fixes**
+
+- [#4431](https://github.com/kontourai/station/pull/4431) fix(coding): one terminal tab list per binding and tidy the terminal pane
+- [#4426](https://github.com/kontourai/station/pull/4426) fix(cli): pass the UI listener script on stdin to avoid Windows ENAMETOOLONG
+- [#4425](https://github.com/kontourai/station/pull/4425) fix: repair main qualification and toasts on insecure origins
+
+**Other**
+
+- [#4429](https://github.com/kontourai/station/pull/4429) test: drop stale linear-track history from the context meter test
+- [#4428](https://github.com/kontourai/station/pull/4428) chore: remove noise from the supervisor, terminal and process changes
 
 ## 2026-11-02T00:57:46Z · nightly-android · 0.1.11-nightly.2497
 

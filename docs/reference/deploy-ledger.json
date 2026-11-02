@@ -1,5 +1,39 @@
 [
   {
+    "timestampUtc": "2026-11-02T00:57:48Z",
+    "channel": "nightly-desktop",
+    "version": "0.1.11-nightly.2497",
+    "sha": "a5fcd6bb2a9ecb72f82e85a0f6239fb7b031937f",
+    "artifactBuiltAt": "2026-11-02T00:04:18.231Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/41364353618",
+    "artifacts": [
+      "github-release:nightly-desktop (cohort-finalized)"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 41364353618)"
+    ],
+    "changelog": {
+      "previousSha": "891172481529f95c32261ba0a98df65679b21b86",
+      "groups": {
+        "feat": [],
+        "fix": [
+          "[#4431](https://github.com/kontourai/station/pull/4431) fix(coding): one terminal tab list per binding and tidy the terminal pane",
+          "[#4426](https://github.com/kontourai/station/pull/4426) fix(cli): pass the UI listener script on stdin to avoid Windows ENAMETOOLONG",
+          "[#4425](https://github.com/kontourai/station/pull/4425) fix: repair main qualification and toasts on insecure origins"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#4429](https://github.com/kontourai/station/pull/4429) test: drop stale linear-track history from the context meter test",
+          "[#4428](https://github.com/kontourai/station/pull/4428) chore: remove noise from the supervisor, terminal and process changes"
+        ]
+      },
+      "note": null,
+      "commitCount": 5
+    }
+  },
+  {
     "timestampUtc": "2026-11-02T00:57:46Z",
     "channel": "nightly-android",
     "version": "0.1.11-nightly.2497",
