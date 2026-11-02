@@ -795,6 +795,9 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
         : `Reconnecting… The frame shown is ${frameAge} s old.`;
   else if (surface.status === 'suspended')
     statusText = 'Paused while this pane is hidden.';
+  else if (surface.status === 'queued')
+    statusText =
+      'Waiting: other live views are streaming. Hide one to show this.';
   else if (surface.status === 'unavailable')
     statusText = 'This surface is not available.';
   else if (surface.status === 'denied')

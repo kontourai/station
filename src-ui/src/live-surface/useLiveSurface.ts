@@ -24,6 +24,10 @@ import {
   useState,
 } from 'react';
 import { useDocumentVisible } from '../lib/documentVisibility';
+import {
+  type LiveSurfaceStreamAdmission,
+  liveSurfaceStreamAdmission,
+} from './liveSurfaceStreamAdmission';
 
 /**
  * Viewer side of a live surface (#90): one authenticated, length-prefixed
@@ -39,6 +43,11 @@ import { useDocumentVisible } from '../lib/documentVisibility';
  *   and a producer with no viewers stops. Nothing streams to a pane nobody
  *   can see — it would spend the ~6-per-origin connection budget (ADR 0018)
  *   and the relay's bandwidth for nothing.
+ * - Admitted (#2760): a stream opens only with a slot from the per-origin
+ *   frame-stream admission (`liveSurfaceStreamAdmission.ts`), so input and
+ *   lease requests always have a connection. Past the cap the viewer reads
+ *   `queued` until a slot frees; it holds no slot while it waits to
+ *   reconnect.
  * - Reconnects with capped exponential backoff after a drop; a 404/403 is a
  *   typed terminal state, not something to hammer.
  * - Input is coalesced (consecutive moves collapse to the latest) and sent
@@ -68,6 +77,8 @@ import { useDocumentVisible } from '../lib/documentVisibility';
 
 export type LiveSurfaceConnectionStatus =
   | 'connecting'
+  /** Waiting for a frame-stream slot on this origin (#2760). */
+  | 'queued'
   | 'live'
   | 'reconnecting'
   | 'suspended'
@@ -124,6 +135,8 @@ export interface UseLiveSurfaceOptions {
   projectSlug?: string;
   /** Ask for H.264 access units; the caller can decode them (#4418). */
   acceptH264?: boolean;
+  /** Test seam; defaults to the page-wide frame-stream admission. */
+  streamAdmission?: LiveSurfaceStreamAdmission;
 }
 
 export interface UseLiveSurfaceResult {
@@ -263,6 +276,7 @@ export function useLiveSurface(
     now = Date.now,
     projectSlug,
     acceptH264 = false,
+    streamAdmission = liveSurfaceStreamAdmission,
   } = options;
   const onFrameRef = useRef(options.onFrame);
   onFrameRef.current = options.onFrame;
@@ -270,6 +284,8 @@ export function useLiveSurface(
   nowRef.current = now;
   const transportRef = useRef(transport);
   transportRef.current = transport;
+  const admissionRef = useRef(streamAdmission);
+  admissionRef.current = streamAdmission;
 
   const documentVisible = useDocumentVisible();
   const intersecting = useIntersecting(visibilityRef);
@@ -343,7 +359,31 @@ export function useLiveSurface(
       }, delay);
     };
 
+    let releaseSlot: (() => void) | null = null;
     const connect = async () => {
+      const release = await admissionRef.current.admit(
+        url,
+        abort.signal,
+        () => {
+          if (!stopped) setStatus('queued');
+        },
+      );
+      if (!release) return;
+      if (stopped) {
+        release();
+        return;
+      }
+      setStatus((current) => (current === 'queued' ? 'connecting' : current));
+      releaseSlot = release;
+      try {
+        await stream();
+      } finally {
+        release();
+        if (releaseSlot === release) releaseSlot = null;
+      }
+    };
+
+    const stream = async () => {
       let response: Response;
       try {
         response = await transportRef.current(url, {
@@ -447,6 +487,7 @@ export function useLiveSurface(
     return () => {
       stopped = true;
       abort.abort();
+      releaseSlot?.();
       if (timer) clearTimeout(timer);
     };
   }, [
