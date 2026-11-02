@@ -124,7 +124,7 @@ By default a successful live open publishes a bounded, ten-minute reveal intent
 for the calling principal, Project and conversation. `reveal: false` opens in
 the background. Repeated opens reuse that intent. The active matching chat polls
 for new intents and opens/reuses the canonical Device pane, subject to current
-Station authority and device view access. Explicit intents survive an initial
+Station authority and device view access. The operator’s own current paired Device may receive reveal intents within its granted scope, without gaining Device drive or administration authority. Explicit intents survive an initial
 poll failure; opening an existing session by itself creates no historical reveal.
 A bounded, authority/Project/conversation-scoped in-memory history remembers
 handled intents across chat remounts in the same tab, preserving dismissals.

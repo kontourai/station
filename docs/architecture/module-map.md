@@ -5100,7 +5100,7 @@ adapter are not implemented by naming them in the contract.
 records, browser generations and bounded action history. Profiles are keyed by
 canonical Project ID and principal under `browser/profiles/`, with separate
 cookie jars/processes for the operator and each Project admin.
-`browser-access.ts` admits the operator or active Project admins/owners;
+`browser-access.ts` admits the operator or active Project admins/owners for drive, and the operator’s own current paired Device for scoped view;
 `actorOwnsSessionProfile` lets the operator see all profiles and restricts other
 callers to their own. The personal-host gate is necessary, not authority by
 itself. Internal credentials do not become human Pane authority.
@@ -5136,7 +5136,7 @@ page evaluation. Select is hit-tested and respects inherited fieldset disability
 Human claims clear existing snapshot refs, including after hand-back; snapshots
 overlapping any human hold or lacking a bound lease produce no usable refs.
 Media requests are audited when sent, including interrupted requests. The
-live-surface binder resets target-local color emulation on human claims. The current [Browser Agent decision](../decisions/browser-agent-actions-and-bound-channel.md)
+live-surface binder restores the saved human appearance on human claims. The current [Browser Agent decision](../decisions/browser-agent-actions-and-bound-channel.md)
 records the authority constraints and proposed cross-engine binding. Control
 operations capture a lease fence and check it around asynchronous steps. JavaScript evaluation additionally needs the
 Project's default-off permission; timeout/preemption does not undo an effect
