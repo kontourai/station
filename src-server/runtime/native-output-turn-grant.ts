@@ -43,12 +43,19 @@ export interface NativeOutputGrantFacts {
 export interface NativeOutputTurnLease {
   isCurrent(): boolean;
 }
+export type DurableNativeOutputFacts = Omit<
+  NativeOutputGrantFacts,
+  'configurationLease'
+>;
 
 export interface NativeOutputCallFacts extends NativeOutputGrantFacts {
   callId: string;
 }
 
 export interface NativeOutputGrantAuthority {
+  captureForRecovery?(
+    grant: NativeOutputTurnGrant,
+  ): DurableNativeOutputFacts | null;
   issue(
     facts: NativeOutputGrantFacts,
     lease: NativeOutputTurnLease,
@@ -122,6 +129,57 @@ export function currentNativeOutputCallScope():
   | NativeOutputCallScope
   | undefined {
   return nativeOutputCallScopes.getStore();
+}
+export function captureDurableNativeOutputFacts():
+  | DurableNativeOutputFacts
+  | undefined {
+  const context = nativeOutputTurnGrants.getStore();
+  if (!context) return undefined;
+  const facts = context.authority.captureForRecovery?.(context.grant);
+  if (!facts)
+    throw new Error('Native turn authority cannot be retained for recovery.');
+  return facts;
+}
+export function isDurableNativeOutputFacts(
+  value: unknown,
+): value is DurableNativeOutputFacts {
+  if (!value || typeof value !== 'object' || types.isProxy(value)) return false;
+  const fields = Object.getOwnPropertyDescriptors(value);
+  const allowed = [
+    'threadId',
+    'turnId',
+    'principal',
+    'tenantId',
+    'adapterId',
+    'workspaceRoot',
+  ];
+  if (
+    Reflect.ownKeys(value).some(
+      (key) => typeof key !== 'string' || !allowed.includes(key),
+    ) ||
+    Object.values(fields).some(
+      (field) => !field.enumerable || !('value' in field),
+    )
+  )
+    return false;
+  const captured = captureFacts({
+    ...Object.fromEntries(
+      Object.entries(fields).map(([key, field]) => [key, field.value]),
+    ),
+    configurationLease: null,
+  });
+  return (
+    !!captured &&
+    boundedId(captured.threadId) &&
+    boundedId(captured.turnId) &&
+    boundedId(captured.adapterId) &&
+    !!copyPrincipal(captured.principal) &&
+    (captured.tenantId === undefined || boundedId(captured.tenantId)) &&
+    (captured.workspaceRoot === undefined ||
+      (typeof captured.workspaceRoot === 'string' &&
+        captured.workspaceRoot.length > 0 &&
+        captured.workspaceRoot.length <= 4096))
+  );
 }
 
 /** Private companion for the dedicated native declaration tool only. */
@@ -393,6 +451,34 @@ export function createNativeOutputGrantAuthority(): NativeOutputGrantAuthority {
   ) => reservations.get(turnKey) === reservation && !reservation.cancelled;
 
   return {
+    captureForRecovery(grant) {
+      const state = grants.get(grant);
+      if (
+        !state ||
+        disposed ||
+        state.revoked ||
+        !state.issuanceOpen ||
+        !current(state.checker)
+      )
+        return null;
+      if (
+        disposed ||
+        state.revoked ||
+        !state.issuanceOpen ||
+        grants.get(grant) !== state
+      )
+        return null;
+      return Object.freeze({
+        threadId: state.threadId,
+        turnId: state.turnId,
+        principal: Object.freeze({ ...state.principal }),
+        adapterId: state.adapterId,
+        ...(state.tenantId === undefined ? {} : { tenantId: state.tenantId }),
+        ...(state.workspaceRoot === undefined
+          ? {}
+          : { workspaceRoot: state.workspaceRoot }),
+      });
+    },
     issue(facts, lease) {
       // Every fact, including the opaque configuration lease identity, is
       // captured before the owner callback below can reenter or mutate input.
