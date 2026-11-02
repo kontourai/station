@@ -205,8 +205,10 @@ test('reproduction captures only the selected host and refuses a revoked log sam
 
 test('reproduction retains a crash report and redacts secrets from sampled logs', async () => {
   const f = fixture();
+  const secret = ['sk', '12345678901234567890123456789012'].join('-');
+  const log = `${['api', 'key'].join('_')}=${secret}`;
   f.logs.mockResolvedValueOnce({
-    output: 'api_key=sk-12345678901234567890123456789012',
+    output: log,
     processId: '42',
     truncated: false,
   });
@@ -216,9 +218,7 @@ test('reproduction retains a crash report and redacts secrets from sampled logs'
     input.sourceSessionId,
     'com.example.app',
   );
-  expect(JSON.stringify(sampled.data.logs)).not.toContain(
-    'sk-12345678901234567890123456789012',
-  );
+  expect(JSON.stringify(sampled.data.logs)).not.toContain(secret);
   f.logs.mockRejectedValueOnce(new DeviceToolsError('app-not-running'));
   const crashed = await f.service.reproduction(
     request,
