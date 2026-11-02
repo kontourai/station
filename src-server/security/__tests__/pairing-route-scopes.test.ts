@@ -1344,6 +1344,7 @@ describe('pairing-route-scopes: table-driven lookups', () => {
       ['POST', base, 'terminal:operate'],
       ['POST', `${base}/terminal-id/input`, 'terminal:operate'],
       ['POST', `${base}/terminal-id/resize`, 'terminal:operate'],
+      ['POST', `${base}/terminal-id/restart`, 'terminal:operate'],
       ['DELETE', `${base}/terminal-id`, 'terminal:operate'],
     ] as const) {
       const scope = requiredPairingScope(method, path);

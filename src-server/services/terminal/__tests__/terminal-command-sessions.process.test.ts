@@ -367,24 +367,39 @@ describe.skipIf(windows)('explicit restart (in-process host)', () => {
   it('restarts through the HTTP seam and refuses a command session', async () => {
     const home = makeTempDir('restart-http-');
     const root = await realpath(makeTempDir('restart-http-root-'));
+    // `x-role`: the operator, an observe-only grant, or a caller the
+    // route's operator admission refuses (a member, a personal token).
+    const role = (request: Request) => request.headers.get('x-role');
     const sessions = new TerminalSessions<Request>(
       home,
       new InProcessShellHost(new NodePtyAdapter(), () => '/bin/sh'),
-      { authorize: () => true, resolveRoot: async () => root },
+      {
+        authorize: (request, _scope, operation) =>
+          role(request) === 'observer'
+            ? operation === 'observe'
+            : role(request) !== 'member',
+        resolveRoot: async () => root,
+      },
     );
     const routes = createTerminalSessionRoutes(
       sessions,
       () => 'project-a',
-      () => true,
+      (request) => role(request) !== 'member',
     );
     const operator = new Request('http://localhost/');
     const opened = await sessions.open(operator, scope, { cols: 80, rows: 24 });
-    const restart = (id: string, body: unknown) =>
+    const restart = (id: string, body: unknown, as = 'operator') =>
       routes.request(`http://localhost/alpha/terminal-sessions/${id}/restart`, {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
+        headers: { 'content-type': 'application/json', 'x-role': as },
         body: JSON.stringify(body),
       });
+    // Refused callers leave the running shell untouched.
+    for (const as of ['member', 'observer'])
+      expect((await restart(opened.terminalId, {}, as)).status).toBe(403);
+    expect((await sessions.read(operator, scope, opened.terminalId)).pid).toBe(
+      opened.pid,
+    );
     expect(
       (await restart(opened.terminalId, { subdirectory: '..' })).status,
     ).toBe(403);
