@@ -522,6 +522,11 @@ export const connectionRecoveryOutcomes = meter.createCounter(
   },
 );
 
+export const recoveryAdmissionRefused = meter.createCounter(
+  'station.recovery.admission_refused',
+  { description: 'Automatic recovery refusals by bounded readiness reason' },
+);
+
 /**
  * Credential-profile application lifecycle. Attributes are deliberately
  * bounded: source, capability, outcome, scope, and reason only.

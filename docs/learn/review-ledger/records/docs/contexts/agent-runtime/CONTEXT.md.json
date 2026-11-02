@@ -78,7 +78,21 @@
 
     "src-server/runtime/agents/__tests__/durable-agent-liveness.test.ts",
 
-    "src-server/__test-utils__/chat-runtime-fixture.ts"
+    "src-server/__test-utils__/chat-runtime-fixture.ts",
+
+    "packages/monument/src/session-boundary.ts",
+
+    "src-server/services/orchestration/session-turn-boundary-binding.ts",
+
+    "src-server/services/orchestration/credential-recovery-module.ts",
+
+    "src-server/services/orchestration/session-recovery-coordinator.ts",
+
+    "src-server/telemetry/metrics.ts",
+
+    "packages/contracts/src/connection-recovery.ts",
+
+    "src-ui/src/components/chat-dock/UsageLimitBanner.tsx"
   ],
 
   "checks": [
