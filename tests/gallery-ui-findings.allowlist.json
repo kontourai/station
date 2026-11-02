@@ -2,13 +2,13 @@
   "schemaVersion": 1,
   "screens": {
     "agent-editor": [
-      "axe:label-content-name-mismatch:button.split-pane__item[Station]"
+      "axe:label-content-name-mismatch:button.split-pane__item[Station Assistant]"
     ],
     "agent-editor-not-runnable": [
       "axe:label-content-name-mismatch:button.split-pane__item[Support Agent]"
     ],
     "agents": [
-      "axe:label-content-name-mismatch:button.split-pane__item[Station]"
+      "axe:label-content-name-mismatch:button.split-pane__item[Station Assistant]"
     ],
     "command-palette-empty": [
       "axe:aria-valid-attr-value:input.command-palette__input[type=text][Search commands and indexed conversation messages]"
@@ -24,7 +24,6 @@
       "axe:label-content-name-mismatch:button.session-context-card__action[Last known: Waiting on you, Background tasks]",
       "axe:label-content-name-mismatch:button.session-context-card__action[Open project — Project B]",
       "axe:label-content-name-mismatch:button.session-context-card__action[Pull requests unavailable — open chat details]",
-      "axe:label:input.attachment-input[type=file]",
       "axe:scrollable-region-focusable:div.chat-messages[role=status]",
       "hit-target:overlap:[data-testid=starter-work-card] button.button[Create task] / button.session-context-card__action[Last known: Waiting on you, Background tasks]",
       "hit-target:overlap:button.sidebar__project-btn[Open Project A workspace] / button.sidebar__reorder-handle[Reorder Project A]",
@@ -33,47 +32,39 @@
     "inventory-drilldown-older-host-dark-desktop": [
       "axe:label-content-name-mismatch:[data-testid=inbox-row] button.chat-dock-inbox__item[Inventory demo chat, No project]",
       "axe:label-content-name-mismatch:button.session-context-card__action[Pull requests unavailable — open chat details]",
-      "axe:label-content-name-mismatch:button.session-context-card__action[Waiting on you, Background tasks]",
-      "axe:label:input.attachment-input[type=file]"
+      "axe:label-content-name-mismatch:button.session-context-card__action[Waiting on you, Background tasks]"
     ],
     "inventory-drilldown-older-host-dark-mobile": [
       "axe:label-content-name-mismatch:[data-testid=inbox-row] button.chat-dock-inbox__item[Inventory demo chat, No project]",
-      "axe:label:input.attachment-input[type=file]",
       "hit-target:small:input.attachment-input[type=file]"
     ],
     "inventory-drilldown-older-host-light-desktop": [
       "axe:color-contrast:span.sidebar__project-name",
       "axe:label-content-name-mismatch:[data-testid=inbox-row] button.chat-dock-inbox__item[Inventory demo chat, No project]",
       "axe:label-content-name-mismatch:button.session-context-card__action[Pull requests unavailable — open chat details]",
-      "axe:label-content-name-mismatch:button.session-context-card__action[Waiting on you, Background tasks]",
-      "axe:label:input.attachment-input[type=file]"
+      "axe:label-content-name-mismatch:button.session-context-card__action[Waiting on you, Background tasks]"
     ],
     "inventory-drilldown-older-host-light-mobile": [
       "axe:label-content-name-mismatch:[data-testid=inbox-row] button.chat-dock-inbox__item[Inventory demo chat, No project]",
-      "axe:label:input.attachment-input[type=file]",
       "hit-target:small:input.attachment-input[type=file]"
     ],
     "inventory-drilldown-read-dark-desktop": [
       "axe:label-content-name-mismatch:[data-testid=inbox-row] button.chat-dock-inbox__item[Inventory demo chat, No project]",
       "axe:label-content-name-mismatch:button.session-context-card__action[Pull requests unavailable — open chat details]",
-      "axe:label-content-name-mismatch:button.session-context-card__action[Waiting on you, Background tasks]",
-      "axe:label:input.attachment-input[type=file]"
+      "axe:label-content-name-mismatch:button.session-context-card__action[Waiting on you, Background tasks]"
     ],
     "inventory-drilldown-read-dark-mobile": [
       "axe:label-content-name-mismatch:[data-testid=inbox-row] button.chat-dock-inbox__item[Inventory demo chat, No project]",
-      "axe:label:input.attachment-input[type=file]",
       "hit-target:small:input.attachment-input[type=file]"
     ],
     "inventory-drilldown-read-light-desktop": [
       "axe:color-contrast:span.sidebar__project-name",
       "axe:label-content-name-mismatch:[data-testid=inbox-row] button.chat-dock-inbox__item[Inventory demo chat, No project]",
       "axe:label-content-name-mismatch:button.session-context-card__action[Pull requests unavailable — open chat details]",
-      "axe:label-content-name-mismatch:button.session-context-card__action[Waiting on you, Background tasks]",
-      "axe:label:input.attachment-input[type=file]"
+      "axe:label-content-name-mismatch:button.session-context-card__action[Waiting on you, Background tasks]"
     ],
     "inventory-drilldown-read-light-mobile": [
       "axe:label-content-name-mismatch:[data-testid=inbox-row] button.chat-dock-inbox__item[Inventory demo chat, No project]",
-      "axe:label:input.attachment-input[type=file]",
       "hit-target:small:input.attachment-input[type=file]"
     ],
     "mobile-access-request-error-320": [
@@ -129,7 +120,7 @@
       "hit-target:small:summary[Delegated-child denials (# built-in)]"
     ],
     "mobile-agents": [
-      "axe:label-content-name-mismatch:button.split-pane__item[Station]"
+      "axe:label-content-name-mismatch:button.split-pane__item[Station Assistant]"
     ],
     "mobile-chat-dock-header-320": [
       "hit-target:small:input.attachment-input[type=file]"
@@ -137,7 +128,6 @@
     "mobile-conversation-resync": [
       "axe:label-content-name-mismatch:[data-testid=inbox-row] button.chat-dock-inbox__item[Mismatch demo chat, Project B]",
       "axe:label-content-name-mismatch:button.chat-status-pill[Status unavailable — resync this conversation]",
-      "axe:label:input.attachment-input[type=file]",
       "axe:scrollable-region-focusable:div.chat-messages[role=status]",
       "hit-target:small:input.attachment-input[type=file]"
     ],
@@ -192,7 +182,7 @@
       "hit-target:small:input.attachment-input[type=file]"
     ],
     "motion-reduced-navigation": [
-      "axe:label-content-name-mismatch:button.split-pane__item[Station]"
+      "axe:label-content-name-mismatch:button.split-pane__item[Station Assistant]"
     ],
     "overlay-agent-actions-menu": [
       "axe:label-content-name-mismatch:button.split-pane__item[Support Agent]"
@@ -220,7 +210,6 @@
       "axe:label-content-name-mismatch:button.session-context-card__action[Last known: Waiting on you, Background tasks]",
       "axe:label-content-name-mismatch:button.session-context-card__action[Open project — Project B]",
       "axe:label-content-name-mismatch:button.session-context-card__action[Pull requests unavailable — open chat details]",
-      "axe:label:input.attachment-input[type=file]",
       "axe:scrollable-region-focusable:div.chat-messages[role=status]",
       "hit-target:overlap:[data-testid=inbox-row] button.chat-dock-inbox__item[Mismatch demo chat, Project B] / [data-testid=inbox-row] button.chat-dock-inbox__row-action[Dismiss Mismatch demo chat from inbox]",
       "hit-target:overlap:[data-testid=inbox-row] button.chat-dock-inbox__item[Mismatch demo chat, Project B] / [data-testid=inbox-row] button.chat-dock-inbox__row-action[Snooze Mismatch demo chat]",
@@ -255,10 +244,10 @@
       "axe:label-content-name-mismatch:button.split-pane__item[dependency-update]",
       "axe:label-content-name-mismatch:button.split-pane__item[design-probe]",
       "axe:label-content-name-mismatch:button.split-pane__item[eval-rebuild]",
-      "axe:label-content-name-mismatch:button.split-pane__item[evidence-gate]",
       "axe:label-content-name-mismatch:button.split-pane__item[github-cli]",
       "axe:label-content-name-mismatch:button.split-pane__item[search-first]",
-      "hit-target:overlap:button.split-pane__item[design-probe] / button.split-pane__add-btn[Commands only]"
+      "hit-target:overlap:button.split-pane__item[continue-work] / button.split-pane__add-btn[Commands only]",
+      "hit-target:overlap:button.split-pane__item[deliver] / button.split-pane__add-btn[Commands only]"
     ],
     "station-switcher-dark-mobile": [
       "hit-target:small:input.attachment-input[type=file]"
