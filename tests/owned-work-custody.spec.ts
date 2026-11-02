@@ -165,7 +165,16 @@ for (const width of [390, 1440])
       await expect(row).toContainText(
         'The Station process that owned the child has exited.',
       );
+      const reason = row.getByText(
+        'The Station process that owned the child has exited.',
+        { exact: true },
+      );
+      await expect(reason).toBeInViewport();
+      expect((await reason.boundingBox())?.width).toBeGreaterThan(200);
       await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
+      await expect(
+        page.getByRole('heading', { name: 'Continue', exact: true }),
+      ).toBeVisible();
       await page.evaluate(() => document.fonts.ready);
       await capture(`inbox-${width}-${theme}.png`);
       await page.goto('/?surface=activity&session=owned-parent');
