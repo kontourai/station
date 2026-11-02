@@ -1,5 +1,6 @@
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
+import { STEERING_ENGINE_DURABILITY } from '@kontourai/station-contracts/engine-capability-matrix';
 import { INTERNAL_SESSION_READ_SCOPE } from '@kontourai/station-contracts/tenancy';
 import { expect, test, vi } from 'vitest';
 import {
@@ -133,6 +134,7 @@ test.each(['idle', 'completed'] as const)(
     );
     const engine = new GateTestAdapter();
     const adapter: ProviderAdapterShape = engine;
+    adapter.metadata.durability = STEERING_ENGINE_DURABILITY;
     const running = new Set(['parent', 'child']);
     let entered!: () => void;
     const stoppingChild = new Promise<void>((resolve) => {
@@ -173,6 +175,8 @@ test.each(['idle', 'completed'] as const)(
         limit: 5,
         authority: INTERNAL_SESSION_READ_SCOPE,
       });
+      for (const summary of [detail?.session, listed, page?.session])
+        expect(summary?.durability).toEqual(STEERING_ENGINE_DURABILITY);
       return {
         lifecycle: [
           detail?.session.lifecycleState,
