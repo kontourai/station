@@ -148,6 +148,13 @@ role a host does not know is dropped when it reads the descriptor, which then
 behaves as a destination. The [Related Reports example](../../examples/related-reports/README.md)
 declares both.
 
+The same capability opens a terminal. A plugin names the closed built-in
+terminal target, a binding and either an existing session or a new shell,
+and Station shows it with the Tools as the person viewing, read-only without
+their `terminal:operate`. See
+[Opening a terminal](../reference/sdk.md#opening-a-terminal) and the
+[Related Terminal example](../../examples/related-terminal/README.md).
+
 ## Renderer and policy boundaries
 
 Renderer kind determines the host boundary:
