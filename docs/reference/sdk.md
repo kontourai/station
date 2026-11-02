@@ -4845,9 +4845,10 @@ background route uses the same key custody.
 For a new foreground conversation, retain the original input and key. A server
 containing the durable create-claim implementation reserves an implicit
 conversation allocation under the caller scope and key, replays its completed
-handle, and refuses changed input.
+handle, and refuses changed input while the binding remains protected.
 A dead owner's unmarked request can be reclaimed immediately under the same
-key and input, including a request targeting an existing Session. A durable
+key, including changed input and a request targeting an existing Session.
+Live, unknown and marked owners still refuse changed input. A durable
 starting mark without confirmation is indeterminate within seven days. At expiry,
 the original key may reclaim only if no durable Session start record exists;
 otherwise it keeps refusing with its original Session reference in a tombstone.
@@ -4857,7 +4858,9 @@ automatically reconcile an absent Session.
 Tombstones are pruned only under record/byte capacity pressure, oldest first.
 Pruning removes key protection; neither absence nor expiry authorizes an automatic
 retry. A deliberate separate new key may duplicate existing work. Completed
-receipts replay for seven wall-clock days. Keys must be unique per intended
+receipts replay for seven days of elapsed host uptime; wall-clock jumps do not
+change that duration, and uptime resets conservatively preserve the remaining
+window. Keys must be unique per intended
 request within caller scope, including a verified calling Session. Capacity is a
 typed HTTP 429 before effects. See the [API limits](api.md) for precise rejection,
 expiry and capacity rules. Older hosts may allocate a fresh conversation per

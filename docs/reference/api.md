@@ -2681,7 +2681,8 @@ returns HTTP `409` (`client_turn_input_conflict` for foreground,
 `create_request_conflict` for delegation).
 
 A live owner holds its request lock. After its owner dies, a reservation with
-no starting mark is reclaimable immediately under the same key and input, even
+no starting mark is reclaimable immediately under the same key, including changed
+input, even
 when it targets an existing Session. The absence of this request's mark proves
 it did not invoke. Admission also frees abandoned unmarked reservations under
 other keys, without consulting Session existence. Station durably marks `starting` immediately before session
@@ -2696,13 +2697,22 @@ only if `hasSessionStartRecord` proves no durable start exists. A confirmed type
 rejection recorded through the request's rejection capability clears the mark.
 The original typed refusal is preserved.
 
-Completed receipts expire seven wall-clock days after completion; reusing one of
+Completed receipts expire after seven days of elapsed host uptime from completion; reusing one of
 those keys later is a new request. An expired starting claim is reclaimable only
 when `hasSessionStartRecord` finds no durable start. For the key being retried,
 Station retains its reserved Session identity and input proof for that reclaim.
 Otherwise it becomes a compact tombstone and keeps refusing the key with the
 original Session reference. A live or unverifiable owner prevents expiry while
-its request is running. Forward clock jumps can shorten elapsed retention.
+its request is running. The ledger persists remaining duration and the last uptime
+observation under its mutation lock. Forward and backward wall-clock jumps do
+not change the window. An uptime reset preserves the remaining duration without
+credit for the unobserved interval; repeated reboots can conservatively extend
+protection. Legacy timestamped claims start a full window on first observation;
+unfinished claims without a start time remain indeterminate. This clock is
+host-local, like the process-owner locks; it does not establish cross-host custody.
+The clock protection requires a current writer; older writers retain their
+wall-clock behavior. Without a durable Session start record, expiry can allow the
+same key to repeat an earlier effect whose record was lost.
 
 Tombstones are pruned only when a new admission would exceed the 1,024-record or
 4 MiB budget, oldest first. Live claims and completed receipts within their
