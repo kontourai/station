@@ -1235,6 +1235,8 @@ and client-side 4xx refusals keep the framework's response contract.
 
 The public built-in Agent ID is **`station`**. `default` remains a private
 Station-engine map key; use public identities returned by `/api/agents`.
+Its name reads **Station Assistant** (#4388); a home created earlier stores
+`Station`, which `/api/agents` reports as the new name without rewriting it.
 The built-in Agent can be bound to an external engine, or run on Station's own
 engine with a resolvable Model connection and model. A model-less Station still
 starts its configuration and connection surfaces; that does not prove the
