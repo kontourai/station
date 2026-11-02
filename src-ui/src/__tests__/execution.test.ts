@@ -4,7 +4,10 @@ import {
   STEERING_ENGINE_DURABILITY,
   UNKNOWN_ENGINE_DURABILITY,
 } from '@kontourai/station-contracts/engine-capability-matrix';
-import type { AgentConnectionView } from '@kontourai/station-contracts/tool';
+import type {
+  AgentConnectionView,
+  ConnectionConfig,
+} from '@kontourai/station-contracts/tool';
 import { describe, expect, test } from 'vitest';
 import {
   buildProviderOptions,

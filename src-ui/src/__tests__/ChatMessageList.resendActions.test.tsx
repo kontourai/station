@@ -310,7 +310,7 @@ describe('Regenerate and Edit and resend (#4406)', () => {
     ).toBeNull();
   });
 
-  test('on a phone, Edit and resend is a row of the message sheet and Regenerate is in the answer sheet’s menu', async () => {
+  test('on a phone, Edit and resend is a row of the message sheet and Regenerate is a row of the answer sheet', async () => {
     mobile.current = true;
     try {
       const onResend = vi.fn();
@@ -340,16 +340,9 @@ describe('Regenerate and Edit and resend (#4406)', () => {
       const answerSheet = screen.getByRole('dialog', {
         name: 'Answer details and actions',
       });
+      // One sheet holds every answer action (#4404): no second menu.
       fireEvent.click(
-        await within(answerSheet).findByRole('button', {
-          name: 'More answer actions',
-        }),
-      );
-      fireEvent.click(
-        within(screen.getByRole('menu', { name: 'Answer actions' })).getByRole(
-          'menuitem',
-          { name: 'Regenerate' },
-        ),
+        await within(answerSheet).findByRole('button', { name: 'Regenerate' }),
       );
       expect(onResend).toHaveBeenLastCalledWith(
         expect.objectContaining({
