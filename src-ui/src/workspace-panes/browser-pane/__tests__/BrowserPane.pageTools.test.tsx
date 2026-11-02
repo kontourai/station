@@ -473,7 +473,7 @@ describe('screenshots', () => {
     expect(
       screen.getByRole('img', { name: 'Screenshot of shop.example.com' }),
     ).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Dismiss' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Dismiss screenshot' }));
     await waitFor(() =>
       expect(revokeObjectURL).toHaveBeenCalledWith('blob:shot-1'),
     );

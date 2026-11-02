@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Button } from '../../components/Button';
+import { IconButton } from '../../components/IconButton';
+import { CloseGlyph } from '../../components/icons/Glyph';
 
 /**
  * A screenshot the person took of the page (#90), with what they can do
@@ -111,9 +113,14 @@ export function BrowserScreenshot({
           Attach to chat
         </Button>
       ) : null}
-      <Button size="sm" className="browser-pane__control" onClick={onDismiss}>
-        Dismiss
-      </Button>
+      <IconButton
+        aria-label="Dismiss screenshot"
+        title="Dismiss screenshot"
+        className="browser-pane__control"
+        onClick={onDismiss}
+      >
+        <CloseGlyph />
+      </IconButton>
     </div>
   );
 }

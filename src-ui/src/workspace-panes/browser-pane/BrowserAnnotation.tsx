@@ -70,7 +70,7 @@ export function BrowserAnnotation({
     width: number;
     height: number;
   } | null>(null);
-  const root = useRef<HTMLDivElement>(null);
+  const root = useRef<HTMLFieldSetElement>(null);
   const draftRef = useRef<Mark | null>(null);
   const alive = useRef(true);
   const pickSequence = useRef(0);
@@ -129,10 +129,9 @@ export function BrowserAnnotation({
     );
   };
   return (
-    <div
+    <fieldset
       className="browser-annotation"
       ref={root}
-      role="group"
       aria-label="Browser annotation"
       tabIndex={-1}
       onKeyDown={(event) => {
@@ -290,6 +289,6 @@ export function BrowserAnnotation({
           )}
         </svg>
       ) : null}
-    </div>
+    </fieldset>
   );
 }
