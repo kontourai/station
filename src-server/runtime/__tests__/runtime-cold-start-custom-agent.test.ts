@@ -2181,7 +2181,6 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
         port: TEST_PORT,
         host: '127.0.0.1',
       });
-      replaceTerminalListener(runtime);
       const connectionId = engineConnectionId('claude');
       const subject = runtime as unknown as {
         configLoader: ConfigLoader;
