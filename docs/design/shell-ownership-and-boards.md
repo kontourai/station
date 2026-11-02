@@ -165,7 +165,10 @@ account control moved to the footer
 a Profile row while the drawer is closed.
 
 **Personal Boards** follows Projects and remains visible when empty; its
-`+` creates the first Board and focuses its name. Loading and failed reads
+`+` creates the first Board and focuses its name. Confirming that first name
+gives the Board an address from it (`/boards/<name-slug>`, a Board created
+there and the `untitled-board` placeholder removed) and opens it; a rename
+afterwards never changes a Board's address (#4405). Loading and failed reads
 remain visible, with Retry on failure and creation disabled until the list
 is available. The collapsed rail has one dashboard button that opens the
 personal Board list and its create action. Escape returns focus to that

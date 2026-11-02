@@ -15,8 +15,10 @@ explains the URL, catalog endpoint, and how to use its results.
 
 **General → Your account** has the stable section id `account-preferences`.
 Its personal engine defaults have ids `personal-codex-approval`,
-`personal-claude-approval` and `personal-muse-approval`; migration is
-`account-preference-sync`. Portable settings retain their existing ids and now
+`personal-claude-approval` and `personal-muse-approval` (the Muse row renders
+only on a Station with a Muse engine, or while a saved Muse default remains,
+so a link to it elsewhere opens the section without a row to reveal);
+migration is `account-preference-sync`. Portable settings retain their existing ids and now
 report `account` scope. This means account storage on the connected Station when
 identity is verified, with a device-local fallback for callers without a person.
 See [the settings architecture](../design/settings-architecture.md#account-preferences-and-device-settings).
