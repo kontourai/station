@@ -774,10 +774,21 @@ Home explain that it can receive updates but cannot act through those tools.
 
 `POST /api/orchestration/commands` is a control surface, not an execution selector.
 It accepts `adoptSession`, `interruptTurn`, `steerTurn`, `steerTurnOnce`, `steerChildWork`, `inspectSteerInput`, `respondToRequest`,
-`setApprovalMode`, `discardDraft`, and `stopSession`. Commands use the execution
+`setApprovalMode`, `discardDraft`, `stopSession`, and `releaseUnknownOwnedWork`. Commands use the execution
 Session ID as `threadId`, not an assumed copy of the Conversation ID.
 Public `startSession` and `sendTurn` commands do not exist; adapter dispatch remains
 an internal service primitive.
+
+### `releaseUnknownOwnedWork`
+
+For an at-rest parent with unknown child custody, send `threadId` and
+`confirmation: 'child-process-may-still-be-running'` after explicit user
+confirmation that child processes may still be running and will no longer be
+tracked by this Session. The command rechecks custody before removing the
+parent and its unknown cleanup; known owners or changed custody refuse it.
+Child history and cancellation fences remain. Success does not mean the child
+stopped. Older hosts reject this command type. See
+[delegated ownership](contracts.md#delegated-execution-ownership).
 
 ### `respondToRequest`
 
@@ -1470,7 +1481,7 @@ failures can occur before a receipt exists. Acceptance is not turn completion:
   "receipt": {
     "commandId": "uuid, generated server-side",
     "threadId": "string",
-    "commandType": "adoptSession | interruptTurn | steerTurn | steerChildWork | inspectSteerInput | respondToRequest | setApprovalMode | discardDraft | stopSession",
+    "commandType": "adoptSession | interruptTurn | steerTurn | steerChildWork | inspectSteerInput | respondToRequest | setApprovalMode | discardDraft | stopSession | releaseUnknownOwnedWork",
     "status": "accepted | rejected | failed",
     "createdAt": "ISO 8601 timestamp"
   }
