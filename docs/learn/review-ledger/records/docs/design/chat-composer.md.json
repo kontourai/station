@@ -244,7 +244,9 @@
 
     "src-ui/src/__tests__/NewChatModalEngineChips.test.tsx",
 
-    "src-ui/src/components/chat-start/__tests__/StartModelPicker.test.tsx"
+    "src-ui/src/components/chat-start/__tests__/StartModelPicker.test.tsx",
+
+    "src-ui/src/__tests__/responsive-dialog-header.test.tsx"
   ],
 
   "checks": [
