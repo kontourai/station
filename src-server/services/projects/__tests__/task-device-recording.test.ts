@@ -7,12 +7,12 @@ import type { TaskReviewAccess } from '../../orchestration/project-task-room-run
 import { TaskBrowserRecording } from '../task-browser-recording.js';
 import { TaskDeviceRecording } from '../task-device-recording.js';
 
-const access = (principalId: string): TaskReviewAccess => ({
+const access = (principalId: string, taskId = 'task'): TaskReviewAccess => ({
   kind: 'granted',
   staleOutcome: { kind: 'not-found' },
   write: {
     projectId: 'project',
-    taskId: 'task',
+    taskId,
     taskCreatedAt: '2026-01-01T00:00:00.000Z',
     author: { kind: 'person', principalId },
     beforeCommit: () => true,
@@ -191,16 +191,18 @@ test('device job capacity is bounded across distinct Tasks and releases finished
     throw new Error('unused');
   };
   const jobs = ['a', 'b', 'c', 'd'].map((person) =>
-    owner.start(access(person), { durationMs: 1000 }, source),
+    owner.start(access('alice', person), { durationMs: 1000 }, source),
   );
-  expect(() => owner.start(access('e'), { durationMs: 1000 }, source)).toThrow(
-    'capacity',
-  );
+  expect(() =>
+    owner.start(access('alice', 'e'), { durationMs: 1000 }, source),
+  ).toThrow('capacity');
   pending[0]!();
   await vi.waitFor(() =>
-    expect(owner.status(access('a'), jobs[0]!.id).state).toBe('failed'),
+    expect(owner.status(access('alice', 'a'), jobs[0]!.id).state).toBe(
+      'failed',
+    ),
   );
-  const next = owner.start(access('e'), { durationMs: 1000 }, source);
+  const next = owner.start(access('alice', 'e'), { durationMs: 1000 }, source);
   expect(next.state).toBe('starting');
   for (const finish of pending.slice(1)) finish();
   await owner.dispose();
@@ -219,10 +221,14 @@ test('shared recorder bounds active recordings across different Task keys', asyn
     throw new Error('fixture released');
   };
   const active = ['a', 'b', 'c', 'd'].map((person) =>
-    recorder.recordSource(access(person), { durationMs: 1000 }, source),
+    recorder.recordSource(
+      access('alice', person),
+      { durationMs: 1000 },
+      source,
+    ),
   );
   const extra = recorder.recordSource(
-    access('e'),
+    access('alice', 'e'),
     { durationMs: 1000 },
     source,
   );

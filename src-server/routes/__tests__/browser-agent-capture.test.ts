@@ -595,6 +595,7 @@ async function harness(
         stopSignal?: AbortSignal;
         onStarted?: () => void;
         rotation?: 90;
+        onFrameConsumed?: () => void;
       } = {},
     ) => {
       const access = await room.sessionTaskReviewAccess('agent-a');
@@ -603,29 +604,31 @@ async function harness(
       const surfaceId = live.surfaceIdFor(browser.browserSessionId);
       const entry = surfaceId ? surfaces.get(surfaceId) : undefined;
       if (!entry) throw new Error('Recording surface unavailable');
-      const hub = options.rotation
-        ? (Object.assign(Object.create(entry.hub), {
-            attach: (...args: Parameters<typeof entry.hub.attach>) => {
-              const viewer = entry.hub.attach(...args);
-              return {
-                ...viewer,
-                close: () => viewer.close(),
-                next: async (...nextArgs: Parameters<typeof viewer.next>) => {
-                  const record = await viewer.next(...nextArgs);
-                  return record?.kind === 'frame'
-                    ? {
-                        ...record,
-                        header: {
-                          ...record.header,
-                          rotation: options.rotation,
-                        },
-                      }
-                    : record;
-                },
-              };
-            },
-          }) as typeof entry.hub)
-        : entry.hub;
+      const hub =
+        options.rotation || options.onFrameConsumed
+          ? (Object.assign(Object.create(entry.hub), {
+              attach: (...args: Parameters<typeof entry.hub.attach>) => {
+                const viewer = entry.hub.attach(...args);
+                return {
+                  ...viewer,
+                  close: () => viewer.close(),
+                  next: async (...nextArgs: Parameters<typeof viewer.next>) => {
+                    const record = await viewer.next(...nextArgs);
+                    if (record?.kind === 'frame') options.onFrameConsumed?.();
+                    return record?.kind === 'frame' && options.rotation
+                      ? {
+                          ...record,
+                          header: {
+                            ...record.header,
+                            rotation: options.rotation,
+                          },
+                        }
+                      : record;
+                  },
+                };
+              },
+            }) as typeof entry.hub)
+          : entry.hub;
       return recordings.recordSource(
         access,
         {
@@ -1008,6 +1011,7 @@ test.skipIf(!mediaReady)(
   async () => {
     for (const mode of ['current', 'authorize', 'rotation'] as const) {
       let allowed = true;
+      let consumed = 0;
       const h = await harness({
         recording: true,
         duringFrame: () => {
@@ -1018,6 +1022,9 @@ test.skipIf(!mediaReady)(
         h.recordSyntheticDevice({
           current: () => mode !== 'current' || allowed,
           authorize: async () => mode !== 'authorize' || allowed,
+          onFrameConsumed: () => {
+            consumed += 1;
+          },
           ...(mode === 'rotation' ? { rotation: 90 } : {}),
         }),
       ).rejects.toMatchObject({
@@ -1025,8 +1032,9 @@ test.skipIf(!mediaReady)(
         message:
           mode === 'rotation'
             ? 'Rotated Device recording is unavailable.'
-            : 'Recording authority changed.',
+            : 'Recording authority changed during capture.',
       });
+      expect(consumed).toBe(1);
     }
   },
 );

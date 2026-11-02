@@ -460,7 +460,7 @@ export class TaskBrowserRecording {
             )
               throw new TaskBrowserRecordingError(
                 'recording-unavailable',
-                'Recording authority changed.',
+                'Recording authority changed during capture.',
               );
             if (source.device && record.header.rotation)
               throw new TaskBrowserRecordingError(
