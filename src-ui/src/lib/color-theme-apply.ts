@@ -22,6 +22,11 @@ import {
   type ResolvedColorTheme,
   resolveColorThemeSelection,
 } from './color-theme-selection';
+import {
+  applyThemeMode,
+  resolveThemeMode,
+  subscribeSystemThemeMode,
+} from './theme-mode';
 
 export const COLOR_THEME_ATTRIBUTE = 'data-color-theme';
 export const COLOR_THEME_FLAVOR_ATTRIBUTE = 'data-color-theme-flavor';
@@ -197,7 +202,7 @@ export function applyColorTheme(
 ): ResolvedColorTheme {
   const doc = root.ownerDocument;
   const resolved = resolveColorThemeSelection(settings);
-  const mode = settings.theme === 'light' ? 'light' : 'dark';
+  const mode = resolveThemeMode(settings.theme);
   latestSettings.set(root, settings);
   const failedFor = root.getAttribute(COLOR_THEME_FAILED_ATTRIBUTE);
   if (failedFor !== null && failedFor !== resolved.id)
@@ -258,11 +263,7 @@ function retryIfItFails(root: HTMLElement, link: HTMLLinkElement): void {
       // this one named on the root (or its theme-color stamped).
       const settings = latestSettings.get(root);
       link.remove();
-      stamp(
-        root,
-        { id: 'station' },
-        settings?.theme === 'light' ? 'light' : 'dark',
-      );
+      stamp(root, { id: 'station' }, resolveThemeMode(settings?.theme));
       // Then apply the latest settings: the same family gets its single
       // automatic retry; a different, pending family settles on its own.
       if (settings) applyColorTheme(root, settings);
@@ -350,10 +351,18 @@ export function bindColorThemeToSettings(
 ): () => void {
   const apply = () => {
     const settings = source.getSnapshot();
+    // The mode first: System resolves against the device now (#4407).
+    applyThemeMode(root, settings.theme);
     applyColorTheme(root, settings);
     const from = source.getAppearanceSource?.() ?? 'device';
     if (from !== 'cache') writeAppearanceCache(settings, from);
   };
   apply();
-  return source.subscribe(apply);
+  // System mode follows the device, so a device change re-applies (#4407).
+  const stopSystem = subscribeSystemThemeMode(apply);
+  const stopSettings = source.subscribe(apply);
+  return () => {
+    stopSystem();
+    stopSettings();
+  };
 }

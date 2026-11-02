@@ -708,7 +708,7 @@ const SETTINGS_CATALOG_SOURCE = [
     title: 'Theme',
     section: 'appearance',
     configKeys: ['theme'],
-    keywords: ['mode', 'dark', 'light', 'catppuccin'],
+    keywords: ['mode', 'dark', 'light', 'system', 'catppuccin'],
     searchKeywords: ['color theme', 'flavor', 'palette', 'appearance'],
   },
   {
