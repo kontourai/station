@@ -6406,8 +6406,17 @@ account, member, agent and plugin admission is withheld. Engine sign-in, the
 Project terminal close and the process projections reach TerminalSessions; no
 other terminal service or listener remains.
 
-The [design boundary](../design/terminal.md#first-implementation-boundary-3994-part-a)
-separates this foundation from retention Settings and Ghostty. The
+The `terminalHistory*` [retention settings](../../src-server/services/terminal/terminal-retention.ts)
+are read before each open and usage read: history on or off, the journal
+directory (ended journals move there), maximum age and the per-terminal and
+total sizes. On start, a shell that ended only because its host went away
+reopens under the same id below a "restored after restart" divider; one the
+supervisor reattached, or that ended by itself, is not restored. Shell records
+carry a stable `ordinal`, and an `adopt` open answers with the binding's
+running shell, so concurrent opens of an empty binding share one. The
+[history routes](../../src-server/routes/projects/terminal-session-routes.ts)
+report usage per Project and clear ended terminals' history. The
+[design](../design/terminal.md#journal) owns the rules; Ghostty is separate. The
 [same-origin gateway](../../src-server/services/terminal/terminal-gateway.ts)
 mounts on the API listener through the Station Hono provider and redeems a
 single-use [ticket](../../src-server/services/terminal/terminal-tickets.ts)
@@ -6434,4 +6443,7 @@ its injected identity seam does not qualify live pairing or remote egress. The
 [real PTY suite](../../src-server/services/terminal/__tests__/terminal-sessions.process.test.ts)
 checks durable replay, scope/cwd refusals, service-level observer refusal,
 journal bounds and history migration. It does not qualify Windows, native
-clients, live remote access, or process survival across server restarts.
+clients, live remote access, or process survival across server restarts. The
+[retention suite](../../src-server/services/terminal/__tests__/terminal-retention.process.test.ts)
+covers restore, retention settings, ordinals and a two-client `adopt` race on a
+real loopback server.
