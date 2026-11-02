@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 
+import { agentId } from '@kontourai/station-contracts/agent-identity';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, test, vi } from 'vitest';
 import { ChatDockContentArea } from '../components/chat-dock/ChatDockContentArea';
@@ -25,7 +26,7 @@ describe('ChatDockContentArea', () => {
     const onNewChat = vi.fn();
     renderContentArea(vi.fn(), onNewChat, false, {
       id: 'invalid-remote',
-      agentSlug: 'codex',
+      agentSlug: agentId('codex'),
       agentName: 'Codex',
       title: 'Remote',
       projectSlug: 'source-project',

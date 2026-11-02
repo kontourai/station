@@ -74,7 +74,7 @@ its saved credential server-side and refuses agent-originated onward hops.
 
 This path is text only and polls bounded history. It does not grant portable
 Project execution or change Task placement consent. Preview-off and SSH starts
-retain the existing Task launcher. See [starting work](../user/getting-started.md#starting-work)
+retain the existing Task launcher. See [starting work](../user/getting-started.md#start-your-first-chat)
 and the [bridge design](../design/chat-composer.md#paired-station-foreground-chats).
 
 ### What a paired device may do, and full access
