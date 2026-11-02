@@ -370,14 +370,14 @@ artifacts enabled, **Attach to chat** adds it to the active composer.
 With **Browser artifacts** enabled, **Record** in the toolbar or **⋯** starts a
 silent Browser clip. The indicator stays visible while capturing; **Stop
 recording** finishes it, and **Save clip** downloads a WebM. Capture also stops
-at 30 seconds. It admits at most 300 frames and 64 MiB of raw JPEGs; the encoded
+at 30 seconds, 300 frames or 64 MiB of raw JPEGs and encodes the frames captured so far. A first frame over the byte limit is refused. The encoded
 clip is limited to 16 MiB. FFmpeg must already be available through Station's
 media-tools resolver. A missing tool refuses the recording; downloading one
 requires the operator's separate consent. The clip may contain sensitive page
 content. It is not automatically attached to a Task or chat.
 
 The server rechecks Browser view authority, preview state and session generation
-while capturing and before returning a clip. Closing the Browser surface or
+periodically while capturing, on stop and before returning a clip. Navigation can continue while the Browser generation remains the same. Closing the Browser surface or
 stopping Station cancels in-progress work. The server retains a completed clip
 for one minute; the open viewer owns the downloaded Blob until
 it is dismissed. Generated temporary frame files are removed after encoding or

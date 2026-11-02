@@ -6771,7 +6771,7 @@ feature preview and Browser view authority:
   bounded WebM while it is retained. Each operation rechecks person and Browser
   authority, preview state, session generation and recording ownership. There
   are at most two retained jobs per Station. Capture stops at 30 seconds and
-  refuses more than 300 frames or 64 MiB of raw input; encoded output is limited to 16 MiB and a
+  finishes at 300 frames or 64 MiB of raw input, retaining earlier frames; encoded output is limited to 16 MiB and a
   completed result is retained for one minute. This path offers a local save;
   it does not publish a Task clip.
 

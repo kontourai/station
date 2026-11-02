@@ -1,5 +1,6 @@
 import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
+import { performance } from 'node:perf_hooks';
 import { describe, expect, it, vi } from 'vitest';
 import { locateExecutable } from '../../devices/device-host-tools.js';
 import type { LiveSurfaceRegistry } from '../../live-surface/registry.js';
@@ -16,6 +17,15 @@ function fixture(real?: { ffmpeg: string; jpeg: Buffer }, frameLimit = 1) {
   } as BrowserSessionRecord;
   let delivered = 0;
   let dispose: (() => Promise<void>) | undefined;
+  let waiting:
+    | ((
+        value: {
+          kind: 'frame';
+          header: { codec: 'jpeg' };
+          body: Uint8Array;
+        } | null,
+      ) => void)
+    | undefined;
   const close = vi.fn();
   const entry = {
     signal: new AbortController().signal,
@@ -37,7 +47,12 @@ function fixture(real?: { ffmpeg: string; jpeg: Buffer }, frameLimit = 1) {
               body: real?.jpeg ?? new Uint8Array([1, 2, 3]),
             };
           }
-          return new Promise<null>((resolve) => {
+          return new Promise<{
+            kind: 'frame';
+            header: { codec: 'jpeg' };
+            body: Uint8Array;
+          } | null>((resolve) => {
+            waiting = resolve;
             if (signal.aborted) resolve(null);
             else
               signal.addEventListener('abort', () => resolve(null), {
@@ -85,12 +100,22 @@ function fixture(real?: { ffmpeg: string; jpeg: Buffer }, frameLimit = 1) {
     close,
     encode,
     stage: () => stage,
+    canDeliver: () => !!waiting,
+    deliver: (body = new Uint8Array([1, 2, 3])) => {
+      const resolve = waiting;
+      waiting = undefined;
+      resolve?.({
+        kind: 'frame',
+        header: { codec: 'jpeg' },
+        body,
+      });
+    },
     disposeSurface: () => dispose?.(),
   };
 }
 
 describe('human Browser recording', () => {
-  it('refuses a capture that exceeds the 300-frame bound', async () => {
+  it('finishes the clip at the 300-frame bound', async () => {
     const h = fixture(undefined, 301);
     const id = h.recorder.start({
       session: h.session,
@@ -98,12 +123,10 @@ describe('human Browser recording', () => {
       authorize: async () => true,
     });
     await vi.waitFor(() =>
-      expect(h.recorder.status(id, 'alice', 'bs_test', 3)?.state).toBe(
-        'failed',
-      ),
+      expect(h.recorder.status(id, 'alice', 'bs_test', 3)?.state).toBe('ready'),
     );
-    expect(h.encode).not.toHaveBeenCalled();
-    expect(h.recorder.video(id, 'alice', 'bs_test', 3)).toBeUndefined();
+    expect(h.encode).toHaveBeenCalledOnce();
+    expect(h.recorder.video(id, 'alice', 'bs_test', 3)).toBeDefined();
     await h.recorder.dispose();
   });
   it('stops, encodes once, serves only the owner and removes staging', async () => {
@@ -118,7 +141,6 @@ describe('human Browser recording', () => {
         'recording',
       ),
     );
-    await vi.waitFor(() => expect(h.close).not.toHaveBeenCalled());
     expect(h.recorder.stop(id, 'bob', 'bs_test', 3)).toBe(false);
     expect(h.recorder.stop(id, 'alice', 'bs_test', 3)).toBe(true);
     await vi.waitFor(() =>
@@ -136,7 +158,39 @@ describe('human Browser recording', () => {
     );
     await h.recorder.dispose();
   });
-  it('does not publish after authority is revoked or the surface closes', async () => {
+  it('fails before encoding when authority is revoked and a new frame arrives', async () => {
+    const h = fixture();
+    let allowed = true;
+    const now = performance.now.bind(performance);
+    let offset = 0;
+    const clock = vi
+      .spyOn(performance, 'now')
+      .mockImplementation(() => now() + offset);
+    try {
+      const id = h.recorder.start({
+        session: h.session,
+        owner: 'alice',
+        authorize: async () => allowed,
+      });
+      await vi.waitFor(() => expect(h.canDeliver()).toBe(true));
+      allowed = false;
+      offset = 1100;
+      h.deliver();
+      await vi.waitFor(() =>
+        expect(h.recorder.status(id, 'alice', 'bs_test', 3)).toMatchObject({
+          state: 'failed',
+          error: 'Browser access changed during recording.',
+        }),
+      );
+      expect(h.encode).not.toHaveBeenCalled();
+      expect(h.recorder.video(id, 'alice', 'bs_test', 3)).toBeUndefined();
+    } finally {
+      clock.mockRestore();
+      await h.recorder.dispose();
+    }
+  });
+
+  it('fails before encoding when authority is revoked while idle and stopped', async () => {
     const h = fixture();
     let allowed = true;
     const id = h.recorder.start({
@@ -144,15 +198,155 @@ describe('human Browser recording', () => {
       owner: 'alice',
       authorize: async () => allowed,
     });
+    await vi.waitFor(() => expect(h.canDeliver()).toBe(true));
+    allowed = false;
+    expect(h.recorder.stop(id, 'alice', 'bs_test', 3)).toBe(true);
+    await vi.waitFor(() =>
+      expect(h.recorder.status(id, 'alice', 'bs_test', 3)).toMatchObject({
+        state: 'failed',
+        error: 'Browser access changed during recording.',
+      }),
+    );
+    expect(h.encode).not.toHaveBeenCalled();
+    await h.recorder.dispose();
+  });
+
+  it('reports no frames and a changed generation separately', async () => {
+    const empty = fixture(undefined, 0);
+    const id = empty.recorder.start({
+      session: empty.session,
+      owner: 'alice',
+      authorize: async () => true,
+    });
+    await vi.waitFor(() => expect(empty.canDeliver()).toBe(true));
+    empty.recorder.stop(id, 'alice', 'bs_test', 3);
+    await vi.waitFor(() =>
+      expect(empty.recorder.status(id, 'alice', 'bs_test', 3)).toMatchObject({
+        state: 'failed',
+        error: 'No frames were captured.',
+      }),
+    );
+    expect(empty.encode).not.toHaveBeenCalled();
+    await empty.recorder.dispose();
+
+    const changed = fixture();
+    const changedId = changed.recorder.start({
+      session: changed.session,
+      owner: 'alice',
+      authorize: async () => true,
+    });
+    await vi.waitFor(() => expect(changed.canDeliver()).toBe(true));
+    changed.session.generation = 4;
+    changed.deliver();
+    await vi.waitFor(() =>
+      expect(
+        changed.recorder.status(changedId, 'alice', 'bs_test', 3),
+      ).toMatchObject({
+        state: 'failed',
+        error: 'The Browser session changed during recording.',
+      }),
+    );
+    expect(changed.encode).not.toHaveBeenCalled();
+    await changed.recorder.dispose();
+  });
+
+  it('finishes the clip at the raw byte cap', async () => {
+    const h = fixture();
+    const id = h.recorder.start({
+      session: h.session,
+      owner: 'alice',
+      authorize: async () => true,
+    });
+    await vi.waitFor(() => expect(h.canDeliver()).toBe(true));
+    h.deliver(new Uint8Array(64 * 1024 * 1024));
+    await vi.waitFor(() =>
+      expect(h.recorder.status(id, 'alice', 'bs_test', 3)?.state).toBe('ready'),
+    );
+    expect(h.encode).toHaveBeenCalledOnce();
+    await h.recorder.dispose();
+  });
+
+  it('finishes the clip when the 30-second timer fires', async () => {
+    const original = globalThis.setTimeout;
+    let expire: (() => void) | undefined;
+    const timer = vi.spyOn(globalThis, 'setTimeout').mockImplementation(((
+      callback: () => void,
+      ms?: number,
+    ) => {
+      if (ms === 30_000) expire = callback;
+      return original(callback, ms);
+    }) as typeof setTimeout);
+    const h = fixture();
+    try {
+      const id = h.recorder.start({
+        session: h.session,
+        owner: 'alice',
+        authorize: async () => true,
+      });
+      await vi.waitFor(() => expect(h.canDeliver()).toBe(true));
+      expect(expire).toBeDefined();
+      expire?.();
+      await vi.waitFor(() =>
+        expect(h.recorder.status(id, 'alice', 'bs_test', 3)?.state).toBe(
+          'ready',
+        ),
+      );
+      expect(h.encode).toHaveBeenCalledOnce();
+    } finally {
+      timer.mockRestore();
+      await h.recorder.dispose();
+    }
+  });
+
+  it('continues recording across a URL change within one generation', async () => {
+    const h = fixture();
+    const id = h.recorder.start({
+      session: h.session,
+      owner: 'alice',
+      authorize: async () => true,
+    });
+    await vi.waitFor(() => expect(h.canDeliver()).toBe(true));
+    h.session.url = 'https://example.test/next';
+    h.deliver();
+    await vi.waitFor(() => expect(h.canDeliver()).toBe(true));
+    h.recorder.stop(id, 'alice', 'bs_test', 3);
+    await vi.waitFor(() =>
+      expect(h.recorder.status(id, 'alice', 'bs_test', 3)?.state).toBe('ready'),
+    );
+    expect(h.encode).toHaveBeenCalledOnce();
+    await h.recorder.dispose();
+  });
+
+  it('does not publish if cancelled during encoding', async () => {
+    const h = fixture();
+    let aborted = false;
+    h.encode.mockImplementation(
+      async (_binary, _concat, _duration, _max, signal) =>
+        new Promise((_resolve, reject) => {
+          signal.addEventListener(
+            'abort',
+            () => {
+              aborted = true;
+              reject(new Error('cancelled'));
+            },
+            { once: true },
+          );
+        }),
+    );
+    const id = h.recorder.start({
+      session: h.session,
+      owner: 'alice',
+      authorize: async () => true,
+    });
+    await vi.waitFor(() => expect(h.canDeliver()).toBe(true));
+    h.recorder.stop(id, 'alice', 'bs_test', 3);
     await vi.waitFor(() =>
       expect(h.recorder.status(id, 'alice', 'bs_test', 3)?.state).toBe(
-        'recording',
+        'encoding',
       ),
     );
-    allowed = false;
-    await h.disposeSurface();
-    expect(h.recorder.status(id, 'alice', 'bs_test', 3)?.state).toBe('failed');
-    expect(h.encode).not.toHaveBeenCalled();
+    h.recorder.cancel(id, 'alice', 'bs_test', 3);
+    await vi.waitFor(() => expect(aborted).toBe(true));
     expect(h.recorder.video(id, 'alice', 'bs_test', 3)).toBeUndefined();
     await h.recorder.dispose();
   });

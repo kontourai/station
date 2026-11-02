@@ -11,6 +11,7 @@ import type { LiveSurfaceRegistry } from '../live-surface/registry.js';
 import type { MediaToolsResolver } from '../media-tools/media-tools-resolver.js';
 import {
   encodeBrowserRecording,
+  TaskBrowserRecordingError,
   waitForRecordingCleanup,
 } from '../projects/task-browser-recording.js';
 import type {
@@ -72,18 +73,26 @@ export class BrowserHumanRecording {
       done: Promise.resolve(),
     };
     this.jobs.set(job.id, job);
-    const current = async () => {
-      const session = this.deps.registry.getSession(job.sessionId);
-      return (
-        !job.cancel.signal.aborted &&
-        !!session &&
-        session.state === 'live' &&
-        session.generation === job.generation &&
-        session.url === input.session.url &&
-        this.deps.surfaceIdFor(job.sessionId) === surfaceId &&
-        this.deps.surfaces.get(surfaceId!) === entry &&
-        (await input.authorize())
-      );
+    let lastAuthorization = -Infinity;
+    const current = async (force = false) => {
+      const fence = () => {
+        const session = this.deps.registry.getSession(job.sessionId);
+        if (job.cancel.signal.aborted) throw new Error('cancelled');
+        if (
+          !session ||
+          session.state !== 'live' ||
+          session.generation !== job.generation ||
+          this.deps.surfaceIdFor(job.sessionId) !== surfaceId ||
+          this.deps.surfaces.get(surfaceId!) !== entry
+        )
+          throw new Error('session-changed');
+      };
+      fence();
+      if (force || performance.now() - lastAuthorization >= 1000) {
+        if (!(await input.authorize())) throw new Error('revoked');
+        lastAuthorization = performance.now();
+        fence();
+      }
     };
     const off = entry.onDispose(async () => {
       job.cancel.abort();
@@ -93,9 +102,25 @@ export class BrowserHumanRecording {
     job.done = this.capture(job, entry, current)
       .catch((error: unknown) => {
         job.state = 'failed';
+        const messages: Record<string, string> = {
+          'media-tools-unavailable':
+            'FFmpeg is unavailable. Set up media tools and try again.',
+          revoked: 'Browser access changed during recording.',
+          'session-changed': 'The Browser session changed during recording.',
+          'too-large': 'The first frame is too large to record.',
+          'recording-too-large': 'The encoded recording is too large to save.',
+          'no-frames': 'No frames were captured.',
+          cancelled: 'Recording was cancelled.',
+        };
+        const code =
+          error instanceof TaskBrowserRecordingError
+            ? error.code
+            : error instanceof Error
+              ? error.message
+              : '';
         job.error =
-          error instanceof Error && error.message === 'media-tools-unavailable'
-            ? 'FFmpeg is unavailable. Set up media tools and try again.'
+          error instanceof Error
+            ? (messages[code] ?? 'The recording could not be completed.')
             : 'The recording could not be completed.';
       })
       .finally(() => {
@@ -209,13 +234,13 @@ export class BrowserHumanRecording {
   private async capture(
     job: Job,
     entry: NonNullable<ReturnType<LiveSurfaceRegistry['get']>>,
-    current: () => Promise<boolean>,
+    current: (force?: boolean) => Promise<void>,
   ) {
-    if (!(await current())) throw new Error('Authority changed.');
+    await current(true);
     const resolution = await this.deps.resolver.resolveFfmpeg();
     if (resolution.status !== 'ready')
       throw new Error('media-tools-unavailable');
-    if (!(await current())) throw new Error('Authority changed.');
+    await current(true);
     const stage = await mkdtemp(join(tmpdir(), 'station-browser-recording-'));
     try {
       const viewer = entry.hub.attach({
@@ -243,11 +268,17 @@ export class BrowserHumanRecording {
           const frame = await viewer.next(signal);
           if (!frame) break;
           if (frame.kind !== 'frame') continue;
-          if (!(await current()) || frame.header.codec !== 'jpeg')
-            throw new Error('Capture changed.');
+          await current();
+          if (frame.header.codec !== 'jpeg') throw new Error('session-changed');
+          if (
+            rawBytes + frame.body.byteLength > MAX_RAW_BYTES ||
+            frames.length >= MAX_FRAMES
+          ) {
+            if (!frames.length) throw new Error('too-large');
+            limit.abort();
+            break;
+          }
           rawBytes += frame.body.byteLength;
-          if (rawBytes > MAX_RAW_BYTES || frames.length >= MAX_FRAMES)
-            throw new Error('Recording too large.');
           const file = `frame-${String(frames.length).padStart(4, '0')}.jpg`;
           await writeFile(join(stage, file), frame.body, {
             flag: 'wx',
@@ -262,13 +293,11 @@ export class BrowserHumanRecording {
         clearTimeout(timer);
         viewer.close();
       }
-      if (
-        job.cancel.signal.aborted ||
-        !frames.length ||
-        (!job.stop.signal.aborted && !limit.signal.aborted) ||
-        !(await current())
-      )
-        throw new Error('Recording cancelled.');
+      if (job.cancel.signal.aborted) throw new Error('cancelled');
+      if (!frames.length) throw new Error('no-frames');
+      if (!job.stop.signal.aborted && !limit.signal.aborted)
+        throw new Error('session-changed');
+      await current(true);
       const duration = Math.max(
         1,
         Math.min(
@@ -296,7 +325,7 @@ export class BrowserHumanRecording {
         BROWSER_RECORD_MAX_ENCODED_BYTES,
         job.cancel.signal,
       );
-      if (!(await current())) throw new Error('Authority changed.');
+      await current(true);
       job.bytes = bytes;
       job.state = 'ready';
     } finally {

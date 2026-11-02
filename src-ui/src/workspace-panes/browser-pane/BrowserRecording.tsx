@@ -2,13 +2,13 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
 import { Button } from '../../components/Button';
 import { IconButton } from '../../components/IconButton';
-import { CameraGlyph } from '../../components/icons/Glyph';
+import { RecordGlyph } from '../../components/icons/Glyph';
 import type { BrowserPaneApi } from './browserPaneApi';
 
 export function useBrowserRecording(
   api: BrowserPaneApi,
   sessionId: string,
-  generation: number,
+  generation: number | undefined,
   live: boolean,
 ) {
   const [recordingId, setRecordingId] = useState<string | null>(null);
@@ -43,7 +43,11 @@ export function useBrowserRecording(
     }
   }, [api, live, sessionId]);
   const start = useMutation({
-    mutationFn: () => api.startRecording(sessionId, generation),
+    mutationFn: () => {
+      if (generation === undefined)
+        throw new Error('Browser generation is unavailable.');
+      return api.startRecording(sessionId, generation);
+    },
     onSuccess: ({ recordingId: id }) => {
       if (
         !owner.current.mounted ||
@@ -66,7 +70,7 @@ export function useBrowserRecording(
     queryKey: ['browser-recording', sessionId, generation, recordingId],
     queryFn: ({ signal }) =>
       api.recordingStatus(sessionId, recordingId!, signal),
-    enabled: live && !!recordingId,
+    enabled: live && generation !== undefined && !!recordingId,
     refetchInterval: (query) =>
       query.state.data?.state === 'ready' ||
       query.state.data?.state === 'failed'
@@ -97,11 +101,14 @@ export function useBrowserRecording(
   });
   const phase = start.isPending
     ? 'starting'
-    : (status.data?.state ?? (recordingId ? 'starting' : 'idle'));
+    : status.isError
+      ? 'failed'
+      : (status.data?.state ?? (recordingId ? 'starting' : 'idle'));
   const active = phase === 'starting' || phase === 'recording';
   const toggle = () => {
     if (active && recordingId && !stopping) stop.mutate();
-    else if (phase === 'idle' && live) start.mutate();
+    else if (phase === 'idle' && live && generation !== undefined)
+      start.mutate();
   };
   const reset = () => {
     if (recordingId)
@@ -148,7 +155,7 @@ export function BrowserRecordingButton({
       }
       onClick={recording.toggle}
     >
-      <CameraGlyph />
+      <RecordGlyph />
     </IconButton>
   );
 }

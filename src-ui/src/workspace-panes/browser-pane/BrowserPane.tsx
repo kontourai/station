@@ -28,6 +28,7 @@ import {
   glyph,
   LockGlyph,
   PhoneGlyph,
+  RecordGlyph,
   RefreshGlyph,
   ShieldGlyph,
   TerminalGlyph,
@@ -771,8 +772,8 @@ function BrowserSessionPane({
   const recording = useBrowserRecording(
     api,
     browserSessionId,
-    generation ?? 0,
-    live && artifactsEnabled,
+    generation,
+    live && artifactsEnabled && generation !== undefined,
   );
   const consoleState = useBrowserConsole({
     apiBase,
@@ -922,9 +923,10 @@ function BrowserSessionPane({
             kind: 'action' as const,
             id: 'record',
             label: recording.active ? 'Stop recording' : 'Record',
-            glyph: <CameraGlyph />,
+            glyph: <RecordGlyph />,
             disabled:
               !live ||
+              generation === undefined ||
               recording.busy ||
               recording.stopping ||
               (!recording.active && recording.phase !== 'idle'),
@@ -1183,7 +1185,10 @@ function BrowserSessionPane({
           ) : null}
         </IconButton>
         {artifactsEnabled ? (
-          <BrowserRecordingButton recording={recording} live={live} />
+          <BrowserRecordingButton
+            recording={recording}
+            live={live && generation !== undefined}
+          />
         ) : null}
         {artifactsEnabled ? (
           <Button

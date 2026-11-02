@@ -144,7 +144,7 @@ function fakeHost() {
 
 const makeTempDir = trackTempDirs();
 
-type Role = 'operator' | 'nobody';
+type Role = 'operator' | 'admin' | 'nobody';
 const roleOf = (request: Request) =>
   (request.headers.get('x-test-role') ?? 'nobody') as Role;
 
@@ -164,6 +164,7 @@ function harness(
   const stationHome = makeTempDir('station-browser-page-');
   const fake = fakeHost();
   let networkPreview = options.networkPreview === true;
+  let principalCurrent = true;
   let ids = 0;
   const sessions = new BrowserSessionRegistry({
     stationHome,
@@ -178,7 +179,11 @@ function harness(
       : {}),
   });
   const authorizeProject: BrowserProjectAuthorizer = async (request) =>
-    roleOf(request) === 'operator' ? { kind: 'operator' } : undefined;
+    roleOf(request) === 'operator'
+      ? { kind: 'operator' }
+      : roleOf(request) === 'admin'
+        ? { kind: 'project-admin', principalId: 'admin' }
+        : undefined;
   const surfaces = new LiveSurfaceRegistry(
     options.lease ? { lease: options.lease } : {},
   );
@@ -236,7 +241,7 @@ function harness(
     authorizeOperator: async (request) => roleOf(request) === 'operator',
     resolveProject: (slug) =>
       slug === 'alpha' ? { id: 'alpha', slug: 'alpha' } : undefined,
-    isRequestPrincipalCurrent: () => true,
+    isRequestPrincipalCurrent: () => principalCurrent,
   });
   const browser = (
     method: string,
@@ -301,12 +306,16 @@ function harness(
     );
     expect(response.status).toBe(200);
   };
-  const open = () =>
+  const open = (
+    actor:
+      | { kind: 'operator' }
+      | { kind: 'project-admin'; principalId: string } = { kind: 'operator' },
+  ) =>
     sessions.createSession({
       projectId: 'alpha',
       projectSlug: 'alpha',
       url: 'https://example.com/',
-      actor: { kind: 'operator' },
+      actor,
     });
   return {
     fake,
@@ -318,6 +327,9 @@ function harness(
     clickResponse,
     surfaceRoutes,
     open,
+    setPrincipalCurrent: (value: boolean) => {
+      principalCurrent = value;
+    },
     setNetworkPreview: (enabled: boolean) => {
       networkPreview = enabled;
     },
@@ -371,6 +383,71 @@ describe('Browser pane: network diagnostics', () => {
           'content-type',
         ),
       ).toBe('video/webm');
+    } finally {
+      await h.binder.dispose();
+      await h.sessions.shutdown();
+    }
+  });
+  test('recording start passes a live authority closure and protects another owner and DELETE', async () => {
+    let authorization: (() => Promise<boolean>) | undefined;
+    const jobs = new Map<string, string>();
+    const recorder = {
+      start: vi.fn(
+        ({
+          owner,
+          authorize,
+        }: {
+          owner: string;
+          authorize: () => Promise<boolean>;
+        }) => {
+          authorization = authorize;
+          jobs.set('r1', owner);
+          return 'r1';
+        },
+      ),
+      status: vi.fn((id: string, owner: string) =>
+        jobs.get(id) === owner ? { id, state: 'recording' } : undefined,
+      ),
+      cancel: vi.fn((id: string, owner: string) => {
+        if (jobs.get(id) !== owner) return false;
+        jobs.delete(id);
+        return true;
+      }),
+    };
+    const h = harness({
+      networkPreview: true,
+      humanRecordings: recorder as unknown as BrowserHumanRecording,
+    });
+    try {
+      const session = await h.open({
+        kind: 'project-admin',
+        principalId: 'admin',
+      });
+      const path = `/sessions/${session.browserSessionId}/recordings`;
+      expect(
+        (
+          await h.browser('POST', path, {
+            role: 'admin',
+            body: { generation: session.generation },
+          })
+        ).status,
+      ).toBe(201);
+      expect(await authorization?.()).toBe(true);
+      expect(
+        (await h.browser('GET', `${path}/r1`, { role: 'operator' })).status,
+      ).toBe(404);
+      expect(
+        (await h.browser('DELETE', `${path}/r1`, { role: 'operator' })).status,
+      ).toBe(404);
+      h.setPrincipalCurrent(false);
+      expect(await authorization?.()).toBe(false);
+      h.setPrincipalCurrent(true);
+      expect(
+        (await h.browser('DELETE', `${path}/r1`, { role: 'admin' })).status,
+      ).toBe(200);
+      expect(
+        (await h.browser('GET', `${path}/r1`, { role: 'admin' })).status,
+      ).toBe(404);
     } finally {
       await h.binder.dispose();
       await h.sessions.shutdown();
