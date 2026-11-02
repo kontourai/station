@@ -26,8 +26,25 @@ import { dirname, join, resolve } from 'node:path';
 // unset the same as '0') can never disagree with what actually gets
 // launched — an unset env var here would otherwise let a global Chromium
 // install paper over a worktree with none.
+/** The browsers path the lane itself exported, before the default below. */
+const laneBrowsersPath = process.env.PLAYWRIGHT_BROWSERS_PATH;
 if (!process.env.PLAYWRIGHT_BROWSERS_PATH) {
   process.env.PLAYWRIGHT_BROWSERS_PATH = '0';
+}
+
+/**
+ * Whether this run must have Chromium: a lane that installs browsers exports
+ * a real `PLAYWRIGHT_BROWSERS_PATH`, and `STATION_REQUIRE_CHROMIUM=1` asks
+ * for it explicitly. There, a missing browser must fail the suite, never turn
+ * into a skip that reads as a pass.
+ */
+export function chromiumRequired(): boolean {
+  return (
+    process.env.STATION_REQUIRE_CHROMIUM === '1' ||
+    (laneBrowsersPath !== undefined &&
+      laneBrowsersPath !== '' &&
+      laneBrowsersPath !== '0')
+  );
 }
 
 const requireFromHere = createRequire(import.meta.url);
