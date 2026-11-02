@@ -34,13 +34,13 @@ export function createTaskRelationshipAuthority(deps: {
   const requests = new WeakMap<Request, () => boolean>();
   return {
     isCurrent: (request) => requests.get(request)?.() === true,
-    async authorityForRequest(request, conversationId) {
+    async authorityForRequest(request, conversationId, target) {
       if (!deps.current(request)) return undefined;
       const path = new URL(request.url).pathname.match(
         /^\/api\/tasks\/([^/]+)\//,
       );
-      if (!path) return undefined;
-      const taskId = decodeURIComponent(path[1]!);
+      if (!path && !target) return undefined;
+      const taskId = target?.taskId ?? decodeURIComponent(path![1]!);
       const task = deps.graph.readTask(taskId);
       const project = task && canonical(task.projectId);
       if (!task || !project) return undefined;
@@ -76,7 +76,7 @@ export function createTaskRelationshipAuthority(deps: {
         { taskId, taskCreatedAt: task.createdAt },
         access,
       );
-      const candidates = new Set<string>();
+      const candidates = new Set<string>(target?.conversationIds);
       if (conversationId) candidates.add(conversationId);
       else if (
         request.method === 'GET' &&
