@@ -5,17 +5,18 @@
  *   node tests/live/terminal-view-visual.mjs --out <dir> [--first-only]
  *
  * Screenshots the terminal at 390 and 1440 px in light and dark (bottom panel,
- * with and without a selection, and the right dock at 1440), then measures
- * keystroke-to-glyph latency and the frame rate while 200,000 lines print.
- * Writes the PNGs and results.json (revision, machine, per-shot layout,
- * latencies, frames) to <dir>. The shell is bash with a fixed prompt, so no
+ * with and without a selection, the right dock at 1440, and the dock round
+ * trip back to the lower panel), then measures keystroke-to-glyph latency
+ * (median and p95) and the page frame rate over 10 s of a two-million-line
+ * flood. Writes the PNGs and results.json (revision, machine and load,
+ * per-shot layout, round-trip checks, latencies, frames) to <dir>. The shell is bash with a fixed prompt, so no
  * user, host or path is captured. Uses its own temp home and ports
  * 41810-41813 and 41820; it never touches another instance. Measure on an
  * otherwise idle machine: the numbers include whatever else it is doing.
  */
 
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import {
   arch,
   cpus,
@@ -87,7 +88,9 @@ const results = {
   screenshots: [],
   layout: {},
   latencyMs: [],
+  latency: null,
   flood: null,
+  roundTrip: [],
 };
 try {
   const context = await browser.newContext({
@@ -122,12 +125,14 @@ try {
   const layoutSlug = applied.data?.slug;
   if (!layoutSlug) throw new Error('Coding layout did not apply');
 
-  // The live terminal: a docked Terminal replaces the lower panel's, and an
-  // inactive one sits in an inert, hidden container.
+  // The live terminal: a docked Terminal replaces the lower panel's, an
+  // inactive one sits in an inert, hidden container, and a put-away dock
+  // region keeps its view mounted with no box.
   const liveTerminal = page
     .locator(
       '.station-terminal[data-state="ready"]:not([inert] *):not([aria-hidden="true"] *)',
     )
+    .filter({ visible: true })
     .first();
   const terminalInput = liveTerminal.getByRole('textbox', {
     name: 'Terminal input',
@@ -333,15 +338,61 @@ try {
     results.screenshots.push(path);
   }
 
-  // Back to the lower panel for the measurements.
-  {
-    const right = page.getByRole('button', {
-      name: 'Right region',
-      exact: true,
-    });
-    if ((await right.getAttribute('aria-pressed')) === 'true')
+  // The dock round trip, both ways a person brings the Terminal back to the
+  // lower panel: the Views rail (moves it), and putting the Right region
+  // away (its view stays mounted, hidden, on the same session). Each must
+  // fill the panel, stay connected, and echo what is typed.
+  const right = page.getByRole('button', { name: 'Right region', exact: true });
+  const dockRight = async () => {
+    if ((await right.getAttribute('aria-pressed')) !== 'true')
       await right.click();
-  }
+    await page
+      .getByRole('list', { name: 'Add to Right region' })
+      .getByRole('button', { name: /^Terminal( |$)/ })
+      .click();
+    await page
+      .locator('.chat-dock--right .station-terminal[data-state="ready"]')
+      .first()
+      .waitFor({ timeout: 60_000 });
+  };
+  const lowerTerminal = page
+    .locator('.coding-workbench__lower .station-terminal[data-state="ready"]')
+    .filter({ visible: true })
+    .first();
+  const roundTrip = async (variant) => {
+    await lowerTerminal.waitFor({ timeout: 60_000 });
+    await page.waitForTimeout(1500);
+    const input = lowerTerminal.getByRole('textbox', {
+      name: 'Terminal input',
+    });
+    const before = await input.evaluate((el) => el.style.left);
+    await input.focus();
+    await page.keyboard.type(`echo back-${variant}`);
+    await page.waitForTimeout(1500);
+    const path = join(out, `terminal-dark-1440-roundtrip-${variant}.png`);
+    await page.screenshot({ path });
+    results.screenshots.push(path);
+    results.roundTrip.push({
+      variant,
+      terminalHeight: Math.round((await lowerTerminal.boundingBox()).height),
+      notice: await page
+        .locator('.coding-workbench__lower .coding-terminal-connection')
+        .filter({ visible: true })
+        .allTextContents(),
+      echoed: (await input.evaluate((el) => el.style.left)) !== before,
+    });
+    await page.keyboard.press('Control+U');
+  };
+  // Docked right from the loop above: back through the rail.
+  await page
+    .getByRole('navigation', { name: 'Views' })
+    .getByRole('button', { name: /^Terminal(,|$)/ })
+    .first()
+    .click();
+  await roundTrip('rail');
+  await dockRight();
+  await right.click();
+  await roundTrip('region-hidden');
 
   // Keystroke to glyph. The hidden input is positioned at the cursor cell
   // after each drawn frame, so from the page's own keydown until its `left`
@@ -383,22 +434,62 @@ try {
     results.latencyMs.push(Math.round(echoed * 10) / 10);
   }
   await page.keyboard.press('Control+U');
+  {
+    const sorted = [...results.latencyMs].sort((a, b) => a - b);
+    // Nearest rank: the value at or below which that share of samples fall.
+    const rank = (p) => sorted[Math.max(0, Math.ceil(p * sorted.length) - 1)];
+    results.latency = {
+      samples: sorted.length,
+      medianMs: rank(0.5),
+      p95Ms: rank(0.95),
+      minMs: sorted[0],
+      maxMs: sorted[sorted.length - 1],
+    };
+  }
 
-  // Flood: count animation frames the page delivers while the shell prints.
-  await type('yes | head -n 200000\r');
+  // Flood: the page's frames per second over a 10 s window while the shell
+  // prints two million lines. The flood touches a file when it ends, so the
+  // results say whether it outlasted the window.
+  const floodWindowMs = 10_000;
+  const floodDone = join(repo, 'flood-done');
+  const floodStart = Date.now();
+  await type('seq 1 2000000; touch flood-done\r');
   results.flood = await page.evaluate(
-    () =>
+    (windowMs) =>
       new Promise((done) => {
+        const perSecond = [];
         let frames = 0;
+        let maxGap = 0;
         const start = performance.now();
-        const tick = () => {
+        let last = start;
+        const tick = (now) => {
           frames += 1;
-          if (performance.now() - start < 5000) requestAnimationFrame(tick);
-          else done({ frames, seconds: (performance.now() - start) / 1000 });
+          maxGap = Math.max(maxGap, now - last);
+          last = now;
+          const second = Math.floor((now - start) / 1000);
+          perSecond[second] = (perSecond[second] ?? 0) + 1;
+          if (now - start < windowMs) requestAnimationFrame(tick);
+          else
+            done({
+              frames,
+              seconds: (now - start) / 1000,
+              framesPerSecond: frames / ((now - start) / 1000),
+              perSecond: perSecond.slice(0, windowMs / 1000),
+              maxFrameGapMs: Math.round(maxGap),
+            });
         };
         requestAnimationFrame(tick);
       }),
+    floodWindowMs,
   );
+  results.flood.lines = 2_000_000;
+  results.flood.outlastedWindow = !existsSync(floodDone);
+  while (!existsSync(floodDone) && Date.now() - floodStart < 300_000)
+    await page.waitForTimeout(500);
+  results.flood.floodSeconds = existsSync(floodDone)
+    ? (Date.now() - floodStart) / 1000
+    : null;
+  results.environment.loadAverageAfter = loadavg();
 } finally {
   writeFileSync(
     join(out, 'results.json'),
