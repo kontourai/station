@@ -140,8 +140,8 @@ export interface SystemStatusDeps {
    */
   resourcePosture?: RuntimeResourcePostureProbe;
   /**
-   * The terminal surface's live PTY capability (#1244), wired to
-   * `TerminalService.probeCapability()`. Optional so older route hosts keep
+   * The terminal surface's live PTY capability (#1244), wired to the
+   * runtime PTY adapter's `probeCapability()`. Optional so older route hosts keep
    * their existing capability record; when absent, status makes NO terminal
    * claim rather than fabricating readiness.
    */

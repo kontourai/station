@@ -2,14 +2,14 @@
  * Scoped pairing (archive#1098): the single route -> required-scope table.
  *
  * Every HTTP mount `configureRuntimeRoutes` registers behind the runtime
- * auth boundary (`runtime-http.ts`), plus the terminal and voice WebSocket
- * upgrade paths, is listed here exactly once. `requiredPairingScope` is the
+ * auth boundary (`runtime-http.ts`), plus the voice WebSocket upgrade path,
+ * is listed here exactly once. `requiredPairingScope` is the
  * only function anything calls to answer "what scope does this route
  * need?" — never re-derive it ad hoc in a route handler.
  *
  * Fail-closed by design: a method/path this table does not recognize
- * resolves to `undefined`, and every caller (the HTTP middleware, the two
- * WebSocket auth wrappers) treats `undefined` as DENY, not as "no scope
+ * resolves to `undefined`, and every caller (the HTTP middleware, the voice
+ * WebSocket auth wrapper) treats `undefined` as DENY, not as "no scope
  * required." `src-server/security/__tests__/pairing-route-scopes.test.ts`
  * scans `runtime-routes.ts`'s actual `context.app.route(...)` mounts and
  * asserts every one resolves to a defined scope, so a new authenticated
@@ -345,10 +345,10 @@ export interface PairingScopeRouteRule {
  * `configureRuntimeRoutes` (`src-server/runtime/routes/runtime-routes.ts`).
  * Keep this list in sync with that function's `context.app.route(...)`
  * calls — the coverage test enforces it automatically. Public
- * (`/.well-known/station/v1/**`, `/api/system/liveness`) and the terminal /
- * voice WebSocket paths are NOT listed here: the former never reach this
- * table (classified `public` before any scope check), the latter are HTTP
- * upgrades handled by {@link PAIRING_WS_SCOPES} instead.
+ * (`/.well-known/station/v1/**`, `/api/system/liveness`) and the voice
+ * WebSocket path are NOT listed here: the former never reach this table
+ * (classified `public` before any scope check), the latter is an HTTP
+ * upgrade handled by {@link PAIRING_WS_SCOPES} instead.
  */
 const PAIRING_SCOPE_DOMAIN_PREFIXES: readonly string[] = [
   '/api/search',
@@ -2472,8 +2472,8 @@ export function refusedOnWebSocket(
 }
 
 /**
- * Shared by the terminal and voice WebSocket first-frame auth wrappers
- * (`runtime-service-bootstrap.ts`, `runtime-initialize.ts`): a credential
+ * Used by the voice WebSocket first-frame auth wrapper
+ * (`runtime-initialize.ts`): a credential
  * must both be valid AND carry `requiredScope` — an invalid credential is
  * rejected before `resolveGrantedScope` is even called (fail fast, and
  * never lets an unresolvable credential probe scope side channels). An
@@ -2591,11 +2591,7 @@ function pathMatchesExact(path: string, prefix: string): boolean {
  * intentionally exact so a future `app.all('/new/*', ...)` cannot disappear
  * behind a broad middleware exception in the runtime coverage guard.
  */
-export type ExternalSurfaceTransport =
-  | 'http'
-  | 'terminal-ws'
-  | 'voice-ws'
-  | 'consent-http';
+export type ExternalSurfaceTransport = 'http' | 'voice-ws' | 'consent-http';
 export type ExternalSurfaceCapability =
   | 'pairing-scope'
   | 'public'
@@ -3149,24 +3145,6 @@ export const EXTERNAL_SURFACE_CAPABILITY_TABLE: readonly ExternalSurfaceCapabili
       reason: 'public discovery CORS middleware registration',
     },
     {
-      id: 'terminal-ws:session',
-      transport: 'terminal-ws',
-      method: 'CONNECT',
-      prefix: '/',
-      match: 'exact',
-      capability: 'pairing-scope',
-      scope: PAIRING_SCOPE_TERMINAL_OPERATE,
-    },
-    {
-      id: 'terminal-ws:health',
-      transport: 'terminal-ws',
-      method: 'CONNECT',
-      prefix: '/__station/health',
-      match: 'exact',
-      capability: 'public',
-      reason: 'listener health close handshake',
-    },
-    {
       id: 'voice-ws:session',
       transport: 'voice-ws',
       method: 'CONNECT',
@@ -3186,8 +3164,7 @@ export const EXTERNAL_SURFACE_CAPABILITY_TABLE: readonly ExternalSurfaceCapabili
     },
     // archive#3677: the distinct-origin consent listener. A separate port,
     // never mounted on the runtime app, so `assertRuntimeHttpRouteCoverage`
-    // cannot see it — it is declared here (like the terminal/voice WS
-    // listeners) so the consent surface is a documented classification
+    // cannot see it — it is declared here (like the voice WS listener) so the consent surface is a documented classification
     // rather than an undocumented bypass, and the listener runs its own
     // coverage assertion against these entries
     // (`src-server/runtime/consent/consent-listener.ts`).
@@ -3342,7 +3319,6 @@ function requiredExternalPairingScope(
 
 /** The dedicated WebSocket servers derive their scopes from the same table. */
 export const PAIRING_WS_SCOPES = {
-  terminal: requiredExternalPairingScope('terminal-ws', 'CONNECT', '/'),
   voice: requiredExternalPairingScope('voice-ws', 'CONNECT', '/'),
 } as const satisfies Record<string, PairingScope>;
 
@@ -5013,7 +4989,6 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     { method: 'GET', path: '/api/system/runtime' },
     { method: 'GET', path: '/api/system/skills' },
     { method: 'GET', path: '/api/system/status' },
-    { method: 'GET', path: '/api/system/terminal-port' },
     { method: 'GET', path: '/api/system/vapid-public-key' },
     { method: 'POST', path: '/api/system/verify-bedrock' },
     { method: 'POST', path: '/api/system/verify-managed-runtime' },

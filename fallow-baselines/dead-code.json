@@ -686,8 +686,6 @@
     "unused-class-member:src-server/services/ssh/environment-security-service.ts:EnvironmentSecurityService:canSharePersonalConversation",
     "unused-class-member:src-server/services/starter-work/starter-work-module.ts:StarterWorkModule:list",
     "unused-class-member:src-server/services/telemetry-producers/telemetry-producer-store.ts:TelemetryProducerStore:now",
-    "unused-class-member:src-server/services/terminal/terminal-history.ts:TerminalHistory:toString",
-    "unused-class-member:src-server/services/terminal/terminal-service.ts:TerminalService:restart",
     "unused-class-member:src-server/services/turn-idempotency.ts:TurnIdempotencySettledError:code",
     "unused-class-member:src-server/services/usage-telemetry-service.ts:UsageTelemetryService:countPluginTelemetry",
     "unused-class-member:src-server/services/usage-telemetry-service.ts:UsageTelemetryService:mountPluginTelemetryPane",
