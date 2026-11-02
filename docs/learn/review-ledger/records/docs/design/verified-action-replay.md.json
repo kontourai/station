@@ -5,7 +5,7 @@
 
   "state": "classified",
 
-  "summary": "Proposal for saving a verified Agent browser action sequence and replaying it inside a bound Session through the existing browser authority, lease, fence and approval path, with outcome attribution, hand-off to the calling Agent, invalidation, secret handles and alternatives. Separately lists the current Station behavior the proposal depends on.",
+  "summary": "Proposal for saving a verified Agent browser action sequence and replaying it inside a bound Session through the existing browser authority, lease, fence and approval path, with an observed-progress end check (not proof of cause), hand-off to the calling Agent, invalidation, secret handles and alternatives. Separately lists the current Station behavior the proposal depends on.",
 
   "limits": "Design exploration only; nothing in it is implemented. The pilot timing and end-mismatch observation come from one run of an external framework, not a Station measurement. The current-behavior section was checked by source inspection, not by executing tests.",
 

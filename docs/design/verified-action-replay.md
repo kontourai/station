@@ -243,7 +243,9 @@ their own.
 
 The tool returns one of three results:
 
-- **Replayed:** every action ran and the outcome is attributed.
+- **Replayed:** every action ran, the end conditions matched and at least one
+  of them was observed to change during replay. This shows progress, not that
+  replay caused the outcome.
 - **Handed off:** replay stopped after at least one action. The result gives
   the actions that ran, the stop reason, the current path and a short detail.
 - **Missed:** replay stopped before its first action.
@@ -292,7 +294,7 @@ replayed step never rewrites its own entry.
 
 **Server-state limits.** The start and end checks cannot detect application
 state that earlier runs left behind, apart from the already-true case that
-attribution catches. A recording can still "succeed" against different data
+the observed-progress rule catches. A recording can still "succeed" against different data
 than it was recorded with. Recording precondition anchors, meaning elements
 that must look as they did when recorded before replay starts, would narrow
 this at the cost of more misses. That choice is an [open question](#open-questions).
