@@ -139,9 +139,9 @@ export function encodeAgentBody(
       });
     }
     const packed: Node[] = [];
-    if (tape.length > 16) {
-      for (let offset = 0; offset < tape.length; offset += 16) {
-        const page = { page: tape.slice(offset, offset + 16) };
+    if (tape.length > 7) {
+      for (let offset = 0; offset < tape.length; offset += 7) {
+        const page = { page: tape.slice(offset, offset + 7) };
         const encoded = JSON.stringify(page);
         if (encoded.length <= 8192)
           packed.push({ spread: putNode(encoded, agentBodyRefs(page)) });

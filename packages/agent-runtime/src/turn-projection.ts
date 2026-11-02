@@ -98,10 +98,15 @@ function frameAddress(id: string) {
     : { group: `literal:${id}`, ordinal: 0 };
 }
 function parseBlock(row: Record<string, unknown>): AgentFrame[] {
-  const envelope = z
-    .object({ digest: text, payload: z.string() })
-    .strict()
-    .parse(JSON.parse(String(row.record)));
+  const record = String(row.record);
+  const envelope = record.startsWith('{')
+    ? z
+        .object({ digest: text, payload: z.string() })
+        .strict()
+        .parse(JSON.parse(record))
+    : { digest: `sha256:${record.slice(0, 64)}`, payload: record.slice(65) };
+  if (!record.startsWith('{') && record[64] !== ' ')
+    throw new Error('DURABLE_AGENT_FRAME_DAMAGED');
   const raw = z
     .object({
       at: z.iso.datetime(),
@@ -195,17 +200,15 @@ function putBlock(
   if (append) {
     const changed = agentStatement(
       database,
-      'UPDATE agent_steps_frame_blocks SET last_position=?,last_ordinal=?,record=? WHERE turn_id=? AND position=? AND record=?',
+      'INSERT OR REPLACE INTO agent_steps_frame_blocks VALUES(?,?,?,?,?,?,?)',
     ).run(
-      last.position,
-      frameAddress(last.id).ordinal,
-      JSON.stringify({
-        digest,
-        payload: deflateSync(JSON.stringify(raw)).toString('base64'),
-      }),
       turnId,
       first.position,
-      String(previous.record),
+      last.position,
+      address.group,
+      address.ordinal,
+      frameAddress(last.id).ordinal,
+      `${digest.slice(7)} ${deflateSync(JSON.stringify(raw)).toString('base64')}`,
     );
     if (changed.changes !== 1) throw new Error('DURABLE_AGENT_FRAME_DAMAGED');
     return;
@@ -220,10 +223,7 @@ function putBlock(
     address.group,
     address.ordinal,
     frameAddress(last.id).ordinal,
-    JSON.stringify({
-      digest,
-      payload: deflateSync(JSON.stringify(raw)).toString('base64'),
-    }),
+    `${digest.slice(7)} ${deflateSync(JSON.stringify(raw)).toString('base64')}`,
   );
 }
 function parseFrame(row: Record<string, unknown>): AgentFrame {

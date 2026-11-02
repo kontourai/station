@@ -585,7 +585,10 @@ function write(
   );
   agentStatement(
     database,
-    'INSERT INTO agent_steps_effects VALUES(?,?,?) ON CONFLICT(turn_id,id) DO UPDATE SET record=excluded.record',
+    effect.state === 'completed' &&
+      ['model', 'provider'].includes(effect.intent.kind)
+      ? 'INSERT OR REPLACE INTO agent_steps_effects VALUES(?,?,?)'
+      : 'INSERT INTO agent_steps_effects VALUES(?,?,?) ON CONFLICT(turn_id,id) DO UPDATE SET record=excluded.record',
   ).run(turnId, effect.intent.id, wire);
 }
 export function validateAgentEffects(database: DatabaseSync, turnId: string) {
