@@ -1,0 +1,7 @@
+{
+  "revision": "ab6861ec5ed2ce996e3cb74a6eb7cbe0697c7abe",
+
+  "notes": [
+    {"path":"docs/guides/repository-knowledge-graph.md","note":"At ab6861ec5ed, read the full guide after the linked example query changed in58affa. The guide already names the ChildWork subset, fixed export bounds, snapshot-qualified identities, title/canonical-record recall and separate derived vector search. Traced README/exporter/graph/importer in the six-document owner review; the corrected ChildWork query now agrees with that existing guide, with no new API or authority semantics. Root executed the fresh58affa offline exporter:1selected module,959records,1083edges,3omissions; ChildWork title matches2 and oldKnowledgeStoreProvider matches0. No guide prose change required. The September snapshot counts,6.4/6.5 Kit consumer observations and release integrity limits remain explicitly historical and were not rerun or refreshed. No live HTTP ingestion/recall, Knowledge Library rendering, model, embedding, Neo4j, device, native or cross-platform qualification is claimed. This scoped review addresses the linked README delta; it is not global module-map semantic approval.","inputs":["docs/guides/repository-knowledge-graph.md","examples/repository-knowledge-graph/README.md"]}
+  ]
+}
