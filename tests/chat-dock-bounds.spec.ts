@@ -139,6 +139,40 @@ async function narrowSideDock(page: Page) {
   await page.mouse.up();
 }
 
+/** Collapses Chat's side region and lists what its strip draws outside itself. */
+async function collapseAndExpectContained(page: Page) {
+  const dock = page.locator('#chat-dock');
+  await dock.getByRole('button', { name: 'Hide Chat' }).click();
+  await expect(dock).toHaveClass(/is-collapsed/);
+  await expect
+    .poll(async () => Math.round((await dock.boundingBox())!.width))
+    .toBe(36);
+  const spill = await page.evaluate(() => {
+    const shell = document.querySelector('#chat-dock')!;
+    const bounds = shell.getBoundingClientRect();
+    return (
+      [...shell.querySelectorAll('.chat-dock__header *')]
+        // A tooltip is an overlay by design, drawn beside its control.
+        .filter((element) => !element.closest('[role="tooltip"]'))
+        .filter((element) => {
+          const rect = element.getBoundingClientRect();
+          return (
+            rect.width > 0 &&
+            rect.height > 0 &&
+            (rect.left < bounds.left - 0.5 || rect.right > bounds.right + 0.5)
+          );
+        })
+        .map(
+          (element) =>
+            `${element.getAttribute('aria-label') ?? element.className} ${Math.round(element.getBoundingClientRect().left)}-${Math.round(element.getBoundingClientRect().right)} of ${Math.round(bounds.left)}-${Math.round(bounds.right)}`,
+        )
+    );
+  });
+  expect(spill).toEqual([]);
+  // What remains is still the way back.
+  await expect(dock.getByRole('button', { name: 'Show Chat' })).toBeVisible();
+}
+
 test.describe('Dock bar bounds (#4401)', () => {
   test.use({ viewport: { width: 1280, height: 800 } });
 
@@ -212,36 +246,20 @@ test.describe('Dock bar bounds (#4401)', () => {
         await dragDockTo(page, 'left');
         await expect(dock).toHaveClass(/chat-dock--left/);
       }
-      await dock.getByRole('button', { name: 'Hide Chat' }).click();
-      await expect(dock).toHaveClass(/is-collapsed/);
-      await expect
-        .poll(async () => Math.round((await dock.boundingBox())!.width))
-        .toBe(36);
-
-      const spill = await page.evaluate(() => {
-        const shell = document.querySelector('#chat-dock')!;
-        const bounds = shell.getBoundingClientRect();
-        return [...shell.querySelectorAll('.chat-dock__header *')]
-          .filter((element) => {
-            const rect = element.getBoundingClientRect();
-            return (
-              rect.width > 0 &&
-              rect.height > 0 &&
-              (rect.left < bounds.left - 0.5 || rect.right > bounds.right + 0.5)
-            );
-          })
-          .map(
-            (element) =>
-              `${element.getAttribute('aria-label') ?? element.className}`,
-          );
-      });
-      expect(spill).toEqual([]);
-      // What remains is still the way back.
-      await expect(
-        dock.getByRole('button', { name: 'Show Chat' }),
-      ).toBeVisible();
+      await collapseAndExpectContained(page);
     });
   }
+
+  test('a collapsed strip with no chat open holds its New chat action too', async ({
+    page,
+  }) => {
+    const dock = await openDockOnRight(page);
+    await dock.getByRole('button', { name: /^More dock actions/ }).hover();
+    await dock.getByRole('button', { name: 'Close chat' }).click();
+    await expect(dock.locator('.chat-dock__active-identity')).toHaveCount(0);
+    await collapseAndExpectContained(page);
+    await expect(dock.getByRole('button', { name: /^New chat/ })).toBeVisible();
+  });
 });
 
 test.describe('Coding bar and rail (#4401)', () => {
