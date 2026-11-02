@@ -86,6 +86,49 @@ import {
   verifyReportTerminalWitness,
 } from './station-report-terminal-witness.js';
 
+type RequestLease = Awaited<
+  ReturnType<typeof captureEnvironmentLocalGrantReadOwner>
+>;
+type RequestAdmission = <Value>(check: () => Value) => Promise<Value>;
+
+class ReportRequestContext implements RuntimeSourceRequestContext {
+  readonly req: RuntimeSourceRequestContext['req'];
+  #lease: Promise<RequestLease> | undefined;
+  readonly #owner: StationReportGroupCustody;
+  readonly #original: RuntimeSourceRequestContext;
+  constructor(
+    owner: StationReportGroupCustody,
+    original: RuntimeSourceRequestContext,
+  ) {
+    this.#owner = owner;
+    this.#original = original;
+    const request = original.req.raw;
+    this.req = Object.freeze({
+      raw: request,
+      header: (name: string) => original.req.header(name),
+    });
+    Object.freeze(this);
+  }
+  get env() {
+    return this.#original.env;
+  }
+  assertBound(owner: StationReportGroupCustody): void {
+    if (this.#owner !== owner || this.#original.req.raw !== this.req.raw)
+      refuse();
+    this.req.raw.signal.throwIfAborted();
+  }
+  capture(
+    owner: StationReportGroupCustody,
+    capture: () => Promise<RequestLease>,
+  ) {
+    this.assertBound(owner);
+    // Retain the original host witness, including a failed capture; currentness
+    // is checked separately at every consumer's own Home admission boundary.
+    this.#lease ??= capture();
+    return this.#lease;
+  }
+}
+
 type ReadContext = {
   lease: Awaited<ReturnType<typeof captureEnvironmentLocalGrantReadOwner>>;
   principal: import('@kontourai/station-contracts/principal').PrincipalRef;
@@ -120,7 +163,49 @@ export class StationReportGroupCustody {
     this.owners = Object.freeze({ ...owners });
   }
 
+  bindRequest(
+    context: RuntimeSourceRequestContext,
+  ): RuntimeSourceRequestContext {
+    if (context instanceof ReportRequestContext) {
+      context.assertBound(this);
+      return context;
+    }
+    return new ReportRequestContext(this, context);
+  }
+
+  assertRequestBound(context: RuntimeSourceRequestContext): void {
+    if (!(context instanceof ReportRequestContext)) refuse();
+    context.assertBound(this);
+  }
+
+  async captureRequestLease(
+    context: RuntimeSourceRequestContext,
+    admit: RequestAdmission,
+  ): Promise<RequestLease> {
+    if (!(context instanceof ReportRequestContext)) refuse();
+    const lease = await context.capture(this, () =>
+      context.req.raw.method === 'GET'
+        ? captureEnvironmentLocalGrantReadOwner(
+            context.req.raw,
+            this.owners.environment,
+            this.owners.security,
+            admit,
+          )
+        : captureEnvironmentLocalGrantObservationOwner(
+            context.req.raw,
+            this.owners.environment,
+            this.owners.security,
+            admit,
+          ).then((observation) =>
+            admit(() => observation.requireCurrentLocalGrant(context.req.raw)),
+          ),
+    );
+    context.assertBound(this);
+    return lease;
+  }
+
   #request(context: RuntimeSourceRequestContext, method: 'GET' | 'POST'): void {
+    if (context instanceof ReportRequestContext) context.assertBound(this);
     this.owners.environment.withCurrentAuthority(() => {
       const request = context.req.raw;
       request.signal.throwIfAborted();
@@ -214,6 +299,7 @@ export class StationReportGroupCustody {
     method: 'GET' | 'POST',
     publication?: ReportRoundsPublication,
   ) {
+    context = this.bindRequest(context);
     const writer = await HomeWriterOwner.forHome(
       this.owners.environment.getProjectHomeDir(),
     );
@@ -231,22 +317,7 @@ export class StationReportGroupCustody {
           )
         : writer.runRequest(context.req.raw.signal, check);
     await admit(() => this.#request(context, method));
-    const lease =
-      method === 'GET'
-        ? await captureEnvironmentLocalGrantReadOwner(
-            context.req.raw,
-            this.owners.environment,
-            this.owners.security,
-            admit,
-          )
-        : await captureEnvironmentLocalGrantObservationOwner(
-            context.req.raw,
-            this.owners.environment,
-            this.owners.security,
-            admit,
-          ).then((observation) =>
-            admit(() => observation.requireCurrentLocalGrant(context.req.raw)),
-          );
+    const lease = await this.captureRequestLease(context, admit);
     const principal = await admit(() =>
       createOrchestrationRequestPrincipalResolver({
         environmentSecurityService: this.owners.environment,

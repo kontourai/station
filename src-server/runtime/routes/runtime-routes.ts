@@ -6672,6 +6672,8 @@ export function configureRuntimeRoutes(
         return automationActions;
       },
       store: eventStore.threadInboxStore(),
+      submissionRefusal: ({ conversationId }) =>
+        service.conversationInputAdmissionRefusal(conversationId),
       placementRefusal: (input) =>
         coordinatorPlacement?.placementRefusal({
           conversationId: input.conversationId,

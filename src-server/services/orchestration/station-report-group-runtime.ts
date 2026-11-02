@@ -15,10 +15,6 @@ import type {
   ReportGroupView,
 } from '@kontourai/station-contracts/report-group';
 import { isRuntimePublicationParticipant } from '../../runtime/bootstrap/runtime-publication-participant.js';
-import {
-  captureEnvironmentLocalGrantObservationOwner,
-  captureEnvironmentLocalGrantReadOwner,
-} from '../../runtime/conversation/local-grant-observation-owner.js';
 import type { RuntimeFencedCredentialObservationOwners } from '../../runtime/conversation/runtime-fenced-credential-observation.js';
 import { createSealedProviderPreparation } from '../../runtime/conversation/sealed-provider-preparation.js';
 import { isOperatorInPersonNotAgent } from '../../security/coding-authority.js';
@@ -301,10 +297,17 @@ export class StationReportGroupRuntime {
     });
   }
 
+  bindRequest(
+    context: RuntimeSourceRequestContext,
+  ): RuntimeSourceRequestContext {
+    return this.#custody.bindRequest(context);
+  }
+
   async authorizeResponse(
     context: RuntimeSourceRequestContext,
     publication?: ReportRoundsPublication,
   ) {
+    context = this.bindRequest(context);
     const writer = await HomeWriterOwner.forHome(
       this.owners.runtime.environmentSecurityService.getProjectHomeDir(),
     );
@@ -322,22 +325,7 @@ export class StationReportGroupRuntime {
           )
         : writer.runRequest(context.req.raw.signal, check);
     await admit(() => this.#assertCurrent(context));
-    const lease =
-      context.req.raw.method === 'GET'
-        ? await captureEnvironmentLocalGrantReadOwner(
-            context.req.raw,
-            this.owners.runtime.environmentSecurityService,
-            this.owners.runtime.requestSecurity,
-            admit,
-          )
-        : await captureEnvironmentLocalGrantObservationOwner(
-            context.req.raw,
-            this.owners.runtime.environmentSecurityService,
-            this.owners.runtime.requestSecurity,
-            admit,
-          ).then((observation) =>
-            admit(() => observation.requireCurrentLocalGrant(context.req.raw)),
-          );
+    const lease = await this.#custody.captureRequestLease(context, admit);
     const current = () => {
       return this.owners.runtime.environmentSecurityService.withCurrentAuthority(
         () => {
@@ -365,6 +353,7 @@ export class StationReportGroupRuntime {
     });
   }
   #assertCurrent(context: RuntimeSourceRequestContext) {
+    this.#custody.assertRequestBound(context);
     return this.owners.runtime.environmentSecurityService.withCurrentAuthority(
       () => {
         context.req.raw.signal.throwIfAborted();
@@ -381,6 +370,7 @@ export class StationReportGroupRuntime {
     );
   }
   async create(context: RuntimeSourceRequestContext, input: unknown) {
+    context = this.bindRequest(context);
     return this.#withRoundsPublication(context, async (publication) => {
       const result = await this.#execution.execute(context, input, publication);
       if (!result.group) throw new StationReportCustodyUnavailable();
@@ -393,6 +383,7 @@ export class StationReportGroupRuntime {
     seatId: string,
     expectedRevision: number,
   ) {
+    context = this.bindRequest(context);
     const current = await this.authorizeResponse(context);
     const result = await this.#retainedTurns.checkpoint(
       context,
@@ -407,6 +398,7 @@ export class StationReportGroupRuntime {
     groupId: string,
     command: unknown,
   ) {
+    context = this.bindRequest(context);
     return this.#withRoundsPublication(context, async (publication) => {
       const result = await this.#renewal.narrowAfterInput(
         context,
@@ -429,6 +421,7 @@ export class StationReportGroupRuntime {
     groupId: string,
     input: ReportGroupAccountingRecoveryInput,
   ): Promise<ReportGroupAccountingRecoveryResult> {
+    context = this.bindRequest(context);
     return this.#withRoundsPublication(context, async (publication) => {
       const recovered = await this.#custody.recoverAccounting(
         context,
@@ -475,6 +468,7 @@ export class StationReportGroupRuntime {
     groupId: string,
     command: ReportGroupReportInput,
   ) {
+    context = this.bindRequest(context);
     return this.#withRoundsPublication(context, async (publication) => {
       const result = await this.#continuation.report(
         context,
@@ -511,6 +505,7 @@ export class StationReportGroupRuntime {
     groupId: string,
     command: ReportGroupInputSyncInput,
   ) {
+    context = this.bindRequest(context);
     const text = await this.#renewal.recoverAnswerContext(
       context,
       groupId,
@@ -526,6 +521,7 @@ export class StationReportGroupRuntime {
     groupId: string,
     command: ReportGroupContextSyncInput,
   ) {
+    context = this.bindRequest(context);
     return this.#withRoundsPublication(context, async (publication) => {
       const result = await this.#continuation.sync(
         context,
@@ -551,6 +547,7 @@ export class StationReportGroupRuntime {
       continuationOperationKey: string;
     },
   ) {
+    context = this.bindRequest(context);
     const participant = this.#finalizerParticipant();
     const { result, group } = await this.#custody.finalizeContinuation(
       context,
@@ -587,6 +584,7 @@ export class StationReportGroupRuntime {
     groupId: string,
     command: ReportGroupFinalizeSyncInput,
   ) {
+    context = this.bindRequest(context);
     return this.#withRoundsPublication(context, async (publication) => {
       const result = await this.#custody.finalizeSync(
         context,
@@ -605,10 +603,12 @@ export class StationReportGroupRuntime {
     });
   }
   async get(context: RuntimeSourceRequestContext, groupId: string) {
+    context = this.bindRequest(context);
     const result = await this.#custody.inspect(context, groupId);
     return result ? view(result) : null;
   }
   async list(context: RuntimeSourceRequestContext, afterGroupId?: string) {
+    context = this.bindRequest(context);
     const records = (await this.#custody.list(context)).filter(
       (record) => !afterGroupId || record.admission.spec.groupId > afterGroupId,
     );
@@ -627,6 +627,7 @@ export class StationReportGroupRuntime {
     groupId: string,
     afterRevision: number,
   ) {
+    context = this.bindRequest(context);
     const historical = await this.#custody.inspect(context, groupId);
     if (!historical || afterRevision > (historical.group?.revision ?? 0))
       throw new StationReportCustodyUnavailable();
@@ -670,6 +671,7 @@ export class StationReportGroupRuntime {
     invocationId: string,
     afterOffset: number,
   ) {
+    context = this.bindRequest(context);
     const result = await this.#custody.readResult(
       context,
       groupId,
@@ -723,6 +725,7 @@ export class StationReportGroupRuntime {
     groupId: string,
     command: ReportGroupFinalizeCancelInput,
   ) {
+    context = this.bindRequest(context);
     return this.#withRoundsPublication(context, async (publication) => {
       const result = await this.#custody.finalizeCancel(
         context,
@@ -744,6 +747,7 @@ export class StationReportGroupRuntime {
     groupId: string,
     command: { operationKey: string; expectedRevision: number },
   ) {
+    context = this.bindRequest(context);
     return this.#withRoundsPublication(context, async (publication) => {
       const result = await this.#custody.cancel(
         context,

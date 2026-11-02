@@ -158,6 +158,22 @@ automatically. [Foreground handoff](../../src-server/runtime/agents/durable-agen
 retains delivery and cleanup across disconnect; explicit Stop cancels. Stable
 frame and invocation identities let publication reconcile after settlement.
 
+Sealed SDK source Sessions use a distinct recorded mode, not the ordinary
+framework journal. The shared Session-summary reader receives thread context and
+selects restrictions from canonical first/latest `session.started` evidence;
+provider defaults remain unchanged for ordinary Sessions. Their profile declares
+no steering, crash continuation, native tool replay or restart recovery of live
+input registration. Boot skips the managed owner before recovery can claim them.
+[The Session contract](../contexts/agent-runtime/CONTEXT.md#sealed-source-sessions)
+keeps interrupted presentation separate from provider outcome and paid allocation.
+
+Runtime Inbox composition supplies a fresh-submission refusal for these Sessions
+before the central delivery owner writes an effectful row. Display notes bypass
+that gate; accepted retries remain reads and reactivated refused or unplaced
+cancelled rows are checked again. This central-owner rule does not qualify every
+public retry path: existing producer prechecks still apply. No queued intent
+supplies the fresh branded SDK admission needed for another sealed turn.
+
 The native conformance suite is
 `src-server/runtime/agents/__tests__/durable-agent-conformance.test.ts`; the
 route-level disconnect control is

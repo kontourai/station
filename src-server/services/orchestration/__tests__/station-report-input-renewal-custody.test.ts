@@ -1,4 +1,6 @@
 import assert from 'node:assert/strict';
+import { randomBytes } from 'node:crypto';
+import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { DelegationRoundsTransactionUncertainError } from '@kontourai/flow-agents/delegation-group-rounds';
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
@@ -15,6 +17,7 @@ import { StationAgentAdapter } from '../../../providers/adapters/station-agent-a
 import { createReportGroupRoutes } from '../../../routes/orchestration/report-groups.js';
 import { isRuntimePublicationParticipant } from '../../../runtime/bootstrap/runtime-publication-participant.js';
 import { StationRuntime } from '../../../runtime/bootstrap/station-runtime.js';
+import * as localGrantOwner from '../../../runtime/conversation/local-grant-observation-owner.js';
 import {
   bindRuntimeLocalOperator,
   getRuntimeAuthenticatedRequestPrincipal,
@@ -51,6 +54,8 @@ test.each([
   'response-contention',
   'response-revoked',
   'checkpoint-contention',
+  'request-witness-cost',
+  'response-original-witness',
 ] as const)(
   'input renewal keeps real caller custody: %s',
   async (scenario) => {
@@ -333,6 +338,113 @@ test.each([
     const created = await creating;
     assert.equal(created.group.members.length, 1);
     assert.equal(h.rawFetch.mock.calls.length, 1);
+    if (
+      scenario === 'request-witness-cost' ||
+      scenario === 'response-original-witness'
+    ) {
+      const captures = vi.spyOn(
+        localGrantOwner,
+        'captureEnvironmentLocalGrantReadOwner',
+      );
+      onTestFinished(() => captures.mockRestore());
+      const url = `http://renewal-control.test/api/orchestration/report-groups/${created.group.groupId}`;
+      const request = () => {
+        const raw = new Request(url, {
+          headers: {
+            Authorization: `Bearer ${h.f.paired.credential}`,
+            'X-Test-Operator': 'yes',
+          },
+        });
+        setRuntimeAuthenticatedRequestPrincipal(raw, { ...principal });
+        bindRuntimeLocalOperator(raw);
+        return raw;
+      };
+      if (scenario === 'request-witness-cost') {
+        const response = await app.fetch(request());
+        assert.equal(response.status, 200);
+        assert.equal(
+          captures.mock.calls.length,
+          1,
+          'one HTTP read must share its pre-work host witness with custody',
+        );
+        const context = h.f.context(request());
+        assert.ok(await runtime.get(context, created.group.groupId));
+        assert.equal(captures.mock.calls.length, 2);
+        assert.ok(await runtime.get(context, created.group.groupId));
+        assert.equal(
+          captures.mock.calls.length,
+          3,
+          'standalone calls must capture anew even for the same Request',
+        );
+        const foreign = h.custody.bindRequest(context);
+        assert.throws(
+          () => runtime.bindRequest(foreign),
+          /custody is unavailable/i,
+        );
+        const bound = runtime.bindRequest(context);
+        context.req.raw = request();
+        await assert.rejects(
+          runtime.authorizeResponse(bound),
+          /custody is unavailable/i,
+        );
+        const malformed = await app.fetch(
+          new Request(`${url}?unexpected=yes`, {
+            headers: {
+              Authorization: `Bearer ${h.f.paired.credential}`,
+              'X-Test-Operator': 'yes',
+            },
+          }),
+        );
+        assert.equal(malformed.status, 400);
+        return;
+      }
+      const get = runtime.get.bind(runtime);
+      let replaced = false;
+      const originalId = (await h.f.environment.readExistingRecord())
+        .environmentId;
+      const afterWork = vi
+        .spyOn(runtime, 'get')
+        .mockImplementation(async (...args) => {
+          const value = await get(...args);
+          assert.ok(
+            value,
+            'the real authorized read must complete before key replacement',
+          );
+          writeFileSync(
+            join(h.f.home, 'security', `revision-evidence-${originalId}.key`),
+            randomBytes(32).toString('base64url'),
+            { mode: 0o600 },
+          );
+          replaced = true;
+          return value;
+        });
+      onTestFinished(() => afterWork.mockRestore());
+      const response = await app.fetch(request());
+      assert.equal(replaced, true);
+      assert.equal(response.status, 503);
+      assert.deepEqual(await response.json(), {
+        success: false,
+        code: 'report_group_unavailable',
+      });
+      assert.equal(
+        captures.mock.calls.length,
+        1,
+        'response must validate the original witness rather than recapturing after effects',
+      );
+      assert.equal(
+        (await h.f.environment.readExistingRecord()).environmentId,
+        originalId,
+      );
+      const freshContext = h.f.context(request());
+      const fresh = await runtime.authorizeResponse(freshContext);
+      await runtime.withResponseCurrent(freshContext, fresh, () => undefined);
+      assert.equal(
+        captures.mock.calls.length,
+        2,
+        'a fresh witness is valid, isolating rejection to the original host signature',
+      );
+      return;
+    }
     if (scenario === 'checkpoint-contention') {
       const checkpoint = StationReportRetainedTurns.prototype.checkpoint;
       const checkpointBody = vi

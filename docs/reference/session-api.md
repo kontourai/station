@@ -652,10 +652,21 @@ the current execution Session and its event sequence.
 
 `POST` to that same path accepts `{kind, key, message, expectedHead?}`.
 `kind` is `steer`, `follow-up` or `display`; steer requires the observed head.
-The key is idempotent over kind, sender, text and the supplied head. A matching
-retry returns its retained entry even after the head advances. Changed input
+The key is idempotent over kind, sender, text and the supplied head. For an
+ordinarily admitted Session, a matching retry returns its retained entry even
+after the head advances. Changed input
 returns HTTP409 `inbox_key_conflict`. A new entry with a stale head returns
 HTTP409 `inbox_stale_head` and `currentHead`, without a write.
+
+Sealed SDK source Sessions have no generic steering or follow-up admission.
+Their provider name does not imply the ordinary Station framework's durability
+profile. Fresh Steer and Queue submissions receive HTTP409
+`sealed_source_admission_required` before an effectful Inbox row; use the bounded
+report/group controls. Display notes remain available and send nothing to an
+engine. Central Inbox replay preserves an already accepted entry and rechecks
+fresh reactivation, but that owner guarantee does not establish public
+sealed-Session replay through the producer prechecks. A dead UI turn or retained
+message is never a grant to resend a paid source attempt.
 
 - **Steer:** text and head are durable before handoff. Native Claude/Codex
   placement is engine-defined and disclosed. Where Station owns the loop,

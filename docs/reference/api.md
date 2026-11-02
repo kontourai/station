@@ -2381,6 +2381,15 @@ partial text, stream EOF and client cancellation do not settle usage or prove
 provider termination. Returning turns preserve the captured Session's wire mode.
 Hosted mode and unavailable private storage return `report_groups_unavailable`.
 
+Report member Sessions carry a recorded sealed-source policy rather than the
+ordinary managed-journal policy for the same engine. They do not declare native
+crash continuation, tool replay or steering. Generic Steer and Queue require
+fresh bounded source admission and are refused with
+`sealed_source_admission_required`; display-only notes do not invoke the model.
+An interrupted-turn UI marker is not the exact provider terminal or an
+accounting refund. Use the bounded report operations below, not a generic
+follow-up or automatic resend, to request supported returning work.
+
 The Flow-bound serving composition is not runtime-qualified. An earlier
 controlled concurrent HTTP attempt reached its deadline while Station loaded
 Flow 5.2.2 and Flow Agents 9.5.1 loaded a separate Flow 5.2.0 module. Their

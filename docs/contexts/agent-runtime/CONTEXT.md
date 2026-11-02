@@ -122,6 +122,28 @@ Metadata-only continuation finalization is currently unavailable and its preview
 is not offered. The installed Flow winner-authentication contract does not
 qualify Station's unfinished publication-exclusion composition.
 
+### Sealed-source Sessions
+
+Fixed SDK report execution is distinct from the ordinary managed framework loop,
+even though both use `station-agent`. The summary reader selects the sealed
+policy from canonical `session.started` metadata with a known mode and source
+digest. A later unmarked reattach does not erase that recorded mode. A resume
+cursor is not mode authority; malformed declarations stay restrictive.
+
+The sealed profile declares no steering, crash continuation, native tool replay
+or restart recovery of live input registration. Steer and Queue are not another
+source-admission path. Fresh effectful Inbox submissions are refused with
+`sealed_source_admission_required` before a durable row; display notes remain
+separate. The central Inbox owner preserves accepted retries and rechecks entries
+that would become fresh work. Public sealed-Session replay remains subject to
+its producer checks and is not established by that central-owner guarantee.
+
+Boot excludes these Sessions from the managed durable recovery owner before it
+can claim them. Ordinary interrupted-turn projection can close their dead UI
+turn without proving a provider outcome or releasing unknown paid usage. Fresh
+bounded report/group admission is still required; an interrupted attempt is not
+authorization to resend it.
+
 ## Review a change
 
 Follow the caller into the owning module and its tests. Check response loss,

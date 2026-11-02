@@ -68,7 +68,10 @@ export function createReportGroupRoutes(
   }
   async function respond(
     c: Context,
-    work: (owner: StationReportGroupRuntime) => Promise<unknown>,
+    work: (
+      owner: StationReportGroupRuntime,
+      context: Parameters<StationReportGroupRuntime['bindRequest']>[0],
+    ) => Promise<unknown>,
     finalizer = false,
   ) {
     c.header('Cache-Control', 'no-store');
@@ -76,9 +79,10 @@ export function createReportGroupRoutes(
       return c.json({ success: false, code: 'report_groups_unavailable' }, 503);
     try {
       const run = async () => {
-        const current = await runtime.authorizeResponse(c);
-        const data = await work(runtime);
-        return runtime.withResponseCurrent(c, current, () => {
+        const context = runtime.bindRequest(c);
+        const current = await runtime.authorizeResponse(context);
+        const data = await work(runtime, context);
+        return runtime.withResponseCurrent(context, current, () => {
           if (Buffer.byteLength(JSON.stringify(data)) > 262_000)
             return c.json(
               { success: false, code: 'report_group_response_too_large' },
@@ -105,47 +109,47 @@ export function createReportGroupRoutes(
   }
   const noQuery = (c: Context) => z.object({}).strict().parse(c.req.query());
   app.post('/', (c) =>
-    respond(c, async (owner) => {
+    respond(c, async (owner, context) => {
       noQuery(c);
-      return owner.create(c, await body(c));
+      return owner.create(context, await body(c));
     }),
   );
   app.get('/', (c) =>
-    respond(c, (owner) => {
+    respond(c, (owner, context) => {
       const query = z
         .object({ afterGroupId: id.optional() })
         .strict()
         .parse(c.req.query());
-      return owner.list(c, query.afterGroupId);
+      return owner.list(context, query.afterGroupId);
     }),
   );
   app.get('/:groupId', (c) =>
-    respond(c, (owner) => {
+    respond(c, (owner, context) => {
       noQuery(c);
-      return owner.get(c, id.parse(c.req.param('groupId')));
+      return owner.get(context, id.parse(c.req.param('groupId')));
     }),
   );
   app.get('/:groupId/events', (c) =>
-    respond(c, (owner) => {
+    respond(c, (owner, context) => {
       const query = z
         .object({ afterRevision: cursor.optional() })
         .strict()
         .parse(c.req.query());
       return owner.events(
-        c,
+        context,
         id.parse(c.req.param('groupId')),
         query.afterRevision ?? 0,
       );
     }),
   );
   app.get('/:groupId/members/:seatId/results/:invocationId', (c) =>
-    respond(c, (owner) => {
+    respond(c, (owner, context) => {
       const query = z
         .object({ afterOffset: cursor.optional() })
         .strict()
         .parse(c.req.query());
       return owner.result(
-        c,
+        context,
         id.parse(c.req.param('groupId')),
         id.parse(c.req.param('seatId')),
         id.parse(c.req.param('invocationId')),
@@ -243,14 +247,14 @@ export function createReportGroupRoutes(
     }
   });
   app.post('/:groupId/members/:seatId/context-checkpoint', (c) =>
-    respond(c, async (owner) => {
+    respond(c, async (owner, context) => {
       noQuery(c);
       const input = z
         .object({ expectedRevision: z.number().int().nonnegative().safe() })
         .strict()
         .parse(await body(c));
       return owner.checkpoint(
-        c,
+        context,
         id.parse(c.req.param('groupId')),
         id.parse(c.req.param('seatId')),
         input.expectedRevision,
@@ -258,20 +262,20 @@ export function createReportGroupRoutes(
     }),
   );
   app.post('/:groupId/sync/finalize', (c) =>
-    respond(c, async (owner) => {
+    respond(c, async (owner, context) => {
       noQuery(c);
       return owner.finalizeSync(
-        c,
+        context,
         id.parse(c.req.param('groupId')),
         finalizeSync.parse(await body(c)),
       );
     }),
   );
   app.post('/:groupId/input/narrow', (c) =>
-    respond(c, async (owner) => {
+    respond(c, async (owner, context) => {
       noQuery(c);
       return owner.narrowAfterInput(
-        c,
+        context,
         id.parse(c.req.param('groupId')),
         await body(c, REPORT_GROUP_RENEWAL_LIMITS.requestBytes),
       );
@@ -280,14 +284,14 @@ export function createReportGroupRoutes(
   app.post('/:groupId/continuation/finalize', (c) =>
     respond(
       c,
-      async (owner) => {
+      async (owner, context) => {
         noQuery(c);
         const input = cancel
           .extend({ continuationOperationKey: id })
           .strict()
           .parse(await body(c));
         return owner.finalizeContinuation(
-          c,
+          context,
           id.parse(c.req.param('groupId')),
           input,
         );
@@ -296,7 +300,7 @@ export function createReportGroupRoutes(
     ),
   );
   app.post('/:groupId/report', (c) =>
-    respond(c, async (owner) => {
+    respond(c, async (owner, context) => {
       noQuery(c);
       const input = cancel
         .extend({
@@ -308,11 +312,11 @@ export function createReportGroupRoutes(
         })
         .strict()
         .parse(await body(c, REPORT_GROUP_RENEWAL_LIMITS.requestBytes));
-      return owner.report(c, id.parse(c.req.param('groupId')), input);
+      return owner.report(context, id.parse(c.req.param('groupId')), input);
     }),
   );
   app.post('/:groupId/input/sync', (c) =>
-    respond(c, async (owner) => {
+    respond(c, async (owner, context) => {
       noQuery(c);
       const input = cancel
         .extend({
@@ -324,48 +328,52 @@ export function createReportGroupRoutes(
         })
         .strict()
         .parse(await body(c, REPORT_GROUP_RENEWAL_LIMITS.requestBytes));
-      return owner.syncAfterInput(c, id.parse(c.req.param('groupId')), input);
+      return owner.syncAfterInput(
+        context,
+        id.parse(c.req.param('groupId')),
+        input,
+      );
     }),
   );
   app.post('/:groupId/sync', (c) =>
-    respond(c, async (owner) => {
+    respond(c, async (owner, context) => {
       noQuery(c);
       return owner.sync(
-        c,
+        context,
         id.parse(c.req.param('groupId')),
         sync.parse(await body(c, REPORT_GROUP_CONTEXT_LIMITS.requestBytes)),
       );
     }),
   );
   app.post('/:groupId/cancel/finalize', (c) =>
-    respond(c, async (owner) => {
+    respond(c, async (owner, context) => {
       noQuery(c);
       return owner.finalizeCancel(
-        c,
+        context,
         id.parse(c.req.param('groupId')),
         finalizeCancel.parse(await body(c)),
       );
     }),
   );
   app.post('/:groupId/accounting/recover', (c) =>
-    respond(c, async (owner) => {
+    respond(c, async (owner, context) => {
       noQuery(c);
       const input = z
         .object({ seatId: id, invocationId: id, operationKey: id })
         .strict()
         .parse(await body(c));
       return owner.recoverAccounting(
-        c,
+        context,
         id.parse(c.req.param('groupId')),
         input,
       );
     }),
   );
   app.post('/:groupId/cancel', (c) =>
-    respond(c, async (owner) => {
+    respond(c, async (owner, context) => {
       noQuery(c);
       return owner.cancel(
-        c,
+        context,
         id.parse(c.req.param('groupId')),
         cancel.parse(await body(c)),
       );
