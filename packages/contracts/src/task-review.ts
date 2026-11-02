@@ -10,6 +10,7 @@ export const TASK_REVIEW_VERSION = 'station.task-review/v1' as const;
 
 export type TaskDeviceRecordingJob =
   | { id: string; state: 'starting' | 'recording' | 'stopping' }
+  | { id: string; state: 'cancelled' }
   | {
       id: string;
       state: 'completed';
@@ -31,7 +32,8 @@ export function parseTaskDeviceRecordingJob(
   if (
     (value.state === 'starting' ||
       value.state === 'recording' ||
-      value.state === 'stopping') &&
+      value.state === 'stopping' ||
+      value.state === 'cancelled') &&
     onlyKeys(value, ['id', 'state'])
   )
     return { id: value.id, state: value.state };

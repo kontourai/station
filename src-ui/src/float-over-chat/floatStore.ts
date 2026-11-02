@@ -219,7 +219,10 @@ export function dismissFloat(conversation: string, sourceKey: string): void {
  * not keep the floater away for good.
  */
 const HANDOFF_GRACE_MS = 15_000;
-const handoffs = new Map<string, { seen: boolean; at: number }>();
+const handoffs = new Map<
+  string,
+  { seen: boolean; at: number; timer: ReturnType<typeof setTimeout> }
+>();
 const handoffKey = (conversation: string, sourceKey: string) =>
   `${conversation}\u0000${sourceKey}`;
 
@@ -235,7 +238,16 @@ export function handOffFloat(
   now = Date.now(),
   retain = false,
 ): void {
-  handoffs.set(handoffKey(conversation, sourceKey), { seen: false, at: now });
+  const key = handoffKey(conversation, sourceKey);
+  const previous = handoffs.get(key);
+  if (previous) clearTimeout(previous.timer);
+  const timer = setTimeout(() => {
+    const current = handoffs.get(key);
+    if (current?.timer !== timer) return;
+    if (!current.seen) handoffs.delete(key);
+    emit();
+  }, HANDOFF_GRACE_MS + 1);
+  handoffs.set(key, { seen: false, at: now, timer });
   if (!retain) floating.delete(conversation);
   emit();
 }
@@ -259,6 +271,7 @@ export function isFloatHandedOff(
     return true;
   }
   if (handoff.seen || now - handoff.at > HANDOFF_GRACE_MS) {
+    clearTimeout(handoff.timer);
     handoffs.delete(key);
     return false;
   }
@@ -444,6 +457,7 @@ export function resetFloatStoreForTests(): void {
   placement = null;
   dismissed = null;
   floating.clear();
+  for (const handoff of handoffs.values()) clearTimeout(handoff.timer);
   handoffs.clear();
   pendingRequest = null;
   devicePanePromotion = undefined;

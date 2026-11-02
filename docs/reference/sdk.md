@@ -5748,6 +5748,12 @@ Task Review also exposes `useTaskDeviceCaptureSessionsQuery(taskId, projectSlug)
 and `useCaptureDeviceToTaskMutation(taskId, projectSlug)`. Their device session
 IDs include the host, and the capture route checks the Task Project and device
 access again before storing the Screen.
+`fetchTaskDeviceCaptureSessions` reads the same list directly. The
+`useStartDeviceRecordingMutation`, `useDeviceRecordingQuery`, and
+`useStopDeviceRecordingMutation` hooks start, observe, and stop a Task clip.
+The job can finish as `completed`, `cancelled`, or `failed`; a stop can remain
+`stopping` while encoding finishes. Device identity is an observation at the
+start of a clip, not installed-build provenance.
 
 ## Experimental encrypted-channel transport consumer
 

@@ -75,7 +75,7 @@ clearly mark the stale document.
 
 ## Repository Documentation
 
-- **[Walkthroughs](guides/walkthroughs.md)** — Project imports, Task Browser clips, authorized reads, limits and media dependencies.
+- **[Walkthroughs](guides/walkthroughs.md)** — Project imports, Task Browser and Device clips, authorized reads, limits and media dependencies.
 - **[Guides](guides/)** — task-oriented operator, plugin, and contributor docs.
 - **[Feature previews](guides/feature-previews.md)** — ship unfinished capabilities off by default, gate every entry point, and keep the offered-preview user table in sync.
 - **[Starter Work](guides/starter-work.md)** — how first-use actions bind to real Tasks, Sessions, approvals, and Scheduler receipts, including recovery.

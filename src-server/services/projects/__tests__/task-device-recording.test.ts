@@ -125,3 +125,56 @@ test('disposing the recording owner cancels in-flight work', async () => {
   await owner.dispose();
   expect(cancelled).toBe(true);
 });
+
+test('starting jobs are cancellable and capacity is scoped to the Task and author', async () => {
+  const recordSource = vi.fn(
+    async (
+      _access: TaskReviewAccess,
+      input: Parameters<TaskBrowserRecording['recordSource']>[1],
+    ): Promise<Walkthrough> => {
+      await new Promise<void>((_resolve, reject) => {
+        if (input.signal?.aborted) return reject(new Error('cancelled'));
+        input.signal?.addEventListener(
+          'abort',
+          () => reject(new Error('cancelled')),
+          { once: true },
+        );
+      });
+      throw new Error('unexpected');
+    },
+  );
+  const owner = new TaskDeviceRecording({ recordSource });
+  const source = async (): Promise<never> => {
+    throw new Error('unused');
+  };
+  const first = owner.start(access('alice'), { durationMs: 1000 }, source);
+  owner.start(access('alice'), { durationMs: 1000 }, source);
+  expect(() =>
+    owner.start(access('alice'), { durationMs: 1000 }, source),
+  ).toThrow('capacity');
+  expect(owner.start(access('bob'), { durationMs: 1000 }, source).state).toBe(
+    'starting',
+  );
+  expect(owner.stop(access('alice'), first.id).state).toBe('cancelled');
+  await vi.waitFor(() =>
+    expect(owner.status(access('alice'), first.id).state).toBe('cancelled'),
+  );
+  await owner.dispose();
+});
+
+test('finished jobs do not consume recording capacity', async () => {
+  const owner = new TaskDeviceRecording({
+    recordSource: async () => {
+      throw new Error('failure');
+    },
+  });
+  for (let i = 0; i < 12; i++) {
+    const job = owner.start(access('alice'), { durationMs: 1000 }, async () => {
+      throw new Error('unused');
+    });
+    await vi.waitFor(() =>
+      expect(owner.status(access('alice'), job.id).state).toBe('failed'),
+    );
+  }
+  await owner.dispose();
+});

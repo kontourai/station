@@ -8,6 +8,7 @@ import { DeviceToolError } from '../device-host-tools.js';
 import type { DeviceHubEndpoint } from '../device-hub-endpoint.js';
 import {
   capAccessibilityTreeBytes,
+  createDeviceToolRunner,
   DEVICE_TOOL_ARGV_SHAPES,
   type DeviceTool,
   type DeviceToolRunner,
@@ -23,6 +24,20 @@ import {
   parseAndroidLocation,
   parseAndroidPermissions,
 } from '../device-tools.js';
+
+test('local runner refuses before spawning when admission fails', async () => {
+  const run = vi.fn();
+  const runner = createDeviceToolRunner({ locate: async () => '/tool', run });
+  await expect(
+    runner.run('adb', [], {
+      timeoutMs: 1000,
+      beforeRun: async () => {
+        throw new Error('denied');
+      },
+    }),
+  ).rejects.toThrow('denied');
+  expect(run).not.toHaveBeenCalled();
+});
 
 /**
  * #1971 (D10): the Tools drawer's typed device actions. The guards under
@@ -95,7 +110,7 @@ test('logs resolve one app process and filter to its PID on its own host', async
   const app = 'com.example.app';
   const runner = fakeRunner({
     [`xcrun simctl spawn ${UDID} launchctl list`]: `42 0 UIKitApplication:${app}[abc][rb-legacy]\n`,
-    [`xcrun simctl spawn ${UDID} log stream --style compact --predicate processIdentifier == 42`]:
+    [`xcrun simctl spawn ${UDID} log show --last 5s --style compact --predicate processIdentifier == 42`]:
       'app event',
   });
   const service = new DeviceToolsService({ runner, hub: hubAnswering() });
@@ -127,6 +142,83 @@ test('logs refuse publication when the app process changes during sampling', asy
   await expect(service.logs(IOS, 'com.example.app')).rejects.toMatchObject({
     code: 'tool-failed',
   });
+});
+
+test('Android logs use pidof and logcat for one PID and refuse a changed process', async () => {
+  let reads = 0;
+  const calls: string[][] = [];
+  const runner: DeviceToolRunner = {
+    async run(_tool, args) {
+      calls.push([...args]);
+      if (args.includes('pidof')) return ++reads === 1 ? '42\n' : '43\n';
+      return 'app event';
+    },
+  };
+  const service = new DeviceToolsService({ runner, hub: hubAnswering() });
+  await expect(service.logs(ANDROID, 'com.example.app')).rejects.toMatchObject({
+    code: 'tool-failed',
+  });
+  expect(calls).toEqual([
+    ['-s', SERIAL, 'shell', 'pidof', 'com.example.app'],
+    ['-s', SERIAL, 'logcat', '-d', '-t', '1000', '--pid', '42'],
+    ['-s', SERIAL, 'shell', 'pidof', 'com.example.app'],
+  ]);
+});
+
+test('Android logs report an absent app and return an observed sample for a stable PID', async () => {
+  const app = 'com.example.app';
+  const missing = new DeviceToolsService({
+    runner: fakeRunner({
+      [`adb -s ${SERIAL} shell pidof ${app}`]: new DeviceToolError(
+        'tool-failed',
+        'no process',
+        1,
+        false,
+      ),
+    }),
+    hub: hubAnswering(),
+  });
+  await expect(missing.logs(ANDROID, app)).rejects.toMatchObject({
+    code: 'app-not-running',
+  });
+  const stable = new DeviceToolsService({
+    runner: fakeRunner({
+      [`adb -s ${SERIAL} shell pidof ${app}`]: '42\n',
+      [`adb -s ${SERIAL} logcat -d -t 1000 --pid 42`]: 'event',
+    }),
+    hub: hubAnswering(),
+  });
+  await expect(stable.logs(ANDROID, app)).resolves.toMatchObject({
+    processId: '42',
+    output: 'event',
+    truncated: false,
+  });
+});
+
+test('logs cap lines and refuse concurrent samples on one device', async () => {
+  let release!: () => void;
+  const wait = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const runner: DeviceToolRunner = {
+    async run(_tool, args, options) {
+      if (args.includes('launchctl'))
+        return '42 0 UIKitApplication:com.example.app[abc]\n';
+      await wait;
+      options.onTruncated?.();
+      return Array.from({ length: 1100 }, (_, i) => `line ${i}`).join('\n');
+    },
+  };
+  const service = new DeviceToolsService({ runner, hub: hubAnswering() });
+  const first = service.logs(IOS, 'com.example.app');
+  await expect(service.logs(IOS, 'com.example.app')).rejects.toMatchObject({
+    code: 'device-host-busy',
+  });
+  release();
+  const result = await first;
+  expect(result.truncated).toBe(true);
+  expect(result.output.split('\n')).toHaveLength(1000);
+  expect(result.output).toContain('line 1099');
 });
 
 describe('the argv whitelist', () => {

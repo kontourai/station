@@ -588,28 +588,68 @@ async function harness(
     browser,
     tool,
     record,
-    recordSyntheticDevice: async () => {
+    recordSyntheticDevice: async (
+      options: {
+        current?: () => boolean;
+        authorize?: () => Promise<boolean>;
+        stopSignal?: AbortSignal;
+        onStarted?: () => void;
+        rotation?: 90;
+      } = {},
+    ) => {
       const access = await room.sessionTaskReviewAccess('agent-a');
       if (access.kind !== 'granted' || !recordings || !live)
         throw new Error('Recording fixture unavailable');
       const surfaceId = live.surfaceIdFor(browser.browserSessionId);
       const entry = surfaceId ? surfaces.get(surfaceId) : undefined;
       if (!entry) throw new Error('Recording surface unavailable');
-      return recordings.recordSource(access, { durationMs: 500 }, async () => ({
-        entry,
-        current: () => true,
-        authorize: async () => true,
-        platform: 'ios',
-        adapter: 'device-live-surface',
-        device: {
-          hostId: 'ssh-0123456789ab',
-          deviceId: 'device-1',
-          name: 'Test device',
-          runtime: 'iOS',
-          appId: null,
-          appObservedAt: null,
+      const hub = options.rotation
+        ? (Object.assign(Object.create(entry.hub), {
+            attach: (...args: Parameters<typeof entry.hub.attach>) => {
+              const viewer = entry.hub.attach(...args);
+              return {
+                ...viewer,
+                close: () => viewer.close(),
+                next: async (...nextArgs: Parameters<typeof viewer.next>) => {
+                  const record = await viewer.next(...nextArgs);
+                  return record?.kind === 'frame'
+                    ? {
+                        ...record,
+                        header: {
+                          ...record.header,
+                          rotation: options.rotation,
+                        },
+                      }
+                    : record;
+                },
+              };
+            },
+          }) as typeof entry.hub)
+        : entry.hub;
+      return recordings.recordSource(
+        access,
+        {
+          durationMs: 500,
+          stopSignal: options.stopSignal,
+          onStarted: options.onStarted,
         },
-      }));
+        async () => ({
+          entry: { ...entry, hub },
+          current: options.current ?? (() => true),
+          authorize: options.authorize ?? (async () => true),
+          checkEachFrame: true,
+          platform: 'ios',
+          adapter: 'device-live-surface',
+          device: {
+            hostId: 'ssh-0123456789ab',
+            deviceId: 'device-1',
+            name: 'Test device',
+            runtime: 'iOS',
+            appId: null,
+            appObservedAt: null,
+          },
+        }),
+      );
     },
     streamStarted,
     streams: () => streams,
@@ -960,6 +1000,62 @@ test.skipIf(!mediaReady)(
     expect(
       parseWalkthrough(legacy.data.walkthrough).source.device,
     ).toBeUndefined();
+  },
+);
+
+test.skipIf(!mediaReady)(
+  'Device recording refuses per-frame revocation and rotation',
+  async () => {
+    for (const mode of ['current', 'authorize', 'rotation'] as const) {
+      let allowed = true;
+      const h = await harness({
+        recording: true,
+        duringFrame: () => {
+          allowed = false;
+        },
+      });
+      await expect(
+        h.recordSyntheticDevice({
+          current: () => mode !== 'current' || allowed,
+          authorize: async () => mode !== 'authorize' || allowed,
+          ...(mode === 'rotation' ? { rotation: 90 } : {}),
+        }),
+      ).rejects.toMatchObject({ code: 'recording-unavailable' });
+    }
+  },
+);
+
+test.skipIf(!mediaReady)(
+  'a stopped Device recording publishes its shortened duration',
+  async () => {
+    const h = await harness({ recording: true });
+    const stop = new AbortController();
+    const clip = await h.recordSyntheticDevice({
+      stopSignal: stop.signal,
+      onStarted: () => setTimeout(() => stop.abort(), 250),
+    });
+    expect(clip.source.durationMs).toBeGreaterThan(0);
+    expect(clip.source.durationMs).toBeLessThan(500);
+  },
+);
+
+test.skipIf(!mediaReady)(
+  'Device recording cancels before start and when its surface closes',
+  async () => {
+    const before = await harness({ recording: true });
+    const stopped = new AbortController();
+    stopped.abort();
+    await expect(
+      before.recordSyntheticDevice({ stopSignal: stopped.signal }),
+    ).rejects.toMatchObject({ code: 'cancelled' });
+    const h = await harness({ recording: true });
+    const pending = h.recordSyntheticDevice();
+    const rejected = expect(pending).rejects.toMatchObject({
+      code: 'cancelled',
+    });
+    await h.streamStarted;
+    await h.stopBrowser();
+    await rejected;
   },
 );
 

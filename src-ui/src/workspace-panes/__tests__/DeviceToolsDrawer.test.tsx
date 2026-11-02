@@ -746,7 +746,7 @@ describe('a device on an SSH device host (#2442)', () => {
   async function renderDrawer(tools: ToolsHandler) {
     const { DeviceToolsDrawer } = await import('../device/DeviceToolsDrawer');
     const log = stubDeviceFetch({ tools, deviceLoopPreview: true });
-    renderInQueryClient(
+    const rendered = renderInQueryClient(
       <DeviceToolsDrawer
         axOverlay={false}
         deviceName="Studio iPhone"
@@ -761,7 +761,7 @@ describe('a device on an SSH device host (#2442)', () => {
       />,
     );
     const drawer = await screen.findByRole('complementary', { name: 'Tools' });
-    return { log, drawer };
+    return { log, drawer, rendered, DeviceToolsDrawer };
   }
 
   test('logs use the selected host and can be filtered and paused', async () => {
@@ -776,7 +776,9 @@ describe('a device on an SSH device host (#2442)', () => {
               ...REMOTE_TARGET,
               appId: 'com.example.app',
               processId: '42',
-              output: 'info ready\nerror failed',
+              truncated: false,
+              output:
+                'info ready\nerror failed\n2026-01-01 Fa Sample[42] faulted',
             },
           },
         };
@@ -787,6 +789,10 @@ describe('a device on an SSH device host (#2442)', () => {
     });
     await click(within(drawer).getByRole('button', { name: 'Start logs' }));
     await within(drawer).findByText(/error failed/);
+    fireEvent.change(within(drawer).getByLabelText('Level'), {
+      target: { value: 'error' },
+    });
+    expect(within(drawer).getByText(/Fa Sample/)).toBeTruthy();
     fireEvent.change(within(drawer).getByLabelText('Filter'), {
       target: { value: 'failed' },
     });
@@ -798,6 +804,123 @@ describe('a device on an SSH device host (#2442)', () => {
     expect(new URL(toolsRequests(log, '/logs')[0]!.url).pathname).toContain(
       `/hosts/${REMOTE}/`,
     );
+  });
+
+  test('a bounded log sample remains readable when JSON escaping expands it', async () => {
+    const { drawer } = await renderDrawer(({ method, path }) => {
+      if (method === 'GET' && path.endsWith('/tools'))
+        return { body: { success: true, data: snapshot({ hostId: REMOTE }) } };
+      if (method === 'GET' && path.endsWith('/logs'))
+        return {
+          body: {
+            success: true,
+            data: {
+              ...REMOTE_TARGET,
+              appId: 'com.example.app',
+              processId: '42',
+              output: `${'\u0000'.repeat(90_000)}sentinel`,
+              truncated: true,
+            },
+          },
+        };
+      return undefined;
+    });
+    fireEvent.change(await within(drawer).findByLabelText('App ID'), {
+      target: { value: 'com.example.app' },
+    });
+    await click(within(drawer).getByRole('button', { name: 'Start logs' }));
+    await within(drawer).findByText(/sentinel/);
+    expect(
+      within(drawer).getByText('Older log output was truncated.'),
+    ).toBeTruthy();
+  });
+
+  test('pausing, changing app ID and disconnecting abort in-flight log reads', async () => {
+    const { drawer } = await renderDrawer(({ method, path }) =>
+      method === 'GET' && path.endsWith('/tools')
+        ? { body: { success: true, data: snapshot({ hostId: REMOTE }) } }
+        : undefined,
+    );
+    const fallback = globalThis.fetch;
+    const aborted: string[] = [];
+    const started: string[] = [];
+    vi.stubGlobal('fetch', (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (!url.includes('/tools/logs')) return fallback(input, init);
+      started.push(url);
+      return new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener(
+          'abort',
+          () => {
+            aborted.push(url);
+            reject(new DOMException('Aborted', 'AbortError'));
+          },
+          { once: true },
+        );
+      });
+    });
+    const app = await within(drawer).findByLabelText('App ID');
+    fireEvent.change(app, { target: { value: 'com.example.one' } });
+    await click(within(drawer).getByRole('button', { name: 'Start logs' }));
+    await waitFor(() => expect(started).toHaveLength(1));
+    fireEvent.change(app, { target: { value: 'com.example.two' } });
+    await waitFor(() => expect(aborted).toHaveLength(1));
+    await waitFor(() => expect(started).toHaveLength(2));
+    await click(within(drawer).getByRole('button', { name: 'Pause logs' }));
+    await waitFor(() => expect(aborted).toHaveLength(2));
+    await click(within(drawer).getByRole('button', { name: 'Start logs' }));
+    await waitFor(() => expect(started).toHaveLength(3));
+    cleanup();
+    await waitFor(() => expect(aborted).toHaveLength(3));
+  });
+
+  test('changing target pauses logs before requesting the new device', async () => {
+    const { drawer, rendered, DeviceToolsDrawer, log } = await renderDrawer(
+      ({ method, path }) => {
+        if (method === 'GET' && path.endsWith('/tools'))
+          return {
+            body: { success: true, data: snapshot({ hostId: REMOTE }) },
+          };
+        if (method === 'GET' && path.endsWith('/logs'))
+          return {
+            body: {
+              success: true,
+              data: {
+                ...REMOTE_TARGET,
+                appId: 'com.example.app',
+                processId: '42',
+                output: '',
+                truncated: false,
+              },
+            },
+          };
+        return undefined;
+      },
+    );
+    fireEvent.change(await within(drawer).findByLabelText('App ID'), {
+      target: { value: 'com.example.app' },
+    });
+    await click(within(drawer).getByRole('button', { name: 'Start logs' }));
+    await waitFor(() => expect(toolsRequests(log, '/logs')).toHaveLength(1));
+    rendered.rerenderWrapped(
+      <DeviceToolsDrawer
+        axOverlay={false}
+        deviceName="Other"
+        id="tools"
+        layout="docked"
+        onAxOverlayChange={() => {}}
+        onClose={() => {}}
+        projectSlug="app"
+        requestScope={scope}
+        streamVisible
+        target={{
+          ...REMOTE_TARGET,
+          deviceId: '11111111-2222-4333-8444-555555555555',
+        }}
+      />,
+    );
+    await within(drawer).findByRole('button', { name: 'Start logs' });
+    expect(toolsRequests(log, '/logs')).toHaveLength(1);
   });
 
   test('the drawer reads the device on ITS host and shows what that host read', async () => {

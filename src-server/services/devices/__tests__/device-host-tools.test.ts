@@ -175,7 +175,7 @@ describe('runBoundedToolCapture (#1971): stdin, output and deadline', () => {
     expect(fake.calls[0]!.options).toMatchObject({
       shell: false,
       windowsHide: true,
-      stdio: ['ignore', 'pipe', 'ignore'],
+      stdio: ['ignore', 'pipe', 'pipe'],
     });
   });
 
@@ -188,7 +188,7 @@ describe('runBoundedToolCapture (#1971): stdin, output and deadline', () => {
       fake.spawnTool,
     );
     expect(fake.calls[0]!.options).toMatchObject({
-      stdio: ['pipe', 'pipe', 'ignore'],
+      stdio: ['pipe', 'pipe', 'pipe'],
     });
     expect(fake.written).toEqual(['{"aps":{}}']);
   });
@@ -241,6 +241,37 @@ describe('runBoundedToolCapture (#1971): stdin, output and deadline', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+  test('abort stops a running tool and bounded tail keeps the newest bytes', async () => {
+    const stdout = Object.assign(new EventEmitter(), { destroy: vi.fn() });
+    const child = Object.assign(new EventEmitter(), {
+      stdout,
+      stdin: null,
+      kill: vi.fn(),
+    });
+    const signal = new AbortController();
+    const pending = runBoundedToolCapture(
+      'adb',
+      [],
+      { timeoutMs: 1000, signal: signal.signal },
+      (() => child) as never,
+    );
+    const rejected = expect(pending).rejects.toMatchObject({
+      code: 'tool-failed',
+    });
+    signal.abort();
+    await rejected;
+    expect(child.kill).toHaveBeenCalledWith('SIGKILL');
+    const tail = { truncated: false };
+    await expect(
+      runBoundedToolCapture(
+        'adb',
+        [],
+        { timeoutMs: 1000, maxBuffer: 4, tail },
+        fakeSpawn('0123456789').spawnTool,
+      ),
+    ).resolves.toBe('6789');
+    expect(tail.truncated).toBe(true);
   });
   test.each([false, true])(
     'partial timeout flushes then settles within the original deadline with a stdout holder=%s',

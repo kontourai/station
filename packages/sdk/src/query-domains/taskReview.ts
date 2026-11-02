@@ -478,6 +478,7 @@ export function useDeviceRecordingQuery(
     retry: false,
     refetchInterval: (query) =>
       query.state.data?.state === 'completed' ||
+      query.state.data?.state === 'cancelled' ||
       query.state.data?.state === 'failed' ||
       query.state.error
         ? false

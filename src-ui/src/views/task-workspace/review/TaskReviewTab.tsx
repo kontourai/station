@@ -42,6 +42,7 @@ import {
   useNavigation,
   useNavigationActions,
 } from '../../../contexts/NavigationContext';
+import { useScopedProjectsQuery } from '../../../contexts/ProjectsContext';
 import { ReviewCommentsRail, type ReviewFilter } from './ReviewCommentsRail';
 import { ReviewDocumentView } from './ReviewDocumentView';
 import { ReviewImageView } from './ReviewImageView';
@@ -170,18 +171,23 @@ function captureSessionLabel(value: string) {
 
 function CapturePicker({
   taskId,
-  projectSlug,
+  projectId,
   visible,
   onCaptured,
 }: {
   taskId: string;
-  projectSlug: string;
+  projectId: string;
   visible: boolean;
   onCaptured: (id: string) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [sessionId, setSessionId] = useState('');
   const [error, setError] = useState<string>();
+  const projects = useScopedProjectsQuery({ enabled: visible && open });
+  const project =
+    projects.data?.find((entry) => entry.id === projectId) ??
+    projects.data?.find((entry) => entry.slug === projectId);
+  const projectSlug = project?.slug ?? null;
   const sessions = useTaskCaptureSessionsQuery(taskId, {
     enabled: visible && open,
     staleTime: 0,
@@ -263,13 +269,16 @@ function CapturePicker({
             );
           }}
         >
-          {sessions.isLoading || deviceSessions.isLoading ? (
+          {sessions.isLoading ||
+          (open && projects.isLoading) ||
+          (projectSlug && deviceSessions.isLoading) ? (
             <SkeletonList
               count={2}
               withIcon={false}
               label="Loading capture sessions"
             />
-          ) : sessions.error && deviceSessions.error ? (
+          ) : sessions.error &&
+            (deviceSessions.error || projects.error || !projectSlug) ? (
             <ErrorState
               variant="compact"
               title="Couldn’t load capture sessions."
@@ -300,7 +309,10 @@ function CapturePicker({
               </Button>
             </>
           )}
-          {(sessions.error || deviceSessions.error) && (
+          {(sessions.error ||
+            deviceSessions.error ||
+            projects.error ||
+            (projects.isSuccess && !projectSlug)) && (
             <ErrorState
               variant="compact"
               title="Some capture sessions could not be loaded."
@@ -310,6 +322,7 @@ function CapturePicker({
             size="sm"
             onClick={() => {
               void sessions.refetch();
+              void projects.refetch();
               if (projectSlug) void deviceSessions.refetch();
             }}
           >
@@ -606,7 +619,7 @@ export function TaskReviewTab({
             captureAction={
               <CapturePicker
                 taskId={task.id}
-                projectSlug={task.projectId}
+                projectId={task.projectId}
                 visible={visible}
                 onCaptured={(id) => select('capture', id)}
               />

@@ -82,6 +82,8 @@ export class DeviceToolError extends Error {
   constructor(
     readonly code: 'tool-unavailable' | 'tool-failed' | 'tool-timeout',
     message: string,
+    readonly exitCode?: number,
+    readonly stderrPresent?: boolean,
   ) {
     super(message);
     this.name = 'DeviceToolError';
@@ -148,6 +150,7 @@ export function runBoundedToolCapture(
     partialOnTimeout?: boolean;
     requireSampleDuration?: boolean;
     signal?: AbortSignal;
+    tail?: { truncated: boolean };
   },
   spawnTool: typeof spawn = spawn,
 ): Promise<string> {
@@ -165,7 +168,7 @@ export function runBoundedToolCapture(
         stdio: [
           options.stdin === undefined ? 'ignore' : 'pipe',
           'pipe',
-          'ignore',
+          'pipe',
         ],
       });
     } catch {
@@ -176,6 +179,7 @@ export function runBoundedToolCapture(
     let size = 0;
     let settled = false;
     let timedOut = false;
+    let stderrPresent = false;
     let flushTimer: ReturnType<typeof setTimeout> | undefined;
     const finish = (error: DeviceToolError | null) => {
       if (settled) return;
@@ -195,6 +199,7 @@ export function runBoundedToolCapture(
         // Already gone.
       }
       child.stdout?.destroy();
+      child.stderr?.destroy();
       child.stdin?.destroy();
       finish(error);
     };
@@ -220,13 +225,29 @@ export function runBoundedToolCapture(
     child.stdout?.on('data', (chunk: Buffer) => {
       size += chunk.byteLength;
       if (size > maxBuffer) {
-        abort(new DeviceToolError('tool-failed', `${command} failed`));
-        return;
+        if (!options.tail) {
+          abort(new DeviceToolError('tool-failed', `${command} failed`));
+          return;
+        }
+        options.tail.truncated = true;
       }
       chunks.push(chunk);
+      if (options.tail) {
+        while (size - chunks[0]!.length >= maxBuffer)
+          size -= chunks.shift()!.length;
+        if (size > maxBuffer) {
+          const excess = size - maxBuffer;
+          chunks[0] = chunks[0]!.subarray(excess);
+          size -= excess;
+        }
+      }
     });
     // A destroyed stream may still report an error; the call has settled.
     child.stdout?.on('error', () => {});
+    child.stderr?.on('data', (chunk: Buffer) => {
+      if (chunk.length) stderrPresent = true;
+    });
+    child.stderr?.on('error', () => {});
     child.on('error', () =>
       finish(new DeviceToolError('tool-failed', `${command} failed`)),
     );
@@ -235,7 +256,12 @@ export function runBoundedToolCapture(
         (code === 0 && !options.requireSampleDuration) ||
           (timedOut && options.partialOnTimeout)
           ? null
-          : new DeviceToolError('tool-failed', `${command} failed`),
+          : new DeviceToolError(
+              'tool-failed',
+              `${command} failed`,
+              code ?? undefined,
+              stderrPresent,
+            ),
       );
     });
     options.signal?.addEventListener('abort', onAbort, { once: true });

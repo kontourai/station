@@ -113,6 +113,7 @@ const FAILURE_STATUS: Partial<
   'payload-too-large': 413,
   unsupported: 422,
   'tool-failed': 502,
+  'app-not-running': 409,
   'tool-timeout': 504,
 };
 
@@ -385,6 +386,7 @@ export function createDeviceToolsRoutes(options: DeviceToolsRouteOptions) {
           admitted.target,
           appId,
           recheck,
+          c.req.raw.signal,
         );
         await recheck();
         return publish(c, logs);

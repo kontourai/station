@@ -217,6 +217,7 @@ export function createDeviceAgentRoutes(deps: DeviceAgentRoutesDeps) {
           id,
           body.appId,
           () => deps.deviceLoopEnabled?.() === true,
+          c.req.raw.signal,
         ),
       );
     }

@@ -496,6 +496,7 @@ export class DeviceAutomation {
     id: string,
     appId: string,
     enabled: () => boolean,
+    signal?: AbortSignal,
   ) {
     return this.withControl(access, authority, id, async (selected) => {
       const current = async () =>
@@ -517,6 +518,7 @@ export class DeviceAutomation {
         selected.session,
         appId,
         beforeRun,
+        signal,
       );
       if (!(await current())) return refused('interrupted');
       return { ok: true as const, logs };

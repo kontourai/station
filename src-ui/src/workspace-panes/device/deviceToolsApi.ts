@@ -45,6 +45,7 @@ const KNOWN_FAILURES: readonly DeviceToolsFailure[] = [
   'unsupported',
   'tool-unavailable',
   'tool-failed',
+  'app-not-running',
   'tool-timeout',
   'hub-unavailable',
   'unknown-host',
@@ -205,7 +206,7 @@ export function useDeviceLogs(
       const value = await data(
         await getJson(
           `${scope.apiBase}${toolsPath(target, '/logs', { appId }, projectSlug)}`,
-          { signal, requestScope: scope, maxResponseBytes: 512 * 1024 },
+          { signal, requestScope: scope, maxResponseBytes: 2 * 1024 * 1024 },
         ),
       );
       if (
@@ -214,10 +215,15 @@ export function useDeviceLogs(
         value.deviceId !== target.deviceId ||
         value.appId !== appId ||
         typeof value.output !== 'string' ||
-        typeof value.processId !== 'string'
+        typeof value.processId !== 'string' ||
+        typeof value.truncated !== 'boolean'
       )
         throw new DeviceToolsRequestError(200, undefined);
-      return { output: value.output, processId: value.processId };
+      return {
+        output: value.output,
+        processId: value.processId,
+        truncated: value.truncated,
+      };
     },
     enabled,
     refetchInterval: enabled ? 5000 : false,
@@ -227,6 +233,11 @@ export function useDeviceLogs(
 }
 
 export function describeDeviceLogsFailure(error: unknown): string {
+  if (
+    error instanceof DeviceToolsRequestError &&
+    error.code === 'app-not-running'
+  )
+    return 'The app is not running on this device.';
   return error instanceof DeviceToolsRequestError && error.status === 404
     ? 'This Station cannot read device logs. Update the host and try again.'
     : describeDeviceToolsFailure(error);

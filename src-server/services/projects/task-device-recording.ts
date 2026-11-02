@@ -9,10 +9,11 @@ import {
 } from './task-browser-recording.js';
 
 const RETAIN_MS = 5 * 60_000;
-const MAX_JOBS = 10;
+const MAX_RETAINED = 100;
 type Result = { walkthroughId: string; commit: string };
 type Status =
   | { state: 'starting' | 'recording' | 'stopping' }
+  | { state: 'cancelled' }
   | { state: 'completed'; result: Result }
   | { state: 'failed'; code: string };
 type Job = {
@@ -46,6 +47,14 @@ export class TaskDeviceRecording {
     for (const [id, job] of this.jobs)
       if (job.finishedAt !== undefined && now - job.finishedAt >= RETAIN_MS)
         this.jobs.delete(id);
+    const finished = [...this.jobs.entries()]
+      .filter(([, job]) => job.finishedAt !== undefined)
+      .sort((a, b) => a[1].finishedAt! - b[1].finishedAt!);
+    for (const [id] of finished.slice(
+      0,
+      Math.max(0, finished.length - MAX_RETAINED),
+    ))
+      this.jobs.delete(id);
   }
   start(
     access: TaskReviewAccess,
@@ -65,9 +74,9 @@ export class TaskDeviceRecording {
     this.prune();
     if (
       this.closed ||
-      this.jobs.size >= MAX_JOBS ||
-      [...this.jobs.values()].filter((job) => job.finishedAt === undefined)
-        .length >= 2
+      [...this.jobs.values()].filter(
+        (job) => job.key === key && job.finishedAt === undefined,
+      ).length >= 2
     )
       throw new TaskBrowserCaptureError(
         'capture-unavailable',
@@ -100,8 +109,9 @@ export class TaskDeviceRecording {
       )
       .then(
         (manifest) => {
-          job.status =
-            manifest.source.commit && manifest.source.recording
+          job.status = cancel.signal.aborted
+            ? { state: 'cancelled' }
+            : manifest.source.commit && manifest.source.recording
               ? {
                   state: 'completed',
                   result: {
@@ -112,14 +122,16 @@ export class TaskDeviceRecording {
               : { state: 'failed', code: 'recording-unavailable' };
         },
         (error: unknown) => {
-          job.status = {
-            state: 'failed',
-            code:
-              error instanceof TaskBrowserRecordingError ||
-              error instanceof TaskBrowserCaptureError
-                ? error.code
-                : 'recording-unavailable',
-          };
+          job.status = cancel.signal.aborted
+            ? { state: 'cancelled' }
+            : {
+                state: 'failed',
+                code:
+                  error instanceof TaskBrowserRecordingError ||
+                  error instanceof TaskBrowserCaptureError
+                    ? error.code
+                    : 'recording-unavailable',
+              };
         },
       )
       .finally(() => {
@@ -139,8 +151,13 @@ export class TaskDeviceRecording {
     const status = this.status(access, id);
     const job = this.jobs.get(id)!;
     if (status.state === 'starting' || status.state === 'recording') {
-      job.status = { state: 'stopping' };
-      job.stop.abort();
+      if (status.state === 'starting') {
+        job.status = { state: 'cancelled' };
+        job.cancel.abort();
+      } else {
+        job.status = { state: 'stopping' };
+        job.stop.abort();
+      }
     }
     return this.status(access, id);
   }

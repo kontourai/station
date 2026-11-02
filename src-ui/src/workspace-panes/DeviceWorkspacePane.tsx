@@ -1148,6 +1148,9 @@ function DeviceStage({
         {recordingStatus.data?.state === 'completed' ? (
           <p role="status">Recording saved to Task.</p>
         ) : null}
+        {recordingStatus.data?.state === 'cancelled' ? (
+          <p role="status">Recording cancelled.</p>
+        ) : null}
         {recordingStatus.data?.state === 'failed' ||
         recordingStatus.isError ||
         stopRecording.isError ? (

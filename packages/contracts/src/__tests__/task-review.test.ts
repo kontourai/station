@@ -27,6 +27,9 @@ test('recording job parser rejects incomplete and forged outcomes', () => {
     review.parseTaskDeviceRecordingJob({ id, state: 'recording' }),
   ).toEqual({ id, state: 'recording' });
   expect(
+    review.parseTaskDeviceRecordingJob({ id, state: 'cancelled' }),
+  ).toEqual({ id, state: 'cancelled' });
+  expect(
     review.parseTaskDeviceRecordingJob({
       id,
       state: 'completed',

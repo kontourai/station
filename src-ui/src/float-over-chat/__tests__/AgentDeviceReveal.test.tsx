@@ -42,7 +42,14 @@ import {
 import { DeviceWorkspacePane } from '../../workspace-panes/DeviceWorkspacePane';
 import { readDevicePaneState } from '../../workspace-panes/devicePaneStateStorage';
 import { AgentDeviceReveal } from '../AgentDeviceReveal';
-import { getFloatingSource, resetFloatStoreForTests } from '../floatStore';
+import { deviceFloatSourceKey } from '../floatSource';
+import {
+  dismissFloat,
+  getFloatingSource,
+  handOffFloat,
+  openFloat,
+  resetFloatStoreForTests,
+} from '../floatStore';
 
 let model: ReturnType<typeof useRegionModel> | undefined;
 function Workspace({ float = false }: { float?: boolean }) {
@@ -158,6 +165,73 @@ test('with the developer loop preview off an agent reveal opens the pane', async
   await waitFor(() => expect(model?.regions.right.panes).toContain('device'));
   expect(getFloatingSource('conversation')).toBeNull();
 });
+
+test.each([
+  ['another source', 'aaaaaaa1-2222-4333-8444-555555555555'],
+  ['dismissed device', 'aaaaaaa2-2222-4333-8444-555555555555'],
+  ['retained device', 'aaaaaaa3-2222-4333-8444-555555555555'],
+])(
+  'a reveal opens the pane when %s prevents floating',
+  async (condition, intentId) => {
+    authorizeScope();
+    const session = sessionFor(ANDROID_DEVICE);
+    stubDeviceFetch({
+      inventory: readyInventory([ANDROID_DEVICE]),
+      sessions: [session],
+      deviceLoopPreview: true,
+    });
+    const source = {
+      kind: 'device' as const,
+      hostId: session.hostId,
+      platform: session.platform,
+      deviceId: session.deviceId,
+      surfaceId: session.surfaceId,
+      projectSlug: 'alpha',
+      name: session.name,
+    };
+    if (condition === 'another source')
+      openFloat('conversation', {
+        kind: 'browser',
+        browserSessionId: 'browser-other',
+        surfaceId: 'surface-other',
+      });
+    else if (condition === 'dismissed device')
+      dismissFloat('conversation', deviceFloatSourceKey(session));
+    else {
+      openFloat('conversation', { ...source, deviceId: 'emulator-5556' });
+      handOffFloat(
+        'conversation',
+        deviceFloatSourceKey({ ...session, deviceId: 'emulator-5556' }),
+        Date.now(),
+        true,
+      );
+    }
+    const fallback = globalThis.fetch;
+    vi.stubGlobal(
+      'fetch',
+      async (input: Parameters<typeof fetch>[0], init?: RequestInit) =>
+        String(input).includes('/agent-reveals?')
+          ? Response.json({
+              success: true,
+              data: { reveals: [{ intentId, session }] },
+            })
+          : fallback(input, init),
+    );
+    renderInQueryClient(
+      <KeyboardShortcutsProvider>
+        <NavigationProvider>
+          <RegionModelProvider>
+            <Workspace float />
+          </RegionModelProvider>
+        </NavigationProvider>
+      </KeyboardShortcutsProvider>,
+    );
+    await waitFor(() => expect(model?.regions.right.panes).toContain('device'));
+    expect(readDevicePaneState(localStorage, scope)?.deviceId).toBe(
+      session.deviceId,
+    );
+  },
+);
 
 test('an Agent request survives initial polling failure, opens the real pane once, and respects dismissal and stale authority', async () => {
   localStorage.clear();

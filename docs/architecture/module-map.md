@@ -5998,6 +5998,11 @@ and device Screens use the same store, limits and authorized content route.
 The frame's commit identifies the observed workspace, not the installed build
 or foreground application; see [device provenance](../guides/mobile-device-workspace.md#capture-a-device-screen-to-a-task).
 
+The same registrar exposes `device_record_to_task` and `device_logs`. Device
+automation claims the input lease for each operation, refuses a human-held
+lease, and rechecks authority before publication. Recordings use the bounded
+Task clip store; logs run on the selected host through fixed tool vectors.
+
 Evidence owners are
 [Timeline component tests](../../src-ui/src/views/task-workspace/__tests__/TaskOverviewTimeline.test.tsx)
 and [device-capture route tests](../../src-server/routes/__tests__/device-agent-capture.test.ts).

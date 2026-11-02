@@ -245,37 +245,33 @@ const decoded = (event: Record<string, unknown> | undefined) =>
   Buffer.from(String(event?.stdout), 'base64').toString('utf8');
 
 describe('the host program’s tool mode (run for real, no ssh)', () => {
-  test('an early exit cannot masquerade as a completed log sample', async () => {
+  test('an Android pidof exit status is retained for the missing-app decision', async () => {
     const home = hostHome();
-    const args = [
-      'simctl',
-      'spawn',
-      UDID,
-      'log',
-      'stream',
-      '--style',
-      'compact',
-      '--predicate',
-      'processIdentifier == 42',
-    ];
-    const result = await runProgram(
-      home,
-      tool('xcrun', args, { sampleDurationMs: 500 }),
-    );
+    writeFileSync(join(home, 'mode'), 'fail');
+    const args = ['-s', SERIAL, 'shell', 'pidof', 'com.example.app'];
+    const result = await runProgram(home, tool('adb', args));
     expect(result.events).toEqual([
-      { event: 'tool', ok: false, failure: 'tool-failed', applied: 0 },
+      {
+        event: 'tool',
+        ok: false,
+        failure: 'tool-failed',
+        applied: 0,
+        exitCode: 1,
+        stderrPresent: false,
+      },
     ]);
   });
-
-  test('the remote host ends an admitted log sample without reporting a timeout', async () => {
+  test('a finite iOS log query retains the bounded tail', async () => {
     const home = hostHome();
-    writeFileSync(join(home, 'mode'), 'sleep');
+    writeFileSync(join(home, 'mode'), 'flood');
     const args = [
       'simctl',
       'spawn',
       UDID,
       'log',
-      'stream',
+      'show',
+      '--last',
+      '5s',
       '--style',
       'compact',
       '--predicate',
@@ -283,9 +279,16 @@ describe('the host program’s tool mode (run for real, no ssh)', () => {
     ];
     const result = await runProgram(
       home,
-      tool('xcrun', args, { sampleDurationMs: 500 }),
+      tool('xcrun', args, { tail: true, maxBuffer: 1024 }),
     );
-    expect(result.events).toEqual([{ event: 'tool', ok: true, stdout: '' }]);
+    expect(result.events[0]).toMatchObject({
+      event: 'tool',
+      ok: true,
+      truncated: true,
+    });
+    expect(Buffer.from(String(result.events[0]?.stdout), 'base64').length).toBe(
+      1024,
+    );
     expect(recordedCalls(home).map((call) => call.args)).toEqual([args]);
   });
   test('runs an allowlisted vector with each argument its own literal word, and returns its output', async () => {
