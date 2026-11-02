@@ -37,7 +37,7 @@ export class CommandSpawnError extends Error {
 }
 
 /** A signal's number, for the exit event; null for an unknown name. */
-export function signalNumber(name: string | null | undefined): number | null {
+function signalNumber(name: string | null | undefined): number | null {
   if (!name) return null;
   return (constants.signals as Record<string, number>)[name] ?? null;
 }
@@ -52,7 +52,7 @@ export function signalName(number: number | null | undefined): string | null {
 
 type CommandExit = Parameters<Parameters<IPtyProcess['onExit']>[0]>[0];
 
-export class CommandProcess implements IPtyProcess {
+class CommandProcess implements IPtyProcess {
   private delivered = 0;
   private capped = false;
   private exit: CommandExit | null = null;

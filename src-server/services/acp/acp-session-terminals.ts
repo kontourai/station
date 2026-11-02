@@ -252,7 +252,7 @@ export class AcpSessionTerminals {
 }
 
 /** The Project an agent's terminals are recorded under when its session has none. */
-export const AGENT_TERMINAL_UNBOUND_PROJECT = '.agent-terminals';
+const AGENT_TERMINAL_UNBOUND_PROJECT = '.agent-terminals';
 
 /**
  * The adapter's `agentTerminals` option: an agent session's terminals are
