@@ -2683,7 +2683,17 @@ export function createOrchestrationRoutes(
     submitted: ReturnType<ThreadInboxDelivery['submit']>,
     followUp: { conversationId: string; clientTurnId: string },
   ): Response | undefined => {
-    if (submitted.outcome === 'not-permitted') return undefined;
+    if (submitted.outcome === 'not-permitted')
+      return submitted.reasonCode
+        ? c.json(
+            {
+              success: false,
+              code: submitted.reasonCode,
+              error: submitted.reason ?? 'This message cannot be queued.',
+            },
+            409,
+          )
+        : undefined;
     if (submitted.outcome === 'conflict')
       return c.json(
         {
@@ -3680,7 +3690,16 @@ export function createOrchestrationRoutes(
           409,
         );
       if (result.outcome === 'not-permitted')
-        return c.json({ success: false, error: 'Conversation not found' }, 404);
+        return result.reasonCode
+          ? c.json(
+              {
+                success: false,
+                code: result.reasonCode,
+                error: result.reason ?? 'This message cannot be queued.',
+              },
+              409,
+            )
+          : c.json({ success: false, error: 'Conversation not found' }, 404);
       if (result.outcome === 'conflict')
         return c.json({ success: false, code: INBOX_KEY_CONFLICT_CODE }, 409);
       if (result.outcome === 'capacity')

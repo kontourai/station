@@ -625,10 +625,12 @@ export interface ThreadInboxDeliveryPorts {
    * closed).
    */
   deviceMaySend?(deviceId: string, since: number): boolean;
-  /** Fresh effectful submissions only; accepted-key retries and display notes bypass it. */
+  /**
+   * Pure synchronous admission only: no effects or writes. Fresh effectful
+   * submissions only; accepted-key retries and display notes bypass it.
+   */
   submissionRefusal?(input: {
     readonly conversationId: string;
-    readonly clientTurnId: string;
     readonly kind: 'follow-up' | 'steer';
     readonly payload: ThreadInboxPayload;
   }): { readonly reasonCode: string; readonly reason: string } | undefined;
@@ -1152,7 +1154,6 @@ export class ThreadInboxDelivery {
     if (kind !== 'display' && !replaysExisting) {
       const refusal = this.ports.submissionRefusal?.({
         conversationId: inbox,
-        clientTurnId: input.clientTurnId,
         kind,
         payload: input.payload,
       });

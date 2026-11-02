@@ -72,6 +72,55 @@ describe('POST /chat whenBusy queue (#3568)', () => {
     },
   );
 
+  test.each(['steer', 'follow-up', 'chat-queue'] as const)(
+    '%s preserves a typed refusal returned by the Inbox after the route precheck',
+    async (kind) => {
+      const world = station();
+      await world.busy();
+      const before = world.prompts();
+      const submit = vi
+        .spyOn(world.inbox, kind === 'steer' ? 'submitSteer' : 'submit')
+        .mockReturnValue({
+          outcome: 'not-permitted',
+          reasonCode: 'sealed_source_admission_required',
+          reason: 'Fresh bounded admission required.',
+        });
+      try {
+        const response =
+          kind === 'chat-queue'
+            ? await world.send('late-refusal', 'must not dispatch', {
+                whenBusy: 'queue',
+              })
+            : await world.app.request(
+                `/api/orchestration/conversations/${CONVERSATION}/inbox`,
+                {
+                  method: 'POST',
+                  headers: { 'content-type': 'application/json' },
+                  body: JSON.stringify({
+                    kind,
+                    key: 'late-refusal',
+                    message: 'must not dispatch',
+                    expectedHead: world.inbox.currentHead(CONVERSATION),
+                  }),
+                },
+              );
+        expect(submit).toHaveBeenCalledTimes(1);
+        expect(response.status).toBe(409);
+        expect(await response.json()).toMatchObject({
+          success: false,
+          code: 'sealed_source_admission_required',
+          error: 'Fresh bounded admission required.',
+        });
+        expect(
+          world.store.threadInboxStore().read(CONVERSATION, 'late-refusal'),
+        ).toBeUndefined();
+        expect(world.prompts()).toEqual(before);
+      } finally {
+        submit.mockRestore();
+      }
+    },
+  );
+
   test('source admission leaves display notes available and does not disclose policy to another owner', async () => {
     const world = station();
     await world.busy();

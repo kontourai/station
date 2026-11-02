@@ -6675,6 +6675,7 @@ export function configureRuntimeRoutes(
       submissionRefusal: ({ conversationId }) =>
         service.conversationInputAdmissionRefusal(conversationId),
       placementRefusal: (input) =>
+        service.conversationInputAdmissionRefusal(input.conversationId) ??
         coordinatorPlacement?.placementRefusal({
           conversationId: input.conversationId,
           clientTurnId: input.clientTurnId,

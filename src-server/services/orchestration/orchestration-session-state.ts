@@ -567,7 +567,7 @@ export function reservedSourceDurabilityProfile(
     steerPlacement: {
       state: 'none',
       detail: valid
-        ? 'Steering and queued follow-ups require fresh bounded source admission.'
+        ? 'Use the report or group controls to request another turn with fresh bounded admission. This Session cannot accept Steer or Queue.'
         : unavailable,
     },
     crashContinuation: {

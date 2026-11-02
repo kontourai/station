@@ -1931,7 +1931,6 @@ describe('thread inbox (#3568)', () => {
       expect(submit(input)).toEqual({ outcome: 'not-permitted', ...refusal });
       expect(submissionRefusal).toHaveBeenCalledExactlyOnceWith({
         conversationId: THREAD,
-        clientTurnId: input.clientTurnId,
         kind,
         payload,
       });
