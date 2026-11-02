@@ -297,7 +297,7 @@ for (const previous of [8, 9] as const)
             .get('model:old')?.record,
         ),
       ).version,
-    ).toBe(4);
+    ).toBe(5);
   });
 
 it('400 individually committed text chunks retain bounded storage and an exact aborted prefix', async () => {

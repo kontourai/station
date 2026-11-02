@@ -364,6 +364,7 @@ async function run(
       payloadBytes: number;
       rows: number;
     }> = [];
+    const onDiskBytes = diskBytes(dir.path);
     if (journalBytes) {
       const database = new DatabaseSync(journalPath, { readOnly: true });
       try {
@@ -429,7 +430,7 @@ async function run(
         database.close();
       }
     }
-    const onDiskBytes = diskBytes(dir.path);
+    const inspectionSidecarBytes = diskBytes(dir.path) - onDiskBytes;
     const journalBudgetBytes = 128 * 1024 + steps * 16 * 1024 + 3 * textBytes;
     const bodyBudgetBytes = steps * 8 * 1024 + 2 * textBytes;
     if (
@@ -506,6 +507,7 @@ async function run(
       },
       storage: {
         textBytes,
+        inspectionSidecarBytes,
         tables,
         fixedBytesPerStep:
           Math.max(0, journalBytes - 3 * textBytes - 128 * 1024) / steps,

@@ -56,15 +56,16 @@ export function copyAgentEffect(effect: EffectRecord): EffectRecord {
 function partialBatches(
   parts: readonly string[],
   completeOnly = true,
+  width = 128,
 ): string[] {
   const batches: string[] = [];
   for (
     let offset = 0;
     offset <
-    (completeOnly ? parts.length - (parts.length % 128) : parts.length);
-    offset += 128
+    (completeOnly ? parts.length - (parts.length % width) : parts.length);
+    offset += width
   )
-    batches.push(agentWire(parts.slice(offset, offset + 128)));
+    batches.push(agentWire(parts.slice(offset, offset + width)));
   return batches;
 }
 function readPartialBatch(database: DatabaseSync, ref: string): string[] {
@@ -72,7 +73,7 @@ function readPartialBatch(database: DatabaseSync, ref: string): string[] {
   if (
     !Array.isArray(parts) ||
     parts.length < 1 ||
-    parts.length > 128 ||
+    parts.length > 1024 ||
     !parts.every((part) => typeof part === 'string')
   )
     throw new Error('DURABLE_AGENT_PARTIAL_BATCH_DAMAGED');
@@ -82,11 +83,11 @@ function readPartialBatch(database: DatabaseSync, ref: string): string[] {
 export function agentEffectHeader(
   database: DatabaseSync,
   effect: EffectRecord,
-  format: 1 | 2 | 3 | 4 = agentStatement(
+  format: 1 | 2 | 3 | 4 | 5 = agentStatement(
     database,
     'SELECT writer_format FROM agent_steps_meta WHERE id=1',
   ).get()?.writer_format === 'agent-steps/11'
-    ? 4
+    ? 5
     : 3,
 ): string {
   return canonical({
@@ -98,25 +99,27 @@ export function agentEffectHeader(
       ...(format >= 3
         ? {
             tail:
-              format === 4
+              format >= 4
                 ? []
                 : attempt.partials.slice(
-                    attempt.partials.length - (attempt.partials.length % 128),
+                    attempt.partials.length -
+                      (attempt.partials.length % (format >= 5 ? 1024 : 128)),
                   ),
             tailDigest: hash(
               canonical(
-                format === 4 &&
+                format >= 4 &&
                   attempt.output !== null &&
                   ['model', 'provider'].includes(effect.intent.kind)
                   ? []
                   : attempt.partials.slice(
-                      attempt.partials.length - (attempt.partials.length % 128),
+                      attempt.partials.length -
+                        (attempt.partials.length % (format >= 5 ? 1024 : 128)),
                     ),
               ),
             ),
           }
         : {}),
-      ...(format === 4
+      ...(format >= 4
         ? {
             tailTape:
               attempt.output !== null &&
@@ -126,7 +129,8 @@ export function agentEffectHeader(
                     JSON.stringify(
                       attempt.partials.slice(
                         attempt.partials.length -
-                          (attempt.partials.length % 128),
+                          (attempt.partials.length %
+                            (format >= 5 ? 1024 : 128)),
                       ),
                     ),
                   ).toString('base64'),
@@ -142,13 +146,17 @@ export function agentEffectHeader(
                 : null,
           }
         : {}),
-      partials: (format === 4 &&
+      partials: (format >= 4 &&
       attempt.output !== null &&
       ['model', 'provider'].includes(effect.intent.kind)
         ? []
         : format === 1
           ? attempt.partials
-          : partialBatches(attempt.partials, format >= 3)
+          : partialBatches(
+              attempt.partials,
+              format >= 3,
+              format >= 5 ? 1024 : 128,
+            )
       ).map((wire) => agentBodyReference(database, wire)),
       output:
         attempt.output === null
@@ -368,7 +376,8 @@ export function readAgentEffect(
     return copyAgentEffect(prior.value);
   }
   const raw = JSON.parse(wire);
-  const compact = raw?.version === 4;
+  const wide = raw?.version === 5;
+  const compact = raw?.version === 4 || wide;
   const tailed = raw?.version === 3 || compact;
   const prefixes: Array<{ length: number | null; digest: string | null }> = [];
   const batched = raw?.version === 2 || tailed;
@@ -376,11 +385,11 @@ export function readAgentEffect(
   if (tailed) {
     const stored = effectSchema
       .extend({
-        version: z.union([z.literal(3), z.literal(4)]),
+        version: z.union([z.literal(3), z.literal(4), z.literal(5)]),
         attempts: z
           .array(
             effectSchema.shape.attempts.element.extend({
-              tail: z.array(payload).max(127),
+              tail: z.array(payload).max(1023),
               tailDigest: text,
               tailTape: z.string().nullable().optional(),
               prefixLength: z
@@ -402,15 +411,17 @@ export function readAgentEffect(
             ? []
             : z
                 .array(payload)
-                .max(127)
+                .max(wide ? 1023 : 127)
                 .parse(
                   JSON.parse(
                     inflateSync(Buffer.from(attempt.tailTape, 'base64'), {
-                      maxOutputLength: 32 * 1024 * 1024,
+                      maxOutputLength: 64 * 1024 * 1024,
                     }).toString('utf8'),
                   ),
                 )
           : attempt.tail;
+      if ((!wide && tail.length > 127) || (wide && tail.length > 1023))
+        throw new Error('DURABLE_AGENT_PARTIAL_TAIL_DAMAGED');
       if (compact && attempt.tailTape !== undefined && attempt.tail.length)
         throw new Error('DURABLE_AGENT_PARTIAL_TAIL_DAMAGED');
       if (hash(canonical(tail)) !== attempt.tailDigest)
@@ -519,7 +530,7 @@ export function readAgentEffect(
             ...attempt.partials.flatMap((ref) => {
               if (!batched) return [readAgentBody(database, ref)];
               const batch = readPartialBatch(database, ref);
-              if (tailed && batch.length !== 128)
+              if (tailed && batch.length !== (wide ? 1024 : 128))
                 throw new Error('DURABLE_AGENT_PARTIAL_BATCH_DAMAGED');
               return batch;
             }),
@@ -541,23 +552,27 @@ function write(
   database: DatabaseSync,
   turnId: string,
   effect: EffectRecord,
-  format: 1 | 2 | 3 | 4 = agentStatement(
+  format: 1 | 2 | 3 | 4 | 5 = agentStatement(
     database,
     'SELECT writer_format FROM agent_steps_meta WHERE id=1',
   ).get()?.writer_format === 'agent-steps/11'
-    ? 4
+    ? 5
     : 3,
 ) {
   const input = putAgentBody(database, effect.intent.input);
   validate(effect, true, input);
   for (const attempt of effect.attempts) {
-    for (const part of format === 4 &&
+    for (const part of format >= 4 &&
     attempt.output !== null &&
     ['model', 'provider'].includes(effect.intent.kind)
       ? []
       : format === 1
         ? attempt.partials
-        : partialBatches(attempt.partials, format >= 3))
+        : partialBatches(
+            attempt.partials,
+            format >= 3,
+            format >= 5 ? 1024 : 128,
+          ))
       putAgentBody(database, part);
     if (attempt.output !== null) putAgentBody(database, attempt.output);
   }
