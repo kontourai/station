@@ -673,6 +673,18 @@ classifier is missing, fails, or returns anything other than one exact
 Do not run `npm run full:regression`
 locally merely because `main` moved.
 
+A same-repository pull request that GitHub confirms is conflicted with `main`
+(two consecutive `mergeable: false` observations a few seconds apart) is deferred
+by the `PR source admission` job (`scripts/pr-source-admission.mjs`) before the
+plan, shards and statics run, because it cannot merge and that work would be
+discarded. Only the job's explicit `admitted=false` output defers: mergeability
+still being computed, an API failure or the job failing to start admit the run.
+A deferred run fails `fast-checks` with the annotation naming the conflict. Merge
+or rebase `main` (a new head starts a new run), or, when `main` has since cleared
+the conflict without a head change, use "Re-run failed jobs" on the run: the
+source-policy publisher reads each run's newest attempt, so the rerun supersedes
+the deferred verdict. Merge-queue, dispatch and push runs never evaluate it.
+
 Source execution and admission are separate: the `fast-checks` aggregate validates
 the actual plan, statics and shard receipts. The trusted source-policy publisher
 reconciles that result for the newest applicable exact-head source run, keeping

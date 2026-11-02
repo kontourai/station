@@ -29,6 +29,10 @@ export default defineConfig({
     headless: true,
     screenshot: 'only-on-failure',
     trace: 'retain-on-failure',
+    // A home with no saved theme follows the device (#4407). Specs and
+    // captures were written against the dark default; a spec that needs light
+    // still saves it or emulates `prefers-color-scheme: light` itself.
+    colorScheme: 'dark',
     ...(establishedUserStorage ? { storageState: establishedUserStorage } : {}),
   },
   projects: [

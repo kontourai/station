@@ -56,9 +56,15 @@ shared value upstream when it belongs to the public design system.
 ## Personal preference and device startup
 
 [startup-theme.js](../../src-ui/public/startup-theme.js) selects the saved
-light/dark preference before the entry HTML paints, reading the device-settings
-envelope before the legacy theme key and falling back to dark if storage is
-unavailable. A signed-in person's last rendered appearance, cached in
+mode before the entry HTML paints, reading the device-settings envelope before
+the legacy theme key. The mode is Light, Dark or System; System, the default
+when nothing is saved, follows the device's `prefers-color-scheme` (dark when
+the browser cannot say or storage is unavailable). Choosing System clears a
+saved light or dark choice instead of storing a third value, so an older
+client or server reads it as no choice. `data-theme` only ever carries the
+resolved `light` or `dark` ([theme-mode.ts](../../src-ui/src/lib/theme-mode.ts)),
+and the settings binder re-applies it when the device switches. A signed-in
+person's last rendered appearance, cached in
 `station-appearance-v1`, wins over both until the account answers. The script
 also stamps the named color theme, requests its stylesheet and sets
 `theme-color` (see [Named color themes](#named-color-themes)).
@@ -156,7 +162,7 @@ white-label branding, a custom accent and islands. A picker lists
 
 The picker is the Appearance page (`/appearance`, listed in Customize and the
 command palette): [AppearancePage](../../src-ui/src/pages/AppearancePage.tsx)
-holds the light/dark mode, a gallery of every theme drawn from the catalog
+holds the System/Light/Dark mode, a gallery of every theme drawn from the catalog
 swatches for the current mode, the family's dark flavors, and its named
 accents (Station's own presets and custom color when Station is selected).
 Choosing a family resets flavor and accent to that family's defaults, and

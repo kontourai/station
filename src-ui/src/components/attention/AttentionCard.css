@@ -52,7 +52,7 @@
 
 .attention-item__type {
   color: var(--k-text-muted);
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
   font-weight: 600;
 }
 
@@ -97,7 +97,7 @@
  * the cause above it so the cause stays the line you read first.
  */
 .attention-item__identity {
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
   color: var(--k-text-muted);
   margin-top: var(--k-space-1);
   overflow-wrap: anywhere;
@@ -235,7 +235,7 @@
     border: none;
     background: none;
     color: var(--k-action);
-    font-size: var(--k-text-xs);
+    font-size: var(--k-text-sm);
   }
 }
 
@@ -290,7 +290,7 @@
 }
 .attention-item .attention-answer > label {
   color: var(--k-text-muted);
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
   font-weight: 600;
 }
 .attention-item .attention-answer textarea {

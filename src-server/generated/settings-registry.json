@@ -466,6 +466,15 @@
       "configKey": "defaultWorkspaceIsolation"
     },
     {
+      "id": "no-project-chat-folder",
+      "label": "Chats without a project",
+      "help": "A new chat with no project runs in a private folder of its own, or in your home folder.",
+      "scope": "station",
+      "section": "agent-runs",
+      "route": "/settings?view=agent-runs&highlight=no-project-chat-folder",
+      "configKey": "noProjectChatFolder"
+    },
+    {
       "id": "workspace-checkpoints",
       "label": "Workspace checkpoints",
       "help": "After a restart, Station snapshots the session project’s directory in git each turn so later turns can be compared or recovered.",
@@ -639,7 +648,7 @@
     {
       "id": "theme",
       "label": "Theme",
-      "help": "The interface renders in this color scheme in your interface.",
+      "help": "The interface renders light, dark, or follows this device’s appearance.",
       "scope": "account",
       "section": "appearance",
       "route": "/settings?view=appearance&highlight=theme",

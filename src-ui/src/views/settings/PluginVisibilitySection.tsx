@@ -72,10 +72,10 @@ function PrincipalRow({
 }) {
   return (
     <div className="plugin-visibility__principal">
-      <div className="plugin-visibility__name">{principal.display}</div>
-      <div className="plugin-visibility__meta">
-        {principal.id}
-        {principal.revoked ? ' · access revoked' : ''}
+      {/* #4402: the principal id (`human:device:<uuid>`) is an internal
+          identifier, kept on hover for support rather than shown as copy. */}
+      <div className="plugin-visibility__name" title={principal.id}>
+        {principal.display}
       </div>
       {principal.revoked && (
         <div className="plugin-visibility__meta">

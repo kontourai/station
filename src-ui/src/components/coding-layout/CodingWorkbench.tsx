@@ -229,6 +229,11 @@ export interface CodingWorkbenchProps {
    * host is drawn chromeless, so its "saved in this tab" line is gone.
    */
   persistence?: 'owned' | 'contended' | 'unavailable';
+  /**
+   * While `persistence` is 'contended', take the views over from the other
+   * tab so this one saves ("Use here", #4407).
+   */
+  onUseHere?(): void;
   /** Whether the reader may close this drill-in (one they opened, not a built-in). */
   closable?(instance: WorkspacePaneInstance): boolean;
   /**
@@ -292,6 +297,7 @@ export function CodingWorkbench({
   provisional = false,
   popOut,
   persistence = 'owned',
+  onUseHere,
   closable,
   children,
 }: CodingWorkbenchProps) {
@@ -1409,11 +1415,18 @@ export function CodingWorkbench({
           </p>
         ) : null}
         {persistenceProblem ? (
-          <p className="coding-workbench__notice" role="status">
-            {persistenceProblem === 'contended'
-              ? 'These views are open in another tab, so changes here are not saved.'
-              : 'Changes to these views cannot be saved right now.'}
-          </p>
+          <div className="coding-workbench__notice">
+            <p role="status">
+              {persistenceProblem === 'contended'
+                ? 'These views are open in another tab, so changes here are not saved.'
+                : 'Changes to these views cannot be saved right now.'}
+            </p>
+            {persistenceProblem === 'contended' && onUseHere ? (
+              <Button variant="ghost" size="sm" onClick={onUseHere}>
+                Use here
+              </Button>
+            ) : null}
+          </div>
         ) : null}
         <div
           ref={pagesRef}
@@ -2059,51 +2072,14 @@ function CodingViewRail({
  * it opens as a small labelled panel beside the rail.
  */
 /**
- * The input that last acted on the page, read when a rail item gains focus
- * (#4401). `:focus-visible` would answer the same question in a browser, but
- * it is not observable from a focus event under every host, so the modality
- * is tracked directly: a pointer press marks focus as pointer-driven until the
- * next key press. Before either it is `keyboard`, so focus shows the tip.
- */
-let lastInputModality: 'keyboard' | 'pointer' = 'keyboard';
-let modalityListeners = 0;
-const markPointer = () => {
-  lastInputModality = 'pointer';
-};
-const markKeyboard = () => {
-  lastInputModality = 'keyboard';
-};
-function trackLastInputModality() {
-  if (modalityListeners++ === 0) {
-    document.addEventListener('pointerdown', markPointer, true);
-    document.addEventListener('keydown', markKeyboard, true);
-  }
-  return () => {
-    if (--modalityListeners === 0) {
-      document.removeEventListener('pointerdown', markPointer, true);
-      document.removeEventListener('keydown', markKeyboard, true);
-      lastInputModality = 'keyboard';
-    }
-  };
-}
-
-/**
  * A rail item's tooltip, drawn on the body to the item's left. The rail
  * scrolls (it must: a workspace can hold more panes than a short window
  * shows), and a tooltip inside a scrolling rail is clipped to it, so the tip
  * is placed from the item's measured box instead, as the Browser flyout is.
- * Shown on hover and on focus, as the kit's tooltip is, except focus that
- * follows a pointer press: closing a panel with the mouse hands focus back to
- * its rail item, and a tip shown for that focus stayed over the rail after the
- * pointer had left (#4401). Keyboard focus, including focus handed back after
- * a keyboard close, still shows it.
+ * Shown on hover and keyboard focus, as the kit's tooltip is.
  */
 function RailTip({ label, children }: { label: string; children: ReactNode }) {
   const [place, setPlace] = useState<CSSProperties | null>(null);
-  useEffect(trackLastInputModality, []);
-  const showForFocus = (event: ReactFocusEvent<HTMLElement>) => {
-    if (lastInputModality !== 'pointer') show(event);
-  };
   const show = (event: { currentTarget: HTMLElement }) => {
     const anchor = event.currentTarget.getBoundingClientRect();
     setPlace({
@@ -2114,13 +2090,23 @@ function RailTip({ label, children }: { label: string; children: ReactNode }) {
     });
   };
   const hide = () => setPlace(null);
+  // #4401: keyboard focus only. A closed panel hands focus back to its rail
+  // item; on a pointer that focus is not visible, and a tip shown for it
+  // stayed over the rail after the pointer had left.
+  const showForVisibleFocus = (event: ReactFocusEvent<HTMLElement>) => {
+    if (
+      event.target instanceof HTMLElement &&
+      event.target.matches(':focus-visible')
+    )
+      show(event);
+  };
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: hover and focus listeners for the tooltip of the button inside; the span itself is not a control.
     <span
       className="coding-workbench__rail-tip-anchor"
       onPointerEnter={show}
       onPointerLeave={hide}
-      onFocus={showForFocus}
+      onFocus={showForVisibleFocus}
       onBlur={hide}
     >
       {children}

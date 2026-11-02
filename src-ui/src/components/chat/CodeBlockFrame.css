@@ -13,7 +13,7 @@
   padding: 0 12px;
   background: var(--bg-secondary);
   color: var(--text-secondary);
-  font-size: var(--text-sm);
+  font-size: var(--k-text-sm);
 }
 .code-block-actions .button {
   min-height: 44px;
@@ -33,11 +33,23 @@
 .code-block-body code {
   font-family: var(--font-mono);
 }
+/* Not `.message code`'s inline 0.9em, whichever sheet loads last: block
+   code reads at the body size (#4403 measured 10.8px). */
+.code-block-frame .code-block-body code {
+  font-size: inherit;
+}
 
 .code-block-actions > span {
+  flex: 1;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+/* #4407: soft wrap. Shiki keeps each line's text, newlines included, inside
+   the one <pre>, so wrapping is only a white-space change. */
+.code-block-frame[data-wrap] .code-block-body :is(pre, code) {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 .code-block-actions .button {
   flex-shrink: 0;

@@ -112,6 +112,7 @@ category.
 - [task-room-agent-requests.md](task-room-agent-requests.md) — Task room agent requests
 - [terminal.md](terminal.md) — Integrated terminal
 - [tracker-backed-tasks.md](tracker-backed-tasks.md) — Tracker-backed Tasks
+- [verified-action-replay.md](verified-action-replay.md) — Verified replay of Agent browser actions
 - [walkthroughs.md](walkthroughs.md) — Walkthroughs
 - [work-plane-composition.md](work-plane-composition.md) — Work-Plane Composition: Station as the Native Host of the Kontour Work Plane
 <!-- docs-index:end -->

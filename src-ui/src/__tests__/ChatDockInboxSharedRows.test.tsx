@@ -16,6 +16,7 @@ import type {
 } from '@kontourai/station-sdk';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
+  act,
   fireEvent,
   render,
   screen,
@@ -31,6 +32,7 @@ import {
   inboxRowIconAgent,
 } from '../components/chat-dock/ChatDockInboxRows';
 import { MobileInboxPanel } from '../components/chat-dock/MobileInboxPanel';
+import { navigationStore } from '../contexts/navigation-store';
 import { deviceSettingsStore } from '../lib/device-settings-store';
 import type { HomeWorkItem } from '../views/home/home-view-model';
 import { buildHomeWorkItems } from '../views/home/home-view-model';
@@ -382,6 +384,64 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
       expect(screen.getByText('Remote approval')).toBeTruthy();
     },
   );
+
+  it('defaults to all work; a chosen Current project follows the project page on screen (#4405 A36)', () => {
+    const items = [
+      workItem({
+        id: 'alpha-chat',
+        title: 'Alpha project work',
+        projectSlug: 'alpha',
+        projectLabel: 'Alpha',
+        chatSessionId: 'alpha-chat',
+      }),
+      workItem({
+        id: 'loose-chat',
+        title: 'No project chat',
+        chatSessionId: 'loose-chat',
+      }),
+    ];
+    const panel = () => (
+      <ChatDockInboxPanel
+        items={items}
+        activeChatSessionId={null}
+        openChatSessionIds={['alpha-chat', 'loose-chat']}
+        onFocusChat={vi.fn()}
+        onOpenConversation={vi.fn()}
+        onOpenSession={vi.fn()}
+        onCloseChat={vi.fn()}
+        onOpenHistory={vi.fn()}
+        now={NOW}
+      />
+    );
+    try {
+      act(() => navigationStore.navigate('/projects/alpha'));
+      const mounted = render(panel());
+      const scope = () =>
+        screen.getByRole('combobox', {
+          name: 'Inbox scope',
+        }) as HTMLSelectElement;
+      // Unchosen, every open chat stays listed: the open conversation is
+      // never filtered out of its own Inbox.
+      expect(scope().value).toBe('all');
+      expect(screen.getByText('No project chat')).toBeTruthy();
+      fireEvent.change(scope(), { target: { value: 'current-project' } });
+      expect(screen.getByText('Alpha project work')).toBeTruthy();
+      expect(screen.queryByText('No project chat')).toBeNull();
+      act(() => navigationStore.navigate('/'));
+      mounted.rerender(panel());
+      expect(screen.getByText('No project chat')).toBeTruthy();
+      expect(screen.getByText('Alpha project work')).toBeTruthy();
+      // Back on a project page the chosen scope filters again; "All work"
+      // undoes it.
+      act(() => navigationStore.navigate('/projects/alpha'));
+      mounted.rerender(panel());
+      expect(screen.queryByText('No project chat')).toBeNull();
+      fireEvent.change(scope(), { target: { value: 'all' } });
+      expect(screen.getByText('No project chat')).toBeTruthy();
+    } finally {
+      act(() => navigationStore.navigate('/'));
+    }
+  });
 
   it('keeps a Task-owned chat reachable under its Task and opens the Task destination', () => {
     const tasks: TaskRecord[] = [

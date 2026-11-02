@@ -238,7 +238,7 @@
   text-decoration: line-through;
 }
 .start-composer__context-label {
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
   color: var(--k-text-muted);
 }
 .start-composer__context-detail {

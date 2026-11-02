@@ -13,6 +13,8 @@ export interface WorkspacePaneHostLockManager {
     options: {
       mode: 'exclusive';
       ifAvailable?: boolean;
+      /** Take a held lock from its holder, whose request then rejects with AbortError. */
+      steal?: boolean;
       signal?: AbortSignal;
     },
     callback: (lock: object | null) => void | Promise<void>,

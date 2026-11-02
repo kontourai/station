@@ -567,6 +567,13 @@ const SETTINGS_CATALOG_SOURCE = [
     configKeys: ['defaultWorkspaceIsolation'],
   },
   {
+    id: 'no-project-chat-folder',
+    title: 'Chats without a project',
+    section: 'agent-runs',
+    keywords: ['no project', 'home folder', 'scratch', 'private folder'],
+    configKeys: ['noProjectChatFolder'],
+  },
+  {
     id: 'workspace-checkpoints',
     title: 'Workspace checkpoints',
     section: 'agent-runs',
@@ -744,7 +751,7 @@ const SETTINGS_CATALOG_SOURCE = [
     title: 'Theme',
     section: 'appearance',
     configKeys: ['theme'],
-    keywords: ['mode', 'dark', 'light', 'catppuccin'],
+    keywords: ['mode', 'dark', 'light', 'system', 'catppuccin'],
     searchKeywords: ['color theme', 'flavor', 'palette', 'appearance'],
   },
   {

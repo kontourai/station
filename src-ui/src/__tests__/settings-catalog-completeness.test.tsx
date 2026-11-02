@@ -83,7 +83,11 @@ vi.mock('@kontourai/station-sdk', async () => {
     // fetches it). No answer yet is the neutral case for the catalog.
     useCoreUpdateStatusQuery: () => ({ data: undefined }),
     StationReadOnlyError: class extends Error {},
-    useEngineConnectionsQuery: () => ({ data: [] }),
+    // #4402: "New Muse chats" renders only with a Muse engine; the catalog
+    // lists it, so this Station has one and every row renders.
+    useEngineConnectionsQuery: () => ({
+      data: [{ id: 'muse', config: { engineId: 'muse' } }],
+    }),
     useModelConnectionsQuery: () => ({ data: modelConnections }),
     useModelsQuery: () => ({ data: [] }),
     useAnswerSharesQuery: () => ({ data: [] }),

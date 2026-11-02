@@ -8,6 +8,7 @@ import {
   usePendingPairingApproval,
 } from '@kontourai/station-connect';
 import { useApiBase } from '../../contexts/ApiBaseContext';
+import { useActiveStationName } from '../../hooks/useActiveStationName';
 import {
   checkServerHealth,
   probeServerConnection,
@@ -86,6 +87,8 @@ export function ChatDockMobileConnection({
   showLabel?: boolean;
 }) {
   const { activeConnection } = useConnections();
+  // #4402: the seeded "Default" connection reads as the machine's name.
+  const activeStationName = useActiveStationName();
   const { apiBase } = useApiBase();
   const { status, reason, failureStreak, recheck } = useConnectionStatus({
     checkHealth: checkServerHealth,
@@ -102,8 +105,8 @@ export function ChatDockMobileConnection({
     failureStreak,
   });
   const actionLabel = SHORT_ACTION_LABEL[state] ?? null;
-  const stationIdentity = activeConnection?.name
-    ? `Station · ${activeConnection.name}`
+  const stationIdentity = activeStationName
+    ? `Station · ${activeStationName}`
     : activeConnection?.injectedSource === 'managed-loopback'
       ? 'Local Station'
       : 'Station';
