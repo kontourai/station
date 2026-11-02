@@ -1,0 +1,9 @@
+{
+  "revision": "b3b1b1dbeed544dac1b2fce50f877dcb86cd7e51",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Refs #3568 and #3575. Bounded display-note CSS review after the committed contract review. Replaced nonexistent --k-border with the shipped --k-line token, restoring the intended one-pixel border in both themes. Checked the shipped design token authority; the existing hosted undefined-custom-property test caught this exact defect (1 failed / 697 passed in source scans). Its focused suite now passes all 9 cases. Display admission, no-engine delivery, retention, error/retry and explicit-resend semantics are unchanged. Prior document classification and qualification limits remain; final controlled browser geometry is recorded separately in PR #4423.","inputs":["docs/architecture/module-map.md","src-ui/src/components/chat/ConversationInboxMessages.css"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Refs #3568 and #3575. Bounded display-note CSS review after the committed contract review. Replaced nonexistent --k-border with the shipped --k-line token, restoring the intended one-pixel border in both themes. Checked the shipped design token authority; the existing hosted undefined-custom-property test caught this exact defect (1 failed / 697 passed in source scans). Its focused suite now passes all 9 cases. Display admission, no-engine delivery, retention, error/retry and explicit-resend semantics are unchanged. Prior document classification and qualification limits remain; final controlled browser geometry is recorded separately in PR #4423.","inputs":["docs/design/chat-composer.md","src-ui/src/components/chat/ConversationInboxMessages.css"]}
+  ]
+}

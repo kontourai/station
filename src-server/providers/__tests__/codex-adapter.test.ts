@@ -2148,6 +2148,11 @@ describe('CodexAdapter', () => {
       processFactory: () => processHandle!,
     });
     expect(adapter.metadata.durability.steerPlacement.state).toBe('native');
+    expect(
+      Object.entries(adapter.metadata.durability)
+        .filter(([, cell]) => cell.state === 'native')
+        .map(([key]) => key),
+    ).toEqual(['steerPlacement']);
     const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
 
     const startSessionPromise = adapter.startSession({
