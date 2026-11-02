@@ -718,7 +718,8 @@ function assertDurableVoltExecutor(tool: {
   )
     throw new ToolDeniedError({
       toolName: tool.name,
-      message: 'This tool has no durable execution port.',
+      message:
+        'Crash-durable Station Agent cannot safely run this tool. Disable the preview to use it.',
       code: 'TOOL_FORBIDDEN',
       httpStatus: 403,
     });

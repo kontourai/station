@@ -18,7 +18,7 @@ import {
 } from '@kontourai/agent-runtime';
 import { openAtomicCrashPointStore } from '@kontourai/monument/testing';
 import { VercelModel } from '@strands-agents/sdk/models/vercel';
-import { createTool } from '@voltagent/core';
+import { createTool, ToolDeniedError } from '@voltagent/core';
 import { afterEach, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import { FileMemoryAdapter } from '../../../adapters/file/memory-adapter.js';
@@ -479,7 +479,7 @@ it('VoltAgent refuses an immutable native tool whose body cannot be decorated wi
   const f = await fixture('voltagent', 'unsafe', async () => 'unused', {
     tools: [tool],
   });
-  await expect(f.consume(f.lease)).rejects.toThrow('no durable execution port');
+  await expect(f.consume(f.lease)).rejects.toBeInstanceOf(ToolDeniedError);
   expect(f.calls).toHaveLength(0);
   expect(executions).toBe(0);
 });
