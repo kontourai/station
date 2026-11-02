@@ -15,7 +15,8 @@ import type { LiveSurfaceProducer } from './producer.js';
 /**
  * Fan-out of one producer to N viewers (#90).
  *
- * LATEST-FRAME-WINS, end to end. There is no frame queue anywhere:
+ * IMAGE frames (jpeg, png, webp) are LATEST-FRAME-WINS, end to end. There
+ * is no image queue anywhere:
  * - the hub holds at most one not-yet-published frame (the fps throttle's
  *   trailing slot), and a newer frame replaces it;
  * - every viewer holds at most one undelivered frame, and a newer frame
@@ -23,6 +24,14 @@ import type { LiveSurfaceProducer } from './producer.js';
  * A slow viewer therefore sees fewer frames, never older ones. That is the
  * only honest behaviour over the remote relay, which is stop-and-wait with
  * 16 KB chunks (~5 fps): a queued frame is by definition a stale one.
+ *
+ * H.264 access units cannot be skipped: a delta decodes only against the
+ * units before it. An `h264` viewer (#4418) therefore takes units IN ORDER
+ * from a small bounded queue, starts at a keyframe, and on overflow drops
+ * the queue and waits for the next keyframe (asking the producer for one).
+ * It never receives a delta before a keyframe. H.264 units bypass the fps
+ * throttle and acks; image viewers never see them, and `h264` viewers never
+ * see image frames.
  *
  * Backpressure: every frame is acked to the producer exactly once — when a
  * viewer first takes it, when a newer frame supersedes it undelivered, or
@@ -90,9 +99,21 @@ interface HubFrame {
 
 const FPS_CEILING = LIVE_SURFACE_STREAM_PARAM_BOUNDS.maxFps.max;
 const FPS_FLOOR = LIVE_SURFACE_STREAM_PARAM_BOUNDS.maxFps.min;
+/**
+ * An H.264 viewer's queue bound: about a second of 30 fps video. A viewer
+ * further behind than this would show a picture over a second old, so the
+ * queue is dropped and the viewer resynchronizes on the next keyframe.
+ */
+export const H264_QUEUE_MAX_BYTES = 4 * 1024 * 1024;
+export const H264_QUEUE_MAX_UNITS = 32;
+
+export type LiveSurfaceViewerCodec = 'image' | 'h264';
 
 class HubViewer implements LiveSurfaceViewer {
   slot: HubFrame | null = null;
+  private readonly videoQueue: HubFrame[] = [];
+  private videoBytes = 0;
+  private awaitingKeyframe = true;
   statePending = true;
   closed = false;
   /** True between handing out a record and the next `next()` call. */
@@ -105,7 +126,31 @@ class HubViewer implements LiveSurfaceViewer {
     readonly hub: LiveSurfaceHub,
     readonly requested: LiveSurfaceStreamParams,
     readonly identity: LiveSurfaceViewerIdentity | undefined,
+    readonly codec: LiveSurfaceViewerCodec,
   ) {}
+
+  /**
+   * Queue one access unit in order. Deltas before the first keyframe are
+   * discarded (they cannot be decoded), and on overflow the whole queue goes
+   * and the viewer waits for the next keyframe, asking the producer for one.
+   */
+  offerVideo(frame: HubFrame): void {
+    if (this.awaitingKeyframe && !frame.header.keyframe) return;
+    if (
+      this.videoQueue.length >= H264_QUEUE_MAX_UNITS ||
+      this.videoBytes + frame.body.byteLength > H264_QUEUE_MAX_BYTES
+    ) {
+      this.videoQueue.length = 0;
+      this.videoBytes = 0;
+      this.awaitingKeyframe = true;
+      this.hub.requestKeyframe();
+      if (!frame.header.keyframe) return;
+    }
+    this.awaitingKeyframe = false;
+    this.videoQueue.push(frame);
+    this.videoBytes += frame.body.byteLength;
+    this.notify();
+  }
 
   notify(): void {
     const wake = this.wake;
@@ -147,13 +192,14 @@ class HubViewer implements LiveSurfaceViewer {
       this.busy = true;
       return { kind: 'state', state: this.hub.state(this.identity) };
     }
-    const frame = this.slot;
+    const frame = this.codec === 'h264' ? this.videoQueue.shift() : this.slot;
     if (!frame) return null;
-    this.slot = null;
+    if (this.codec === 'h264') this.videoBytes -= frame.body.byteLength;
+    else this.slot = null;
     this.busy = true;
     this.consecutiveSlowOverwrites = 0;
     this.stats.delivered += 1;
-    this.hub.ackOnce(frame);
+    if (this.codec !== 'h264') this.hub.ackOnce(frame);
     return {
       kind: 'frame',
       header: { ...frame.header, epoch: this.hub.lease.snapshot().epoch },
@@ -166,6 +212,8 @@ class HubViewer implements LiveSurfaceViewer {
     this.closed = true;
     const frame = this.slot;
     this.slot = null;
+    this.videoQueue.length = 0;
+    this.videoBytes = 0;
     this.notify();
     this.hub.detach(this);
     // The frame this viewer never took must not keep the producer waiting —
@@ -236,15 +284,19 @@ export class LiveSurfaceHub {
   attach(
     requested: LiveSurfaceStreamParams,
     identity?: LiveSurfaceViewerIdentity,
+    codec: LiveSurfaceViewerCodec = 'image',
   ): LiveSurfaceViewer {
     if (this.disposed) throw new Error('live surface hub is disposed');
     const viewer = new HubViewer(
       this,
       { ...requested },
       identity ? { ...identity } : undefined,
+      codec,
     );
-    if (this.running && this.lastPublished) viewer.slot = this.lastPublished;
+    if (codec === 'image' && this.running && this.lastPublished)
+      viewer.slot = this.lastPublished;
     this.viewers.add(viewer);
+    if (codec === 'h264' && this.running) this.requestKeyframe();
     if (this.idleTimer) {
       clearTimeout(this.idleTimer);
       this.idleTimer = null;
@@ -353,6 +405,15 @@ export class LiveSurfaceHub {
     this.markStatePending();
   }
 
+  /** @internal An `h264` viewer needs a decoding point. */
+  requestKeyframe(): void {
+    try {
+      this.producer.requestKeyframe?.();
+    } catch (error) {
+      this.onError('live surface producer keyframe request failed', error);
+    }
+  }
+
   /** @internal A viewer dropped `frame` untaken: ack if nobody else holds it. */
   releaseReference(frame: HubFrame): void {
     for (const viewer of this.viewers) if (viewer.slot === frame) return;
@@ -394,7 +455,27 @@ export class LiveSurfaceHub {
 
   private onTargetChanged(): void {
     this.markStatePending();
+    this.pushCodecDemand();
     this.pushParamsToProducer();
+  }
+
+  /** Which encodings the attached viewers take. */
+  codecDemand(): { image: boolean; h264: boolean } {
+    let image = false;
+    let h264 = false;
+    for (const viewer of this.viewers) {
+      if (viewer.codec === 'h264') h264 = true;
+      else image = true;
+    }
+    return { image, h264 };
+  }
+
+  private pushCodecDemand(): void {
+    try {
+      this.producer.setCodecDemand?.(this.codecDemand());
+    } catch (error) {
+      this.onError('live surface producer rejected codec demand', error);
+    }
   }
 
   private pushParamsToProducer(): void {
@@ -429,6 +510,7 @@ export class LiveSurfaceHub {
         const params = this.effectiveParams();
         this.startedParams = params;
         this.running = true;
+        this.pushCodecDemand();
         try {
           await this.producer.start(params, (header, body) =>
             this.onFrame(generation, header, body),
@@ -487,6 +569,12 @@ export class LiveSurfaceHub {
       return;
     }
     const frame: HubFrame = { header: valid, body, acked: false };
+    if (valid.codec === 'h264') {
+      for (const viewer of this.viewers) {
+        if (viewer.codec === 'h264') viewer.offerVideo(frame);
+      }
+      return;
+    }
     // Trailing-edge throttle with a single slot: a newer frame supersedes
     // the held one (acking it), and the held frame is published when the
     // interval opens — so the LAST frame of a burst is never lost, which
@@ -512,6 +600,7 @@ export class LiveSurfaceHub {
     this.lastPublishedAt = this.now();
     this.lastPublished = frame;
     for (const viewer of this.viewers) {
+      if (viewer.codec !== 'image') continue;
       const previous = viewer.slot;
       if (previous && previous !== frame) {
         // Superseded undelivered: this viewer skips it. Latest frame wins.
@@ -522,9 +611,12 @@ export class LiveSurfaceHub {
       viewer.slot = frame;
       viewer.notify();
     }
+    const imageViewers = [...this.viewers].filter(
+      (viewer) => viewer.codec === 'image',
+    );
     const allSlow =
-      this.viewers.size > 0 &&
-      [...this.viewers].every(
+      imageViewers.length > 0 &&
+      imageViewers.every(
         (viewer) => viewer.consecutiveSlowOverwrites >= this.downgradeAfter,
       );
     if (allSlow) this.downgrade();

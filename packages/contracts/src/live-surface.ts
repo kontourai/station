@@ -15,12 +15,13 @@
  *   connection the relay can least afford (see ADR 0018's connection budget).
  */
 
-export type LiveSurfaceCodec = 'jpeg' | 'png' | 'webp';
+export type LiveSurfaceCodec = 'jpeg' | 'png' | 'webp' | 'h264';
 
 export const LIVE_SURFACE_CODECS: readonly LiveSurfaceCodec[] = [
   'jpeg',
   'png',
   'webp',
+  'h264',
 ];
 
 export interface LiveSurfaceFrameHeader {
@@ -30,6 +31,8 @@ export interface LiveSurfaceFrameHeader {
   /** Control-lease epoch in force when the frame was published by the hub. */
   epoch: number;
   codec: LiveSurfaceCodec;
+  /** H.264 access units identify decoder recovery points. */
+  keyframe?: boolean;
   /** Encoded image size in image pixels. */
   width: number;
   height: number;
@@ -690,6 +693,7 @@ export function parseLiveSurfaceFrameHeader(
       'seq',
       'epoch',
       'codec',
+      'keyframe',
       'width',
       'height',
       'deviceScaleFactor',
@@ -704,6 +708,9 @@ export function parseLiveSurfaceFrameHeader(
     !intInRange(record.seq, 0, Number.MAX_SAFE_INTEGER) ||
     !isLiveSurfaceEpoch(record.epoch) ||
     !LIVE_SURFACE_CODECS.includes(record.codec as LiveSurfaceCodec) ||
+    (record.codec === 'h264'
+      ? typeof record.keyframe !== 'boolean'
+      : record.keyframe !== undefined) ||
     !intInRange(record.width, 1, LIVE_SURFACE_COORDINATE_MAX) ||
     !intInRange(record.height, 1, LIVE_SURFACE_COORDINATE_MAX) ||
     !finiteInRange(
@@ -719,6 +726,9 @@ export function parseLiveSurfaceFrameHeader(
     seq: record.seq as number,
     epoch: record.epoch as number,
     codec: record.codec as LiveSurfaceCodec,
+    ...(record.codec === 'h264'
+      ? { keyframe: record.keyframe as boolean }
+      : {}),
     width: record.width as number,
     height: record.height as number,
     deviceScaleFactor: record.deviceScaleFactor as number,

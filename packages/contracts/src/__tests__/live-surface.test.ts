@@ -7,6 +7,7 @@ import {
   LiveSurfaceRecordDecoder,
   LiveSurfaceRecordError,
   parseLiveSurfaceControlLease,
+  parseLiveSurfaceFrameHeader,
   parseLiveSurfaceInput,
   parseLiveSurfaceInputBatch,
   parseLiveSurfaceLeaseRequest,
@@ -166,6 +167,19 @@ describe('live surface record envelope bounds', () => {
 });
 
 describe('live surface wire parsers', () => {
+  test('an H.264 frame must say whether it is a keyframe; an image frame must not', () => {
+    const h264 = { ...frame.header, codec: 'h264' } as Record<string, unknown>;
+    expect(parseLiveSurfaceFrameHeader(h264)).toBeNull();
+    expect(parseLiveSurfaceFrameHeader({ ...h264, keyframe: 'yes' })).toBeNull();
+    expect(parseLiveSurfaceFrameHeader({ ...h264, keyframe: true })).toEqual({
+      ...h264,
+      keyframe: true,
+    });
+    expect(
+      parseLiveSurfaceFrameHeader({ ...frame.header, keyframe: false }),
+    ).toBeNull();
+    expect(parseLiveSurfaceFrameHeader(frame.header)).toEqual(frame.header);
+  });
   test('input events are parsed strictly', () => {
     expect(
       parseLiveSurfaceInput({
