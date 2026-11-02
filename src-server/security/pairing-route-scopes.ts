@@ -4164,6 +4164,13 @@ export const PAIRING_SCOPE_FAMILY_INHERITED_LEAVES: readonly PairingScopeFamilyI
     // tier, never weaker — locality changes redaction, not who may hit
     // the route.
     { method: 'GET', path: '/api/diagnostics/logs' },
+    // #4470: prepares an in-app troubleshooting conversation. It writes one
+    // owner-only run under this Station's own cache and returns bounded,
+    // redacted facts about this Station; it reads no other Station and
+    // changes no configuration. A mutating verb, so the family's
+    // orchestration:operate tier applies; read-only devices are refused.
+    // The handler refuses every agent caller itself.
+    { method: 'POST', path: '/api/diagnostics/troubleshoot/prepare' },
     { method: 'GET', path: '/api/diff-comments' },
     { method: 'GET', path: '/api/environments/ssh' },
     { method: 'POST', path: '/api/environments/ssh' },

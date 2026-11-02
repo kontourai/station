@@ -700,6 +700,32 @@ describe('settings catalog completeness', () => {
     expectExactCatalog(rendered, expected);
   });
 
+  // #4470: the Settings row inlines the open-event literal (lazy-chunk
+  // reason at the call site). Listening on the constant binds them.
+  test('the Diagnostics troubleshoot row dispatches the troubleshoot open event', async () => {
+    const { OPEN_TROUBLESHOOT_EVENT } = await import(
+      '../lib/troubleshootEvents'
+    );
+    const listener = vi.fn();
+    window.addEventListener(OPEN_TROUBLESHOOT_EVENT, listener);
+    try {
+      const { container } = await renderSettings();
+      const row = await waitFor(() => {
+        const found = container.querySelector<HTMLElement>(
+          '[data-catalog-id="diagnostics-troubleshoot"]',
+        );
+        if (!found) throw new Error('troubleshoot row not mounted');
+        return found;
+      });
+      fireEvent.click(
+        within(row).getByRole('button', { name: 'Troubleshoot' }),
+      );
+      expect(listener).toHaveBeenCalledTimes(1);
+    } finally {
+      window.removeEventListener(OPEN_TROUBLESHOOT_EVENT, listener);
+    }
+  });
+
   /**
    * #2182. The Station default for chat font size renders inside the "This
    * device" box, beside the device slider that falls back to it — the one row

@@ -1,0 +1,275 @@
+/**
+ * #4470: POST /api/diagnostics/troubleshoot/prepare. Proves the route's
+ * admission (unauthenticated, read-only scope and agent callers refused),
+ * the caller-role fact the playbook files issues on, the seed rejection path,
+ * and that the run lands owner-only under $STATION_ROOT/cache/triage.
+ */
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import { join } from 'node:path';
+import type { HttpBindings } from '@hono/node-server';
+import {
+  DEFAULT_GRANT_PAIRING_SCOPE,
+  pairingScopePresetString,
+} from '@kontourai/station-contracts';
+import { MAX_TROUBLESHOOT_SEED_ROUTE_LENGTH } from '@kontourai/station-shared/triage-context';
+import { TROUBLESHOOT_PLAYBOOK } from '@kontourai/station-shared/troubleshoot-playbook';
+import { Hono } from 'hono';
+import { describe, expect, test, vi } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
+import { configureRuntimeHttp } from '../../../runtime/bootstrap/runtime-http.js';
+import {
+  bindRuntimeLocalOperator,
+  setRuntimeAuthenticatedRequestPrincipal,
+} from '../../../security/runtime-request-security.js';
+import {
+  MAX_TROUBLESHOOT_AMBIENT_CONTEXT_LENGTH,
+  TroubleshootService,
+} from '../../../services/infra/troubleshoot-service.js';
+import type { EventBus } from '../../../services/orchestration/event-bus.js';
+import { createDiagnosticsRoutes } from '../diagnostics.js';
+
+const makeTempDir = trackTempDirs();
+
+const logger = {
+  info() {},
+  warn() {},
+  error: vi.fn(),
+  debug() {},
+  trace() {},
+  fatal() {},
+  child() {
+    return this;
+  },
+  setLevel() {},
+  getLevel() {
+    return 'info' as const;
+  },
+};
+
+function service(stationRoot: string) {
+  return new TroubleshootService(stationRoot, {
+    stationRoot,
+    stationName: () => 'test-station',
+    environmentId: async () => 'env-test',
+    collectDoctor: async () =>
+      ({
+        checks: [
+          { label: 'Engine', status: 'warn', detail: 'no engine bound' },
+          { label: 'Disk', status: 'ok', detail: 'fine' },
+        ],
+        recommendation: 'Bind an engine.',
+        chatReady: false,
+        runtimeReady: true,
+      }) as never,
+    newRunId: () => '4a4a4a4a-4a4a-4a4a-8a4a-4a4a4a4a4a4a',
+  });
+}
+
+function diagnostics(stationRoot: string) {
+  return createDiagnosticsRoutes({} as never, logger as never, {} as never, {
+    troubleshoot: service(stationRoot),
+  });
+}
+
+type Caller = 'operator' | 'device' | 'internal' | 'none';
+
+/** The diagnostics routes behind a stand-in for the auth boundary's principal write. */
+function unitApp(stationRoot: string) {
+  const app = new Hono();
+  app.use('*', async (c, next) => {
+    const caller = (c.req.header('x-test-caller') ?? 'none') as Caller;
+    if (caller === 'operator')
+      setRuntimeAuthenticatedRequestPrincipal(c.req.raw, {
+        credential: 'operator',
+        authority: 'operator-credential',
+        source: 'bearer',
+      });
+    if (caller === 'device')
+      setRuntimeAuthenticatedRequestPrincipal(c.req.raw, {
+        credential: 'device',
+        authority: 'device-credential',
+        source: 'bearer',
+        deviceId: 'device-a',
+        deviceKind: 'device',
+      });
+    if (caller === 'internal')
+      setRuntimeAuthenticatedRequestPrincipal(c.req.raw, {
+        kind: 'internal',
+        credential: 'internal',
+        authority: undefined,
+        source: 'bearer',
+        locality: 'home-possession',
+      });
+    bindRuntimeLocalOperator(c.req.raw);
+    return next();
+  });
+  app.route('/api/diagnostics', diagnostics(stationRoot));
+  return app;
+}
+
+function prepare(app: Hono, caller: Caller, body: unknown = {}) {
+  return app.request('/api/diagnostics/troubleshoot/prepare', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-test-caller': caller },
+    body: JSON.stringify(body),
+  });
+}
+
+function runDirs(stationRoot: string): string[] {
+  const root = join(stationRoot, 'cache', 'triage');
+  return existsSync(root) ? readdirSync(root) : [];
+}
+
+describe('POST /api/diagnostics/troubleshoot/prepare', () => {
+  test('prepares an owner run on the Station Assistant with an owner-only run directory', async () => {
+    const stationRoot = makeTempDir('troubleshoot-owner-');
+    const response = await prepare(unitApp(stationRoot), 'operator', {
+      surface: 'desktop',
+    });
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as Record<string, any>;
+    expect(body.agentId).toBe('station');
+    expect(body.cliCommand).toBe('station triage');
+    expect(body.display).toMatchObject({
+      stationName: 'test-station',
+      role: 'owner',
+      surface: 'desktop',
+    });
+    expect(body.ambientContext).toContain('get_troubleshoot_playbook');
+    expect(body.ambientContext).toContain('role owner');
+    expect(body.ambientContext).toContain('Engine: warn no engine bound');
+    expect(body.ambientContext.length).toBeLessThanOrEqual(
+      MAX_TROUBLESHOOT_AMBIENT_CONTEXT_LENGTH,
+    );
+
+    const runDir = join(stationRoot, 'cache', 'triage', body.runId);
+    expect(statSync(runDir).mode & 0o777).toBe(0o700);
+    for (const file of ['context.json', 'playbook.md', 'seed.md'])
+      expect(statSync(join(runDir, file)).mode & 0o777).toBe(0o600);
+    expect(readFileSync(join(runDir, 'playbook.md'), 'utf8')).toBe(
+      TROUBLESHOOT_PLAYBOOK,
+    );
+    const context = JSON.parse(
+      readFileSync(join(runDir, 'context.json'), 'utf8'),
+    );
+    expect(context).toMatchObject({
+      schema: 'station-troubleshoot-context',
+      caller: { role: 'owner', surface: 'desktop' },
+      station: { name: 'test-station', environmentId: 'env-test' },
+      logs: { agentRead: 'requires-operator-grant' },
+    });
+  });
+
+  test('records a paired device that is not the owner as a member', async () => {
+    const stationRoot = makeTempDir('troubleshoot-member-');
+    const response = await prepare(unitApp(stationRoot), 'device');
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as Record<string, any>;
+    expect(body.display.role).toBe('member');
+    expect(body.ambientContext).toContain('role member');
+  });
+
+  test('refuses an agent caller before writing any run', async () => {
+    const stationRoot = makeTempDir('troubleshoot-agent-');
+    const response = await prepare(unitApp(stationRoot), 'internal');
+    expect(response.status).toBe(403);
+    expect(runDirs(stationRoot)).toEqual([]);
+  });
+
+  test('refuses seed context one character over its limit and keeps only the route path', async () => {
+    const stationRoot = makeTempDir('troubleshoot-seed-');
+    const app = unitApp(stationRoot);
+    const over = `/${'a'.repeat(MAX_TROUBLESHOOT_SEED_ROUTE_LENGTH)}`;
+    const refused = await prepare(app, 'operator', { seed: { route: over } });
+    expect(refused.status).toBe(400);
+    expect(((await refused.json()) as { error: string }).error).toContain(
+      String(MAX_TROUBLESHOOT_SEED_ROUTE_LENGTH),
+    );
+    expect(runDirs(stationRoot)).toEqual([]);
+
+    const accepted = await prepare(app, 'operator', {
+      seed: { route: '/settings?token=abc123#frag', errorSummary: 'Boom' },
+    });
+    expect(accepted.status).toBe(200);
+    const body = (await accepted.json()) as Record<string, any>;
+    expect(body.ambientContext).toContain('Started from route: /settings');
+    expect(body.ambientContext).not.toContain('abc123');
+    const context = JSON.parse(
+      readFileSync(
+        join(stationRoot, 'cache', 'triage', body.runId, 'context.json'),
+        'utf8',
+      ),
+    );
+    expect(context.seed).toEqual({ route: 'settings', errorSummary: 'Boom' });
+  });
+
+  test('rejects fields outside the request schema', async () => {
+    const stationRoot = makeTempDir('troubleshoot-schema-');
+    const response = await prepare(unitApp(stationRoot), 'operator', {
+      surface: 'desktop',
+      extra: true,
+    });
+    expect(response.status).toBe(400);
+    expect(runDirs(stationRoot)).toEqual([]);
+  });
+});
+
+const OPERATOR_CREDENTIAL = 'operator-credential-full-authority';
+const READ_ONLY_CREDENTIAL = 'device-credential-read-only-scope';
+const STANDARD_CREDENTIAL = 'device-credential-standard-scope';
+
+function scopeFor(credential: string): string | undefined {
+  if (credential === OPERATOR_CREDENTIAL) return DEFAULT_GRANT_PAIRING_SCOPE;
+  if (credential === READ_ONLY_CREDENTIAL)
+    return pairingScopePresetString('read-only');
+  if (credential === STANDARD_CREDENTIAL)
+    return pairingScopePresetString('standard');
+  return undefined;
+}
+
+/** The real runtime auth boundary and pairing-scope table in front of the route. */
+function boundaryApp(stationRoot: string) {
+  const app = new Hono<{ Bindings: HttpBindings }>();
+  configureRuntimeHttp({
+    app: app as never,
+    logger,
+    eventBus: { emit() {} } as unknown as EventBus,
+    security: {
+      verifyCredential: (candidate: string) =>
+        scopeFor(candidate) !== undefined,
+      resolveGrantedScope: (candidate: string) => scopeFor(candidate),
+      allowedOrigins: [],
+    },
+  } as unknown as Parameters<typeof configureRuntimeHttp>[0]);
+  app.route('/api/diagnostics', diagnostics(stationRoot));
+  return (credential?: string) =>
+    app.request(
+      '/api/diagnostics/troubleshoot/prepare',
+      {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          ...(credential ? { Authorization: `Bearer ${credential}` } : {}),
+        },
+        body: '{}',
+      },
+      { incoming: { socket: { remoteAddress: '100.96.12.7' } } } as never,
+    );
+}
+
+describe('troubleshoot prepare behind the runtime auth boundary', () => {
+  test('refuses an unauthenticated request', async () => {
+    const stationRoot = makeTempDir('troubleshoot-unauth-');
+    expect((await boundaryApp(stationRoot)()).status).toBe(401);
+    expect(runDirs(stationRoot)).toEqual([]);
+  });
+
+  test('refuses a read-only paired credential and admits a standard one', async () => {
+    const stationRoot = makeTempDir('troubleshoot-scope-');
+    const request = boundaryApp(stationRoot);
+    expect((await request(READ_ONLY_CREDENTIAL)).status).toBe(403);
+    expect(runDirs(stationRoot)).toEqual([]);
+    expect((await request(STANDARD_CREDENTIAL)).status).toBe(200);
+    expect(runDirs(stationRoot)).toHaveLength(1);
+  });
+});

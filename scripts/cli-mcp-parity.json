@@ -1233,6 +1233,10 @@
     "disconnect_ssh_environment": {
       "cli": ["environment stop"]
     },
+    "draft_troubleshoot_report": {
+      "exempt": "agent-proposal",
+      "reason": "Routes:[]; the agent drafts a redacted report and the person files it through the issue form or gh."
+    },
     "enable_job": {
       "cli": ["schedule enable"]
     },
@@ -1315,6 +1319,10 @@
     },
     "get_task_events": {
       "cli": ["delegate events"]
+    },
+    "get_troubleshoot_playbook": {
+      "exempt": "agent-self",
+      "reason": "Routes:[]; guidance for the calling agent's own troubleshooting conversation. station triage bundles its own playbook."
     },
     "get_usage": {
       "missing": 4284,

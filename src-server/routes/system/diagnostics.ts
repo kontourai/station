@@ -1,6 +1,16 @@
+import { TROUBLESHOOT_SURFACES } from '@kontourai/station-contracts/troubleshoot';
+import { TroubleshootSeedError } from '@kontourai/station-shared/triage-context';
 import { Hono } from 'hono';
-import { requestMayBeAnAgent } from '../../security/coding-authority.js';
-import { isBoundRuntimeLocalOperator } from '../../security/runtime-request-security.js';
+import {
+  isOperatorInPersonNotAgent,
+  isOperatorsOwnDevice,
+  type OperatorDeviceRecord,
+  requestMayBeAnAgent,
+} from '../../security/coding-authority.js';
+import {
+  isBoundRuntimeLocalOperator,
+  resolveClientOriginForRequest,
+} from '../../security/runtime-request-security.js';
 import { stationControlRequestAuthority } from '../../security/station-control-request-authority.js';
 import type { DiagnosticsService } from '../../services/infra/diagnostics-service.js';
 import {
@@ -8,16 +18,33 @@ import {
   type ServerLogQueryOptions,
   type ServerLogReader,
 } from '../../services/infra/server-log-reader.js';
+import type {
+  TroubleshootPrepareInput,
+  TroubleshootService,
+} from '../../services/infra/troubleshoot-service.js';
 import { serverLogsRead } from '../../telemetry/metrics.js';
 import type { Logger } from '../../utils/logger.js';
 import { isLogLevel, LOG_LEVEL_ORDER } from '../../utils/logger.js';
-import { errorMessage } from '../schemas/schemas.js';
+import {
+  errorMessage,
+  getBody,
+  troubleshootPrepareSchema,
+  validate,
+} from '../schemas/schemas.js';
 
 export function createDiagnosticsRoutes(
   diagnosticsService: DiagnosticsService,
   logger: Logger,
   logReader: ServerLogReader,
-  access?: { agentGrant?: (sessionId: string) => boolean },
+  access?: {
+    agentGrant?: (sessionId: string) => boolean;
+    /** #4470: absent leaves the troubleshoot prepare route unmounted. */
+    troubleshoot?: TroubleshootService;
+    /** Re-reads a paired device so the owner's own phone counts as the owner. */
+    identifyDevice?: (
+      credential: string,
+    ) => OperatorDeviceRecord | null | undefined;
+  },
 ) {
   const app = new Hono();
   const hasAgentGrant = (sessionId: string) => {
@@ -36,6 +63,61 @@ export function createDiagnosticsRoutes(
       return c.json({ error: errorMessage(error) }, 500);
     }
   });
+
+  // #4470: prepare an in-app troubleshooting conversation. People only: an
+  // agent (including Station's internal principal) may not start one, since
+  // the run records who asked and the playbook files issues on that basis.
+  // The pairing-scope family tier (orchestration:operate) is the floor.
+  const troubleshoot = access?.troubleshoot;
+  if (troubleshoot) {
+    app.post(
+      '/troubleshoot/prepare',
+      validate(troubleshootPrepareSchema, { maxBodyBytes: 16 * 1024 }),
+      async (c) => {
+        if (requestMayBeAnAgent(c.req.raw))
+          return c.json(
+            {
+              success: false,
+              error: 'Only a person can start troubleshooting.',
+            },
+            403,
+          );
+        const body = getBody(c) as {
+          surface?: TroubleshootPrepareInput['surface'];
+          seed?: TroubleshootPrepareInput['seed'];
+        };
+        const owner =
+          isOperatorInPersonNotAgent(c.req.raw) ||
+          (access?.identifyDevice
+            ? isOperatorsOwnDevice(c.req.raw, access.identifyDevice)
+            : false);
+        const reported = resolveClientOriginForRequest(c.req.raw).reported
+          ?.surface;
+        const surface =
+          body.surface ??
+          ((TROUBLESHOOT_SURFACES as readonly string[]).includes(reported ?? '')
+            ? (reported as TroubleshootPrepareInput['surface'])
+            : 'unknown');
+        try {
+          return c.json(
+            await troubleshoot.prepare({
+              role: owner ? 'owner' : 'member',
+              surface,
+              ...(body.seed ? { seed: body.seed } : {}),
+            }),
+          );
+        } catch (error) {
+          if (error instanceof TroubleshootSeedError)
+            return c.json({ success: false, error: error.message }, 400);
+          logger.error('Failed to prepare troubleshooting', { error });
+          return c.json(
+            { success: false, error: 'Troubleshooting could not be prepared.' },
+            500,
+          );
+        }
+      },
+    );
+  }
 
   // archive#1896 logging slice 2: the self-read path over the durable
   // NDJSON store slice 1 (`server-log-store.ts`) writes. `level` here is a

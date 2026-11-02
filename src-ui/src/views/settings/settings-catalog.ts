@@ -458,6 +458,12 @@ const SETTINGS_CATALOG_SOURCE = [
     section: 'diagnostics',
     keywords: ['health logs download'],
   },
+  {
+    id: 'diagnostics-troubleshoot',
+    title: 'Troubleshoot with an agent',
+    section: 'diagnostics',
+    keywords: ['troubleshoot triage bug broken help support debug'],
+  },
   // ── Permissions (#2182) ─────────────────────────────────────────────────
   // What agents may do without asking. `approval-guardian` is an always-on
   // screener rather than a fallback, which is why the Control group's caption

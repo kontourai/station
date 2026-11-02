@@ -1427,6 +1427,28 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                         }
                       />
                     )}
+                    {/* #4470: TroubleshootHost (deferred overlays) runs the
+                        start flow, including the no-engine fallback. The
+                        event name is an inline literal for the HelpMenu
+                        entry-chunk reason; SettingsViewTroubleshoot.test.tsx
+                        binds it to OPEN_TROUBLESHOOT_EVENT. */}
+                    <PageRow
+                      {...settingsRow('diagnostics-troubleshoot')}
+                      description="Investigate a problem with the Station Assistant, then fix it, file it, or both."
+                      control={
+                        <button
+                          type="button"
+                          className="settings__secondary-btn"
+                          onClick={() =>
+                            window.dispatchEvent(
+                              new CustomEvent('station:open-troubleshoot'),
+                            )
+                          }
+                        >
+                          Troubleshoot
+                        </button>
+                      }
+                    />
                   </Section>
                 )}
               </section>
