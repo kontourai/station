@@ -60,6 +60,9 @@ const chunkCounts = (
 )
   .split(',')
   .map(Number);
+const phase = args.find((a) => a.startsWith('--phase='))?.slice(8) ?? 'pair';
+if (!['pair', 'baseline', 'durable'].includes(phase))
+  throw new Error('Invalid benchmark phase');
 const pacing = (
   args.find((a) => a.startsWith('--paces='))?.slice(8) ?? '0,5,20'
 )
@@ -136,6 +139,10 @@ async function run(
       },
       doStream: async () => {
         calls++;
+        if (paceMs)
+          process.stdout.write(
+            `@agent-runtime-progress@${JSON.stringify({ durable, steps, chunks, paceMs, model: calls })}\n`,
+          );
         if (calls > steps) throw new Error('Unexpected benchmark model call');
         const tool = calls < steps;
         const parts: LanguageModelV3StreamPart[] = [
@@ -472,15 +479,24 @@ try {
   for (const steps of sizes)
     for (const chunks of chunkCounts)
       for (const paceMs of pacing) {
-        const baseline = await run(false, steps, chunks, paceMs);
-        const durable = await run(true, steps, chunks, paceMs);
+        const baseline =
+          phase === 'durable'
+            ? undefined
+            : await run(false, steps, chunks, paceMs);
+        const durable =
+          phase === 'baseline'
+            ? undefined
+            : await run(true, steps, chunks, paceMs);
         results.push({
           steps,
           chunks,
           paceMs,
           baseline,
           durable,
-          ratio: durable.milliseconds / baseline.milliseconds,
+          ratio:
+            baseline && durable
+              ? durable.milliseconds / baseline.milliseconds
+              : null,
         });
         writeFileSync(
           output,
@@ -488,6 +504,7 @@ try {
             {
               revision,
               environment,
+              phase,
               scope:
                 'actual Station VoltAgent adapter and in-process Hono chat/SSE route including projectFrame; scripted paced provider; FileMemory; fresh conversation; excludes TCP and the outer EventStore relay',
               results,
@@ -501,9 +518,12 @@ try {
             steps,
             chunks,
             paceMs,
-            ratio: durable.milliseconds / baseline.milliseconds,
-            storageRatio: durable.storage.ratio,
-            p99: durable.eventLoopDelayMs.p99,
+            ratio:
+              baseline && durable
+                ? durable.milliseconds / baseline.milliseconds
+                : null,
+            storageRatio: durable?.storage.ratio,
+            p99: durable?.eventLoopDelayMs.p99,
           })}\n`,
         );
       }
