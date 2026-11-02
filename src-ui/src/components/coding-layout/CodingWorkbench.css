@@ -141,6 +141,10 @@
 }
 
 .coding-workbench__notice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--k-space-2);
   margin: 0;
   padding: var(--space-2) var(--space-6);
   border-bottom: 1px solid var(--border-primary);
@@ -149,6 +153,15 @@
     var(--k-caution, var(--accent-yellow)) 10%,
     transparent
   );
+}
+
+.coding-workbench__notice p {
+  margin: 0;
+  min-width: 0;
+}
+
+.coding-workbench__notice .button {
+  flex: none;
 }
 
 .coding-workbench__more-menu {

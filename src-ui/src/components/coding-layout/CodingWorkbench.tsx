@@ -223,6 +223,11 @@ export interface CodingWorkbenchProps {
    * host is drawn chromeless, so its "saved in this tab" line is gone.
    */
   persistence?: 'owned' | 'contended' | 'unavailable';
+  /**
+   * While `persistence` is 'contended', take the views over from the other
+   * tab so this one saves ("Use here", #4407).
+   */
+  onUseHere?(): void;
   /** Whether the reader may close this drill-in (one they opened, not a built-in). */
   closable?(instance: WorkspacePaneInstance): boolean;
   /**
@@ -286,6 +291,7 @@ export function CodingWorkbench({
   provisional = false,
   popOut,
   persistence = 'owned',
+  onUseHere,
   closable,
   children,
 }: CodingWorkbenchProps) {
@@ -1322,11 +1328,18 @@ export function CodingWorkbench({
           <div className="coding-workbench__state">{notice}</div>
         ) : null}
         {persistenceProblem ? (
-          <p className="coding-workbench__notice" role="status">
-            {persistenceProblem === 'contended'
-              ? 'These views are open in another tab, so changes here are not saved.'
-              : 'Changes to these views cannot be saved right now.'}
-          </p>
+          <div className="coding-workbench__notice">
+            <p role="status">
+              {persistenceProblem === 'contended'
+                ? 'These views are open in another tab, so changes here are not saved.'
+                : 'Changes to these views cannot be saved right now.'}
+            </p>
+            {persistenceProblem === 'contended' && onUseHere ? (
+              <Button variant="ghost" size="sm" onClick={onUseHere}>
+                Use here
+              </Button>
+            ) : null}
+          </div>
         ) : null}
         <div
           ref={pagesRef}

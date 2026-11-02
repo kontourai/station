@@ -433,6 +433,150 @@ test('queues a contended reader, restores before its takeover, and keeps readers
   ).toBe('55');
 });
 
+/**
+ * Web Locks with `steal`: a stealing request is granted at once, and the
+ * request that held the lock rejects with AbortError while its callback may
+ * still be running. A waiter queued behind the holder stays queued.
+ */
+function stealableExclusiveTestLockManager(): WorkspacePaneHostLockManager {
+  const holders = new Map<string, { breakLock(): void }>();
+  const waiting = new Map<string, (() => void)[]>();
+  const grant = (
+    name: string,
+    callback: (lock: object | null) => void | Promise<void>,
+    resolve: () => void,
+    reject: (error: unknown) => void,
+  ) => {
+    let settled = false;
+    const holder = {
+      breakLock() {
+        if (settled) return;
+        settled = true;
+        reject(new DOMException('Lock broken by steal', 'AbortError'));
+      },
+    };
+    holders.set(name, holder);
+    void Promise.resolve(callback({})).finally(() => {
+      if (holders.get(name) === holder) {
+        holders.delete(name);
+        waiting.get(name)?.shift()?.();
+      }
+      if (!settled) {
+        settled = true;
+        resolve();
+      }
+    });
+  };
+  return {
+    request: (name, options, callback) =>
+      new Promise<void>((resolve, reject) => {
+        if (options.steal) {
+          holders.get(name)?.breakLock();
+          grant(name, callback, resolve, reject);
+          return;
+        }
+        if (!holders.has(name)) {
+          grant(name, callback, resolve, reject);
+          return;
+        }
+        if (options.ifAvailable) {
+          Promise.resolve(callback(null)).then(() => resolve(), reject);
+          return;
+        }
+        const wake = () => grant(name, callback, resolve, reject);
+        const abort = () => {
+          waiting.set(
+            name,
+            (waiting.get(name) ?? []).filter((candidate) => candidate !== wake),
+          );
+          reject(new DOMException('Aborted', 'AbortError'));
+        };
+        if (options.signal?.aborted) {
+          abort();
+          return;
+        }
+        options.signal?.addEventListener('abort', abort, { once: true });
+        waiting.set(name, [...(waiting.get(name) ?? []), wake]);
+      }),
+  };
+}
+
+test('#4407: Use here takes the views over from the other tab, and back', async () => {
+  const lockManager = stealableExclusiveTestLockManager();
+  const supplied = hostDocument();
+  const storageKey = workspacePaneHostStorageKey(supplied.scope, supplied.id);
+  const settle = () =>
+    act(async () => {
+      for (let turn = 0; turn < 6; turn += 1) await Promise.resolve();
+    });
+  const owner = render(
+    <WorkspacePaneHost
+      document={supplied}
+      lockManager={lockManager}
+      renderPane={(pane) => <div>{pane.descriptorId}</div>}
+    />,
+  );
+  const reader = render(
+    <WorkspacePaneHost
+      document={supplied}
+      lockManager={lockManager}
+      renderPane={(pane) => <div>{pane.descriptorId}</div>}
+    />,
+  );
+  await settle();
+  const status = (view: typeof owner) =>
+    within(view.container).getByRole('status');
+  expect(status(owner).textContent).toContain('saved in this tab');
+  expect(within(status(owner)).queryByRole('button')).toBeNull();
+  expect(status(reader).textContent).toContain('open in another tab');
+
+  fireEvent.click(
+    within(status(reader)).getByRole('button', { name: 'Use here' }),
+  );
+  await settle();
+  expect(status(reader).textContent).toContain('saved in this tab');
+  expect(status(owner).textContent).toContain('open in another tab');
+
+  // The tab that took over is the one that saves now; the other no longer does.
+  const save = async (view: typeof owner) => {
+    await act(async () => {
+      fireEvent.keyDown(within(view.container).getByRole('separator'), {
+        key: 'ArrowRight',
+      });
+      await new Promise<void>((resolve) =>
+        requestAnimationFrame(() => resolve()),
+      );
+    });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    });
+  };
+  const beforeFormerOwnerAction = localStorage.getItem(storageKey);
+  await save(owner);
+  expect(localStorage.getItem(storageKey)).toBe(beforeFormerOwnerAction);
+  await save(reader);
+  expect(
+    (
+      JSON.parse(localStorage.getItem(storageKey) ?? 'null') as {
+        root: unknown;
+      }
+    ).root,
+  ).toMatchObject({ ratio: 0.55 });
+
+  fireEvent.click(
+    within(status(owner)).getByRole('button', { name: 'Use here' }),
+  );
+  await settle();
+  expect(status(owner).textContent).toContain('saved in this tab');
+  expect(status(reader).textContent).toContain('open in another tab');
+  // Taking the views back restores what the other tab saved.
+  expect(
+    within(owner.container)
+      .getByRole('separator')
+      .getAttribute('aria-valuenow'),
+  ).toBe('55');
+});
+
 test('aborts a queued reader before acquisition and never publishes its view', async () => {
   const lockManager = queuedExclusiveTestLockManager();
   const supplied = hostDocument();
