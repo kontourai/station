@@ -615,57 +615,100 @@ test.each([
     let upstreamSourceReads = 0;
     let upstreamCalls = 0;
     let inUpstream = false;
+    let ownerGuardCalls = 0;
+    let ownerReadSample: { reads: number } | undefined;
+    const successfulOwnerReads: number[] = [];
+    const guardObservers: Array<{ mockRestore(): void }> = [];
     if (scenario === 'independent') {
       const read = observedCredentials.readObservedSdkProviderCredential;
-      vi.spyOn(
-        observedCredentials,
-        'readObservedSdkProviderCredential',
-      ).mockImplementation((...args) => {
-        sourceReads++;
-        if (inUpstream) upstreamSourceReads++;
-        return read(...args);
-      });
+      guardObservers.push(
+        vi
+          .spyOn(observedCredentials, 'readObservedSdkProviderCredential')
+          .mockImplementation((...args) => {
+            sourceReads++;
+            if (inUpstream) upstreamSourceReads++;
+            else if (ownerReadSample) ownerReadSample.reads++;
+            return read(...args);
+          }),
+      );
       const dispatch = StationReportGroupPreparation.prototype.dispatch;
-      vi.spyOn(
-        StationReportGroupPreparation.prototype,
-        'dispatch',
-      ).mockImplementation(function (
-        this: StationReportGroupPreparation,
-        handle,
-        context,
-        seatId,
-        attempt,
-        service,
-      ) {
-        const current = attempt.transport.launch.finalizeCurrent;
-        // Production snapshots this unbranded launch record; owned handles and leases retain their identity.
-        return dispatch.call(
-          this,
-          handle,
-          context,
-          seatId,
-          {
-            ...attempt,
-            transport: {
-              ...attempt.transport,
-              launch: {
-                ...attempt.transport.launch,
-                finalizeCurrent: () => {
-                  upstreamCalls++;
-                  const prior = inUpstream;
-                  inUpstream = true;
+      guardObservers.push(
+        vi
+          .spyOn(StationReportGroupPreparation.prototype, 'dispatch')
+          .mockImplementation(function (
+            this: StationReportGroupPreparation,
+            handle,
+            context,
+            seatId,
+            attempt,
+            service,
+          ) {
+            const launch = attempt.transport.launch;
+            assert.ok(launch.protocol === 'rounds-v1');
+            const reportHome = launch.reportHome;
+            assert.ok(reportHome);
+            const withHome = reportHome.withHome;
+            assert.ok(withHome);
+            const current = launch.finalizeCurrent;
+            let initialGuard:
+              | {
+                  original: Parameters<typeof withHome>[0];
+                  observed: Parameters<typeof withHome>[0];
+                }
+              | undefined;
+            const observeHome: typeof withHome = (guard, body) => {
+              // Dispatch's first Home entry supplies its own guard; SDK guards retain their independent identity.
+              initialGuard ??= {
+                original: guard,
+                observed: () => {
+                  ownerGuardCalls++;
+                  const sample = { reads: 0 };
+                  const prior = ownerReadSample;
+                  ownerReadSample = sample;
                   try {
-                    return current();
+                    const result = guard();
+                    successfulOwnerReads.push(sample.reads);
+                    return result;
                   } finally {
-                    inUpstream = prior;
+                    ownerReadSample = prior;
                   }
                 },
+              };
+              return withHome(
+                guard === initialGuard.original ? initialGuard.observed : guard,
+                body,
+              );
+            };
+            // These records are unbranded; retain every owned handle, lease and callback body.
+            return dispatch.call(
+              this,
+              handle,
+              context,
+              seatId,
+              {
+                ...attempt,
+                transport: {
+                  ...attempt.transport,
+                  launch: {
+                    ...launch,
+                    reportHome: { ...reportHome, withHome: observeHome },
+                    finalizeCurrent: () => {
+                      upstreamCalls++;
+                      const prior = inUpstream;
+                      inUpstream = true;
+                      try {
+                        return current();
+                      } finally {
+                        inUpstream = prior;
+                      }
+                    },
+                  },
+                },
               },
-            },
-          },
-          service,
-        );
-      });
+              service,
+            );
+          }),
+      );
     }
     let watchdog: ReturnType<typeof setTimeout> | undefined;
     try {
@@ -824,6 +867,18 @@ test.each([
           upstreamSourceReads,
           0,
           `dispatch metadata must delegate source checks to preparation (upstream=${upstreamSourceReads}, total=${sourceReads}, upstream calls=${upstreamCalls})`,
+        );
+        assert.ok(
+          ownerGuardCalls > 0,
+          'the real preparation-owned guard must run',
+        );
+        assert.ok(
+          successfulOwnerReads.length > 0,
+          'at least one real preparation-owned guard must return successfully',
+        );
+        assert.ok(
+          successfulOwnerReads.every((reads) => reads === 1),
+          `each successful preparation-owned guard must check its one shared credential (calls=${ownerGuardCalls}, successful=${successfulOwnerReads.length}, reads=${successfulOwnerReads.reduce((sum, reads) => sum + reads, 0)})`,
         );
       }
       assert.equal(body.success, true, `${mode}: report execution succeeded`);
@@ -1338,6 +1393,7 @@ test.each([
         503,
       );
     } finally {
+      for (const observer of guardObservers) observer.mockRestore();
       cleaningUp = true;
       releaseFault?.mockRestore();
       syncBuiltinESMExports();
