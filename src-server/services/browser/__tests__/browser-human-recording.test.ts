@@ -464,6 +464,83 @@ describe('human Browser recording', () => {
     await h.recorder.dispose();
   });
 
+  it('retries a transient Task publication failure', async () => {
+    const h = fixture();
+    const publish = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('temporary'))
+      .mockResolvedValueOnce({ walkthroughId: 'clip' });
+    const id = h.recorder.start({
+      session: h.session,
+      owner: 'alice',
+      authorize: async () => true,
+      prepareTask: async () => ({
+        kind: 'ready',
+        clip: { taskId: 'task-a', publish },
+      }),
+    });
+    await vi.waitFor(() => expect(h.canDeliver()).toBe(true));
+    h.recorder.stop(id, 'alice', 'bs_test', 3);
+    await vi.waitFor(() =>
+      expect(h.recorder.status(id, 'alice', 'bs_test', 3)?.state).toBe('ready'),
+    );
+    const request = new Request('http://station.test');
+    await expect(
+      h.recorder.publishTask(id, 'alice', 'bs_test', 3, request),
+    ).rejects.toThrow('temporary');
+    await expect(
+      h.recorder.publishTask(id, 'alice', 'bs_test', 3, request),
+    ).resolves.toEqual({ walkthroughId: 'clip' });
+    await h.recorder.dispose();
+  });
+
+  it('retains a recording while Task publication outlives expiry', async () => {
+    const h = fixture();
+    let finish!: (value: { walkthroughId: string }) => void;
+    let signal!: AbortSignal;
+    const publish = vi.fn(({ signal: s }: { signal: AbortSignal }) => {
+      signal = s;
+      return new Promise<{ walkthroughId: string }>((resolve) => {
+        finish = resolve;
+      });
+    });
+    const id = h.recorder.start({
+      session: h.session,
+      owner: 'alice',
+      authorize: async () => true,
+      prepareTask: async () => ({
+        kind: 'ready',
+        clip: { taskId: 'task-a', publish },
+      }),
+    });
+    await vi.waitFor(() => expect(h.canDeliver()).toBe(true));
+    vi.useFakeTimers();
+    try {
+      h.recorder.stop(id, 'alice', 'bs_test', 3);
+      await vi.waitFor(() =>
+        expect(h.recorder.status(id, 'alice', 'bs_test', 3)?.state).toBe(
+          'ready',
+        ),
+      );
+      const pending = h.recorder.publishTask(
+        id,
+        'alice',
+        'bs_test',
+        3,
+        new Request('http://station.test'),
+      )!;
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(signal.aborted).toBe(false);
+      expect(h.recorder.video(id, 'alice', 'bs_test', 3)).toBeDefined();
+      finish({ walkthroughId: 'clip' });
+      await expect(pending).resolves.toEqual({ walkthroughId: 'clip' });
+      expect(h.recorder.status(id, 'alice', 'bs_test', 3)).toBeUndefined();
+    } finally {
+      vi.useRealTimers();
+      await h.recorder.dispose();
+    }
+  });
+
   it('cancels a pending Task publication when the recording is discarded', async () => {
     const h = fixture();
     let aborted = false;

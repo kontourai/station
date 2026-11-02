@@ -1,12 +1,9 @@
 import { spawn } from 'node:child_process';
-import { createHash } from 'node:crypto';
 import { open, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { performance } from 'node:perf_hooks';
 import {
-  parseWalkthrough,
   WALKTHROUGH_LIMITS,
-  WALKTHROUGH_SCHEMA,
   type WalkthroughFrame,
 } from '@kontourai/station-contracts/walkthrough';
 import {
@@ -23,10 +20,9 @@ import { TaskWalkthroughStore } from '../walkthroughs/task-walkthrough-store.js'
 import { RecordingLimiter } from './recording-limiter.js';
 import {
   TaskBrowserCapture,
-  TaskBrowserCaptureError,
   type TaskCaptureBrowserRegistry,
 } from './task-browser-capture.js';
-import { verifyTaskReviewEvidence } from './task-review-evidence.js';
+import { publishTaskRecording } from './task-recording-publication.js';
 
 const MAX_RAW_FRAME_BYTES = 64 * 1024 * 1024;
 const MAX_FRAMES = 300;
@@ -329,6 +325,7 @@ export class TaskBrowserRecording {
         );
       throwIfCancelled(signal);
       const stage = await this.deps.store.stage(access, before.workspace);
+      let publicationStarted = false;
       try {
         throwIfCancelled(signal);
         const viewer = entry.hub.attach({
@@ -469,93 +466,22 @@ export class TaskBrowserRecording {
             });
           } else await rm(join(stage.path, frame.file));
         }
-        const after = await this.deps.captures.pin(access);
-        throwIfCancelled(signal);
-        const current = this.deps.captures.selectSession(
+        publicationStarted = true;
+        return await publishTaskRecording({
           access,
-          session.browserSessionId,
-          this.deps.registry,
-          allowed,
-        );
-        if (
-          before.workspace !== after.workspace ||
-          before.pin.commit !== after.pin.commit ||
-          before.pin.statusDigest !== after.pin.statusDigest ||
-          current.generation !== session.generation ||
-          this.deps.surfaceIdFor(session.browserSessionId) !== surfaceId ||
-          this.deps.surfaces.get(surfaceId!) !== entry
-        )
-          throw new TaskBrowserCaptureError(
-            'workspace-changed',
-            'The workspace or browser session changed during recording.',
-          );
-        const authorized = await input.authorize();
-        throwIfCancelled(signal);
-        if (
-          !authorized ||
-          !this.enabled() ||
-          !(await entry.authorize(authority.principalId, 'view', {
-            agentGrant: authority.grant,
-          }))
-        )
-          throw new TaskBrowserRecordingError(
-            'recording-unavailable',
-            'Recording authority changed.',
-          );
-        const evidence = await verifyTaskReviewEvidence({
-          workspace: after.workspace,
-          evidence: { commit: before.pin.commit },
-          authorize: () =>
-            !signal.aborted && access.write.beforeCommit() && this.enabled(),
-          taskGateReferences: [],
-          readGate: async () => undefined,
-        });
-        throwIfCancelled(signal);
-        if (!evidence.commitVerified)
-          throw new TaskBrowserRecordingError(
-            'recording-unavailable',
-            'The workspace commit could not be verified.',
-          );
-        const manifest = parseWalkthrough({
-          schema: WALKTHROUGH_SCHEMA,
-          id: stage.id,
-          createdAt: new Date().toISOString(),
-          ...(input.label ? { title: input.label } : {}),
-          source: {
-            adapter: 'browser-screencast',
-            adapterVersion: '1',
-            durationMs: input.durationMs,
-            commit: before.pin.commit,
-            recording: {
-              file: 'recording.webm',
-              mediaType: 'video/webm',
-              byteLength: bytes.length,
-              digest: `sha256:${createHash('sha256').update(bytes).digest('hex')}`,
-            },
-          },
-          capture: {
-            platform: 'web',
-            width: frames[0]!.width,
-            height: frames[0]!.height,
-          },
-          coverage: {
-            transcript: 'absent',
-            frames: retained.length ? 'present' : 'absent',
-            marks: 'absent',
-            elements: 'absent',
-            route: 'absent',
-            console: 'absent',
-            network: 'absent',
-          },
-          frameSelection: { candidates: frames.length, kept: retained.length },
-          events: retained,
-        });
-        await this.deps.store.publish(
-          access,
+          before,
           stage,
-          manifest,
-          async () => {
-            throwIfCancelled(signal);
+          bytes,
+          signal,
+          captures: this.deps.captures,
+          store: this.deps.store,
+          durationMs: input.durationMs,
+          width: frames[0]!.width,
+          height: frames[0]!.height,
+          label: input.label,
+          candidates: frames.length,
+          retained,
+          recheck: async () => {
             if (
               !this.enabled() ||
               !(await input.authorize()) ||
@@ -564,39 +490,31 @@ export class TaskBrowserRecording {
               }))
             )
               return false;
-            const final = await this.deps.captures.pin(access);
-            throwIfCancelled(signal);
             const live = this.deps.captures.selectSession(
               access,
               session.browserSessionId,
               this.deps.registry,
               allowed,
             );
-            if (
-              final.workspace !== before.workspace ||
-              final.pin.commit !== before.pin.commit ||
-              final.pin.statusDigest !== before.pin.statusDigest ||
-              live.generation !== session.generation ||
-              this.deps.surfaceIdFor(session.browserSessionId) !== surfaceId ||
-              this.deps.surfaces.get(surfaceId!) !== entry
-            )
-              throw new TaskBrowserCaptureError(
-                'workspace-changed',
-                'The workspace or browser session changed during recording.',
-              );
             return (
-              !signal.aborted && this.enabled() && access.write.beforeCommit()
+              live.generation === session.generation &&
+              this.deps.surfaceIdFor(session.browserSessionId) === surfaceId &&
+              this.deps.surfaces.get(surfaceId!) === entry &&
+              access.write.beforeCommit()
             );
           },
-          signal,
-        );
-        return manifest;
-      } finally {
-        await this.deps.store.discard(stage).catch((error: unknown) => {
-          cleanupFailure = error;
-          this.cleanupFailures.push(error);
-          throw error;
+          onCleanupFailure: (error) => {
+            cleanupFailure = error;
+            this.cleanupFailures.push(error);
+          },
         });
+      } finally {
+        if (!publicationStarted)
+          await this.deps.store.discard(stage).catch((error: unknown) => {
+            cleanupFailure = error;
+            this.cleanupFailures.push(error);
+            throw error;
+          });
       }
     } catch (error) {
       if (signal.aborted && cleanupFailure === undefined) throw cancelled();

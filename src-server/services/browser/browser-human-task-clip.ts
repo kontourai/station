@@ -1,10 +1,5 @@
-import { createHash } from 'node:crypto';
 import { open } from 'node:fs/promises';
 import { join } from 'node:path';
-import {
-  parseWalkthrough,
-  WALKTHROUGH_SCHEMA,
-} from '@kontourai/station-contracts/walkthrough';
 import type { FeaturePreviewSelector } from '../feature-previews/feature-preview-registry.js';
 import type {
   ProjectTaskRoomRuntime,
@@ -14,7 +9,7 @@ import {
   TaskBrowserCapture,
   TaskBrowserCaptureError,
 } from '../projects/task-browser-capture.js';
-import { verifyTaskReviewEvidence } from '../projects/task-review-evidence.js';
+import { publishTaskRecording } from '../projects/task-recording-publication.js';
 import type { TaskWalkthroughStore } from '../walkthroughs/task-walkthrough-store.js';
 import type { BrowserSessionRecord } from './browser-session-registry.js';
 
@@ -61,8 +56,7 @@ export class BrowserHumanTaskClip {
     if (!enabled() || !this.deps.isCurrent(request)) return { kind: 'none' };
     const unavailable = {
       kind: 'unavailable' as const,
-      reason:
-        'Commit or stash changes to add recordings to the Task, and ensure you have Task access.',
+      reason: "You don't have access to this Task.",
     };
     const linked =
       await this.deps.runtime.sessionTaskReviewAccess(conversationId);
@@ -85,7 +79,11 @@ export class BrowserHumanTaskClip {
     try {
       before = await this.deps.captures.pin(person);
     } catch (error) {
-      if (error instanceof TaskBrowserCaptureError) return unavailable;
+      if (error instanceof TaskBrowserCaptureError)
+        return {
+          kind: 'unavailable',
+          reason: 'Commit or stash changes to add recordings to the Task.',
+        };
       throw error;
     }
     const taskId = person.write.taskId;
@@ -136,27 +134,8 @@ export class BrowserHumanTaskClip {
             throw new Error('Browser access changed.');
           const access = await current(next);
           if (!access) throw new Error('Task access changed.');
-          const after = await this.deps.captures.pin(access);
-          if (
-            before.workspace !== after.workspace ||
-            before.pin.commit !== after.pin.commit ||
-            before.pin.statusDigest !== after.pin.statusDigest
-          )
-            throw new Error('The Task workspace changed during recording.');
-          const evidence = await verifyTaskReviewEvidence({
-            workspace: after.workspace,
-            evidence: { commit: before.pin.commit },
-            authorize: () =>
-              !signal.aborted &&
-              access.write.beforeCommit() &&
-              this.deps.isCurrent(next) &&
-              enabled(),
-            taskGateReferences: [],
-            readGate: async () => undefined,
-          });
-          if (!evidence.commitVerified)
-            throw new Error('The Task commit could not be verified.');
-          const stage = await this.deps.store.stage(access, after.workspace);
+          const stage = await this.deps.store.stage(access, before.workspace);
+          let publishing = false;
           try {
             signal.throwIfAborted();
             const file = await open(
@@ -170,57 +149,26 @@ export class BrowserHumanTaskClip {
             } finally {
               await file.close();
             }
-            const manifest = parseWalkthrough({
-              schema: WALKTHROUGH_SCHEMA,
-              id: stage.id,
-              createdAt: new Date().toISOString(),
-              source: {
-                adapter: 'browser-screencast',
-                adapterVersion: '1',
-                durationMs,
-                commit: before.pin.commit,
-                recording: {
-                  file: 'recording.webm',
-                  mediaType: 'video/webm',
-                  byteLength: bytes.length,
-                  digest: `sha256:${createHash('sha256').update(bytes).digest('hex')}`,
-                },
-              },
-              capture: { platform: 'web', width, height },
-              coverage: {
-                transcript: 'absent',
-                frames: 'absent',
-                marks: 'absent',
-                elements: 'absent',
-                route: 'absent',
-                console: 'absent',
-                network: 'absent',
-              },
-              frameSelection: { candidates: 0, kept: 0 },
-              events: [],
-            });
-            await this.deps.store.publish(
+            publishing = true;
+            const manifest = await publishTaskRecording({
               access,
+              before,
               stage,
-              manifest,
-              async () => {
-                const now = await current(next);
-                if (!now || !(await browserCurrent())) return false;
-                const final = await this.deps.captures.pin(now);
-                return (
-                  !signal.aborted &&
-                  final.workspace === before.workspace &&
-                  final.pin.commit === before.pin.commit &&
-                  final.pin.statusDigest === before.pin.statusDigest &&
-                  !!(await current(next)) &&
-                  (await browserCurrent())
-                );
-              },
+              bytes,
+              durationMs,
+              width,
+              height,
               signal,
-            );
-            return { walkthroughId: stage.id };
+              captures: this.deps.captures,
+              store: this.deps.store,
+              candidates: 0,
+              retained: [],
+              recheck: async () =>
+                !!(await current(next)) && (await browserCurrent()),
+            });
+            return { walkthroughId: manifest.id };
           } finally {
-            await this.deps.store.discard(stage);
+            if (!publishing) await this.deps.store.discard(stage);
           }
         },
       },

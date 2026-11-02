@@ -190,6 +190,7 @@ export function BrowserRecordingStatus({
   const [taskResult, setTaskResult] = useState<{
     id: string;
     message: string;
+    success: boolean;
   } | null>(null);
   const taskMessage =
     taskResult?.id === recording.recordingId ? taskResult.message : null;
@@ -244,9 +245,13 @@ export function BrowserRecordingStatus({
           );
         }
         files.push(
-          new File([data], `Recording frames (4) - ${index + 1}.jpg`, {
-            type: 'image/jpeg',
-          }),
+          new File(
+            [data],
+            `Recording frames (4) - untrusted page content - ${index + 1}.jpg`,
+            {
+              type: 'image/jpeg',
+            },
+          ),
         );
       }
       const metadata = {
@@ -340,7 +345,10 @@ export function BrowserRecordingStatus({
                 {
                   key: 'task',
                   label: 'Add to Task clips',
-                  disabled: publishing || !!taskMessage,
+                  disabled:
+                    publishing ||
+                    (taskResult?.id === recording.recordingId &&
+                      taskResult.success),
                   onSelect: () => {
                     const id = recording.recordingId;
                     if (!id) return;
@@ -353,6 +361,7 @@ export function BrowserRecordingStatus({
                             setTaskResult({
                               id,
                               message: 'Recording added to Task clips.',
+                              success: true,
                             });
                         },
                         () => {
@@ -361,6 +370,7 @@ export function BrowserRecordingStatus({
                               id,
                               message:
                                 'Could not add this recording to Task clips.',
+                              success: false,
                             });
                         },
                       )

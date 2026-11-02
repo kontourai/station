@@ -748,7 +748,10 @@ test('person recording refuses dirty or unauthorized Task preparation and rechec
   expect(prepared.kind).toBe('ready');
   if (prepared.kind !== 'ready') throw new Error('Expected Task pin');
   writeFileSync(join(h.workspace, 'untracked.txt'), 'dirty');
-  expect((await h.prepareHumanTask()).kind).toBe('unavailable');
+  expect(await h.prepareHumanTask()).toMatchObject({
+    kind: 'unavailable',
+    reason: 'Commit or stash changes to add recordings to the Task.',
+  });
   const request = new Request('http://station.test', {
     headers: { authorization: 'Bearer person' },
   });
@@ -767,6 +770,32 @@ test('person recording refuses dirty or unauthorized Task preparation and rechec
   expect(await list.json()).toMatchObject({
     success: true,
     data: { items: [] },
+  });
+});
+
+test('person recording reports success when cleanup fails after publication', async () => {
+  const h = await harness({ recording: true });
+  const prepared = await h.prepareHumanTask();
+  if (prepared.kind !== 'ready') throw new Error('Expected Task pin');
+  vi.spyOn(TaskWalkthroughStore.prototype, 'discard').mockRejectedValueOnce(
+    new Error('cleanup failed'),
+  );
+  const result = await prepared.clip.publish({
+    bytes: Buffer.from('webm'),
+    durationMs: 500,
+    width: 640,
+    height: 480,
+    request: new Request('http://station.test', {
+      headers: { authorization: 'Bearer person' },
+    }),
+    signal: new AbortController().signal,
+    browserCurrent: async () => true,
+  });
+  expect(
+    await (await h.person('task-a/review/walkthroughs')).json(),
+  ).toMatchObject({
+    success: true,
+    data: { items: [{ id: result.walkthroughId }] },
   });
 });
 
@@ -827,7 +856,7 @@ test('person recording gives a refusal when the active Task is not authorized', 
     ),
   ).toMatchObject({
     kind: 'unavailable',
-    reason: expect.stringContaining('Task access'),
+    reason: "You don't have access to this Task.",
   });
 });
 

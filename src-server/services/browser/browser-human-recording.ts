@@ -46,6 +46,8 @@ type Job = {
   prepareTask?: () => Promise<HumanTaskPreparation>;
   clip?: { durationMs: number; width: number; height: number };
   publication?: Promise<{ walkthroughId: string }>;
+  publishing?: boolean;
+  expired?: boolean;
   current?: (force?: boolean) => Promise<void>;
   stop: AbortController;
   cancel: AbortController;
@@ -157,11 +159,12 @@ export class BrowserHumanRecording {
             : 'The recording could not be completed.';
       })
       .finally(() => {
-        off();
         release();
+        off();
         const retained = [...this.jobs.values()].filter(
           (entry) =>
             entry !== job &&
+            !entry.publishing &&
             (entry.state === 'ready' || entry.state === 'failed'),
         );
         for (const stale of retained.slice(
@@ -169,7 +172,10 @@ export class BrowserHumanRecording {
           Math.max(0, retained.length + 1 - MAX_RETAINED),
         ))
           this.remove(stale.id);
-        job.timer = setTimeout(() => this.remove(job.id), RETAIN_MS);
+        job.timer = setTimeout(() => {
+          if (job.publishing) job.expired = true;
+          else this.remove(job.id);
+        }, RETAIN_MS);
         job.timer.unref?.();
       });
     return job.id;
@@ -274,21 +280,32 @@ export class BrowserHumanRecording {
       !job.clip
     )
       return undefined;
-    if (!job.publication)
-      job.publication = job.task.clip.publish({
-        ...job.clip,
-        bytes: job.bytes,
-        request,
-        signal: AbortSignal.any([job.cancel.signal, request.signal]),
-        browserCurrent: async () => {
-          try {
-            await job.current?.(true);
-            return !job.cancel.signal.aborted && !!job.current;
-          } catch {
-            return false;
-          }
-        },
-      });
+    if (!job.publication) {
+      job.publishing = true;
+      job.publication = job.task.clip
+        .publish({
+          ...job.clip,
+          bytes: job.bytes,
+          request,
+          signal: AbortSignal.any([job.cancel.signal, request.signal]),
+          browserCurrent: async () => {
+            try {
+              await job.current?.(true);
+              return !job.cancel.signal.aborted && !!job.current;
+            } catch {
+              return false;
+            }
+          },
+        })
+        .catch((error: unknown) => {
+          job.publication = undefined;
+          throw error;
+        })
+        .finally(() => {
+          job.publishing = false;
+          if (job.expired) this.remove(job.id);
+        });
+    }
     return job.publication;
   }
 

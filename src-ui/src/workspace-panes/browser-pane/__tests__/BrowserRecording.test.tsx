@@ -244,6 +244,11 @@ it('resizes large sampled frames before sending a bounded contact set', async ()
   await waitFor(() => expect(intake).toHaveBeenCalledOnce());
   const files = intake.mock.calls[0]![0];
   expect(resize).toHaveBeenCalledTimes(4);
+  expect(
+    files
+      .slice(0, 4)
+      .every((file) => file.name.includes('untrusted page content')),
+  ).toBe(true);
   expect(files.reduce((sum, file) => sum + file.size, 0)).toBeLessThan(
     5 * 1024 * 1024,
   );
@@ -263,7 +268,10 @@ it('offers Task publication only when start established a Task pin', async () =>
     recordingVideo: vi.fn(
       async () => new Blob(['webm'], { type: 'video/webm' }),
     ),
-    publishRecordingToTask: vi.fn(async () => ({ walkthroughId: 'clip-a' })),
+    publishRecordingToTask: vi
+      .fn()
+      .mockRejectedValueOnce(new Error('temporary'))
+      .mockResolvedValueOnce({ walkthroughId: 'clip-a' }),
     cancelRecording: vi.fn(async () => {}),
   } as unknown as BrowserPaneApi;
   vi.stubGlobal(
@@ -289,6 +297,15 @@ it('offers Task publication only when start established a Task pin', async () =>
   fireEvent.click(screen.getByRole('button', { name: 'Record' }));
   fireEvent.click(
     await screen.findByRole('button', { name: 'More recording actions' }),
+  );
+  fireEvent.click(
+    await screen.findByRole('menuitem', { name: 'Add to Task clips' }),
+  );
+  expect(
+    await screen.findByText('Could not add this recording to Task clips.'),
+  ).toBeTruthy();
+  fireEvent.click(
+    screen.getByRole('button', { name: 'More recording actions' }),
   );
   fireEvent.click(
     await screen.findByRole('menuitem', { name: 'Add to Task clips' }),
