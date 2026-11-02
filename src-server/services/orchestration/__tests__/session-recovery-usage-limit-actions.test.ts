@@ -8,6 +8,7 @@ import { SessionRecoveryCoordinator } from '../session-recovery-coordinator.js';
 
 vi.mock('../../../telemetry/metrics.js', () => ({
   connectionRecoveryOutcomes: { add: vi.fn() },
+  recoveryAdmissionRefused: { add: vi.fn() },
   credentialProfileApplication: { add: vi.fn() },
   attachmentReplayRefusals: { add: vi.fn() },
   orchestrationEventsPersisted: { add: vi.fn() },

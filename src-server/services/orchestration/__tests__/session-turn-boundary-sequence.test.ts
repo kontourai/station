@@ -1,12 +1,12 @@
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
+import { SESSION_TURN_ACCEPTED_CAPACITY } from '@kontourai/monument/session-boundary';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { ORCHESTRATION_EVENT_STORE_MIGRATION } from '../../../domain/migrations/003-orchestration-events.js';
 import { EventStore } from '../event-store.js';
 import { captureTurnIntent } from '../prepared-turn-intent.js';
-import { SESSION_TURN_ACCEPTED_CAPACITY } from '../session-turn-boundary.js';
 
 describe('session-terminal boundary ordering', () => {
   const makeTempDir = trackTempDirs();
