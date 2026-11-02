@@ -1600,7 +1600,9 @@
 
     "packages/contracts/src/connection-recovery.ts",
 
-    "src-ui/src/components/chat-dock/UsageLimitBanner.tsx"
+    "src-ui/src/components/chat-dock/UsageLimitBanner.tsx",
+
+    "src-server/services/orchestration/__tests__/create-request-claims.routes.test.ts"
   ],
 
   "checks": [
