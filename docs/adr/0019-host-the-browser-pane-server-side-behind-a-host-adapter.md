@@ -344,7 +344,14 @@ Frames travel as a **length-prefixed binary fetch stream**, not SSE, and only
 while a pane is visible. Each client should use **one frame stream,
 multiplexing all its visible panes**. Input goes as ordinary authenticated
 requests and must never queue behind frames. ADR 0018 records how this fits
-the per-origin connection budget.
+the per-origin connection budget. Until the multiplexed stream exists, each
+visible pane keeps its own stream, and a per-origin cap of two leaves input a
+connection (ADR 0018's 2026-11-02 amendment, measured over HTTP/1.1 only).
+
+A Device pane may take Android's H.264 access units instead of images
+(station#4418). Those cannot be dropped one by one: the hub queues them per
+viewer, bounded to about a second, and resynchronizes a viewer that falls
+further behind at the next keyframe. JPEG viewers keep latest-frame-wins.
 
 Over the relay, throughput is bounded by stop-and-wait 16 KiB chunks (see
 Context). Streams therefore **adapt fps and quality** to what the path

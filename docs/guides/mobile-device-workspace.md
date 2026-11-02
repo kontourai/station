@@ -92,9 +92,13 @@ shares, current request credentials and the route's pairing scope all matter.
 [session routes](../../src-server/routes/mobile-device.ts) own those checks.
 
 The [producer](../../src-server/services/devices/device-live-surface-producer.ts)
-separates video and input liveness. iOS video uses MJPEG. Android video uses
-server-side H.264 decoding when a decoder is available; otherwise it reports a
-PNG screenshot-poll fallback. The decoder uses host ffmpeg even without ffprobe,
+separates video and input liveness. iOS video uses MJPEG. Android video goes
+to a browser that can decode it (a secure context with WebCodecs and the
+stream's profile) as H.264, decoded on the viewer's machine; the pane shows
+"H.264, decoded in this browser". Other viewers get server-side H.264
+decoding when a decoder is available; otherwise a PNG screenshot-poll
+fallback, reported as such. The server decoder runs only while such a viewer
+is open. The decoder uses host ffmpeg even without ffprobe,
 or the pinned ffmpeg already acquired through `station media-tools download --yes`.
 Existing decoding stays available with both Feature Previews off. Downloading
 missing tools requires enabling Walkthroughs or Local speech in Settings →

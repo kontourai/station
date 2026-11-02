@@ -402,12 +402,15 @@ platform interaction require their own receipts.
 
 The [shared live-surface module](../architecture/module-map.md#shared-live-surface)
 also serves Device sessions. Frames use binary fetch streams rather than SSE
-replay. The current viewer opens one stream per visible viewer; the single
-multiplexed stream and saturated-pool input-latency requirement in
-[ADR 0018](../adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md)
-remain unqualified design constraints. Native transports and relays have their
-own limits; no fixed frame rate or immediate input guarantee follows from the
-shared canvas.
+replay. Each visible viewer opens its own stream, and a page holds at most two
+per origin so input always has a connection. A third visible pane waits,
+saying so, until one is hidden or closed. Over HTTP/1.1 in a real browser that
+kept taps and lease claims arriving within milliseconds while the streams
+stayed open (the measurement and its limits are in
+[ADR 0018](../adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md)'s
+2026-11-02 amendment). The single multiplexed stream is not built. Native
+transports and relays have their own limits and were not qualified; no fixed
+frame rate follows from the shared canvas.
 
 Source and fixture evidence lives in the
 [BrowserSessionService module](../architecture/module-map.md#browsersessionservice).

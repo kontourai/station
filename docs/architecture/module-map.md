@@ -5182,7 +5182,11 @@ view/input/control decisions; absent authority fails closed.
 
 **State and ordering.** `surface-hub.ts` fans one producer out to viewers with
 one pending frame per viewer, latest-frame replacement, acknowledgments and
-adaptive delivery. Capture starts with the first viewer and stops at zero;
+adaptive delivery. Those rules are for images. An `h264` viewer (#4418) takes
+access units in order from a bounded queue (32 units or 4 MiB), starts at a
+keyframe, and on overflow drops the queue and waits for the next one. It never
+receives a delta before a keyframe. The hub asks the producer for a keyframe
+(at most every 500 ms) and tells it which encodings its viewers take. Capture starts with the first viewer and stops at zero;
 session lifetime remains with its Browser/Device owner. `control-lease.ts`
 allows one controller: current-epoch human input can preempt an Agent, while
 an Agent cannot preempt a live human. A person's `keep-alive` lease request
@@ -5208,8 +5212,11 @@ reports cleanup failure instead of treating a timed-out wait as success.
 browser generation to `ChromiumScreencastProducer` and its profile authorizer.
 `DeviceSessionService` binds `DeviceLiveSurfaceProducer` to host-qualified
 simulator/emulator sessions and device-share authorization. Device video and
-input have separate liveness: iOS uses MJPEG; Android uses server-side H.264
-decoding or a labelled PNG-poll fallback. A successful Device dispatch means
+input have separate liveness: iOS uses MJPEG. Android passes H.264 access
+units to viewers that decode them (parameter sets prepended to each IDR, the
+header sized like the JPEG path so input maps the same), and runs server-side
+ffmpeg decoding only while an image viewer is attached, or a labelled PNG-poll
+fallback. A successful Device dispatch means
 the hub socket accepted bytes, not that the application applied them. The
 shared live-surface Agent grant path admits both Browser and Device tools through
 independently minted, in-process grants. Device grants recheck the bound caller,
@@ -5217,26 +5224,38 @@ operator opt-in, host/device identity and current Project/device shares; a bare
 principal or client-supplied object cannot authorize a surface.
 
 `routes/live-surface.ts` serves one authenticated frame response per viewer and
-separate input/lease requests. It rechecks stream authorization; a transient
+separate input/lease requests. `?codec=h264` asks for access units; a producer
+without them sends images. It rechecks stream authorization; a transient
 busy authorizer is distinct from denial and retains a prior allow only within
 a bounded grace. `useLiveSurface.ts` suspends hidden viewers, reconnects, and
-coalesces input through one in-flight POST. `LiveSurfaceCanvas.tsx` is used by
-the Browser pane, Device pane and float-over-chat. When the origin, surface ID
-or Project context changes, the viewer discards queued input and ignores
+coalesces input through one in-flight POST. It opens a frame stream only with a
+slot from `liveSurfaceStreamAdmission.ts`: two per origin, so input and lease
+requests keep a connection; a viewer past the cap reads `queued`. A viewer
+asks for H.264 only in a secure context with WebCodecs, and falls back to
+images when the browser refuses the profile or the host answers the query
+400. `liveSurfaceVideoDecoder.ts` configures from the keyframe's SPS, decodes
+in order, and resets on error; the canvas then reconnects for a keyframe.
+`LiveSurfaceCanvas.tsx` is used by the Browser pane, Device pane and
+float-over-chat, and shows the codec it draws. When the origin, surface ID or
+Project context changes, the viewer discards queued input and ignores
 responses from the previous target. This does not yet bind the queue to a
 credential generation.
 Shown-source tracking avoids
 duplicating the same pane in its floater, but there is no single multiplexed
-frame transport across all visible viewers. The input-slot requirement in
-[ADR 0018](../adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md)
-is an unqualified design constraint, not a measured production starvation
-finding or a guaranteed latency bound.
+frame transport across all visible viewers. The admission cap meets
+[ADR 0018](../adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md)'s
+input-slot requirement over HTTP/1.1 when at most one view-scoped event stream
+is open; see its 2026-11-02 amendment for the measurement and the case it
+leaves open.
 
 **Evidence and limits.** `services/live-surface/__tests__/registry.test.ts`,
 `control-lease.test.ts`, `surface-hub.test.ts`,
 `routes/__tests__/live-surface.routes.test.ts`,
 `runtime-routes-live-surface.test.ts` and `LiveSurfaceCanvas.test.tsx` exercise
-synthetic producers, authorization, fencing and viewer lifecycle. Device
+synthetic producers, authorization, fencing and viewer lifecycle.
+`liveSurfaceInputHeadroom.browser.test.ts` measures input under frame load in
+a real browser over HTTP/1.1, and `liveSurfaceVideoDecoder.browser.test.ts`
+decodes a recorded emulator stream with the browser's WebCodecs. Device
 producer and session-route fixtures remain distinct from physical application
 control. Do not infer input effect, device/app identity, relay throughput or
 native platform parity from a decoded frame or an accepted socket write.
