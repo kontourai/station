@@ -2526,12 +2526,18 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
     }
   });
 
-  it('retains initialized report storage and Home ownership until a refused recovery releases publication', async () => {
-    // Actual core, HTTP factory, local-grant ingress and initialized stores.
-    // Existing watcher, native probe/adoption and integrity-worker controls remain.
-    // Consent is unavailable here, avoiding port 3 when the API binds port 0.
-    // Persistence still takes real locks with this fixture's fixed fingerprint.
-    // This proves pending refusal custody, not applied recovery or provider readiness.
+  it('defers initialized-runtime store close and Home release while report work is pending', async ({
+    signal,
+    onTestFinished,
+  }) => {
+    // Actual core, HTTP factory and local-grant ingress. This observes the store
+    // shutdown closes, not its identity with any route-served store or usability.
+    // Controlled: watcher, voice attach, Bedrock/Ollama probes, native priming and
+    // adoption, integrity worker, task-dispatch resolver and persistence fingerprint.
+    // Consent is unavailable to avoid port 3; port-0 self-callbacks and the MCP
+    // frame origin are not exercised. The fence covers fetch, not all network I/O.
+    // A null read followed by generic refusal does not establish refusal causality,
+    // applied recovery, success-response currentness or provider/native readiness.
     const core = await import('@voltagent/core');
     const realCore =
       await vi.importActual<typeof import('@voltagent/core')>(
@@ -2554,10 +2560,11 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
     const previousConsent = consentMock.getMockImplementation();
     if (!previousCore || !previousHono || !previousRoutes || !previousConsent)
       throw new Error('Cold-start mock implementations are required');
+    signal.throwIfAborted();
     let boundPort: number | undefined;
     let origin: string | undefined;
     let factoryCalls = 0;
-    const outbound: string[] = [];
+    const outboundFetch: string[] = [];
     const fetchActual = globalThis.fetch;
     const fetchFence = vi
       .spyOn(globalThis, 'fetch')
@@ -2566,7 +2573,7 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
           input instanceof Request ? input.url : String(input),
         );
         if (url.origin !== origin) {
-          outbound.push(url.origin);
+          outboundFetch.push(url.origin);
           return Promise.reject(
             new Error('Unexpected outbound request during report boot'),
           );
@@ -2591,6 +2598,7 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
     const gate = new Promise<void>((resolve) => {
       release = resolve;
     });
+    signal.addEventListener('abort', release, { once: true });
     let paused = 0;
     let observed:
       | Awaited<ReturnType<StationDelegationPersistence['readReportAdmission']>>
@@ -2616,9 +2624,23 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
         return result;
       });
     let response: Promise<Response> | undefined;
+    let restored = false;
+    const restore = () => {
+      if (restored) return;
+      restored = true;
+      read.mockRestore();
+      close.mockRestore();
+      fetchFence.mockRestore();
+      coreMock.mockImplementation(previousCore);
+      honoMock.mockImplementation(previousHono);
+      routeMocks.configureRuntimeRoutes.mockImplementation(previousRoutes);
+      consentMock.mockImplementation(previousConsent);
+    };
+    onTestFinished(restore);
     home = await createSchemaHome('station-initialized-report-');
     const backupDir = `${home}-backup`;
     try {
+      signal.throwIfAborted();
       coreMock.mockImplementation(function ForwardedVoltAgent(...args) {
         return new realCore.VoltAgent(...args);
       });
@@ -2667,6 +2689,7 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
       const minted = await fetch(
         `${origin}/.well-known/station/v1/pairing/local-grant`,
         {
+          signal,
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -2695,6 +2718,7 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
       response = fetch(
         `${origin}/api/orchestration/report-groups/${missing}/accounting/recover`,
         {
+          signal,
           method: 'POST',
           headers: {
             Authorization: `Bearer ${grant.credential}`,
@@ -2742,17 +2766,12 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
         createStationHomeBackup({ homeDir: home, outputDir: backupDir })
           .backupDir,
       ).toBe(backupDir);
-      expect(outbound).toEqual([]);
+      expect(outboundFetch).toEqual([]);
     } finally {
       release();
       await response?.catch(() => undefined);
-      read.mockRestore();
-      close.mockRestore();
-      fetchFence.mockRestore();
-      coreMock.mockImplementation(previousCore);
-      honoMock.mockImplementation(previousHono);
-      routeMocks.configureRuntimeRoutes.mockImplementation(previousRoutes);
-      consentMock.mockImplementation(previousConsent);
+      signal.removeEventListener('abort', release);
+      restore();
       rmDirSyncRetrying(backupDir);
     }
   });
