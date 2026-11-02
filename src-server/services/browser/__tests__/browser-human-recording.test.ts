@@ -115,6 +115,19 @@ function fixture(real?: { ffmpeg: string; jpeg: Buffer }, frameLimit = 1) {
 }
 
 describe('human Browser recording', () => {
+  it('refuses a third simultaneous recording for the same owner', async () => {
+    const h = fixture();
+    const input = {
+      session: h.session,
+      owner: 'alice',
+      authorize: async () => true,
+    };
+    h.recorder.start(input);
+    h.recorder.start(input);
+    expect(() => h.recorder.start(input)).toThrow('capacity');
+    await h.recorder.dispose();
+  });
+
   it('finishes the clip at the 300-frame bound', async () => {
     const h = fixture(undefined, 301);
     const id = h.recorder.start({
