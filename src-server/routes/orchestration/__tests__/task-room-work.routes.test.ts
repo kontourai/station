@@ -16,6 +16,7 @@ import {
 import { readJson } from '../../../__test-utils__/read-json.js';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import type { ProviderSessionStartInput } from '../../../providers/adapter-shape.js';
+import { FileDelegationAttemptClaimStore } from '../../../services/orchestration/delegation-attempt-claim-store.js';
 import { EventBus } from '../../../services/orchestration/event-bus.js';
 import { EventStore } from '../../../services/orchestration/event-store.js';
 import { OrchestrationService } from '../../../services/orchestration/orchestration-service.js';
@@ -73,6 +74,9 @@ test.each([undefined, 'codex'])(
     });
     let pendingFirst: Promise<Response> | undefined;
     const app = createOrchestrationRoutes(service, {
+      delegationAttemptClaimStore: new FileDelegationAttemptClaimStore(
+        directory,
+      ),
       eventBus,
       logger: { debug: vi.fn(), warn },
       resolvePrincipal: () => principal,
@@ -104,11 +108,13 @@ test.each([undefined, 'codex'])(
       context?: { version: 'station.task-room-context/v1'; digest: string },
       execution = executionAgentId,
       modelId = 'model-a',
+      clientTurnId = context ? 'request-context' : 'request-1',
     ) =>
       app.request('/delegations', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          clientTurnId,
           prompt: 'Investigate this idea',
           target: {
             environment: { kind: 'current' },
@@ -196,6 +202,18 @@ test.each([undefined, 'codex'])(
         'model-b',
       );
       expect(changedModel.status).toBe(409);
+      const wrongKey = await send(
+        'demo',
+        scope.taskCreatedAt,
+        undefined,
+        executionAgentId,
+        'model-a',
+        'wrong-key',
+      );
+      expect(wrongKey.status).toBe(409);
+      expect(await readJson(wrongKey)).toMatchObject({
+        code: 'client_turn_input_conflict',
+      });
       expect(start).toHaveBeenCalledOnce();
       expect(start.mock.calls[0][0]).toMatchObject({
         target: {
@@ -344,6 +362,7 @@ test('real delegation refuses revoked Task authority at provider effects and lea
     }),
   );
   const app = createOrchestrationRoutes(service, {
+    delegationAttemptClaimStore: new FileDelegationAttemptClaimStore(directory),
     eventBus,
     logger: { debug: vi.fn() },
     resolvePrincipal: () => principal,
@@ -394,6 +413,7 @@ test('real delegation refuses revoked Task authority at provider effects and lea
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
+        clientTurnId: operationId,
         prompt: 'Investigate this idea',
         target: {
           environment: { kind: 'current' },
@@ -556,6 +576,7 @@ test('a continued response completes while post-response reconciliation is still
     release = resolve;
   });
   const app = createOrchestrationRoutes(service, {
+    delegationAttemptClaimStore: new FileDelegationAttemptClaimStore(directory),
     eventBus,
     logger: { debug: vi.fn() },
     resolvePrincipal: () => principal,
@@ -590,6 +611,7 @@ test('a continued response completes while post-response reconciliation is still
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
+        clientTurnId: 'reply',
         message: 'Reply',
         taskRoomReply: {
           taskId: 'task',

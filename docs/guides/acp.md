@@ -55,7 +55,7 @@ graph TD
     Runtime["External engine process\n(e.g. kiro-cli)"]
 
     UI -- "GET /api/orchestration/events\n(SSE)" --> Server
-    UI -- "POST /api/orchestration/chat\n{target: Environment + Agent, message}" --> Server
+    UI -- "POST /api/orchestration/chat\n{target: Environment + Agent, message, clientTurnId}" --> Server
     Server -- "resolve Agent binding" --> Orchestration
     Orchestration -- "internal provider:'acp'" --> Adapter
     Adapter -- "ACP over stdio\n(ndjson)" --> Bridge
