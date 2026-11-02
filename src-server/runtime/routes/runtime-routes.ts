@@ -8102,11 +8102,22 @@ export function configureRuntimeRoutes(
     const authorizeBrowserProject =
       createBrowserProjectAuthorizer(browserAccess);
     browserProjectAuthorizer = authorizeBrowserProject;
+    const browserArtifactsPreview = context.featurePreviews.bind({
+      id: 'browser-artifacts',
+      label: 'Browser artifacts',
+      description: 'Try Browser network diagnostics.',
+    });
+    const browserArtifactsEnabled = () =>
+      browserArtifactsPreview.select({
+        enabled: () => true,
+        disabled: () => false,
+      });
     browserService = createBrowserService({
       stationHome: context.configLoader.getProjectHomeDir(),
       serverPort: context.port,
       consentPort: configuredConsentPort(),
       configuredOrigins: allowedOrigins,
+      networkPreviewEnabled: browserArtifactsEnabled,
       // #1970: the managed device hub and its helpers, read live.
       // #1973: every SSH device host's local forward and host hub port too.
       extraListenerPorts: () => [
@@ -8138,6 +8149,8 @@ export function configureRuntimeRoutes(
         pendingDialogFor: browserService.pendingDialogFor,
         answerDialog: browserService.answerDialog,
         consoleFor: browserService.consoleFor,
+        networkFor: browserService.networkFor,
+        networkPreviewEnabled: browserArtifactsEnabled,
         authorizeProject: authorizeBrowserProject,
         authorizeOperator: createBrowserOperatorAuthorizer(browserAccess),
         localTargets: browserService.localTargets,
@@ -8190,6 +8203,8 @@ export function configureRuntimeRoutes(
       sessions: browserService.registry,
       surfaces: liveSurfaceRegistry ?? { get: () => undefined },
       surfaceIdFor: browserService.surfaceIdFor,
+      networkFor: browserService.networkFor,
+      networkPreviewEnabled: browserArtifactsEnabled,
       dialogWaitingForPerson: (browserSessionId) =>
         browserService?.pendingDialogFor(browserSessionId) !== undefined,
       settings: browserService.projectSettings,

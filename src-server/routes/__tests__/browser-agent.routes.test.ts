@@ -94,6 +94,7 @@ function harness() {
     navigate: vi.fn(),
     resize: vi.fn(),
     snapshot: vi.fn(async () => ({ ok: true, snapshot: '' })),
+    network: vi.fn(async () => ({ ok: true, entries: [], generation: 1 })),
     click: vi.fn(async () => ({ ok: true, clicked: 'x' })),
     hover: vi.fn(async () => ({ ok: true })),
     drag: vi.fn(async () => ({ ok: true })),
@@ -152,6 +153,32 @@ function harness() {
 }
 
 describe('browser-agent routes: the authority chain', () => {
+  test('network diagnostics require a bound caller and validate paging before dispatch', async () => {
+    const h = harness();
+    const denied = await h.call('network', 'bearer-exposed', {
+      browserSessionId: 'bs_x',
+    });
+    expect(await denied.json()).toMatchObject({ code: 'caller-not-bound' });
+    expect(h.automation.network).not.toHaveBeenCalled();
+    const invalid = await h.call('network', 'operator', {
+      browserSessionId: 'bs_x',
+      limit: 101,
+    });
+    expect(await invalid.json()).toMatchObject({ code: 'invalid-request' });
+    expect(h.automation.network).not.toHaveBeenCalled();
+    const accepted = await h.call('network', 'operator', {
+      browserSessionId: 'bs_x',
+      after: 10,
+      limit: 20,
+    });
+    expect(await accepted.json()).toMatchObject({ ok: true });
+    expect(h.automation.network).toHaveBeenCalledWith(
+      expect.objectContaining({ projectId: 'alpha' }),
+      'bs_x',
+      10,
+      20,
+    );
+  });
   test('a request that is not Station’s internal principal gets a bare 404', async () => {
     const h = harness();
     const response = await h.call('click', 'operator', {}, false);

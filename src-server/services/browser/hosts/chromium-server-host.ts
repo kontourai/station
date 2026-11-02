@@ -166,6 +166,7 @@ export const PAGE_SESSION_CDP_ALLOWLIST: readonly string[] = Object.freeze([
   'Emulation.setTouchEmulationEnabled',
   // Diagnostics event streams (console, network log); no interception.
   'Network.enable',
+  'Network.disable',
   'Log.enable',
 ]);
 const PAGE_SESSION_CDP_ALLOWED = new Set(PAGE_SESSION_CDP_ALLOWLIST);

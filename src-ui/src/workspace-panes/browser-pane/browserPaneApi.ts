@@ -4,7 +4,9 @@ import type {
   BrowserLocalTargetSuggestionsView,
   BrowserLocalTargetView,
   BrowserNavigationView,
+  BrowserNetworkView,
   BrowserPaneAccessView,
+  BrowserPickedElementView,
   BrowserSessionView,
   BrowserUrlRejectionView,
   BrowserViewportView,
@@ -207,6 +209,24 @@ export function browserPaneApi(apiBase: string, fetcher: BrowserFetch) {
         fetcher,
         `${root}/sessions/${enc(browserSessionId)}/console${after === undefined ? '' : `?after=${after}`}`,
         { signal },
+      ),
+    network: (browserSessionId: string, after: number, signal?: AbortSignal) =>
+      call<BrowserNetworkView>(
+        fetcher,
+        `${root}/sessions/${enc(browserSessionId)}/network?after=${after}`,
+        { signal },
+      ),
+    pick: (
+      browserSessionId: string,
+      point: { x: number; y: number },
+      generation: number,
+      screenshot: boolean,
+      signal?: AbortSignal,
+    ) =>
+      call<BrowserPickedElementView>(
+        fetcher,
+        `${root}/sessions/${enc(browserSessionId)}/pick`,
+        { method: 'POST', body: { ...point, generation, screenshot }, signal },
       ),
     /** The page as an image (PNG, or JPEG for a very large page). */
     screenshot: async (browserSessionId: string): Promise<Blob> => {
