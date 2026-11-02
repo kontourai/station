@@ -209,6 +209,9 @@ export const PlugGlyph = /* @__PURE__ */ glyph(
 export const QuestionGlyph = /* @__PURE__ */ glyph(
   'M5.7 5.5A2.5 2.5 0 1 1 9 7.9c-.8.3-1 .8-1 1.6M8 12.5h.01',
 );
+export const RecordGlyph = /* @__PURE__ */ glyph(
+  'M8 3a5 5 0 1 0 0 10A5 5 0 0 0 8 3Z',
+);
 export const RefreshGlyph = /* @__PURE__ */ glyph(
   'M13 5V2.5L11.3 4A5.5 5.5 0 0 0 3 6m0 5v2.5L4.7 12A5.5 5.5 0 0 0 13 10',
 );

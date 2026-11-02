@@ -1798,6 +1798,26 @@ describe('LiveSurfaceCanvas: client H.264 (#4418)', () => {
     expect(drawImage).toHaveBeenCalledTimes(1);
   });
 
+  test('publishes adopted JPEG and H.264 frame geometry on the canvas', async () => {
+    const codecs = webCodecs(true);
+    codecs.withholdOutput = true;
+    const h = harness();
+    await mount(h);
+    const stream = h.streams.at(-1)!;
+    await stream.push(stateRecord(lease(0)));
+    const jpeg = frameRecord(1, 0) as FrameRecord;
+    await stream.push({ ...jpeg, header: { ...jpeg.header, codec: 'jpeg' } });
+    const canvas = screen.getByTestId('live-surface-canvas');
+    expect(canvas.getAttribute('data-surface-width')).toBe('1280');
+    expect(canvas.getAttribute('data-surface-height')).toBe('800');
+    expect(canvas.getAttribute('data-surface-scale')).toBe('2');
+    await stream.push(videoRecord(2, true));
+    expect(canvas.getAttribute('data-surface-width')).toBe('576');
+    expect(canvas.getAttribute('data-surface-height')).toBe('1280');
+    expect(canvas.getAttribute('data-surface-scale')).toBe('1');
+    expect(codecs.pictures).toHaveLength(0);
+  });
+
   test('an H.264 frame gives the overlay and input its geometry before any picture is decoded', async () => {
     const codecs = webCodecs(true);
     codecs.withholdOutput = true;

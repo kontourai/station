@@ -158,6 +158,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'src-server/services/transcription/__tests__/sherpa-transcriber.test.ts',
   'src-server/services/transcription/__tests__/sherpa-transcriber.real.test.ts',
 
+  // Generates a synthetic frame and encodes a private WebM with real FFmpeg when available.
+  'src-server/services/browser/__tests__/browser-human-recording.test.ts',
   // Explicit opt-in ffmpeg fixture; owns its video, children and Project home.
   'src-server/services/walkthroughs/__tests__/walkthrough-video.integration.test.ts',
   'src-server/services/walkthroughs/__tests__/walkthrough-media-regressions.integration.test.ts',

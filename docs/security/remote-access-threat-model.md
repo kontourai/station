@@ -673,6 +673,15 @@ also require **Let agents run JavaScript in this Project's pages**
 (`browserEvaluate`). These boundaries do
 not establish hostile-page or released-package qualification.
 
+Person-initiated Browser recording is a separate action behind the same
+preview. Start, stop, status, cancellation and video reads require current
+person and Browser authority; a recording ID is not authority. Capture is
+bounded and rechecks its session, preview and authority before publication.
+Temporary frames are private to a generated staging directory and are removed
+on ordinary completion or cancellation. A process crash can leave that staging
+directory; no automatic crash cleanup is claimed. A saved WebM can expose page
+content and is not automatically published to a Task.
+
 The exact `POST /api/projects/:projectSlug/walkthroughs/import` and
 `POST /api/transcription` uploads also retain the standard principal rate
 bucket. Their body ceilings derive from their owning upload limits: 512 MiB

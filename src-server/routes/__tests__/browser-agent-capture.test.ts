@@ -35,6 +35,7 @@ import {
   type CdpTransport,
   createLocalBrowserHostResolver,
 } from '../../services/browser/browser-host.js';
+import { BrowserHumanTaskClip } from '../../services/browser/browser-human-task-clip.js';
 import { BrowserLiveSurfaces } from '../../services/browser/browser-live-surfaces.js';
 import { BrowserProjectSettingsStore } from '../../services/browser/browser-project-settings.js';
 import {
@@ -372,6 +373,7 @@ async function harness(
   let room: ProjectTaskRoomRuntime;
   let app: Hono;
   let recordings: TaskBrowserRecording | undefined;
+  let humanTaskClip: BrowserHumanTaskClip | undefined;
   function compose() {
     events = new EventStore(join(home, 'orchestration.sqlite'));
     room = new ProjectTaskRoomRuntime({
@@ -406,6 +408,16 @@ async function harness(
       taskGraph,
       blobs: () => blobs,
     });
+    humanTaskClip = taskWalkthroughs
+      ? new BrowserHumanTaskClip({
+          runtime: room,
+          captures,
+          store: taskWalkthroughs,
+          preview,
+          localProjectIdFor: captureProjectIdFor,
+          isCurrent: (request) => personFor(request) !== undefined,
+        })
+      : undefined;
     recordings =
       live && taskWalkthroughs
         ? new TaskBrowserRecording({
@@ -586,6 +598,14 @@ async function harness(
     },
     commit,
     browser,
+    prepareHumanTask: (token = 'person', session = 'agent-a') =>
+      humanTaskClip!.prepare(
+        new Request('http://station.test', {
+          headers: { authorization: `Bearer ${token}` },
+        }),
+        session,
+        browser,
+      ),
     tool,
     record,
     streamStarted,
@@ -679,6 +699,172 @@ async function harness(
     },
   };
 }
+
+test('person recording binds a clean Task at start and publishes through the Task clip store', async () => {
+  const h = await harness({ recording: true });
+  const prepared = await h.prepareHumanTask();
+  expect(prepared.kind).toBe('ready');
+  if (prepared.kind !== 'ready') throw new Error('Expected Task pin');
+  const request = new Request('http://station.test', {
+    headers: { authorization: 'Bearer person' },
+  });
+  const result = await prepared.clip.publish({
+    bytes: Buffer.from('webm'),
+    durationMs: 500,
+    width: 640,
+    height: 480,
+    request,
+    signal: new AbortController().signal,
+    browserCurrent: async () => true,
+  });
+  const response = await h.person(
+    `task-a/review/walkthroughs/${result.walkthroughId}`,
+  );
+  expect(response.status).toBe(200);
+  expect(await response.json()).toMatchObject({
+    success: true,
+    data: {
+      walkthrough: {
+        source: {
+          commit: h.commit,
+          recording: { mediaType: 'video/webm', byteLength: 4 },
+        },
+      },
+    },
+  });
+  const video = await h.person(
+    `task-a/review/walkthroughs/${result.walkthroughId}/video`,
+  );
+  expect(Buffer.from(await video.arrayBuffer()).toString()).toBe('webm');
+});
+
+test('person recording refuses dirty or unauthorized Task preparation and rechecks the pin', async () => {
+  const h = await harness({ recording: true });
+  expect((await h.prepareHumanTask('nobody')).kind).toBe('none');
+  expect((await h.prepareHumanTask('person', 'agent-no-task')).kind).toBe(
+    'none',
+  );
+  const prepared = await h.prepareHumanTask();
+  expect(prepared.kind).toBe('ready');
+  if (prepared.kind !== 'ready') throw new Error('Expected Task pin');
+  writeFileSync(join(h.workspace, 'untracked.txt'), 'dirty');
+  expect(await h.prepareHumanTask()).toMatchObject({
+    kind: 'unavailable',
+    reason: 'Commit or stash changes to add recordings to the Task.',
+  });
+  const request = new Request('http://station.test', {
+    headers: { authorization: 'Bearer person' },
+  });
+  await expect(
+    prepared.clip.publish({
+      bytes: Buffer.from('webm'),
+      durationMs: 500,
+      width: 640,
+      height: 480,
+      request,
+      signal: new AbortController().signal,
+      browserCurrent: async () => true,
+    }),
+  ).rejects.toThrow();
+  const list = await h.person('task-a/review/walkthroughs');
+  expect(await list.json()).toMatchObject({
+    success: true,
+    data: { items: [] },
+  });
+});
+
+test('person recording reports success when cleanup fails after publication', async () => {
+  const h = await harness({ recording: true });
+  const prepared = await h.prepareHumanTask();
+  if (prepared.kind !== 'ready') throw new Error('Expected Task pin');
+  const discard = vi
+    .spyOn(TaskWalkthroughStore.prototype, 'discard')
+    .mockRejectedValueOnce(new Error('cleanup failed'));
+  const cleanupFailure = vi.fn();
+  const result = await prepared.clip.publish({
+    bytes: Buffer.from('webm'),
+    durationMs: 500,
+    width: 640,
+    height: 480,
+    request: new Request('http://station.test', {
+      headers: { authorization: 'Bearer person' },
+    }),
+    signal: new AbortController().signal,
+    browserCurrent: async () => true,
+    onCleanupFailure: cleanupFailure,
+  });
+  expect(
+    await (await h.person('task-a/review/walkthroughs')).json(),
+  ).toMatchObject({
+    success: true,
+    data: { items: [{ id: result.walkthroughId }] },
+  });
+  expect(discard).toHaveBeenCalledOnce();
+  expect(cleanupFailure).toHaveBeenCalledWith(
+    expect.objectContaining({ message: 'cleanup failed' }),
+  );
+});
+
+test('person recording refuses a workspace change during Task publication', async () => {
+  const h = await harness({ recording: true });
+  const prepared = await h.prepareHumanTask();
+  expect(prepared.kind).toBe('ready');
+  if (prepared.kind !== 'ready') throw new Error('Expected Task pin');
+  const publish = TaskWalkthroughStore.prototype.publish;
+  vi.spyOn(TaskWalkthroughStore.prototype, 'publish').mockImplementation(
+    function (this: TaskWalkthroughStore, ...args) {
+      writeFileSync(join(h.workspace, 'late-untracked.txt'), 'dirty');
+      return publish.apply(this, args);
+    },
+  );
+  const request = new Request('http://station.test', {
+    headers: { authorization: 'Bearer person' },
+  });
+  await expect(
+    prepared.clip.publish({
+      bytes: Buffer.from('webm'),
+      durationMs: 500,
+      width: 640,
+      height: 480,
+      request,
+      signal: new AbortController().signal,
+      browserCurrent: async () => true,
+    }),
+  ).rejects.toThrow();
+  expect(
+    await (await h.person('task-a/review/walkthroughs')).json(),
+  ).toMatchObject({ success: true, data: { items: [] } });
+});
+
+test('person recording gives a refusal when the active Task is not authorized', async () => {
+  const h = await harness({ recording: true });
+  const service = new BrowserHumanTaskClip({
+    runtime: {
+      sessionTaskReviewAccess: async () => ({
+        kind: 'granted',
+        write: { taskId: 'task-a' },
+      }),
+      personTaskReviewAccess: async () => ({ kind: 'not-found' }),
+    } as never,
+    captures: { pin: vi.fn() } as never,
+    store: {} as never,
+    preview: {
+      select: ({ enabled }: { enabled: () => boolean }) => enabled(),
+    } as never,
+    localProjectIdFor: () => h.browser.projectId,
+    isCurrent: () => true,
+  });
+  expect(
+    await service.prepare(
+      new Request('http://station.test'),
+      'agent-a',
+      h.browser,
+    ),
+  ).toMatchObject({
+    kind: 'unavailable',
+    reason: "You don't have access to this Task.",
+  });
+});
 
 test('recording requires a bound Task caller and rejects dirty or over-limit requests before starting the stream', async () => {
   const h = await harness({ recording: true });
@@ -915,6 +1101,33 @@ test.skipIf(!mediaReady)(
     expect(await (await h.person('task-a/review/walkthroughs')).json()).toEqual(
       { success: true, data: { items: [] } },
     );
+  },
+);
+
+test.skipIf(process.platform === 'win32')(
+  'agent route preserves workspace-changed when the publication pin changes',
+  async () => {
+    const dir = temporary('station-fake-encoder-');
+    const encoder = join(dir, 'ffmpeg');
+    writeFileSync(encoder, '#!/bin/sh\nprintf webm\n', { mode: 0o700 });
+    const h = await harness({ recording: true, encoderPath: encoder });
+    const pin = TaskBrowserCapture.prototype.pin;
+    let calls = 0;
+    vi.spyOn(TaskBrowserCapture.prototype, 'pin').mockImplementation(
+      async function (this: TaskBrowserCapture, access) {
+        const result = await pin.call(this, access);
+        calls++;
+        return calls === 1
+          ? result
+          : { ...result, pin: { ...result.pin, commit: 'changed' } };
+      },
+    );
+    expect(await h.record()).toMatchObject({
+      ok: false,
+      code: 'workspace-changed',
+    });
+    expect(calls).toBeGreaterThanOrEqual(2);
+    expect(h.streams()).toBe(1);
   },
 );
 

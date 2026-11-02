@@ -19,6 +19,7 @@ import {
   type CdpTransport,
   createLocalBrowserHostResolver,
 } from '../../services/browser/browser-host.js';
+import type { BrowserHumanRecording } from '../../services/browser/browser-human-recording.js';
 import { BrowserLiveSurfaces } from '../../services/browser/browser-live-surfaces.js';
 import { BrowserSessionRegistry } from '../../services/browser/browser-session-registry.js';
 import { CdpProtocolError } from '../../services/browser/cdp-pipe-transport.js';
@@ -27,7 +28,7 @@ import {
   STATION_CONTROL_ORIGIN_AGENT_TOOL,
   STATION_CONTROL_ORIGIN_HEADER,
 } from '../../tools/station-control-shared.js';
-import { createBrowserRoutes } from '../browser.js';
+import { type BrowserRoutesDeps, createBrowserRoutes } from '../browser.js';
 import { createLiveSurfaceRoutes } from '../live-surface.js';
 
 const PAGE = 'S1';
@@ -143,7 +144,7 @@ function fakeHost() {
 
 const makeTempDir = trackTempDirs();
 
-type Role = 'operator' | 'operator-device' | 'nobody';
+type Role = 'operator' | 'admin' | 'operator-device' | 'nobody';
 const roleOf = (request: Request) =>
   (request.headers.get('x-test-role') ?? 'nobody') as Role;
 
@@ -155,6 +156,8 @@ function harness(
     /** The Project's `browserEvaluate` (D4); absent: no settings store. */
     browserEvaluate?: boolean;
     networkPreview?: boolean;
+    humanRecordings?: BrowserHumanRecording;
+    prepareHumanTaskClip?: BrowserRoutesDeps['prepareHumanTaskClip'];
     /** The live-surface lease's clock and holds (test seam). */
     lease?: { now: () => number; humanHoldMs?: number };
   } = {},
@@ -162,6 +165,7 @@ function harness(
   const stationHome = makeTempDir('station-browser-page-');
   const fake = fakeHost();
   let networkPreview = options.networkPreview === true;
+  let principalCurrent = true;
   let ids = 0;
   const sessions = new BrowserSessionRegistry({
     stationHome,
@@ -183,9 +187,11 @@ function harness(
   ) =>
     roleOf(request) === 'operator'
       ? { kind: 'operator' }
-      : roleOf(request) === 'operator-device' && purpose === 'view'
-        ? { kind: 'operator-device' }
-        : undefined;
+      : roleOf(request) === 'admin'
+        ? { kind: 'project-admin', principalId: 'admin' }
+        : roleOf(request) === 'operator-device' && purpose === 'view'
+          ? { kind: 'operator-device' }
+          : undefined;
   const surfaces = new LiveSurfaceRegistry(
     options.lease ? { lease: options.lease } : {},
   );
@@ -223,6 +229,12 @@ function harness(
     consoleFor: (id, after) => binder.consoleFor(id, after),
     networkFor: (id, after, limit) => binder.networkFor(id, after, limit),
     networkPreviewEnabled: () => networkPreview,
+    ...(options.humanRecordings
+      ? { humanRecordings: options.humanRecordings }
+      : {}),
+    ...(options.prepareHumanTaskClip
+      ? { prepareHumanTaskClip: options.prepareHumanTaskClip }
+      : {}),
     ...(options.browserEvaluate !== undefined
       ? {
           projectSettings: {
@@ -240,7 +252,7 @@ function harness(
     authorizeOperator: async (request) => roleOf(request) === 'operator',
     resolveProject: (slug) =>
       slug === 'alpha' ? { id: 'alpha', slug: 'alpha' } : undefined,
-    isRequestPrincipalCurrent: () => true,
+    isRequestPrincipalCurrent: () => principalCurrent,
   });
   const browser = (
     method: string,
@@ -305,12 +317,16 @@ function harness(
     );
     expect(response.status).toBe(200);
   };
-  const open = () =>
+  const open = (
+    actor:
+      | { kind: 'operator' }
+      | { kind: 'project-admin'; principalId: string } = { kind: 'operator' },
+  ) =>
     sessions.createSession({
       projectId: 'alpha',
       projectSlug: 'alpha',
       url: 'https://example.com/',
-      actor: { kind: 'operator' },
+      actor,
     });
   return {
     fake,
@@ -322,6 +338,9 @@ function harness(
     clickResponse,
     surfaceRoutes,
     open,
+    setPrincipalCurrent: (value: boolean) => {
+      principalCurrent = value;
+    },
     setNetworkPreview: (enabled: boolean) => {
       networkPreview = enabled;
     },
@@ -329,6 +348,191 @@ function harness(
 }
 
 describe('Browser pane: network diagnostics', () => {
+  test('recording routes require a person and current Browser authority', async () => {
+    const recorder = {
+      start: vi.fn(() => 'recording-id'),
+      status: vi.fn(() => ({ id: 'recording-id', state: 'recording' })),
+      stop: vi.fn(() => true),
+      video: vi.fn(() => Buffer.from('webm')),
+      contact: vi.fn(() => [
+        {
+          data: 'AQID',
+          atMs: 0,
+          capturedAt: '2026-01-01T00:00:00Z',
+          url: 'https://example.test/',
+          viewport: { width: 640, height: 480 },
+        },
+      ]),
+      cancel: vi.fn(() => true),
+    };
+    const h = harness({
+      networkPreview: true,
+      humanRecordings: recorder as unknown as BrowserHumanRecording,
+    });
+    try {
+      const session = await h.open();
+      const path = `/sessions/${session.browserSessionId}/recordings`;
+      const body = { generation: session.generation };
+      h.setNetworkPreview(false);
+      const disabled = await h.browser('POST', path, { body });
+      expect(disabled.status).toBe(404);
+      expect((await disabled.json()).code).toBe('feature_preview_disabled');
+      h.setNetworkPreview(true);
+      expect(
+        (await h.browser('POST', path, { agent: true, body })).status,
+      ).toBe(403);
+      expect(
+        (await h.browser('POST', path, { role: 'nobody', body })).status,
+      ).toBe(403);
+      expect(recorder.start).not.toHaveBeenCalled();
+      expect(
+        (
+          await h.browser('POST', path, {
+            body: { generation: session.generation + 1 },
+          })
+        ).status,
+      ).toBe(409);
+      expect((await h.browser('POST', path, { body })).status).toBe(201);
+      expect((await h.browser('GET', `${path}/recording-id`)).status).toBe(200);
+      const frames = await h.browser('GET', `${path}/recording-id/frames`);
+      expect(frames.status).toBe(200);
+      expect(await frames.json()).toMatchObject({
+        success: true,
+        data: { frames: [{ url: 'https://example.test/', atMs: 0 }] },
+      });
+      expect(
+        (await h.browser('GET', `${path}/recording-id/frames`, { agent: true }))
+          .status,
+      ).toBe(403);
+      expect(
+        (await h.browser('POST', `${path}/recording-id/stop`, { body: {} }))
+          .status,
+      ).toBe(200);
+      expect(
+        (await h.browser('GET', `${path}/recording-id/video`)).headers.get(
+          'content-type',
+        ),
+      ).toBe('video/webm');
+    } finally {
+      await h.binder.dispose();
+      await h.sessions.shutdown();
+    }
+  });
+  test('recording start passes a live authority closure and protects another owner and DELETE', async () => {
+    let authorization: (() => Promise<boolean>) | undefined;
+    const jobs = new Map<string, string>();
+    const recorder = {
+      start: vi.fn(
+        ({
+          owner,
+          authorize,
+        }: {
+          owner: string;
+          authorize: () => Promise<boolean>;
+        }) => {
+          authorization = authorize;
+          jobs.set('r1', owner);
+          return 'r1';
+        },
+      ),
+      status: vi.fn((id: string, owner: string) =>
+        jobs.get(id) === owner ? { id, state: 'recording' } : undefined,
+      ),
+      cancel: vi.fn((id: string, owner: string) => {
+        if (jobs.get(id) !== owner) return false;
+        jobs.delete(id);
+        return true;
+      }),
+    };
+    const h = harness({
+      networkPreview: true,
+      humanRecordings: recorder as unknown as BrowserHumanRecording,
+    });
+    try {
+      const session = await h.open({
+        kind: 'project-admin',
+        principalId: 'admin',
+      });
+      const path = `/sessions/${session.browserSessionId}/recordings`;
+      expect(
+        (
+          await h.browser('POST', path, {
+            role: 'admin',
+            body: { generation: session.generation },
+          })
+        ).status,
+      ).toBe(201);
+      expect(await authorization?.()).toBe(true);
+      expect(
+        (await h.browser('GET', `${path}/r1`, { role: 'operator' })).status,
+      ).toBe(404);
+      expect(
+        (await h.browser('DELETE', `${path}/r1`, { role: 'operator' })).status,
+      ).toBe(404);
+      h.setPrincipalCurrent(false);
+      expect(await authorization?.()).toBe(false);
+      h.setPrincipalCurrent(true);
+      expect(
+        (await h.browser('DELETE', `${path}/r1`, { role: 'admin' })).status,
+      ).toBe(200);
+      expect(
+        (await h.browser('GET', `${path}/r1`, { role: 'admin' })).status,
+      ).toBe(404);
+    } finally {
+      await h.binder.dispose();
+      await h.sessions.shutdown();
+    }
+  });
+  test('Task preparation is bound to the recording start and publication rechecks the owner', async () => {
+    let prepareTask: (() => Promise<unknown>) | undefined;
+    const recorder = {
+      start: vi.fn((input: { prepareTask?: () => Promise<unknown> }) => {
+        prepareTask = input.prepareTask;
+        return 'r1';
+      }),
+      publishTask: vi.fn(async () => ({ walkthroughId: 'clip-a' })),
+    };
+    const prepare = vi.fn(async () => ({
+      kind: 'unavailable' as const,
+      reason: 'Commit or stash changes to add recordings to the Task.',
+    }));
+    const h = harness({
+      networkPreview: true,
+      humanRecordings: recorder as unknown as BrowserHumanRecording,
+      prepareHumanTaskClip: prepare,
+    });
+    try {
+      const session = await h.open();
+      const path = `/sessions/${session.browserSessionId}/recordings`;
+      expect(
+        (
+          await h.browser('POST', path, {
+            body: { generation: session.generation, taskSessionId: 'chat-a' },
+          })
+        ).status,
+      ).toBe(201);
+      expect(prepare).not.toHaveBeenCalled();
+      expect(await prepareTask?.()).toMatchObject({ kind: 'unavailable' });
+      expect(prepare).toHaveBeenCalledWith(
+        expect.any(Request),
+        'chat-a',
+        expect.objectContaining({ browserSessionId: session.browserSessionId }),
+      );
+      const result = await h.browser('POST', `${path}/r1/task`, { body: {} });
+      expect(await result.json()).toMatchObject({
+        success: true,
+        data: { walkthroughId: 'clip-a' },
+      });
+      expect(
+        (await h.browser('POST', `${path}/r1/task`, { body: {}, agent: true }))
+          .status,
+      ).toBe(403);
+    } finally {
+      await h.binder.dispose();
+      await h.sessions.shutdown();
+    }
+  });
+
   test('an operator device may view artifacts while its drive standing remains refused', async () => {
     const h = harness({ networkPreview: true });
     try {

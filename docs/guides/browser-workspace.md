@@ -367,6 +367,23 @@ session (a second request joins the one in flight), and offers **Save image**
 and, where the viewer's clipboard accepts PNGs, **Copy image**. With Browser
 artifacts enabled, **Attach to chat** adds it to the active composer.
 
+With **Browser artifacts** enabled, **Record** in the toolbar or **⋯** starts a
+silent Browser clip. The indicator stays visible while capturing; **Stop
+recording** finishes it, and **Save clip** downloads a WebM. Capture also stops
+at 30 seconds, 300 frames or 64 MiB of raw JPEGs and encodes the frames captured so far. A first frame over the byte limit is refused. The encoded
+clip is limited to 16 MiB. Human and Task Browser recording share a limit of four active recordings, with at most two for one owner; completed clips do not occupy those slots. FFmpeg must already be available through Station's
+media-tools resolver. A missing tool refuses the recording; downloading one
+requires the operator's separate consent. The clip may contain sensitive page
+content. **Attach recording frames to chat** stages four time-sampled JPEGs and a provenance JSON file in the active conversation. The files are bounded to 5 MiB combined; if sampled frames cannot be prepared, save the full clip instead. If the active conversation is the lead Session of a Task, the Task is accessible and its workspace is clean at recording start, **Add to Task clips** publishes the clip after rechecking the Task, Browser and workspace. A dirty or inaccessible Task shows a reason instead.
+
+The server rechecks Browser view authority, preview state and session generation
+periodically while capturing, on stop and before returning a clip. Navigation can continue while the Browser generation remains the same. Closing the Browser surface or
+stopping Station cancels in-progress work. The server retains up to four completed results for at most one minute; an
+older result may be discarded sooner. The open viewer owns the downloaded Blob until
+it is dismissed. Generated temporary frame files are removed after encoding or
+cancellation. A process crash can leave its private temporary staging directory;
+automatic crash cleanup is not currently provided.
+
 A workspace Browser pane keeps an ordered set of up to twelve session tabs.
 Select a tab to watch its exact server session; arrow keys select adjacent tabs
 and Alt+Left/Right reorders them. **New tab** opens a blank session. Closing a

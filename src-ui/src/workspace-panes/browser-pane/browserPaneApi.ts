@@ -260,6 +260,106 @@ export function browserPaneApi(apiBase: string, fetcher: BrowserFetch) {
           signal,
         },
       ),
+    startRecording: (id: string, generation: number, taskSessionId?: string) =>
+      call<{ recordingId: string }>(
+        fetcher,
+        `${root}/sessions/${enc(id)}/recordings`,
+        {
+          method: 'POST',
+          body: { generation, ...(taskSessionId ? { taskSessionId } : {}) },
+        },
+      ),
+    recordingStatus: (id: string, recordingId: string, signal?: AbortSignal) =>
+      call<{
+        id: string;
+        state: 'starting' | 'recording' | 'encoding' | 'ready' | 'failed';
+        error?: string;
+        task?:
+          | { kind: 'ready'; taskId: string }
+          | { kind: 'unavailable'; reason: string };
+      }>(
+        fetcher,
+        `${root}/sessions/${enc(id)}/recordings/${enc(recordingId)}`,
+        { signal },
+      ),
+    stopRecording: (id: string, recordingId: string) =>
+      call<void>(
+        fetcher,
+        `${root}/sessions/${enc(id)}/recordings/${enc(recordingId)}/stop`,
+        { method: 'POST', body: {} },
+      ),
+    cancelRecording: (id: string, recordingId: string) =>
+      call<void>(
+        fetcher,
+        `${root}/sessions/${enc(id)}/recordings/${enc(recordingId)}`,
+        { method: 'DELETE' },
+      ),
+    publishRecordingToTask: (id: string, recordingId: string) =>
+      call<{ walkthroughId: string }>(
+        fetcher,
+        `${root}/sessions/${enc(id)}/recordings/${enc(recordingId)}/task`,
+        { method: 'POST', body: {} },
+      ),
+    recordingFrames: (id: string, recordingId: string) =>
+      call<{
+        frames: Array<{
+          data: string;
+          atMs: number;
+          capturedAt: string;
+          url: string;
+          viewport: { width: number; height: number };
+        }>;
+      }>(
+        fetcher,
+        `${root}/sessions/${enc(id)}/recordings/${enc(recordingId)}/frames`,
+      ),
+    recordingVideo: async (
+      id: string,
+      recordingId: string,
+      signal?: AbortSignal,
+    ): Promise<Blob> => {
+      const response = await fetcher(
+        `${root}/sessions/${enc(id)}/recordings/${enc(recordingId)}/video`,
+        { signal },
+      );
+      if (
+        !response.ok ||
+        !(response.headers.get('content-type') ?? '').startsWith('video/webm')
+      )
+        throw new BrowserApiError(
+          response.status,
+          'recording-unavailable',
+          undefined,
+        );
+      const reader = response.body?.getReader();
+      if (!reader)
+        throw new BrowserApiError(
+          response.status,
+          'recording-unavailable',
+          undefined,
+        );
+      const parts: Uint8Array<ArrayBuffer>[] = [];
+      let total = 0;
+      try {
+        for (;;) {
+          const next = await reader.read();
+          if (next.done) break;
+          total += next.value.byteLength;
+          if (total > 16 * 1024 * 1024) throw new Error('Recording too large.');
+          parts.push(new Uint8Array(next.value));
+        }
+      } catch (error) {
+        await reader.cancel().catch(() => {});
+        throw error;
+      }
+      if (!total)
+        throw new BrowserApiError(
+          response.status,
+          'recording-unavailable',
+          undefined,
+        );
+      return new Blob(parts, { type: 'video/webm' });
+    },
     /** The page as an image (PNG, or JPEG for a very large page). */
     screenshot: async (browserSessionId: string): Promise<Blob> => {
       const response = await fetcher(

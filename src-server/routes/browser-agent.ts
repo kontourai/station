@@ -37,10 +37,8 @@ import {
   TaskBrowserCaptureError,
   type TaskCaptureBrowserRegistry,
 } from '../services/projects/task-browser-capture.js';
-import {
-  type TaskBrowserRecording,
-  TaskBrowserRecordingError,
-} from '../services/projects/task-browser-recording.js';
+import type { TaskBrowserRecording } from '../services/projects/task-browser-recording.js';
+import { TaskBrowserRecordingError } from '../services/projects/task-recording-errors.js';
 import {
   BROWSER_RECORD_MAX_DURATION_MS,
   BROWSER_RECORD_MAX_ENCODED_BYTES,
