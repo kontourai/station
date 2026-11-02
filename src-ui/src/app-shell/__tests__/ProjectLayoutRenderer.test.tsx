@@ -3008,6 +3008,14 @@ describe('ProjectLayoutRenderer past the wide fold (#3040 review M5)', () => {
           .querySelector('.coding-workbench__lower')
           ?.getAttribute('data-active'),
       ).toBe('true');
+      // The lower panel asks its pane frame to fill it; a block frame left
+      // the terminal a 16px strip at 1440 (WorkspacePaneFrame.fill.geometry).
+      expect(
+        screen
+          .getByText('Terminal pane /repo/workspace')
+          .closest('section[data-workspace-pane-lifecycle]')
+          ?.classList.contains('workspace-pane-frame--fill'),
+      ).toBe(true);
     } finally {
       Object.defineProperty(window, 'matchMedia', {
         configurable: true,

@@ -16,11 +16,16 @@ import { WorkspacePaneFrame } from '../WorkspacePaneFrame';
 
 /**
  * The Coding lower panel draws its Terminal inside the real
- * `WorkspacePaneFrame` (`ProjectLayoutRenderer`'s `terminal.render`). With
- * the app's cascade, the terminal under the frame fills the panel body; a
- * block frame held content height and the terminal collapsed to a 16px strip
- * at 1440 (visual review of 4249bb5f5d). The terminal's own chain repeats
+ * `WorkspacePaneFrame` with `fill` (`ProjectLayoutRenderer`'s
+ * `terminal.render`; its test pins that the caller asks). With the app's
+ * cascade, the terminal under the frame fills the panel body; a block frame
+ * held content height and the terminal collapsed to a 16px strip at 1440
+ * (visual review of 4249bb5f5d). The terminal's own chain repeats
  * `CodingTerminalPane` and `TerminalPanel`'s classes as static markup.
+ *
+ * A frame that does not fill stays a block, so its pane's margins collapse as
+ * in normal flow: Home relies on that, and a flex frame moved its actions
+ * under the phone dock (gallery `mobile-home`, run 41439227582).
  */
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(HERE, '../../../../');
@@ -38,6 +43,7 @@ function lowerPanelMarkup() {
       instanceId={'terminal-1' as WorkspacePaneInstanceId}
       paneName="Terminal"
       onRetry={() => true}
+      fill
     >
       <section className="coding-layout__terminal coding-layout__terminal--pane">
         <div className="coding-layout__terminal-body">
@@ -101,6 +107,39 @@ describe.skipIf(!chromiumIsInstalled(REPO_ROOT))(
         expect(g.body).toBeGreaterThan(200);
         expect(g.frame).toBe(g.body);
         expect(g.terminal).toBe(g.body);
+      } finally {
+        await page.close();
+      }
+    });
+
+    test('a frame that does not fill keeps its pane in block flow', async () => {
+      const frame = renderToStaticMarkup(
+        <WorkspacePaneFrame
+          instanceId={'home' as WorkspacePaneInstanceId}
+          paneName="Home"
+        >
+          <div className="first" style={{ marginBottom: 16, height: 40 }} />
+          <div className="second" style={{ marginTop: 16, height: 40 }} />
+        </WorkspacePaneFrame>,
+      );
+      const css = [
+        resolveCssImports(resolve(HERE, '../../index.css')),
+        readFileSync(resolve(HERE, '../WorkspacePaneFrame.css'), 'utf8'),
+      ].join('\n');
+      const page = await browser.newPage({
+        viewport: { width: 390, height: 844 },
+      });
+      try {
+        await page.setContent(
+          `<!doctype html><html><head><style>${css}</style></head><body><main style="display:flex;flex-direction:column">${frame}</main></body></html>`,
+        );
+        const gap = await page.evaluate(
+          () =>
+            document.querySelector('.second')!.getBoundingClientRect().top -
+            document.querySelector('.first')!.getBoundingClientRect().bottom,
+        );
+        // Adjoining 16px margins collapse to one 16px gap, not 32.
+        expect(gap).toBe(16);
       } finally {
         await page.close();
       }

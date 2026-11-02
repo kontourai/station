@@ -110,6 +110,7 @@ export function WorkspacePaneFrame({
   onRetry,
   runtime,
   elementless,
+  fill,
   readFailureContext,
 }: {
   instanceId: WorkspacePaneInstanceId;
@@ -134,6 +135,13 @@ export function WorkspacePaneFrame({
    * that can switch between panes.
    */
   elementless?: boolean;
+  /**
+   * The host is a flex column with a height of its own (the Coding lower
+   * panel): the frame takes that height and its pane fills it. Off, the frame
+   * is an ordinary block and its pane lays out in normal flow, margins and
+   * all (Home relies on that).
+   */
+  fill?: boolean;
   /** Reads the pane-owned failure context; called once, when the pane fails. */
   readFailureContext?: () => WorkspacePaneFailureContext | undefined;
   onFailure?: (
@@ -190,7 +198,7 @@ export function WorkspacePaneFrame({
   return (
     <section
       ref={root}
-      className="workspace-pane-frame"
+      className={fill ? 'workspace-pane-frame--fill' : undefined}
       data-workspace-pane-lifecycle="suspended"
     >
       {boundary}

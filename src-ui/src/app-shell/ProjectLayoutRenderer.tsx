@@ -1200,6 +1200,7 @@ export function LayoutStackHost({
                   instanceId={terminalInstance.instanceId}
                   paneName={stackPaneLabel(terminalInstance)}
                   onRetry={() => true}
+                  fill
                 >
                   {renderCodingPane(terminalInstance, LOWER_PANE_PRESENTATION)}
                 </WorkspacePaneFrame>
