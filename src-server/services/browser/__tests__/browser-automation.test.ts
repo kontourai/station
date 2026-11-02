@@ -362,6 +362,41 @@ describe('BrowserAutomation: a session id is only a selector', () => {
     await h.binder.dispose();
     await h.sessions.shutdown();
   });
+  test('network withholds page data if the bound grant expires during capture', async () => {
+    let enter!: () => void;
+    let release!: () => void;
+    const entered = new Promise<void>((resolve) => {
+      enter = resolve;
+    });
+    const waiting = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const networkFor = vi.fn(async () => {
+      enter();
+      await waiting;
+      return { generation: 1, entries: [], dropped: 0, latestSeq: 0 };
+    });
+    const h = await harness({ networkFor });
+    const session = await h.open();
+    h.settings.setBrowserEvaluate('alpha', true, 'operator');
+    let current = true;
+    const decided = await authorizeBrowserAgentCaller(
+      caller(),
+      authorizePrincipal,
+      () => current,
+    );
+    if (!decided.ok) throw new Error(decided.refusal.code);
+    const result = h.automation.network(
+      decided.authority,
+      session.browserSessionId,
+    );
+    await entered;
+    current = false;
+    release();
+    expect(await result).toMatchObject({ ok: false, code: 'not-authorized' });
+    await h.binder.dispose();
+    await h.sessions.shutdown();
+  });
   test("another Project's session and another profile's session are both session-not-found", async () => {
     const h = await harness();
     const betaSession = await h.open({ kind: 'operator' }, 'beta');
