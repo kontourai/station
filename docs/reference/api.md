@@ -6759,6 +6759,8 @@ feature preview and Browser view authority:
 - `GET /api/browser/sessions/:browserSessionId/network?after=<sequence>`
   returns a bounded page of in-memory request metadata. Query values, URL
   credentials and fragments are redacted; bodies and headers are not retained.
+  `seq` advances when a request changes; `requestSeq` identifies the request
+  across updates. Advance the cursor through pages before using `latestSeq`.
   Requests from an Agent also require **Let agents run JavaScript in this
   Project's pages** (`browserEvaluate`).
 
