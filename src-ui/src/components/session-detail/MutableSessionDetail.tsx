@@ -43,6 +43,7 @@ import { WorkflowStatusLineList } from '../flow/WorkflowStatusLine';
 import { LazyBoundary } from '../LazyBoundary';
 import { ConfirmModal } from '../modals/ConfirmModal';
 import { SkeletonBlock } from '../state';
+import { OwnedWorkCleanup } from './OwnedWorkCleanup';
 import { SessionDetailAttention } from './SessionDetailAttention';
 import { SessionDetailDiagnostics } from './SessionDetailDiagnostics';
 import { SessionDetailErrors } from './SessionDetailErrors';
@@ -491,6 +492,12 @@ export function MutableSessionDetail({
                 }
               : undefined
           }
+        />
+
+        <OwnedWorkCleanup
+          session={session}
+          apiBase={apiBase}
+          onRemoved={onTaskChanged}
         />
 
         <SessionDetailAttention
