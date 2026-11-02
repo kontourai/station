@@ -28,8 +28,10 @@ import {
 import {
   bodyChunkDefinitions,
   bodyDefinitions,
+  bodyNodeDefinitions,
   readAgentBody,
   readAgentBodyChunk,
+  readAgentBodyNode,
 } from './turn-bodies.js';
 import {
   changeDefinitions,
@@ -287,6 +289,7 @@ const currentDefinitions = [
             : sql,
     ),
   ...frameBlockDefinitions,
+  ...bodyNodeDefinitions,
   ...retentionDefinitions,
 ];
 const idOf = (key: RunKey) => canonical(key);
@@ -597,6 +600,11 @@ export function auditSqliteAgentJournal({
       'SELECT digest FROM agent_steps_body_chunks',
     ).all())
       readAgentBodyChunk(database, String(row.digest));
+    for (const row of agentStatement(
+      database,
+      'SELECT digest FROM agent_steps_body_nodes',
+    ).all())
+      readAgentBodyNode(database, String(row.digest));
     for (const row of agentStatement(
       database,
       'SELECT seq,turn_id,kind,id FROM agent_steps_changes',
@@ -1046,6 +1054,7 @@ export function openSqliteAgentJournal(options: {
     database.exec('BEGIN IMMEDIATE');
     try {
       for (const sql of frameBlockDefinitions) database.exec(sql);
+      for (const sql of bodyNodeDefinitions) database.exec(sql);
       for (const sql of retentionDefinitions) database.exec(sql);
       database.exec(
         'DROP TRIGGER agent_steps_bodies_no_delete; DROP TRIGGER agent_steps_body_chunks_no_delete; DROP TRIGGER agent_steps_changes_no_delete',

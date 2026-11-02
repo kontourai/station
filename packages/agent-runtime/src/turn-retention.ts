@@ -7,7 +7,7 @@ const liveBodies =
   "SELECT tree.value FROM agent_steps_effects e,json_tree(e.record) tree WHERE tree.type='text' AND tree.value GLOB 'sha256:*'";
 export const retainedBodyDefinitions = [
   `CREATE TRIGGER agent_steps_bodies_no_delete BEFORE DELETE ON agent_steps_bodies WHEN OLD.digest IN (${liveBodies}) BEGIN SELECT RAISE(ABORT,'immutable agent body'); END`,
-  "CREATE TRIGGER agent_steps_body_chunks_no_delete BEFORE DELETE ON agent_steps_body_chunks WHEN EXISTS(SELECT 1 FROM agent_steps_bodies b,json_each(b.wire,'$.chunks') c WHERE c.value=OLD.digest) BEGIN SELECT RAISE(ABORT,'immutable agent chunk'); END",
+  "CREATE TRIGGER agent_steps_body_chunks_no_delete BEFORE DELETE ON agent_steps_body_chunks WHEN EXISTS(SELECT 1 FROM agent_steps_bodies b,json_each(b.wire,'$.chunks') c WHERE c.value=OLD.digest) OR EXISTS(SELECT 1 FROM agent_steps_body_nodes n,json_each(n.refs) r WHERE r.value=OLD.digest) BEGIN SELECT RAISE(ABORT,'immutable agent chunk'); END",
 ];
 export const retentionDefinitions = [
   'CREATE TABLE agent_steps_retained(turn_id TEXT PRIMARY KEY REFERENCES agent_steps_turns(id), expired_at INTEGER NOT NULL CHECK(expired_at>0)) STRICT',
@@ -19,9 +19,16 @@ export function compactAgentBodies(database: DatabaseSync) {
     database,
     `DELETE FROM agent_steps_bodies WHERE digest NOT IN (${liveBodies})`,
   ).run();
+  for (;;) {
+    const removed = agentStatement(
+      database,
+      "DELETE FROM agent_steps_body_nodes WHERE digest NOT IN (SELECT c.value FROM agent_steps_bodies b,json_each(b.wire,'$.chunks') c UNION SELECT r.value FROM agent_steps_body_nodes n,json_each(n.refs) r)",
+    ).run();
+    if (!removed.changes) break;
+  }
   agentStatement(
     database,
-    "DELETE FROM agent_steps_body_chunks WHERE digest NOT IN (SELECT c.value FROM agent_steps_bodies b,json_each(b.wire,'$.chunks') c)",
+    "DELETE FROM agent_steps_body_chunks WHERE digest NOT IN (SELECT c.value FROM agent_steps_bodies b,json_each(b.wire,'$.chunks') c UNION SELECT r.value FROM agent_steps_body_nodes n,json_each(n.refs) r)",
   ).run();
 }
 

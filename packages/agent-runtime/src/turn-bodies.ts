@@ -2,7 +2,11 @@ import type { DatabaseSync } from 'node:sqlite';
 import { deflateSync, inflateSync } from 'node:zlib';
 import { z } from 'zod';
 import { hash } from './encoding.js';
-import { decodeAgentBody, encodeAgentBody } from './turn-body-codec.js';
+import {
+  agentBodyRefs,
+  decodeAgentBody,
+  encodeAgentBody,
+} from './turn-body-codec.js';
 import { agentStatement } from './turn-statements.js';
 import { agentWire, readAgentWire } from './turn-wire.js';
 
@@ -16,6 +20,51 @@ export const bodyChunkDefinitions = [
   "CREATE TRIGGER agent_steps_body_chunks_no_update BEFORE UPDATE ON agent_steps_body_chunks BEGIN SELECT RAISE(ABORT,'immutable agent chunk'); END",
   "CREATE TRIGGER agent_steps_body_chunks_no_delete BEFORE DELETE ON agent_steps_body_chunks BEGIN SELECT RAISE(ABORT,'immutable agent chunk'); END",
 ] as const;
+export const bodyNodeDefinitions = [
+  'CREATE TABLE agent_steps_body_nodes(digest TEXT PRIMARY KEY, wire TEXT NOT NULL, refs TEXT NOT NULL, byte_length INTEGER NOT NULL CHECK(byte_length>=0)) STRICT',
+  "CREATE TRIGGER agent_steps_body_nodes_no_update BEFORE UPDATE ON agent_steps_body_nodes BEGIN SELECT RAISE(ABORT,'immutable agent node'); END",
+  "CREATE TRIGGER agent_steps_body_nodes_no_delete BEFORE DELETE ON agent_steps_body_nodes WHEN EXISTS(SELECT 1 FROM agent_steps_bodies b,json_each(b.wire,'$.chunks') c WHERE c.value=OLD.digest) OR EXISTS(SELECT 1 FROM agent_steps_body_nodes n,json_each(n.refs) r WHERE r.value=OLD.digest) BEGIN SELECT RAISE(ABORT,'immutable agent node'); END",
+];
+const knownNodes = new WeakMap<DatabaseSync, Set<string>>();
+export function readAgentBodyNode(database: DatabaseSync, digest: string) {
+  const row = agentStatement(
+    database,
+    'SELECT wire,refs,byte_length FROM agent_steps_body_nodes WHERE digest=?',
+  ).get(digest);
+  if (
+    !row ||
+    typeof row.wire !== 'string' ||
+    typeof row.refs !== 'string' ||
+    Buffer.byteLength(row.wire) !== row.byte_length ||
+    hash(row.wire) !== digest
+  )
+    throw new Error('DURABLE_AGENT_BODY_DAMAGED');
+  const refs = agentBodyRefs(JSON.parse(row.wire));
+  if (JSON.stringify(refs) !== row.refs)
+    throw new Error('DURABLE_AGENT_BODY_DAMAGED');
+  return { wire: row.wire, refs };
+}
+function putNode(database: DatabaseSync, wire: string, refs: string[]) {
+  const digest = hash(wire);
+  let known = knownNodes.get(database);
+  if (!known) {
+    known = new Set();
+    knownNodes.set(database, known);
+  }
+  if (known.has(digest)) return digest;
+  const inserted = agentStatement(
+    database,
+    'INSERT INTO agent_steps_body_nodes VALUES(?,?,?,?) ON CONFLICT(digest) DO NOTHING',
+  ).run(digest, wire, JSON.stringify(refs), Buffer.byteLength(wire));
+  if (
+    inserted.changes !== 1 &&
+    readAgentBodyNode(database, digest).wire !== wire
+  )
+    throw new Error('DURABLE_AGENT_BODY_DAMAGED');
+  if (known.size >= 8192) known.delete(known.values().next().value!);
+  known.add(digest);
+  return digest;
+}
 const CHUNK_UNITS = 16 * 1024;
 const chunkedSchema = z
   .object({
@@ -44,6 +93,7 @@ const caches = new WeakMap<
 export function clearAgentBodies(database: DatabaseSync) {
   caches.delete(database);
   knownChunks.delete(database);
+  knownNodes.delete(database);
 }
 function cache(database: DatabaseSync) {
   let state = caches.get(database);
@@ -155,7 +205,11 @@ export function readAgentBody(database: DatabaseSync, digest: string): string {
     throw new Error('DURABLE_AGENT_BODY_DAMAGED');
   let wire = row.wire;
   if (wire.startsWith('{') && JSON.parse(wire).version === 'agent-body/3') {
-    wire = decodeAgentBody(wire, (ref) => readAgentBodyChunk(database, ref));
+    wire = decodeAgentBody(
+      wire,
+      (ref) => readAgentBodyChunk(database, ref),
+      (ref) => readAgentBodyNode(database, ref),
+    );
   } else if (wire.startsWith('{')) {
     const descriptor = chunkedSchema.parse(JSON.parse(wire));
     if (
@@ -194,7 +248,11 @@ export function putAgentBody(database: DatabaseSync, wire: string): string {
     ).get()?.writer_format === 'agent-steps/11';
   let stored = wire;
   if (compact)
-    stored = encodeAgentBody(wire, (value) => putChunk(database, value));
+    stored = encodeAgentBody(
+      wire,
+      (value) => putChunk(database, value),
+      (value, refs) => putNode(database, value, refs),
+    );
   else if (
     wire.length > CHUNK_UNITS &&
     agentStatement(

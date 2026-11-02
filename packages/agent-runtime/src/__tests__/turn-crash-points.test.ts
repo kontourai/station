@@ -11,6 +11,7 @@ function removeChangeTracking(database: DatabaseSync) {
     .all())
     database.exec(`DROP TRIGGER ${String(row.name)}`);
   database.exec('DROP TABLE agent_steps_changes');
+  database.exec('DROP TABLE agent_steps_body_nodes');
   database.exec('DROP TABLE agent_steps_body_chunks');
   database.exec('DROP TABLE agent_steps_frame_blocks');
   database.exec(
