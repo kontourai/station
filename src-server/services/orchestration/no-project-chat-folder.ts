@@ -34,7 +34,7 @@ export const DEFAULT_NO_PROJECT_CHAT_FOLDER: NoProjectChatFolder = 'private';
 const PLAIN_ID = /^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$/;
 
 /** The directory under a Station home that holds every no-project scratch folder. */
-export function noProjectChatScratchRoot(
+function noProjectChatScratchRoot(
   stationHome: string = resolveHomeDir(),
 ): string {
   return join(resolve(stationHome), 'scratch');
@@ -46,7 +46,7 @@ function isContainedBy(parent: string, candidate: string): boolean {
 }
 
 /** Whether `cwd` is a scratch folder this Station home made for a chat. */
-export function isNoProjectChatScratch(
+function isNoProjectChatScratch(
   cwd: string,
   stationHome: string = resolveHomeDir(),
 ): boolean {
@@ -73,7 +73,7 @@ export function isStationChatFolder(
 }
 
 /** The folder name for a conversation: its id when plain, else a digest of it. */
-export function noProjectChatScratchName(conversationId: string): string {
+function noProjectChatScratchName(conversationId: string): string {
   return PLAIN_ID.test(conversationId)
     ? conversationId
     : createHash('sha256').update(conversationId).digest('hex');
