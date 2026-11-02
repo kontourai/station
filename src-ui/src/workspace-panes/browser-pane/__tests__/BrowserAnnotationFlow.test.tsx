@@ -198,12 +198,10 @@ it('captures the viewport before marking and includes it alongside an element cr
     viewport: { width: 800, height: 600, deviceScaleFactor: 1 },
   } as BrowserSessionView;
   const api = {
-    annotationScreenshot: vi
-      .fn()
-      .mockResolvedValue({
-        blob: new Blob([bytes], { type: 'image/png' }),
-        scroll: { x: 0, y: 0 },
-      }),
+    annotationScreenshot: vi.fn().mockResolvedValue({
+      blob: new Blob([bytes], { type: 'image/png' }),
+      scroll: { x: 0, y: 0 },
+    }),
     sessionSummary: vi.fn().mockResolvedValue(record),
   } as unknown as BrowserPaneApi;
   render(
