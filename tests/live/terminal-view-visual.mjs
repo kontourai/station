@@ -454,6 +454,12 @@ try {
   const floodDone = join(repo, 'flood-done');
   const floodStart = Date.now();
   await type('seq 1 5000000; touch flood-done\r');
+  // Watched while the window runs, so the end is timed, not found afterwards.
+  let floodEndedMs = null;
+  const watch = setInterval(() => {
+    if (floodEndedMs === null && existsSync(floodDone))
+      floodEndedMs = Date.now() - floodStart;
+  }, 50);
   results.flood = await page.evaluate(
     (windowMs) =>
       new Promise((done) => {
@@ -483,12 +489,13 @@ try {
     floodWindowMs,
   );
   results.flood.lines = 5_000_000;
-  results.flood.outlastedWindow = !existsSync(floodDone);
-  while (!existsSync(floodDone) && Date.now() - floodStart < 300_000)
-    await page.waitForTimeout(500);
-  results.flood.floodSeconds = existsSync(floodDone)
-    ? (Date.now() - floodStart) / 1000
-    : null;
+  while (floodEndedMs === null && Date.now() - floodStart < 300_000)
+    await page.waitForTimeout(100);
+  clearInterval(watch);
+  results.flood.floodSeconds =
+    floodEndedMs === null ? null : floodEndedMs / 1000;
+  results.flood.outlastedWindow =
+    floodEndedMs === null || floodEndedMs > floodWindowMs;
   results.environment.loadAverageAfter = loadavg();
 } finally {
   writeFileSync(
