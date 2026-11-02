@@ -1,5 +1,7 @@
+import { join } from 'node:path';
 import type { ProviderSession } from '@kontourai/station-contracts/provider';
 import { describe, expect, test } from 'vitest';
+import { resolveHomeDir } from '../../../utils/paths.js';
 import { buildOrchestrationSessionSummary } from '../orchestration-session-state.js';
 
 /**
@@ -53,6 +55,18 @@ describe('cwdManagedWorkspace on the session summary', () => {
     ],
   ])('%s is not', (_, cwd) => {
     expect(summarize(cwd).cwdManagedWorkspace).toBeUndefined();
+  });
+
+  test("a no-project chat's scratch folder under this Station's home is flagged (#4389)", () => {
+    const scratch = join(resolveHomeDir(), 'scratch', 'thread-managed');
+    expect(summarize(scratch).cwdManagedWorkspace).toBe(true);
+    // The scratch root itself, or a sibling of it, is not a chat's folder.
+    expect(
+      summarize(join(resolveHomeDir(), 'scratch')).cwdManagedWorkspace,
+    ).toBeUndefined();
+    expect(
+      summarize(join(resolveHomeDir(), 'scratchpad', 'x')).cwdManagedWorkspace,
+    ).toBeUndefined();
   });
 
   test('no cwd, no flag', () => {

@@ -7,6 +7,10 @@ import {
   useBanners,
 } from '../../contexts/banner-store';
 import {
+  useActiveStationName,
+  useCachedStationStatus,
+} from '../../hooks/useActiveStationName';
+import {
   OPEN_CONNECTIONS_MODAL_EVENT,
   openConnectionsModal,
 } from '../../lib/connectionModalEvents';
@@ -78,6 +82,8 @@ function Condition({
 /** Local connection facts remain readable when the selected server is unavailable. */
 export function StationDetailsHost() {
   const { activeConnection, apiBase } = useConnections();
+  const activeStationName = useActiveStationName();
+  const build = useCachedStationStatus()?.build;
   const conditions = useStationConditions();
   const scope = JSON.stringify([activeConnection?.id, apiBase]);
   const [openScope, setOpenScope] = useState<string | null>(null);
@@ -111,10 +117,16 @@ export function StationDetailsHost() {
         )
       }
     >
-      <p>{activeConnection?.name || 'Selected Station'}</p>
+      <p>{activeStationName || 'Selected Station'}</p>
       <p className="station-condition__detail">
         {activeConnection?.url ?? apiBase}
       </p>
+      {/* #4402: which build this Station runs, when it reports one. */}
+      {build?.shortSha && (
+        <p className="station-condition__detail">
+          {`Build ${build.channel ? `${build.channel} · ` : ''}${build.shortSha}`}
+        </p>
+      )}
       {conditions.length ? (
         conditions.map((item) => (
           <Condition

@@ -2,6 +2,7 @@ import {
   type AgentSpec,
   BUILTIN_STATION_AGENT_MCP_SERVER_IDS,
 } from '@kontourai/station-contracts/agent';
+import { STATION_AGENT_DISPLAY_NAME } from '@kontourai/station-contracts/agent-identity';
 import {
   isProjectKnowledgeRoot,
   type KnowledgeStoreRoot,
@@ -33,7 +34,7 @@ export function createProjectNativeToolLoader(deps: {
       deps.agentSpecs.get(slug) ??
       (slug === 'default'
         ? {
-            name: 'Station',
+            name: STATION_AGENT_DISPLAY_NAME,
             prompt: '',
             tools: {
               mcpServers: [...BUILTIN_STATION_AGENT_MCP_SERVER_IDS],

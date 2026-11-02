@@ -12,6 +12,8 @@ import {
   type EngineConnectionId,
   engineConnectionId,
   isStationAgentIdentity,
+  LEGACY_STATION_AGENT_NAME,
+  STATION_AGENT_DISPLAY_NAME,
 } from '@kontourai/station-contracts/agent-identity';
 import { ENGINE_CAPABILITY_MATRICES } from '@kontourai/station-contracts/engine-capability-matrix';
 import { engineDisplayLabel } from '@kontourai/station-contracts/engine-display';
@@ -235,7 +237,7 @@ function runtimeStationEngineExecution(
  * reader must not honour one this identity cannot have.
  */
 function projectStationEngineBinding<
-  T extends { execution?: AgentSpec['execution'] },
+  T extends { execution?: AgentSpec['execution']; name?: string },
 >(
   slug: string,
   record: T,
@@ -243,9 +245,24 @@ function projectStationEngineBinding<
 ): T {
   if (!isStationAgentIdentity(slug)) return record;
   const runtimeExecution = runtimeStationEngineExecution(agentMetadataMap);
-  return runtimeExecution
+  const projected = runtimeExecution
     ? { ...record, execution: runtimeExecution }
     : withoutReservedStationBinding(record);
+  return withStationAgentDisplayName(projected);
+}
+
+/**
+ * #4388: the built-in Agent is "Station Assistant", not the product's own
+ * name. A home created before the rename stores `name: 'Station'`; that
+ * exact stored name reads as the new one, and the file is not rewritten. A
+ * name the person chose is left alone.
+ */
+function withStationAgentDisplayName<T extends { name?: string }>(
+  record: T,
+): T {
+  return record.name === LEGACY_STATION_AGENT_NAME
+    ? { ...record, name: STATION_AGENT_DISPLAY_NAME }
+    : record;
 }
 
 export class AgentService {
@@ -323,7 +340,7 @@ export class AgentService {
       agent.kind === 'station'
         ? {
             slug: agent.id,
-            name: 'Station',
+            name: STATION_AGENT_DISPLAY_NAME,
             ...(runtimeDefaultExecution
               ? { execution: runtimeDefaultExecution }
               : {}),

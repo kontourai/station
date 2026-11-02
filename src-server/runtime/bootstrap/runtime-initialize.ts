@@ -745,6 +745,9 @@ export async function initializeRuntime(
     // per call for the same reason as the workspace default above.
     resolveStationDefaultApprovalMode: async () =>
       (await configLoader.loadAppConfig()).defaultApprovalMode,
+    // #4389: where a new chat with no Project runs; loaded per call too.
+    resolveNoProjectChatFolder: async () =>
+      (await configLoader.loadAppConfig()).noProjectChatFolder,
     // A Project's new-chat approval layer and its last-used record, over the
     // same Project store and home the project routes read.
     projectChatDefaults: createProjectChatDefaultsService(

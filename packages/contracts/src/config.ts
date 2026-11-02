@@ -10,6 +10,10 @@ import type { AgentConnectionSettings } from './tool.js';
 import type { UserProfileSettings } from './user-profile.js';
 import type { WorkspaceIsolationMode } from './workspace-isolation.js';
 
+/** #4389: where a chat with no Project runs (`AppConfig.noProjectChatFolder`). */
+export const NO_PROJECT_CHAT_FOLDERS = ['private', 'home'] as const;
+export type NoProjectChatFolder = (typeof NO_PROJECT_CHAT_FOLDERS)[number];
+
 export interface ApprovalGuardianConfig {
   enabled?: boolean;
   mode?: 'review' | 'enforce';
@@ -46,6 +50,14 @@ export interface AppConfig {
    * applies the same order.
    */
   defaultWorkspaceIsolation?: WorkspaceIsolationMode;
+  /**
+   * #4389: the folder a new chat with no Project runs in. `'private'`
+   * (absent) gives each such chat its own scratch folder under Station's
+   * data; `'home'` runs it in the person's home folder. Read at a new
+   * conversation's first start only: a chat that already ran keeps its
+   * folder.
+   */
+  noProjectChatFolder?: NoProjectChatFolder;
   /**
    * Approval posture a new chat starts in when neither the chat itself nor
    * its Agent names one (epic #2144 slice 6; #2436).

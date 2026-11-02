@@ -13,6 +13,7 @@ import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { APP_DESTINATION_REGISTRY } from '../../app-shell/destination-registry';
 import { useApiBase } from '../../contexts/ApiBaseContext';
+import { useActiveStationName } from '../../hooks/useActiveStationName';
 import { useKeyboardShortcut } from '../../hooks/useKeyboardShortcut';
 import { useLongPress } from '../../hooks/useLongPress';
 import { useMenuTriggerToggle } from '../../hooks/useMenuTriggerToggle';
@@ -194,6 +195,7 @@ export function HeaderActions({
     forgetConnection,
     canForgetConnection,
   } = useConnections();
+  const activeStationName = useActiveStationName();
   const connectionButtonRef = useRef<HTMLButtonElement>(null);
   const [connectionMenuOpen, setConnectionMenuOpen] = useState(false);
   const activeConnectionId = activeConnection?.id;
@@ -334,7 +336,8 @@ export function HeaderActions({
   // Both are suppressed in `idle`: that state asserts there is no Station, so
   // naming one beside it contradicts the very sentence next to it.
   const isIdle = connState === 'idle';
-  const connIdentity = isIdle ? undefined : activeConnection?.name;
+  // #4402: the seeded "Default" connection reads as the machine's name.
+  const connIdentity = isIdle ? undefined : activeStationName;
   // This is the user's saved connection label, not verified server identity.
   const connDisplayLabel = connIdentity
     ? connIdentity

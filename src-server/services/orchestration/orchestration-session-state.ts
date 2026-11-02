@@ -30,6 +30,7 @@ import type {
   TurnProgressObservation,
 } from '@kontourai/station-contracts/orchestration';
 import type {
+  ApprovalMode,
   EngineId,
   ModelLaunchPlan,
   ModelSelectionReceipt,
@@ -39,6 +40,7 @@ import type {
 import {
   ENGINE_SESSION_BINDING_DEAD_CODE,
   ENGINE_TURN_FAILED_CODE,
+  isApprovalMode,
   MODEL_LAUNCH_PLAN_METADATA_KEY,
   MODEL_SELECTION_RECEIPT_METADATA_KEY,
 } from '@kontourai/station-contracts/provider';
@@ -66,6 +68,7 @@ import { receiptBus } from '../infra/receipt-bus.js';
 import type { RuntimeEngineStartLease } from '../infra/resource-posture.js';
 import { assertDispatchCwdUnmoved } from './dispatch-cwd-admission.js';
 import type { EventStore } from './event-store.js';
+import { isNoProjectChatScratch } from './no-project-chat-folder.js';
 import {
   projectRequestAnswerability,
   type SessionAnswerabilityObservation,
@@ -641,6 +644,7 @@ export function buildOrchestrationSessionSummary(options: {
   const selectionReceipt = extractModelSelectionReceipt(events);
   const modelLaunchPlan = extractModelLaunchPlan(events);
   const reportedModel = extractReportedModel(events);
+  const appliedApprovalMode = extractAppliedApprovalMode(events);
   const conversationIdentity = extractConversationIdentity(events);
   const displayTitle =
     (delegation?.title ? displayPromptTitle(delegation.title) : undefined) ??
@@ -724,9 +728,12 @@ export function buildOrchestrationSessionSummary(options: {
     ...(modelRoute ? { modelRoute } : {}),
     ...(base.model ? { model: base.model } : {}),
     ...(base.cwd ? { cwd: base.cwd } : {}),
-    ...(base.cwd && isManagedAcpWorkspace(base.cwd)
+    // #4389: a no-project chat's scratch folder is one Station made too.
+    ...(base.cwd &&
+    (isManagedAcpWorkspace(base.cwd) || isNoProjectChatScratch(base.cwd))
       ? { cwdManagedWorkspace: true as const }
       : {}),
+    ...(appliedApprovalMode ? { appliedApprovalMode } : {}),
     ...(resumeCursor !== undefined ? { resumeCursor } : {}),
     // A partial live projection cannot erase a persisted native cursor or its
     // persistence posture; explicit false still refuses a native continuation.
@@ -1075,6 +1082,28 @@ function extractEffectiveModelSelection(events: CanonicalRuntimeEvent[]): {
  * generation and must not be surfaced as if it confirms the current one. Stop
  * there and report absent rather than keep scanning into older history.
  */
+/**
+ * #4433: the approval mode the engine last reported applying, as the client
+ * folds it live (`session.configured` / `turn.started` metadata; an event
+ * without a mode changes nothing). Newest first over the projection, which
+ * keeps the latest of each.
+ */
+function extractAppliedApprovalMode(
+  events: readonly CanonicalRuntimeEvent[],
+): ApprovalMode | undefined {
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const event = events[index];
+    if (
+      event?.method !== 'session.configured' &&
+      event?.method !== 'turn.started'
+    )
+      continue;
+    const mode = event.metadata?.approvalMode;
+    if (isApprovalMode(mode)) return mode;
+  }
+  return undefined;
+}
+
 function extractReportedModel(
   events: CanonicalRuntimeEvent[],
 ): string | undefined {

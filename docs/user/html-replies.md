@@ -1,7 +1,7 @@
 # Visual replies
 
 An Agent can publish a chart, table, diagram, collage or mockup as an HTML page
-inside its chat. The built-in Station Agent already receives these tools. For
+inside its chat. The built-in **Station Assistant** Agent already receives these tools. For
 other Agents, configure the `station-control` attachment as described below. The shared registrations
 are available through Claude Code, Codex and capable ACP connections. A
 connection that cannot carry MCP servers reports that delivery limitation.
@@ -53,8 +53,9 @@ dies keeps its folder until the session is stopped or Station next restarts
 and sweeps it. Station's built-in agent runs inside Station and has no temporary folder of
 its own.
 
-A working folder is not read at all when it is or contains your home folder or
-Station's data (a chat with no Project uses the home folder), or when it is or
+A working folder is not read at all when it is or contains your home folder,
+overlaps Station's data (a chat with no Project works in a private folder
+inside Station's data, or in the home folder if you chose that), or when it is or
 contains a shared temporary directory such as the system temporary folder, is
 writable by every user, or when its path, as written and through any link it
 follows, passes a folder another user owns or that others can write to without
@@ -127,7 +128,7 @@ page in it. See the [security and deletion decision](https://github.com/kontoura
 
 ## Which Agents receive the tools
 
-The built-in **Station** Agent receives station-control's full catalog by
+The built-in **Station Assistant** Agent receives station-control's full catalog by
 default, including visual replies, when its selected engine supports that MCP
 passthrough. The runtime default Agent also receives the full catalog. Preview
 and render are bounded writes on Station's auto-approved tool list; the engine

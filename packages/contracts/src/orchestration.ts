@@ -1160,12 +1160,21 @@ export interface OrchestrationSessionSummary extends ProviderSession {
   /**
    * Present when `cwd` is a folder Station created for this chat rather than
    * one the user chose: an ACP engine started with no project or connection
-   * directory runs in `<stationHome>/runtime/acp-workspaces/session/<digest>`.
+   * directory runs in `<stationHome>/runtime/acp-workspaces/session/<digest>`,
+   * and (#4389) a chat with no Project in `<stationHome>/scratch/<id>`.
    * The server decides (`isManagedAcpWorkspace`), so clients name the folder
    * ("Chat workspace") instead of printing a hash path, and never match the
    * path themselves.
    */
   cwdManagedWorkspace?: true;
+  /**
+   * #4433: the approval mode this session's engine last reported applying
+   * (the newest `session.configured` or `turn.started` carrying
+   * `metadata.approvalMode`). Durable, so a client that reopens or resyncs
+   * a chat shows what the engine reported instead of falling back to the
+   * inherited default until the next report.
+   */
+  appliedApprovalMode?: ApprovalMode;
   isLoaded: boolean;
   isPersisted: boolean;
   eventCount: number;

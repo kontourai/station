@@ -34,6 +34,15 @@ const UUID_PATTERN =
  */
 export const STATION_AGENT_ID = 'station';
 
+/**
+ * #4388: what people see the built-in Agent called. Display only: its id
+ * stays `station`, and the Station engine keeps the name "Station".
+ */
+export const STATION_AGENT_DISPLAY_NAME = 'Station Assistant';
+
+/** #4388: the name homes created before the rename stored for it. */
+export const LEGACY_STATION_AGENT_NAME = 'Station';
+
 export function isStationAgentIdentity(slug?: string | null): boolean {
   return slug === STATION_AGENT_ID;
 }

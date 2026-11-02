@@ -111,6 +111,11 @@ could not read says it could not compare it. A folder that is not a git
 checkout, a detached HEAD, or a branch without a local upstream shows nothing.
 The two thresholds are in **Settings → General → Agent runs**.
 
+**Settings → General → Agent runs → Chats without a project** chooses where a
+new chat with no project runs: **Private folder** (the default, a folder of
+its own in Station's data) or **Home folder**. A chat that already ran keeps
+its folder.
+
 **Isolated GitHub repairs** (`isolated-github-repairs`) adds the personal operator
 repair API. Configured rules may spend provider credits in Docker; exact review
 and a separate single-use grant are required to publish a draft PR. It starts

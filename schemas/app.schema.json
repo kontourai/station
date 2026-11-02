@@ -107,6 +107,12 @@
       "description": "Workspace mode a new project chat starts in when the project does not name one. Default: shared",
       "default": "shared"
     },
+    "noProjectChatFolder": {
+      "type": "string",
+      "enum": ["private", "home"],
+      "description": "Folder a new chat with no project runs in: a private scratch folder under Station's data, or the home folder. Chats that already ran keep their folder. Default: private",
+      "default": "private"
+    },
     "gitRemote": {
       "type": "string",
       "description": "Git remote URL resolved on first build, used for update checks"

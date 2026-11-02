@@ -35,6 +35,8 @@ export type OrchestrationSnapshotPayload = {
      * status must not re-strand the UI in turn-active rendering.
      */
     hasActiveTurn?: boolean;
+    /** #4433: `OrchestrationSessionSummary.appliedApprovalMode`. */
+    appliedApprovalMode?: unknown;
     model?: string;
     effectiveModel?: string;
     /** Model identity independently reported by the runtime, when available. */

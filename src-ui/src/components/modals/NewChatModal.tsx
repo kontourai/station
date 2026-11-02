@@ -33,6 +33,7 @@ import React, {
 import type { AgentData } from '../../contexts/AgentsContext';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { useAuthorityPersistence } from '../../contexts/AuthorityPersistenceContext';
+import { useConfig } from '../../contexts/ConfigContext';
 import type { ProjectMetadata } from '../../contexts/ProjectsContext';
 import { useChatPaneFileDrop } from '../../hooks/useChatPaneFileDrop';
 import { useDevicePresentation } from '../../hooks/useDevicePresentation';
@@ -484,6 +485,7 @@ export function NewChatModal({
     defaultEffectiveModelForAgent,
     selectedContextResolved = true,
   } = selectionModel;
+  const noProjectChatFolder = useConfig()?.noProjectChatFolder ?? 'private';
   const {
     isGlobal,
     selectedProject,
@@ -646,6 +648,8 @@ export function NewChatModal({
     agent: showStart ? draftAgent : flatList[selectedAgentIndex],
     project: selectedProject,
     acpConnections,
+    // #4389: a No project chat's own folder on this Station.
+    noProjectChatFolder: isGlobal ? noProjectChatFolder : undefined,
   });
   const forkAgent = flatList[selectedAgentIndex];
   const forkConnection = agentConnections.find(

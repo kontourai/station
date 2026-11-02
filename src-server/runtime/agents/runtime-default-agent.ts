@@ -2,6 +2,7 @@ import {
   type AgentSpec,
   BUILTIN_STATION_AGENT_MCP_SERVER_IDS,
 } from '@kontourai/station-contracts/agent';
+import { STATION_AGENT_DISPLAY_NAME } from '@kontourai/station-contracts/agent-identity';
 import type { AppConfig } from '@kontourai/station-contracts/config';
 import {
   type BuiltinAgentEngineBinding,
@@ -249,7 +250,7 @@ export async function bootstrapRuntimeDefaultAgent(
     context.agentHooksMap?.delete('default');
     context.agentMetadataMap.set('default', {
       slug: 'default',
-      name: 'Station',
+      name: STATION_AGENT_DISPLAY_NAME,
       description: 'Default agent with full access to manage Station',
       updatedAt: new Date().toISOString(),
       tools: builtinTools,
@@ -366,7 +367,7 @@ export async function bootstrapRuntimeDefaultAgent(
   context.memoryAdapters.set('default', defaultMemoryAdapter);
   context.agentMetadataMap.set('default', {
     slug: 'default',
-    name: 'Station',
+    name: STATION_AGENT_DISPLAY_NAME,
     description: 'Default agent with full access to manage Station',
     updatedAt: new Date().toISOString(),
   });
