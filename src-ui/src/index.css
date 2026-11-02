@@ -2211,16 +2211,16 @@ button:hover {
    placement grab and the avatar step aside so the title keeps room; moving
    the region stays a row of the More menu. */
 .chat-dock__header.is-compact {
-  gap: var(--space-2);
-  padding-inline: var(--space-3);
+  gap: var(--k-space-1);
+  padding-inline: var(--k-space-2);
 }
 
 .chat-dock__header.is-compact .chat-dock__title {
-  gap: var(--space-2);
+  gap: var(--k-space-1);
 }
 
 .chat-dock__header.is-compact .chat-dock__header-actions {
-  gap: var(--space-1);
+  gap: var(--k-space-1);
 }
 
 .chat-dock__header.is-compact .chat-dock__header-actions .chat-dock__icon-btn {
