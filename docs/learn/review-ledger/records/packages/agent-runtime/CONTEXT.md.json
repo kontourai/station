@@ -5,9 +5,9 @@
 
   "state": "source-reviewed",
 
-  "summary": "Implementation and evidence ownership map for the private model runtime, including command/receipt fences, memory custody, same-host SQLite bodies and projections, retention, native codec/consumer guards, and the shared journal/ready completion relation.",
+  "summary": "Implementation and evidence ownership for private model and agent-turn journals, immutable bodies and validation cursors, approvals/affinity, native adapters and default-off Station recovery.",
 
-  "limits": "This maps source owners and specific primary test boundaries, not universal execution or Station adoption. The approved product source is 2f15ae2e04fae8c00958876263f4c43a53ad8882. Named affected-owner and one causal guard receipts retain their original source and environment; stable/default30s completion is NOT_VERIFIED and original293 partial mutation caveat remains. No full #3573/#3558, hosted/live-provider/native-device, durable tool/approval/affinity, packed-release/publication, physical BLOB/audit GC or bounded raw disk claim.",
+  "limits": "This maps source owners and named local test boundaries, not universal execution or epic completion. Historical model-only evidence keeps its source and environment. Native adapter and Station host tests use scripted transports. Live providers, physical OS crashes, browser/device restart, package publication, independent Tier2 adoption and bounded raw disk reclamation remain unverified.",
 
   "sources": [
     "packages/agent-runtime/README.md",
@@ -122,7 +122,39 @@
 
     "package.json#/scripts/build:agent-runtime",
 
-    "package.json#/scripts/agent-runtime-import-boundary:gate"
+    "package.json#/scripts/agent-runtime-import-boundary:gate",
+
+    "packages/agent-runtime/src/turn-journal.ts",
+
+    "packages/agent-runtime/src/turn-runtime.ts",
+
+    "packages/agent-runtime/src/turn-model.ts",
+
+    "packages/agent-runtime/src/turn-approvals.ts",
+
+    "packages/agent-runtime/src/turn-projection.ts",
+
+    "packages/agent-runtime/src/turn-bodies.ts",
+
+    "packages/agent-runtime/src/turn-changes.ts",
+
+    "packages/agent-runtime/src/turn-validation.ts",
+
+    "packages/agent-runtime/src/turn-partials.ts",
+
+    "packages/agent-runtime/src/internal.ts",
+
+    "packages/agent-runtime/src/__tests__/turn-validation.test.ts",
+
+    "packages/agent-runtime/src/__tests__/turn-wire.test.ts",
+
+    "packages/agent-runtime/src/turn-statements.ts",
+
+    "src-server/runtime/streaming/handlers/ReasoningHandler.ts",
+
+    "src-server/runtime/streaming/__tests__/ReasoningHandler.test.ts",
+
+    "scripts/benchmark-agent-runtime.mts"
   ],
 
   "checks": []

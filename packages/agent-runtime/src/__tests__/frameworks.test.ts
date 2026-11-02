@@ -193,7 +193,7 @@ for (const framework of ['voltagent', 'strands-vercel'] as const) {
 }
 
 for (const framework of ['voltagent', 'strands-vercel'] as const) {
-  it(`${framework} restores A after ambient B, retains aborted audit and seeds a subsequent native prompt from ready completion`, async () => {
+  it(`${framework} refuses an uncertain dispatch after takeover and seeds a subsequent prompt from an independently completed turn`, async () => {
     const { fixture, owner, nextOwner, parts } = await import('./fixture.js');
     const { drainModelOutbox } = await import('../index.js');
     const { openSqliteRuntimeProjection } = await import('../sqlite.js');
@@ -370,14 +370,12 @@ for (const framework of ['voltagent', 'strands-vercel'] as const) {
       owner: nextOwner,
       admission: admitted,
     });
-    expect(await consume(restoredRuntime, restored, 'COMPOSED-A')).toBe(
-      'COMPLETED',
-    );
-    await restoredRuntime.bind(restored).finish('completed');
+    await expect(
+      consume(restoredRuntime, restored, 'COMPOSED-A'),
+    ).rejects.toThrow('DURABLE_MODEL_INDETERMINATE');
     expect(captures).toBe(1);
     expect(ambient).toBe('COMPOSED-B');
-    expect(calls).toHaveLength(2);
-    expect(calls[1]?.prompt).toEqual(calls[0]?.prompt);
+    expect(calls).toHaveLength(1);
     const sink = openSqliteRuntimeProjection({
       database: f.database,
       bodies: f.bodies,
@@ -390,7 +388,35 @@ for (const framework of ['voltagent', 'strands-vercel'] as const) {
     expect(audit.some((p) => p.kind === 'aborted' && p.attempt === 1)).toBe(
       true,
     );
-    const ready = await sink.readModelContext(runKey);
+    expect(await sink.readModelContext(runKey)).toEqual({
+      kind: 'unavailable',
+    });
+    const completedKey = {
+      ...runKey,
+      conversationId: 'independent',
+      invocationId: 'independent',
+    };
+    const completeRuntime = createModelRuntime({
+      storage,
+      bodies: f.bodies,
+      admission: host,
+      liveness: () => 'live',
+    });
+    ambient = 'COMPOSED-A';
+    const completedEntry = await completeRuntime.start({
+      key: completedKey,
+      owner: { ...nextOwner, id: 'completion-owner' },
+      admission: admitted,
+      capture,
+    });
+    expect(await consume(completeRuntime, completedEntry, 'COMPOSED-A')).toBe(
+      'COMPLETED',
+    );
+    await completeRuntime.bind(completedEntry).finish('completed');
+    await drainModelOutbox(storage, sink, completedKey, {
+      liveness: () => 'live',
+    });
+    const ready = await sink.readModelContext(completedKey);
     expect(ready.kind).toBe('ready');
     if (ready.kind !== 'ready') throw new Error('ready continuation required');
     const completedText = (
@@ -405,7 +431,7 @@ for (const framework of ['voltagent', 'strands-vercel'] as const) {
       )
     ).join('');
     expect(completedText).toBe('COMPLETED');
-    const nextKey = { ...runKey, invocationId: 'subsequent' };
+    const nextKey = { ...completedKey, invocationId: 'subsequent' };
     const nextRuntime = createModelRuntime({
       storage,
       bodies: f.bodies,

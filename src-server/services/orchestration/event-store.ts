@@ -7265,6 +7265,31 @@ export class EventStore {
     return this.writeInBackground(threadId, () => this.deleteThread(threadId));
   }
 
+  /** A retry-capable publisher must leave the loop free for locked room-worker authorization. */
+  withImmediateWriteAttempt(publish: () => boolean): boolean {
+    this.assertNoOuterTransactionForPublication();
+    const { timeout } = this.db.prepare('PRAGMA busy_timeout').get() as {
+      timeout: number;
+    };
+    try {
+      this.db.exec('PRAGMA busy_timeout = 0');
+      return publish();
+    } finally {
+      this.db.exec(`PRAGMA busy_timeout = ${timeout}`);
+    }
+  }
+
+  async waitForPublicationWrite(
+    threadId: string,
+    signal: AbortSignal,
+  ): Promise<void> {
+    await this.writeInBackground(threadId, () => {
+      signal.throwIfAborted();
+      this.db.exec('BEGIN IMMEDIATE');
+      this.db.exec('ROLLBACK');
+    });
+  }
+
   private async writeInBackground<T>(
     threadId: string | symbol,
     write: () => T,

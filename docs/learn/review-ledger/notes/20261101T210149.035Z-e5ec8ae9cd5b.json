@@ -1,0 +1,7 @@
+{
+  "revision": "38f1c768d9c1430b7e75600890569d13abe06d0c",
+
+  "notes": [
+    {"path":"docs/design/mcp-ui-host.md","note":"Reviewed the repaired default-agent fixture against the MCP host boundary: it now supplies the IAgent method surface and checks factory-instance retention. Existing credential-free docs integration and unattended tool-denial assertions remain intact; no MCP App authority, rendering policy or tool availability claim changed.","inputs":["docs/design/mcp-ui-host.md","src-server/runtime/agents/__tests__/runtime-default-agent.test.ts"]}
+  ]
+}
