@@ -8,6 +8,8 @@ Station-wide Feature Previews, **off by default**. Enable them in
 selectors with the shared downloader/recognizer; see [Walkthrough imports](../guides/walkthroughs.md)
 and [local speech](../guides/local-speech.md) for gating, costs and recovery.
 Publication and unsynthesized human-speech accuracy remain unverified.
+Later Device Task clips extend the source identity and use the shared recorder;
+see the [current guide](../guides/walkthroughs.md#record-a-task-clip).
 
 ## Thesis
 
