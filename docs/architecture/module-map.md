@@ -5221,7 +5221,11 @@ separate input/lease requests. It rechecks stream authorization; a transient
 busy authorizer is distinct from denial and retains a prior allow only within
 a bounded grace. `useLiveSurface.ts` suspends hidden viewers, reconnects, and
 coalesces input through one in-flight POST. `LiveSurfaceCanvas.tsx` is used by
-the Browser pane, Device pane and float-over-chat. Shown-source tracking avoids
+the Browser pane, Device pane and float-over-chat. When the origin, surface ID
+or Project context changes, the viewer discards queued input and ignores
+responses from the previous target. This does not yet bind the queue to a
+credential generation.
+Shown-source tracking avoids
 duplicating the same pane in its floater, but there is no single multiplexed
 frame transport across all visible viewers. The input-slot requirement in
 [ADR 0018](../adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md)
