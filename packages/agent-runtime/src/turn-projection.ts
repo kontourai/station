@@ -176,7 +176,7 @@ function putBlock(
       1 +
       frames.length <=
       128;
-  if (append) {
+  if (previous && append) {
     const prior = parseBlock(previous);
     if (
       [...prior, ...frames].reduce(
