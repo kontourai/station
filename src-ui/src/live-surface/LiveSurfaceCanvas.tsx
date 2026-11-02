@@ -312,23 +312,34 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
     count: number;
   } | null>(null);
 
+  /**
+   * Size the canvas for `header` and adopt it as the frame input maps to.
+   * Every received frame does this, whether or not its picture decodes
+   * here, so input and overlays follow the stream's geometry.
+   */
+  const adoptFrame = useCallback((header: LiveSurfaceFrameHeader) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return null;
+    // A rotated frame is drawn turned, so the canvas has the SHOWN size
+    // and input maps in the shown frame's pixels (see `toSurface`).
+    const shown = shownSize(header);
+    if (canvas.width !== shown.width) canvas.width = shown.width;
+    if (canvas.height !== shown.height) canvas.height = shown.height;
+    headerRef.current = header;
+    setFrameRotation(header.rotation ?? 0);
+    setFrameSize((previous) =>
+      previous?.width === shown.width && previous.height === shown.height
+        ? previous
+        : shown,
+    );
+    return canvas;
+  }, []);
+
   /** Size the canvas for `header` and draw `picture` into it, turned. */
   const paint = useCallback(
     (picture: CanvasImageSource, header: LiveSurfaceFrameHeader) => {
-      const canvas = canvasRef.current;
+      const canvas = adoptFrame(header);
       if (!canvas) return;
-      // A rotated frame is drawn turned, so the canvas has the SHOWN size
-      // and input maps in the shown frame's pixels (see `toSurface`).
-      const shown = shownSize(header);
-      if (canvas.width !== shown.width) canvas.width = shown.width;
-      if (canvas.height !== shown.height) canvas.height = shown.height;
-      headerRef.current = header;
-      setFrameRotation(header.rotation ?? 0);
-      setFrameSize((previous) =>
-        previous?.width === shown.width && previous.height === shown.height
-          ? previous
-          : shown,
-      );
       const context = canvas.getContext('2d');
       if (!context) return;
       // An H.264 picture is decoded at the device's size and drawn at the
@@ -353,7 +364,7 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
       context.drawImage(picture, 0, 0, header.width, header.height);
       context.restore();
     },
-    [],
+    [adoptFrame],
   );
 
   const draw = useCallback(
@@ -368,6 +379,7 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
       let current: LiveSurfaceFrame | null = frame;
       while (current) {
         const { header, body } = current;
+        adoptFrame(header);
         if (canvasRef.current && typeof createImageBitmap === 'function') {
           try {
             const bitmap = await createImageBitmap(
@@ -384,7 +396,7 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
       }
       decodingRef.current = false;
     },
-    [paint],
+    [adoptFrame, paint],
   );
 
   // H.264 (#4418): asked for only where WebCodecs can decode it. Every

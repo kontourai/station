@@ -421,6 +421,35 @@ describe('LiveSurfaceCanvas', () => {
     expect(drawImage).toHaveBeenCalledTimes(1);
   });
 
+  test('a frame whose picture cannot be decoded here still sets the frame geometry', async () => {
+    // Overlays (the Device accessibility outline) and input wait on the
+    // frame size, which must not hang on this browser decoding the picture.
+    for (const decode of [
+      undefined,
+      vi.fn(async () => Promise.reject(new Error('no'))),
+    ]) {
+      vi.stubGlobal('createImageBitmap', decode);
+      const h = harness();
+      const view = render(
+        <LiveSurfaceCanvas
+          apiBase={API}
+          surfaceId={SURFACE}
+          label="Browser: example.com"
+          transport={h.transport as never}
+        />,
+      );
+      await flush();
+      await h.streams.at(-1)!.push(stateRecord(lease(0)));
+      await h.streams.at(-1)!.push(frameRecord(1, 0));
+      const canvas = screen.getByTestId(
+        'live-surface-canvas',
+      ) as HTMLCanvasElement;
+      expect([canvas.width, canvas.height]).toEqual([1280, 800]);
+      expect(drawImage).not.toHaveBeenCalled();
+      view.unmount();
+    }
+  });
+
   test('a click maps through letterboxing and the frame DPR, and is forwarded as input', async () => {
     const h = harness();
     await renderLive(h);
