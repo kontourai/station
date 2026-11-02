@@ -489,9 +489,13 @@ try {
     floodWindowMs,
   );
   results.flood.lines = 5_000_000;
+  // What the terminal shows at the window's end and when the wait stops:
+  // the typed command and how far the count got.
+  await page.screenshot({ path: join(out, 'flood-window-end.png') });
   while (floodEndedMs === null && Date.now() - floodStart < 300_000)
     await page.waitForTimeout(100);
   clearInterval(watch);
+  await page.screenshot({ path: join(out, 'flood-end.png') });
   results.flood.floodSeconds =
     floodEndedMs === null ? null : floodEndedMs / 1000;
   results.flood.outlastedWindow =
