@@ -149,6 +149,12 @@
   color: var(--k-text-muted);
 }
 
+.skill-library__list-actions {
+  display: flex;
+  gap: var(--k-space-2);
+  padding: 0 var(--k-space-3) var(--k-space-2);
+}
+
 .skill-library__welcome {
   display: grid;
   gap: var(--k-space-4);

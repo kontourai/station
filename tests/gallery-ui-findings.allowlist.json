@@ -245,9 +245,7 @@
       "axe:label-content-name-mismatch:button.split-pane__item[design-probe]",
       "axe:label-content-name-mismatch:button.split-pane__item[eval-rebuild]",
       "axe:label-content-name-mismatch:button.split-pane__item[github-cli]",
-      "axe:label-content-name-mismatch:button.split-pane__item[search-first]",
-      "hit-target:overlap:button.split-pane__item[continue-work] / button.split-pane__add-btn[Commands only]",
-      "hit-target:overlap:button.split-pane__item[deliver] / button.split-pane__add-btn[Commands only]"
+      "axe:label-content-name-mismatch:button.split-pane__item[search-first]"
     ],
     "station-switcher-dark-mobile": [
       "hit-target:small:input.attachment-input[type=file]"

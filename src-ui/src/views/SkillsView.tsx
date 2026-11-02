@@ -503,34 +503,6 @@ export function SkillsView({
             ? 'Open a skill and turn on "Runnable as a slash command" to give it a /command.'
             : 'Create a workspace skill here, or browse Registry to discover skills to install.'
         }
-        sidebarActions={
-          <>
-            <button
-              type="button"
-              className="split-pane__add-btn split-pane__add-btn--secondary"
-              aria-pressed={filter === 'commands'}
-              onClick={() =>
-                navigate(basePath, {
-                  tab: 'skills',
-                  filter: filter === 'commands' ? null : 'commands',
-                })
-              }
-            >
-              Commands only
-            </button>
-            <button
-              type="button"
-              className="split-pane__add-btn split-pane__add-btn--secondary"
-              onClick={() => {
-                setImportResults(null);
-                setShowImportModal(true);
-              }}
-              disabled={importSkillsMutation.isPending}
-            >
-              {importSkillsMutation.isPending ? 'Importing…' : 'Import .md'}
-            </button>
-          </>
-        }
         headerActions={
           <Button
             variant="secondary"
@@ -542,9 +514,40 @@ export function SkillsView({
         }
         emptyIcon={<EngineGlyph />}
         listIntro={
-          <p className="skill-library__intro">
-            Select a skill to see what it does and use it in a new chat.
-          </p>
+          <>
+            <p className="skill-library__intro">
+              Select a skill to see what it does and use it in a new chat.
+            </p>
+            {/* List chrome sits above the rows, not in a footer: a footer over
+                a scrolling list shares its place with the rows a scroll
+                reaches. */}
+            <div className="skill-library__list-actions">
+              <button
+                type="button"
+                className="split-pane__add-btn split-pane__add-btn--secondary"
+                aria-pressed={filter === 'commands'}
+                onClick={() =>
+                  navigate(basePath, {
+                    tab: 'skills',
+                    filter: filter === 'commands' ? null : 'commands',
+                  })
+                }
+              >
+                Commands only
+              </button>
+              <button
+                type="button"
+                className="split-pane__add-btn split-pane__add-btn--secondary"
+                onClick={() => {
+                  setImportResults(null);
+                  setShowImportModal(true);
+                }}
+                disabled={importSkillsMutation.isPending}
+              >
+                {importSkillsMutation.isPending ? 'Importing…' : 'Import .md'}
+              </button>
+            </div>
+          </>
         }
         emptyContent={
           <div className="skill-library__welcome">
