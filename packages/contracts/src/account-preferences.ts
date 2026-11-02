@@ -27,8 +27,14 @@ export type InteractiveApprovalDefaults = Partial<
 >;
 
 export type AccountPreferences = Partial<
-  Pick<DeviceSettings, Exclude<PortableSettingKey, 'colorTheme'>>
+  Pick<DeviceSettings, Exclude<PortableSettingKey, 'colorTheme' | 'theme'>>
 > & {
+  /**
+   * Only an explicit light or dark choice is stored. `system` (the default)
+   * is the absence of one, so a server that knows only light and dark never
+   * sees a value it would refuse (#4407).
+   */
+  theme?: 'light' | 'dark';
   /**
    * Stored as a parsed id rather than today's family list: a client newer
    * than the server may name a family this server does not know, and the UI

@@ -20,20 +20,27 @@ import {
   handleToolStartedEvent,
 } from '../hooks/orchestration/streamHandlers';
 import { handleTurnCompletedEvent } from '../hooks/orchestration/turnHandlers';
+import type { OrchestrationEvent } from '../hooks/orchestration/types';
+
+type OrchestrationEventOf<Method extends OrchestrationEvent['method']> =
+  Extract<OrchestrationEvent, { method: Method }>;
 
 const THREAD_ID = 'open-tool-calls-thread';
 const TURN_ID = 'turn-open-tools';
 
 function startTool(toolCallId: string) {
-  handleToolStartedEvent({
+  const event: OrchestrationEventOf<'tool.started'> = {
+    provider: 'codex',
     threadId: THREAD_ID,
     method: 'tool.started',
     turnId: TURN_ID,
+    itemId: `item-${toolCallId}`,
     toolCallId,
     toolName: 'exec',
     arguments: { command: 'pwsh.exe -NoProfile' },
     createdAt: '2026-10-31T12:00:00.000Z',
-  } as any);
+  };
+  handleToolStartedEvent(event);
 }
 
 describe('finalizeAssistantTurn settles open tool calls (#4400)', () => {
@@ -56,33 +63,37 @@ describe('finalizeAssistantTurn settles open tool calls (#4400)', () => {
   test('a call with no terminal event no longer reads as running after the turn completes', () => {
     startTool('call-finished');
     startTool('call-orphaned');
-    handleToolCompletedEvent({
+    const failed: OrchestrationEventOf<'tool.completed'> = {
+      provider: 'codex',
       threadId: THREAD_ID,
       method: 'tool.completed',
       turnId: TURN_ID,
+      itemId: 'item-call-finished',
       toolCallId: 'call-finished',
       toolName: 'exec',
+      status: 'error',
       error: 'Failed to create unified exec process',
       createdAt: '2026-10-31T12:00:01.000Z',
-    } as any);
+    };
+    handleToolCompletedEvent(failed);
     const live = activeChatsStore.getSnapshot()[THREAD_ID].streamingMessage;
-    expect(
-      live?.contentParts?.map((part) => toolCallPhase(part as any)),
-    ).toEqual(['failed', 'running']);
+    expect(live?.contentParts?.map((part) => toolCallPhase(part))).toEqual([
+      'failed',
+      'running',
+    ]);
 
-    handleTurnCompletedEvent('http://localhost', {
+    const completed: OrchestrationEventOf<'turn.completed'> = {
+      provider: 'codex',
       threadId: THREAD_ID,
       method: 'turn.completed',
-      provider: 'codex',
       turnId: TURN_ID,
       createdAt: '2026-10-31T12:00:02.000Z',
-    } as any);
+    };
+    handleTurnCompletedEvent('http://localhost', completed);
 
     const chat = activeChatsStore.getSnapshot()[THREAD_ID];
     const answer = chat.messages?.find((m) => m.role === 'assistant');
-    const phases = answer?.contentParts?.map((part) =>
-      toolCallPhase(part as any),
-    );
+    const phases = answer?.contentParts?.map((part) => toolCallPhase(part));
     expect(phases).toEqual(['failed', 'unresolved']);
     expect(answer?.contentParts?.[1]).toMatchObject({
       toolCallId: 'call-orphaned',

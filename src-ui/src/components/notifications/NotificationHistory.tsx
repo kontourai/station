@@ -39,6 +39,7 @@ import {
 } from './snooze';
 import './NotificationHistory.css';
 import { createPortal } from 'react-dom';
+import { useIsMobile } from '../../hooks/useIsMobile';
 import { useMenuFocus } from '../../hooks/useMenuFocus';
 import { openApprovalConversation } from '../../lib/openApprovalConversation';
 
@@ -167,6 +168,9 @@ export function NotificationHistory({
   const tab: InboxTab =
     chosenTab ?? (attentionItems.length > 0 ? 'attention' : 'activity');
 
+  // #4404 (A43): a phone gets a bottom sheet over a dimmed page, exposed as
+  // a dialog, instead of a cramped popover over the page's own controls.
+  const isSheet = useIsMobile();
   useClickOutside(isOpen, dropdownRef, onClose);
   // Portalled to the document, so the popover is no longer next to its trigger
   // in tab order; move focus in on open and hand it back on close.
@@ -376,72 +380,88 @@ export function NotificationHistory({
   // z-index 200, so this popover's z-index could never lift it above the fixed
   // coding tabs and dock while it rendered inside.
   return createPortal(
-    <div ref={dropdownRef} className="notification-history" tabIndex={-1}>
-      <div className="notification-history__header">
-        <h2
-          id="notification-history-title"
-          className="notification-history__title"
-        >
-          Notifications
-        </h2>
-        <div className="notification-history__header-actions">
-          <button
-            type="button"
-            className="notification-history__link"
-            onClick={viewAll}
+    <>
+      {isSheet ? (
+        <div
+          className="notification-history-backdrop"
+          aria-hidden="true"
+          data-testid="notification-history-backdrop"
+        />
+      ) : null}
+      <div
+        ref={dropdownRef}
+        className={`notification-history${isSheet ? ' notification-history--sheet' : ''}`}
+        tabIndex={-1}
+        {...(isSheet
+          ? { role: 'dialog', 'aria-labelledby': 'notification-history-title' }
+          : {})}
+      >
+        <div className="notification-history__header">
+          <h2
+            id="notification-history-title"
+            className="notification-history__title"
           >
-            View all notifications
-          </button>
-        </div>
-      </div>
-      {itemCount === 0 ? (
-        <div className="notification-history__content">
-          {listsLoading ? (
-            <SkeletonList count={3} label="Loading notifications" />
-          ) : listsError ? (
-            <ErrorState
-              variant="compact"
-              title="Unable to load notifications"
-              description={describeReadFailure(listsError)}
-              action={
-                <Button
-                  size="sm"
-                  onClick={() => {
-                    void refetchNotifications();
-                    void refetchAttention();
-                  }}
-                >
-                  Retry
-                </Button>
-              }
-            />
-          ) : (
-            /* empty-state action: notifications require no user setup */
-            <Empty
-              variant="compact"
-              label="All caught up"
-              description="Approvals, failures, and finished work show up here."
-            />
-          )}
-        </div>
-      ) : (
-        <>
-          <InboxTabs
-            tab={tab}
-            onChange={setChosenTab}
-            attentionBadge={attentionCount}
-          />
-          <div
-            className="notification-history__content"
-            role="tabpanel"
-            id={`notification-history-panel-${tab}`}
-            aria-labelledby={`notification-history-tab-${tab}`}
-          >
-            {tab === 'attention' ? attentionPanel : activityPanel}
+            Notifications
+          </h2>
+          <div className="notification-history__header-actions">
+            <button
+              type="button"
+              className="notification-history__link"
+              onClick={viewAll}
+            >
+              View all notifications
+            </button>
           </div>
-        </>
-      )}
-    </div>,
+        </div>
+        {itemCount === 0 ? (
+          <div className="notification-history__content">
+            {listsLoading ? (
+              <SkeletonList count={3} label="Loading notifications" />
+            ) : listsError ? (
+              <ErrorState
+                variant="compact"
+                title="Unable to load notifications"
+                description={describeReadFailure(listsError)}
+                action={
+                  <Button
+                    size="sm"
+                    onClick={() => {
+                      void refetchNotifications();
+                      void refetchAttention();
+                    }}
+                  >
+                    Retry
+                  </Button>
+                }
+              />
+            ) : (
+              /* empty-state action: notifications require no user setup */
+              <Empty
+                variant="compact"
+                label="All caught up"
+                description="Approvals, failures, and finished work show up here."
+              />
+            )}
+          </div>
+        ) : (
+          <>
+            <InboxTabs
+              tab={tab}
+              onChange={setChosenTab}
+              attentionBadge={attentionCount}
+            />
+            <div
+              className="notification-history__content"
+              role="tabpanel"
+              id={`notification-history-panel-${tab}`}
+              aria-labelledby={`notification-history-tab-${tab}`}
+            >
+              {tab === 'attention' ? attentionPanel : activityPanel}
+            </div>
+          </>
+        )}
+      </div>
+    </>,
     document.body,
   );
 }

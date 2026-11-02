@@ -10,7 +10,7 @@
   border-radius: 50%;
   background: transparent;
   color: var(--k-text-muted);
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
   font-variant-numeric: tabular-nums;
 }
 .context-meter__ring {
@@ -33,7 +33,7 @@
 }
 .context-meter__value {
   position: relative;
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
 }
 .context-meter:focus-visible {
   outline: 2px solid var(--k-focus);

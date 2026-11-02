@@ -88,7 +88,7 @@
 }
 
 .input-request-card__heading {
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
   color: var(--k-text-muted);
 }
 .input-request-card__heading strong {
@@ -97,19 +97,19 @@
 }
 .input-request-card__hint {
   color: var(--k-text-muted);
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
   padding-bottom: var(--k-space-2);
 }
 .input-request-card__option strong {
   font-weight: 500;
 }
 .input-request-card__option span span {
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
   line-height: 1.4;
 }
 .input-request-card__draft {
   margin-right: auto;
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
 }
 .input-request-card__actions {
   justify-content: flex-end;
@@ -135,7 +135,7 @@
 .input-request-card__description,
 .input-request-card__required {
   color: var(--k-text-muted);
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
   line-height: 1.4;
 }
 .input-request-card__fields,
@@ -181,7 +181,7 @@
 }
 .input-request-card__field-error {
   color: var(--error-text);
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
   line-height: 1.4;
 }
 .input-request-card :is(input, textarea)[aria-invalid="true"] {
@@ -208,7 +208,7 @@
   padding: var(--k-space-2) var(--k-space-3);
   border-left: 2px solid var(--k-line-strong);
   color: var(--k-text-muted);
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
   line-height: 1.4;
 }
 .input-request-record__asker {
@@ -234,7 +234,7 @@
   max-width: 100%;
   margin-bottom: var(--k-space-1);
   color: var(--k-text-muted);
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
   font-weight: 500;
   letter-spacing: 0.02em;
   overflow-wrap: anywhere;

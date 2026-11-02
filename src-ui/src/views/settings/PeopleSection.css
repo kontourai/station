@@ -79,7 +79,7 @@
 .people__principal {
   color: var(--k-text-faint);
   font-family: var(--k-font-mono);
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
   word-break: break-all;
 }
 
@@ -115,7 +115,7 @@
 .people__sub-title {
   margin: 0;
   color: var(--k-text-muted);
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
   font-weight: 600;
   letter-spacing: var(--k-tracking-wide);
   text-transform: uppercase;
@@ -161,7 +161,7 @@
 .people__meta {
   margin: 0;
   color: var(--k-text-muted);
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
   word-break: break-word;
 }
 
@@ -171,7 +171,7 @@
   border: var(--k-border-thin) solid var(--k-caution);
   border-radius: var(--k-radius-sm);
   color: var(--k-text);
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
   white-space: nowrap;
 }
 
@@ -242,7 +242,7 @@
 
 .people__field-label {
   color: var(--k-text);
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
   font-weight: 600;
   padding: 0;
 }
@@ -382,7 +382,7 @@
   margin: 0;
   padding: 0 var(--k-space-1);
   color: var(--k-text-muted);
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
 }
 
 .button.people__compact[aria-disabled="true"] {

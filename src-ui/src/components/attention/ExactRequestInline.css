@@ -33,7 +33,7 @@
 .notification-history .exact-request__actions .button {
   min-height: var(--touch-target-min, 32px);
   padding: 0 var(--k-space-3);
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
 }
 
 .exact-request__toggle,
@@ -47,7 +47,7 @@
   color: var(--k-action);
   cursor: pointer;
   font: inherit;
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
   font-weight: 600;
   text-decoration: none;
 }
@@ -62,7 +62,7 @@
   border: 1px solid var(--k-line);
   border-radius: var(--k-radius-sm);
   background: var(--k-bg);
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
   overflow-wrap: anywhere;
 }
 
@@ -75,7 +75,7 @@
 .exact-request__note {
   margin: 0;
   color: var(--k-text-muted);
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
 }
 
 .exact-request__meta {

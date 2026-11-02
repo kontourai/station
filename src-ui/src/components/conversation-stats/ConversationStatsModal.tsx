@@ -70,7 +70,7 @@ function SectionCard({
       </div>
       <div
         style={{
-          fontSize: '10px',
+          fontSize: 'var(--k-text-sm)',
           color: 'var(--text-muted)',
           marginBottom: '8px',
         }}
@@ -252,7 +252,7 @@ export function ConversationStatsModal({
               </div>
               <div
                 style={{
-                  fontSize: '11px',
+                  fontSize: 'var(--k-text-sm)',
                   color: 'var(--text-muted)',
                   marginBottom: '8px',
                 }}
@@ -295,7 +295,7 @@ export function ConversationStatsModal({
               {getContextBreakdownEntries(stats).length > 0 && (
                 <div
                   style={{
-                    fontSize: '11px',
+                    fontSize: 'var(--k-text-sm)',
                     paddingTop: '8px',
                     borderTop: '1px solid var(--border-primary)',
                   }}
@@ -461,7 +461,7 @@ export function ConversationStatsModal({
             <div
               style={{
                 marginBottom: '16px',
-                fontSize: '11px',
+                fontSize: 'var(--k-text-sm)',
                 lineHeight: 1.5,
                 color: 'var(--text-muted)',
               }}
@@ -497,7 +497,7 @@ export function ConversationStatsModal({
                         style={{
                           fontWeight: 600,
                           marginBottom: '6px',
-                          fontSize: '11px',
+                          fontSize: 'var(--k-text-sm)',
                           opacity: 0.8,
                         }}
                       >
@@ -513,7 +513,7 @@ export function ConversationStatsModal({
                         <div>
                           <div
                             style={{
-                              fontSize: '10px',
+                              fontSize: 'var(--k-text-sm)',
                               color: 'var(--text-muted)',
                               marginBottom: '2px',
                             }}
@@ -533,7 +533,7 @@ export function ConversationStatsModal({
                         <div>
                           <div
                             style={{
-                              fontSize: '10px',
+                              fontSize: 'var(--k-text-sm)',
                               color: 'var(--text-muted)',
                               marginBottom: '2px',
                             }}
