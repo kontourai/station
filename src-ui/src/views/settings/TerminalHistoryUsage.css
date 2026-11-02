@@ -5,6 +5,14 @@
   flex-direction: column;
   align-items: flex-start;
   gap: var(--k-space-2);
+  min-width: 0;
+  max-width: 100%;
+}
+
+/* The history directory is a long host path; it wraps at narrow widths. */
+.terminal-history__summary {
+  max-width: 100%;
+  overflow-wrap: anywhere;
 }
 
 .terminal-history__table {

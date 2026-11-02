@@ -53,7 +53,7 @@ export function TerminalHistoryUsage() {
     const data = usage.data;
     body = (
       <>
-        <p className="settings__field-hint">
+        <p className="settings__field-hint terminal-history__summary">
           {size(data.bytes)} for {data.terminals} terminal
           {data.terminals === 1 ? '' : 's'} in {data.directory}
         </p>
@@ -102,7 +102,7 @@ export function TerminalHistoryUsage() {
           </p>
         )}
         <Button
-          variant="danger"
+          variant="danger-outline"
           disabled={data.terminals === 0}
           onClick={() => setConfirming(null)}
         >
