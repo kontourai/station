@@ -667,7 +667,7 @@ export const APP_SETTINGS_REGISTRY = [
     // start (`no-project-chat-folder.ts`); a chat that already ran keeps its
     // folder.
     description:
-      'Private folder gives each new chat its own folder in Station’s data. Existing chats keep their folder.',
+      'Private folder gives each new chat its own folder in Station’s data. Existing chats keep their folder. A sandboxed Codex chat never runs in the home folder.',
     defaultValue: 'private',
   }),
   defineSetting({

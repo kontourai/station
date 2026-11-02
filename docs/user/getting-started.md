@@ -493,12 +493,14 @@ show what **Start** will use:
   checks it. A project with no folder
   can be chosen too. Its chats run in your home folder, or, for an ACP
   engine, in that engine's own Working Directory or else a private folder
-  Station makes for the chat; the chip and list say which.
+  Station makes for the chat; the chip and list say which. A Codex chat in
+  Codex's sandbox never runs in your home folder: it gets a private folder.
 - A chat **Without a project** runs in a private folder Station makes for
   that chat inside its own data folder, not in your home folder. To run such
   chats in your home folder instead, set **Settings › Agent runs › Chats
-  without a project** to **Home folder**. The setting applies to new chats;
-  a chat that already ran keeps its folder.
+  without a project** to **Home folder** (a sandboxed Codex chat still gets
+  a private folder). The setting applies to new chats; a chat that already
+  ran keeps its folder.
 - **⋯** holds **Use a visual skill** while the **Visual skills** Feature
   Preview is on; with it off there is no **⋯**.
 

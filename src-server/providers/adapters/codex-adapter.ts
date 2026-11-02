@@ -50,12 +50,14 @@ import {
 } from '../../security/confinement/confinement-provider.js';
 import type { engineProxyLaunch } from '../../services/connections/engine-proxy-routing.js';
 import { engineSpawnTmpDirPath } from '../../services/infra/engine-spawn-tmpdir.js';
+import { prepareManagedEngineWorkspace } from '../../services/infra/managed-engine-workspace.js';
 import {
   commitEngineLaunch,
   engineSessionTmpDir,
 } from '../../services/infra/session-tmpdir.js';
 import { WORKLOAD_SESSION_ENV } from '../../services/infra/workload-budget.js';
 import type { NativeSessionOwnership } from '../../services/orchestration/native-session-ownership.js';
+import { isStationChatFolder } from '../../services/orchestration/no-project-chat-folder.js';
 import { SESSION_CONFINEMENT_ROOT_METADATA_KEY } from '../../services/orchestration/session-project-identity.js';
 import type { EngineMcpOAuthResolver } from '../../services/plugins/engine-mcp-oauth.js';
 import {
@@ -292,6 +294,8 @@ interface CodexAdapterOptions {
   logger?: CodexAdapterLogger;
   /** Test-only override; production reads are always bounded to five seconds. */
   quotaTimeoutMs?: number;
+  /** Station home for private workspaces of otherwise-unbound sessions. */
+  managedWorkspaceHomeDir?: string;
   /** Test-only cache controls; production cache is 30 seconds and 64 entries. */
   quotaCacheTtlMs?: number;
   quotaCacheMaxEntries?: number;
@@ -1956,6 +1960,36 @@ export class CodexAdapter implements ProviderAdapterShape {
     adoption?: CodexNativeAdoption,
   ): Promise<ProviderSession> {
     this.options.nativeSessionOwnership?.assertMutable(input.threadId);
+    // A default HOME is not a project binding. Windows sandbox preparation
+    // recursively applies ACLs to its writable root; using HOME can spend
+    // minutes changing unrelated files and granting sandbox access to launchers.
+    // Keep the workspace deterministic across restarts, as ACP does, and fail
+    // before spawning if it cannot be prepared. Explicit/adopted folders win,
+    // and so does a folder Station already made for this chat (#4389's
+    // no-project scratch folder, or a recorded managed workspace): one chat,
+    // one private folder, prepared once.
+    if (
+      input.cwdDefaulted &&
+      input.confinement !== 'host' &&
+      !adoption &&
+      !(
+        input.cwd &&
+        isStationChatFolder(input.cwd, this.options.managedWorkspaceHomeDir)
+      )
+    ) {
+      input = {
+        ...input,
+        cwd: await prepareManagedEngineWorkspace(
+          'codex',
+          {
+            kind: 'session',
+            connectionId: string(input.metadata?.connectionId) ?? 'codex',
+            threadId: input.threadId,
+          },
+          this.options.managedWorkspaceHomeDir,
+        ),
+      };
+    }
     // #3800: refused before Codex is spawned, since a project `mcp_servers`
     // command runs outside the sandbox at thread start (start, resume, fork
     // and respawn all come through here).

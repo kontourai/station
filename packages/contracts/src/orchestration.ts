@@ -1159,10 +1159,10 @@ export interface OrchestrationSessionSummary extends ProviderSession {
   attachedSource?: AttachedSessionSourceMetadata;
   /**
    * Present when `cwd` is a folder Station created for this chat rather than
-   * one the user chose: an ACP engine started with no project or connection
-   * directory runs in `<stationHome>/runtime/acp-workspaces/session/<digest>`,
-   * and (#4389) a chat with no Project in `<stationHome>/scratch/<id>`.
-   * The server decides (`isManagedAcpWorkspace`), so clients name the folder
+   * one the user chose: an otherwise-unbound ACP or confined Codex session
+   * runs under `<stationHome>/runtime/<engine>-workspaces/session/<digest>`,
+   * and (#4389) a chat with no Project runs in `<stationHome>/scratch/<id>`.
+   * The server decides (`isStationChatFolder`), so clients name the folder
    * ("Chat workspace") instead of printing a hash path, and never match the
    * path themselves.
    */

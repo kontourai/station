@@ -279,13 +279,18 @@ The Project page’s **New Task** action opens task shaping in the chat dock for
 that Project. Project Room messages remain shared discussion; only an explicit
 **Bring an Agent** request starts Agent work from the Room.
 A project with no folder can still be chosen and runs where the server puts it:
-the home folder, or for an ACP engine its connection folder or a private
-Station-managed workspace. A No project chat runs in its own scratch folder,
-`<Station home>/scratch/<conversation>` (#4389), unless
+the home folder, an ACP connection folder or private workspace, or a private
+workspace for a confined Codex session. A No project chat runs in its own
+scratch folder, `<Station home>/scratch/<conversation>` (#4389), unless
 `AppConfig.noProjectChatFolder` is `home`; the server reads that once, at the
 conversation's first start, and a conversation that already recorded a folder
-keeps it. The chip says "Runs in a private folder Station makes for this chat"
-for that case, and the session card names it "Chat workspace"
+keeps it. The scratch folder is prepared with the same safeguards as the
+managed engine workspaces, and the Codex adapter keeps it rather than making a
+second one, so a no-project Codex chat has one private folder. With the
+`home` choice a confined Codex chat is still unbound and gets its private
+workspace (#4448); other engines, and Codex on the host, run in home. The chip
+says "Runs in a private folder Station makes for this chat" for the scratch
+case, and the session card names any Station-made folder "Chat workspace"
 (`cwdManagedWorkspace`). The Project control draws its chosen icon, or a
 12px accent dot when none is displayable. The project menu states the
 server-resolved run location from `GET /api/projects/run-locations`; the

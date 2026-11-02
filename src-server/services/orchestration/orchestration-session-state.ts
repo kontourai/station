@@ -63,12 +63,11 @@ import type { IProviderAdapterRegistry } from '../../providers/provider-interfac
 import { withTenantExecutionContext } from '../../runtime/bootstrap/runtime-tenant-context.js';
 import { safeSanitizeUIBlockEventProvenance } from '../../runtime/conversation/ui-block-provenance.js';
 import { errorMessage } from '../../utils/error-message.js';
-import { isManagedAcpWorkspace } from '../acp/managed-acp-workspace.js';
 import { receiptBus } from '../infra/receipt-bus.js';
 import type { RuntimeEngineStartLease } from '../infra/resource-posture.js';
 import { assertDispatchCwdUnmoved } from './dispatch-cwd-admission.js';
 import type { EventStore } from './event-store.js';
-import { isNoProjectChatScratch } from './no-project-chat-folder.js';
+import { isStationChatFolder } from './no-project-chat-folder.js';
 import {
   projectRequestAnswerability,
   type SessionAnswerabilityObservation,
@@ -729,8 +728,7 @@ export function buildOrchestrationSessionSummary(options: {
     ...(base.model ? { model: base.model } : {}),
     ...(base.cwd ? { cwd: base.cwd } : {}),
     // #4389: a no-project chat's scratch folder is one Station made too.
-    ...(base.cwd &&
-    (isManagedAcpWorkspace(base.cwd) || isNoProjectChatScratch(base.cwd))
+    ...(base.cwd && isStationChatFolder(base.cwd)
       ? { cwdManagedWorkspace: true as const }
       : {}),
     ...(appliedApprovalMode ? { appliedApprovalMode } : {}),

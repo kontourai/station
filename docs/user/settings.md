@@ -114,7 +114,9 @@ The two thresholds are in **Settings → General → Agent runs**.
 **Settings → General → Agent runs → Chats without a project** chooses where a
 new chat with no project runs: **Private folder** (the default, a folder of
 its own in Station's data) or **Home folder**. A chat that already ran keeps
-its folder.
+its folder. With **Home folder**, a Codex chat that runs in Codex's sandbox
+still gets a private folder from Station, because rooting that sandbox in your
+home folder would let it change access to everything there.
 
 **Isolated GitHub repairs** (`isolated-github-repairs`) adds the personal operator
 repair API. Configured rules may spend provider credits in Docker; exact review
