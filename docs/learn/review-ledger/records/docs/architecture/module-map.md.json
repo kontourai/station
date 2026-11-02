@@ -1526,7 +1526,13 @@
 
     "src-server/runtime/agents/__tests__/durable-agent-liveness.test.ts",
 
-    "src-server/__test-utils__/chat-runtime-fixture.ts"
+    "src-server/__test-utils__/chat-runtime-fixture.ts",
+
+    "packages/agent-runtime/src/turn-statements.ts",
+
+    "src-server/runtime/streaming/handlers/ReasoningHandler.ts",
+
+    "src-server/runtime/streaming/__tests__/ReasoningHandler.test.ts"
   ],
 
   "checks": [

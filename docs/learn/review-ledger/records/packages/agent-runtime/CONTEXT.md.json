@@ -146,7 +146,15 @@
 
     "packages/agent-runtime/src/__tests__/turn-validation.test.ts",
 
-    "packages/agent-runtime/src/__tests__/turn-wire.test.ts"
+    "packages/agent-runtime/src/__tests__/turn-wire.test.ts",
+
+    "packages/agent-runtime/src/turn-statements.ts",
+
+    "src-server/runtime/streaming/handlers/ReasoningHandler.ts",
+
+    "src-server/runtime/streaming/__tests__/ReasoningHandler.test.ts",
+
+    "scripts/benchmark-agent-runtime.mts"
   ],
 
   "checks": []
