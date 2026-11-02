@@ -35,7 +35,10 @@ import {
 import { type Browser, chromium, type Page } from '@playwright/test';
 import { build } from 'esbuild';
 import { afterAll, afterEach, beforeAll, describe, expect, test } from 'vitest';
-import { chromiumIsInstalled } from '../../../../tests/helpers/css-cascade-fixture';
+import {
+  chromiumIsInstalled,
+  chromiumRequired,
+} from '../../../../tests/helpers/css-cascade-fixture';
 
 const REPO_ROOT = resolve(import.meta.dirname, '../../../../');
 const PNG = Buffer.from(
@@ -201,7 +204,17 @@ const tap = [
   { kind: 'pointer', type: 'up', x: 1, y: 1, button: 'left', clickCount: 1 },
 ];
 
-describe.skipIf(!chromiumIsInstalled(REPO_ROOT))(
+const CHROMIUM = chromiumIsInstalled(REPO_ROOT);
+
+// A lane that owns browser suites must not pass this one by skipping it.
+if (!CHROMIUM && chromiumRequired())
+  test('Playwright Chromium is installed for the headroom suite', () => {
+    throw new Error(
+      'Playwright Chromium is missing in a lane that requires it: run npm run install:playwright',
+    );
+  });
+
+describe.skipIf(!CHROMIUM)(
   'live surface input headroom over HTTP/1.1 (#2760)',
   () => {
     let bundle = '';
