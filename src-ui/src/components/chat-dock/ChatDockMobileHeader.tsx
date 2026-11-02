@@ -8,10 +8,12 @@ import type { ProjectMetadata } from '../../contexts/ProjectsContext';
 import { Button } from '../Button';
 import {
   ArrowDownGlyph,
+  ExpandGlyph,
   FolderGlyph,
   InboxGlyph,
   MenuGlyph,
   NewChatGlyph,
+  RestoreGlyph,
 } from '../icons/Glyph';
 import { LazyBoundary } from '../LazyBoundary';
 import '../NewChatAction.css';
@@ -114,6 +116,16 @@ export interface ChatDockMobileDockToggle {
   onCollapse: () => void;
 }
 
+/**
+ * #4391: the visible full-screen/peek switch of an open dock. Full screen is
+ * where a phone chat lives; the peek (Half) is the deliberate smaller state,
+ * so both directions are one tap in the bar rather than a sheet row.
+ */
+export interface ChatDockMobileExtentToggle {
+  maximized: boolean;
+  onToggle: () => void;
+}
+
 interface ChatDockMobileHeaderProps {
   inboxActive?: boolean;
   showDrawerToggle: boolean;
@@ -132,6 +144,7 @@ interface ChatDockMobileHeaderProps {
   onDragPointerDown: (event: ReactPointerEvent<HTMLElement>) => void;
   onDragClickCapture: (event: ReactMouseEvent<HTMLElement>) => void;
   dockToggle: ChatDockMobileDockToggle | null;
+  extentToggle?: ChatDockMobileExtentToggle | null;
   onNewChat: () => void;
   overflow: ChatDockMobileOverflowActions;
 }
@@ -155,6 +168,7 @@ export function ChatDockMobileHeader({
   onDragPointerDown,
   onDragClickCapture,
   dockToggle,
+  extentToggle = null,
   onNewChat,
   overflow,
 }: ChatDockMobileHeaderProps) {
@@ -212,6 +226,22 @@ export function ChatDockMobileHeader({
             <ArrowDownGlyph />
           </button>
         ) : null}
+        {extentToggle && (
+          <button
+            type="button"
+            className="app-toolbar__icon-btn chat-dock__mobile-header-icon chat-dock__mobile-extent"
+            aria-label={
+              extentToggle.maximized ? 'Restore chat size' : 'Full screen chat'
+            }
+            title={
+              extentToggle.maximized ? 'Restore chat size' : 'Full screen chat'
+            }
+            data-no-dock-drag=""
+            onClick={extentToggle.onToggle}
+          >
+            {extentToggle.maximized ? <RestoreGlyph /> : <ExpandGlyph />}
+          </button>
+        )}
         {projectSwitcher && !agentIdentity && (
           <button
             ref={projectTriggerRef}

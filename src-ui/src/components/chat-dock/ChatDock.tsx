@@ -1229,11 +1229,14 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
   // as opening any chat does (`focusSession`); the full height was the draft's.
   // Called before Start navigates, whose collapse of the draft's Back entry
   // then finds nothing to restore.
+  // #4391: a phone keeps the started chat full screen, as a messaging app
+  // does; the half-height peek left ~100px of transcript above the composer.
   const settleDockForStartedDraft = useCallback(() => {
     const before = dockBeforeDraft.current;
     dockBeforeDraft.current = null;
+    if (isMobile) return;
     if (before && !before.maximized) setDockState(true, false);
-  }, [setDockState]);
+  }, [isMobile, setDockState]);
   useEffect(() => {
     if (!showNewChatModal) dockBeforeDraft.current = null;
   }, [showNewChatModal]);
@@ -3307,6 +3310,15 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                       // Collapse clears Maximized too (#795) — same snap path
                       // the overflow action rides.
                       onCollapse: () => applyDockSnap('collapsed'),
+                    }
+              }
+              extentToggle={
+                isFullscreenPlacement || !isPaneOpen
+                  ? null
+                  : {
+                      maximized: isDockMaximized,
+                      onToggle: () =>
+                        applyDockSnap(isDockMaximized ? 'half' : 'full'),
                     }
               }
               // Shared creation action opens a draft without starting an engine.
