@@ -2347,6 +2347,8 @@ export class CodexAdapter implements ProviderAdapterShape {
               );
             },
             async (current) => {
+              if (boundTools.expired())
+                throw new Error('bound-tool-session-restart-required');
               const response = await boundTools.call(
                 call.name,
                 payload.arguments,

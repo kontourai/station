@@ -69,7 +69,10 @@ import {
   principalKey,
   UnattendedGrantStore,
 } from '../../services/agents/unattended-grant-store.js';
-import type { FeaturePreviewRegistry } from '../../services/feature-previews/feature-preview-registry.js';
+import {
+  FeaturePreviewNotOfferedError,
+  type FeaturePreviewRegistry,
+} from '../../services/feature-previews/feature-preview-registry.js';
 import {
   type AccountSharingRecord,
   accountSharingSettingPath,
@@ -671,7 +674,7 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
         'codex-bound-browser-device-tools',
         true,
       ),
-    ).rejects.toThrow();
+    ).rejects.toBeInstanceOf(FeaturePreviewNotOfferedError);
     adapter = hosted.codexAdapter;
     adapter.processFactory = () => child;
     const hostedStart = await start('hosted');

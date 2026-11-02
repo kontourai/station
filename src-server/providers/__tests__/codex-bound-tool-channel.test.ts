@@ -797,3 +797,78 @@ test('expired Codex credentials refuse on the wire before opening approval', asy
     await iterator.return?.();
   }
 });
+
+test('credential expiry during approval returns a restart instruction on the wire', async () => {
+  const { createCodexBoundToolServer } = await import(
+    '../../runtime/mcp/station-control-in-process.js'
+  );
+  const child = new FakeCodexProcess();
+  const dispatch = vi.fn(async () => new Response('{}'));
+  const adapter = new CodexAdapter({
+    processFactory: () => child as never,
+    boundToolsEnabled: () => true,
+    resolveBoundToolPolicy: async () => async () => ({ behavior: 'defer' }),
+    createBoundTools: async (input) =>
+      createCodexBoundToolServer({ ...input, dispatch }),
+  });
+  const events: any[] = [];
+  const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+  void (async () => {
+    for await (const event of { [Symbol.asyncIterator]: () => iterator })
+      events.push(event);
+  })();
+  const started = adapter.startSession({
+    provider: 'codex',
+    threadId: 'expiry-approval',
+    cwd: '/tmp',
+    agent: {} as never,
+  });
+  await flushIo();
+  await emit(child, { id: '1', result: { userAgent: 'test' } });
+  await emit(child, {
+    id: '2',
+    result: { thread: { id: 'native-expiry-approval' } },
+  });
+  await withTimeout(started, 'start');
+  const turn = adapter.sendTurn({ threadId: 'expiry-approval', input: 'go' });
+  await flushIo();
+  await emit(child, { id: '3', result: { turn: { id: 'turn' } } });
+  await withTimeout(turn, 'turn');
+  await emit(child, {
+    id: 302,
+    method: 'item/tool/call',
+    params: {
+      threadId: 'native-expiry-approval',
+      turnId: 'turn',
+      callId: 'expiring',
+      tool: 'browser_status',
+      arguments: {},
+    },
+  });
+  const approval = await waitFor(
+    () => events.find((event) => event.method === 'request.opened'),
+    'approval',
+  );
+  const now = vi
+    .spyOn(Date, 'now')
+    .mockReturnValue(Date.now() + 12 * 60 * 60 * 1000 + 1);
+  try {
+    await adapter.respondToRequest(
+      'expiry-approval',
+      approval.requestId,
+      'accept',
+    );
+    const response = await waitFor(
+      () => repliesTo(child, 302)[0],
+      'expiry during approval',
+    );
+    expect(response.error.message).toBe(
+      'Bound tool unavailable; restart the Session',
+    );
+    expect(dispatch).not.toHaveBeenCalled();
+  } finally {
+    now.mockRestore();
+    await adapter.stopSession('expiry-approval');
+    await iterator.return?.();
+  }
+});
