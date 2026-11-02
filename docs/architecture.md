@@ -131,9 +131,8 @@ grants/keys through an activation fence, not through generic stream identity.
 These source boundaries do not establish deployed/native or release qualification;
 see [monitoring](guides/monitoring.md).
 
-Voice and the legacy terminal listener (kept for older clients) use dedicated
-WebSocket listeners and are not represented by the HTTP/SSE arrow. The Coding
-terminal uses `/api/terminal/socket` on the API listener, admitted by a
+Voice uses a dedicated WebSocket listener and is not represented by the
+HTTP/SSE arrow. The Coding terminal uses `/api/terminal/socket` on the API listener, admitted by a
 single-use ticket from an ordinary authenticated request, so it follows the API
 through proxies, tailnet names and native transports; a browser broker route
 has no socket path yet. See

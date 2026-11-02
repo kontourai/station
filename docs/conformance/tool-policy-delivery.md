@@ -102,7 +102,10 @@ policy check, and the external engine reports that identity. Which calls
 invoke the callback is the engine's own configuration; for OpenCode, Station
 sets that configuration from the chat's approval mode
 ([which side decides](../guides/acp.md#which-side-decides-which-calls-ask)). Codex
-has no Station pre-tool interception seam. Muse is also unsupported. An
+has no general Station pre-tool interception seam. Its preview bound browser
+and device dynamic calls pass through the staged evaluator and Station's
+approval path before execution; that narrow path does not cover other Codex
+tools. Muse is also unsupported. An
 unknown engine receives an unsupported matrix entry; that does not mean Station
 intercepts or blocks all of that engine's tool calls.
 

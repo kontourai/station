@@ -1,0 +1,15 @@
+{
+  "revision": "1e644e4d836edfec8676745bd348fac574506692",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Re-reviewed after the browser-agent-capture harness gained the scoped terminal holder StationRuntime shutdown now reads; the capture, walkthrough and shutdown behavior this document describes is unchanged.","inputs":["docs/architecture/module-map.md","src-server/routes/__tests__/browser-agent-capture.test.ts"]},
+
+    {"path":"docs/guides/browser-workspace.md","note":"Re-reviewed after the browser-agent-capture harness gained the scoped terminal holder StationRuntime shutdown now reads; the capture, walkthrough and shutdown behavior this document describes is unchanged.","inputs":["docs/guides/browser-workspace.md","src-server/routes/__tests__/browser-agent-capture.test.ts"]},
+
+    {"path":"docs/guides/walkthroughs.md","note":"Re-reviewed after the browser-agent-capture harness gained the scoped terminal holder StationRuntime shutdown now reads; the capture, walkthrough and shutdown behavior this document describes is unchanged.","inputs":["docs/guides/walkthroughs.md","src-server/routes/__tests__/browser-agent-capture.test.ts"]},
+
+    {"path":"docs/reference/api.md","note":"Re-reviewed after the browser-agent-capture harness gained the scoped terminal holder StationRuntime shutdown now reads; the capture, walkthrough and shutdown behavior this document describes is unchanged.","inputs":["docs/reference/api.md","src-server/routes/__tests__/browser-agent-capture.test.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"Re-reviewed after the browser-agent-capture harness gained the scoped terminal holder StationRuntime shutdown now reads; the capture, walkthrough and shutdown behavior this document describes is unchanged.","inputs":["docs/security/remote-access-threat-model.md","src-server/routes/__tests__/browser-agent-capture.test.ts"]}
+  ]
+}

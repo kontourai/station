@@ -376,8 +376,6 @@ describe('the verification timer is owned by the runtime shutdown path', () => {
       acpBridge: { shutdown: async () => {} },
       feedbackService: { stop: () => {} },
       voiceService: { stop: async () => {} },
-      terminalWsServer: { stop: () => {} },
-      terminalService: { dispose: async () => {} },
       configLoader: { dispose: async () => {} },
     });
     expect(timers).toHaveLength(0);

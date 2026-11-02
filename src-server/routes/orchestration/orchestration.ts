@@ -60,7 +60,10 @@ import {
   type ApprovalMode,
   ATTACHMENT_INPUT_UNSUPPORTED_CODE,
   CLIENT_TURN_IN_FLIGHT_CODE,
+  CLIENT_TURN_INPUT_CONFLICT_CODE,
   type DelegationProvenance,
+  INBOX_KEY_CONFLICT_CODE,
+  isSteerConflictCode,
   MEMORY_CONTINUATION_CLIENT_TURN_PREFIX,
   PROVIDER_SESSION_STARTING_CODE,
   PROVIDER_TURN_IN_PROGRESS_CODE,
@@ -991,7 +994,7 @@ export const foregroundMessageObjectSchema = z.object({
  * Only a plain continuation can: the inbox replays it through the
  * conversation's persisted binding later, without this request. Attachments,
  * a visual skill start, an input reply, an approval pick, a delegated or
- * background send and another Station's target all need this request's own
+ * another Station's target all need this request's own
  * authority or bytes, so they are refused when busy, as before.
  */
 function inboxFollowUpOf(
@@ -1007,6 +1010,7 @@ function inboxFollowUpOf(
       message: string;
       ambientContext?: string;
       model?: ExecutionModelRequest;
+      automaticBackground?: true;
     }
   | undefined {
   if (
@@ -1015,7 +1019,6 @@ function inboxFollowUpOf(
     !body.clientTurnId ||
     options.delegated ||
     options.remote ||
-    body.automaticBackground ||
     body.attachments?.length ||
     body.attachmentRefs?.length ||
     body.skillExperience ||
@@ -1029,6 +1032,7 @@ function inboxFollowUpOf(
     conversationId: body.conversationId,
     clientTurnId: body.clientTurnId,
     message: body.message,
+    ...(body.automaticBackground ? { automaticBackground: true } : {}),
     ...(body.ambientContext ? { ambientContext: body.ambientContext } : {}),
     ...(body.target.model
       ? { model: body.target.model as ExecutionModelRequest }
@@ -1955,11 +1959,6 @@ export function createOrchestrationRoutes(
         debug(message: string, meta?: Record<string, unknown>): void;
       };
     };
-    terminalService?: {
-      listProcessSummaries(): TerminalProcessSummary[];
-      readProcess(sessionId: string): TerminalProcessDetail | null;
-      close(sessionId: string): Promise<void>;
-    };
     /**
      * #3994: sessions the terminal socket owns, projected into the same
      * process shapes. Each call is authorized as the caller (terminal
@@ -2192,8 +2191,11 @@ export function createOrchestrationRoutes(
     threadInbox?: Pick<
       ThreadInboxDelivery,
       | 'mayContinue'
+      | 'currentHead'
       | 'mustQueue'
       | 'submit'
+      | 'submitSteer'
+      | 'submitDisplay'
       | 'list'
       | 'entry'
       | 'cancel'
@@ -2681,7 +2683,7 @@ export function createOrchestrationRoutes(
           success: false,
           error:
             'This message key was already used for a different queued message.',
-          code: 'inbox_key_conflict',
+          code: INBOX_KEY_CONFLICT_CODE,
         },
         409,
       );
@@ -3068,6 +3070,9 @@ export function createOrchestrationRoutes(
               clientTurnId: followUp.clientTurnId,
               payload: {
                 message: followUp.message,
+                ...(followUp.automaticBackground
+                  ? { automaticBackground: true as const }
+                  : {}),
                 inputDigest,
                 ...(followUp.ambientContext
                   ? { ambientContext: followUp.ambientContext }
@@ -3564,6 +3569,7 @@ export function createOrchestrationRoutes(
     return c.json({
       success: true,
       data: {
+        currentHead: deps.threadInbox.currentHead(conversationId),
         entries: deps.threadInbox.list(
           conversationId,
           resolveDispatchActor(deps, c).userId,
@@ -3571,6 +3577,100 @@ export function createOrchestrationRoutes(
       },
     });
   });
+
+  app.post(
+    '/conversations/:conversationId/inbox',
+    validate(
+      z.discriminatedUnion('kind', [
+        z.object({
+          kind: z.literal('steer'),
+          key: z.string().min(1).max(128),
+          message: z.string().min(1).max(CHAT_INPUT_MAX_CHARS),
+          expectedHead: z.string().min(1).max(4096),
+        }),
+        z.object({
+          kind: z.literal('follow-up'),
+          key: z.string().min(1).max(128),
+          message: z.string().min(1).max(CHAT_INPUT_MAX_CHARS),
+          expectedHead: z.string().min(1).max(4096).optional(),
+        }),
+        z.object({
+          kind: z.literal('display'),
+          key: z.string().min(1).max(128),
+          message: z.string().min(1).max(CHAT_INPUT_MAX_CHARS),
+          expectedHead: z.string().min(1).max(4096).optional(),
+        }),
+      ]),
+    ),
+    async (c) => {
+      const conversationId = param(c, 'conversationId');
+      const inbox = deps.threadInbox;
+      if (!inbox)
+        return c.json({ success: false, error: 'Inbox unavailable.' }, 404);
+      if (
+        conversationId.length > 512 ||
+        !(await orchestrationService.hasReadableSession(
+          conversationId,
+          readAuthorityFor(c),
+        ))
+      )
+        return c.json({ success: false, error: 'Conversation not found' }, 404);
+      const body = getBody(c);
+      const actor = resolveDispatchActor(deps, c);
+      const input = {
+        conversationId,
+        clientTurnId: body.key,
+        expectedHead: body.expectedHead,
+        payload: {
+          message: body.message,
+          actor: {
+            userId: actor.userId,
+            ...(actor.principal ? { principal: actor.principal } : {}),
+            ...(actor.ownerAttribution
+              ? { ownerAttribution: actor.ownerAttribution }
+              : {}),
+          },
+          clientOrigin: resolveClientOriginForRequest(c.req.raw),
+        },
+      };
+      let result: ReturnType<ThreadInboxDelivery['submitSteer']>;
+      try {
+        result =
+          body.kind === 'steer'
+            ? inbox.submitSteer({ ...input, expectedHead: body.expectedHead })
+            : body.kind === 'follow-up'
+              ? inbox.submit(input)
+              : inbox.submitDisplay(input);
+      } catch (error) {
+        if (!isSteerConflictCode(errorCode(error))) throw error;
+        return c.json(
+          {
+            success: false,
+            code: CLIENT_TURN_INPUT_CONFLICT_CODE,
+            error: 'This key already names different steer input.',
+          },
+          409,
+        );
+      }
+      if (result.outcome === 'stale-head')
+        return c.json(
+          {
+            success: false,
+            code: 'inbox_stale_head',
+            error: 'The conversation changed before this entry was accepted.',
+            currentHead: result.currentHead,
+          },
+          409,
+        );
+      if (result.outcome === 'not-permitted')
+        return c.json({ success: false, error: 'Conversation not found' }, 404);
+      if (result.outcome === 'conflict')
+        return c.json({ success: false, code: INBOX_KEY_CONFLICT_CODE }, 409);
+      if (result.outcome === 'capacity')
+        return c.json({ success: false, code: 'conversation_inbox_full' }, 409);
+      return c.json({ success: true, data: result.entry }, 202);
+    },
+  );
 
   /**
    * A person's Continue after the conversation's engine was killed for
@@ -7243,12 +7343,12 @@ export function createOrchestrationRoutes(
     // Terminal state is process-global and carries no durable tenant binding.
     // Keep the complete surface unavailable in a hosted deployment until it
     // can be authorized from a tenant-bound terminal record. Do this before
-    // looking at the optional service so an unavailable terminal is
+    // looking at the optional sessions so an unavailable terminal is
     // indistinguishable from an unbound one and no process state is read.
     if (deps.hostedTenantRegistry) {
       return c.json({ success: false, error: 'Terminal not found' }, 404);
     }
-    if (!deps.terminalService) {
+    if (!deps.scopedTerminals) {
       return c.json(
         { success: false, error: 'Terminal service unavailable' },
         503,
@@ -7256,10 +7356,7 @@ export function createOrchestrationRoutes(
     }
     return c.json({
       success: true,
-      data: [
-        ...deps.terminalService.listProcessSummaries(),
-        ...((await deps.scopedTerminals?.list(c.req.raw)) ?? []),
-      ],
+      data: await deps.scopedTerminals.list(c.req.raw),
     });
   });
 
@@ -7267,16 +7364,16 @@ export function createOrchestrationRoutes(
     if (deps.hostedTenantRegistry) {
       return c.json({ success: false, error: 'Process not found' }, 404);
     }
-    if (!deps.terminalService) {
+    if (!deps.scopedTerminals) {
       return c.json(
         { success: false, error: 'Terminal service unavailable' },
         503,
       );
     }
-    const data =
-      deps.terminalService.readProcess(param(c, 'sessionId')) ??
-      (await deps.scopedTerminals?.read(c.req.raw, param(c, 'sessionId'))) ??
-      null;
+    const data = await deps.scopedTerminals.read(
+      c.req.raw,
+      param(c, 'sessionId'),
+    );
     if (!data) {
       return c.json({ success: false, error: 'Process not found' }, 404);
     }
@@ -7287,23 +7384,17 @@ export function createOrchestrationRoutes(
     if (deps.hostedTenantRegistry) {
       return c.json({ success: false, error: 'Process not found' }, 404);
     }
-    if (!deps.terminalService) {
+    if (!deps.scopedTerminals) {
       return c.json(
         { success: false, error: 'Terminal service unavailable' },
         503,
       );
     }
     const sessionId = param(c, 'sessionId');
-    if (
-      !deps.terminalService.readProcess(sessionId) &&
-      (await deps.scopedTerminals?.close(c.req.raw, sessionId))
-    )
-      return c.json({ success: true, data: { sessionId } });
-    await deps.terminalService.close(sessionId);
-    return c.json({
-      success: true,
-      data: { sessionId: param(c, 'sessionId') },
-    });
+    if (!(await deps.scopedTerminals.close(c.req.raw, sessionId))) {
+      return c.json({ success: false, error: 'Process not found' }, 404);
+    }
+    return c.json({ success: true, data: { sessionId } });
   });
 
   app.post(

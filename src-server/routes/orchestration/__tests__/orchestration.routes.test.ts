@@ -1,4 +1,5 @@
 import { mkdtempSync, rmSync } from 'node:fs';
+import { STEERING_ENGINE_DURABILITY } from '@kontourai/station-contracts/engine-capability-matrix';
 import { vi as vitestConfigVi } from 'vitest';
 
 // This file exercises REAL SQLite EventStores per test (one writes 401
@@ -31,7 +32,10 @@ import { readJson } from '../../../__test-utils__/read-json.js';
 import { readStreamUntil } from '../../../__test-utils__/sse-helpers.js';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { ORCHESTRATION_STREAM_RESUME_GAP_THRESHOLD } from '../../../constants.js';
-import type { ProviderAdapterModelCatalog } from '../../../providers/adapter-shape.js';
+import type {
+  ProviderAdapterMetadata,
+  ProviderAdapterModelCatalog,
+} from '../../../providers/adapter-shape.js';
 import { AsyncEventQueue } from '../../../providers/sessions/async-event-queue.js';
 import { createHostedTenantMiddleware } from '../../../runtime/bootstrap/runtime-tenant-context.js';
 import { setRuntimeAuthenticatedRequestPrincipal } from '../../../security/runtime-request-security.js';
@@ -615,6 +619,12 @@ describe('Orchestration Routes', () => {
     steerFixtureStores.push(eventStore);
     const eventBus = new EventBus();
     class SteerAdapter extends GateTestAdapter {
+      override readonly metadata: ProviderAdapterMetadata = {
+        displayName: 'Scripted native steer',
+        description: 'Receipted live steer fixture',
+        capabilities: ['agent-runtime'],
+        durability: STEERING_ENGINE_DURABILITY,
+      };
       private loaded = false;
       readonly steerTurn = vi.fn(async () => {});
       async startSession(input: ProviderSessionStartInput) {
@@ -669,6 +679,7 @@ describe('Orchestration Routes', () => {
       prompt: 'initial',
     });
     let loseReceipt = true;
+    let lostResponse: unknown;
     const fetchSpy = vi
       .spyOn(globalThis, 'fetch')
       .mockImplementation(async (input, init) => {
@@ -678,10 +689,7 @@ describe('Orchestration Routes', () => {
         );
         expect(response.status).toBe(200);
         if (loseReceipt) {
-          expect(await response.clone().json()).toMatchObject({
-            success: true,
-            data: { outcome: 'steered', threadId, turnId: 'live' },
-          });
+          lostResponse = await response.clone().json();
           loseReceipt = false;
           throw new TypeError('HTTP acknowledgement lost');
         }
@@ -698,6 +706,10 @@ describe('Orchestration Routes', () => {
       await expect(steerTurn(input.apiBase, input)).rejects.toThrow(
         'HTTP acknowledgement lost',
       );
+      expect(lostResponse).toMatchObject({
+        success: true,
+        data: { outcome: 'steered', threadId, turnId: 'live' },
+      });
       expect(adapter.steerTurn).toHaveBeenCalledTimes(1);
       eventStore.appendEvent({
         eventId: 'steer-http-complete',
@@ -5163,43 +5175,34 @@ describe('Orchestration Routes', () => {
   });
 
   test('terminal process routes expose summaries, detail, and cleanup', async () => {
-    const terminalService = {
-      listProcessSummaries: vi.fn().mockReturnValue([
-        {
-          kind: 'terminal',
-          sessionId: 'project:t1',
-          projectSlug: 'project',
-          terminalId: 't1',
-          cwd: '/tmp/project',
-          status: 'running',
-          pid: 12345,
-          exitCode: null,
-          hasRunningSubprocess: true,
-          cols: 80,
-          rows: 24,
-        },
-      ]),
-      readProcess: vi.fn().mockImplementation((id: string) =>
-        id === 'project:t1'
-          ? {
-              process: {
-                kind: 'terminal',
-                sessionId: 'project:t1',
-                projectSlug: 'project',
-                terminalId: 't1',
-                cwd: '/tmp/project',
-                status: 'running',
-                pid: 12345,
-                exitCode: null,
-                hasRunningSubprocess: true,
-                cols: 80,
-                rows: 24,
-              },
-              history: 'npm run dev\n',
-            }
-          : null,
-      ),
-      close: vi.fn().mockResolvedValue(undefined),
+    const summary = {
+      kind: 'terminal',
+      sessionId: '6f1c2a40-0000-4000-8000-000000000001',
+      projectSlug: 'project',
+      terminalId: '6f1c2a40-0000-4000-8000-000000000001',
+      cwd: '/tmp/project',
+      status: 'running',
+      pid: 12345,
+      exitCode: null,
+      hasRunningSubprocess: true,
+      cols: 80,
+      rows: 24,
+    } as const;
+    const id = summary.sessionId;
+    const scopedTerminals = {
+      list: vi.fn().mockResolvedValue([summary]),
+      read: vi
+        .fn()
+        .mockImplementation(async (_request: Request, terminalId: string) =>
+          terminalId === id
+            ? { process: summary, history: 'npm run dev\n' }
+            : null,
+        ),
+      close: vi
+        .fn()
+        .mockImplementation(
+          async (_request: Request, terminalId: string) => terminalId === id,
+        ),
     };
     const service = {
       listProviders: vi.fn(),
@@ -5213,54 +5216,72 @@ describe('Orchestration Routes', () => {
       getUserId: () => ROUTE_TEST_USER_ID,
       eventBus: new EventBus(),
       logger: { debug: vi.fn() },
-      terminalService,
+      scopedTerminals,
     });
 
     const listRes = await app.request('/processes/terminals');
     expect(await readJson(listRes)).toEqual({
       success: true,
       data: [
-        expect.objectContaining({
-          sessionId: 'project:t1',
-          hasRunningSubprocess: true,
-        }),
+        expect.objectContaining({ sessionId: id, hasRunningSubprocess: true }),
       ],
     });
 
-    const detailRes = await app.request('/processes/terminals/project:t1');
+    const detailRes = await app.request(`/processes/terminals/${id}`);
     expect(await readJson(detailRes)).toEqual({
       success: true,
       data: expect.objectContaining({
-        process: expect.objectContaining({ sessionId: 'project:t1' }),
+        process: expect.objectContaining({ sessionId: id }),
         history: 'npm run dev\n',
       }),
     });
+    expect((await app.request('/processes/terminals/project:t1')).status).toBe(
+      404,
+    );
 
-    const closeRes = await app.request('/processes/terminals/project:t1', {
+    const closeRes = await app.request(`/processes/terminals/${id}`, {
       method: 'DELETE',
     });
     expect(await readJson(closeRes)).toEqual({
       success: true,
-      data: { sessionId: 'project:t1' },
+      data: { sessionId: id },
     });
-    expect(terminalService.close).toHaveBeenCalledWith('project:t1');
+    expect(scopedTerminals.close).toHaveBeenCalledWith(expect.any(Request), id);
+    const unknownClose = await app.request('/processes/terminals/project:t1', {
+      method: 'DELETE',
+    });
+    expect(unknownClose.status).toBe(404);
   });
 
-  test('hosted terminal routes are uniformly unavailable before TerminalService reads or closes', async () => {
+  test('terminal process routes answer 503 when no terminal sessions are composed', async () => {
+    const app = createOrchestrationRoutes({} as any, {
+      getUserId: () => ROUTE_TEST_USER_ID,
+      eventBus: new EventBus(),
+      logger: { debug: vi.fn() },
+    });
+    const [list, detail, close] = await Promise.all([
+      app.request('/processes/terminals'),
+      app.request('/processes/terminals/project:t1'),
+      app.request('/processes/terminals/project:t1', { method: 'DELETE' }),
+    ]);
+    expect([list.status, detail.status, close.status]).toEqual([503, 503, 503]);
+  });
+
+  test('hosted terminal routes are uniformly unavailable before any terminal read or close', async () => {
     const registry = parseHostedTenantRegistry({
       schemaVersion: 1,
       tenants: [{ id: 'tenant-alpha', authority: 'alpha.station.test' }],
     });
-    const terminalService = {
-      listProcessSummaries: vi.fn(),
-      readProcess: vi.fn(),
+    const scopedTerminals = {
+      list: vi.fn(),
+      read: vi.fn(),
       close: vi.fn(),
     };
     const app = createOrchestrationRoutes({} as any, {
       getUserId: () => ROUTE_TEST_USER_ID,
       eventBus: new EventBus(),
       logger: { debug: vi.fn() },
-      terminalService,
+      scopedTerminals,
       hostedTenantRegistry: registry,
     });
 
@@ -5273,9 +5294,9 @@ describe('Orchestration Routes', () => {
     expect(list.status).toBe(404);
     expect(detail.status).toBe(404);
     expect(close.status).toBe(404);
-    expect(terminalService.listProcessSummaries).not.toHaveBeenCalled();
-    expect(terminalService.readProcess).not.toHaveBeenCalled();
-    expect(terminalService.close).not.toHaveBeenCalled();
+    expect(scopedTerminals.list).not.toHaveBeenCalled();
+    expect(scopedTerminals.read).not.toHaveBeenCalled();
+    expect(scopedTerminals.close).not.toHaveBeenCalled();
   });
 
   test('GET /events streams the initial snapshot and subsequent canonical events', async () => {

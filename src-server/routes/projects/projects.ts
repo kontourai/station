@@ -127,7 +127,6 @@ import {
 } from '../../services/projects/repository-acquisition-service.js';
 import { workspacePaneAvailabilityMetricAttributes } from '../../services/projects/workspace-pane-availability-resolver.js';
 import { readCurrentWorkspacePaneCatalog } from '../../services/projects/workspace-pane-catalog.js';
-import type { TerminalService } from '../../services/terminal/terminal-service.js';
 import {
   projectBindingOperations,
   projectOps,
@@ -308,7 +307,6 @@ interface ProjectRouteDeps {
   /** Existing Kit lifecycle authority; pane discovery only reads its snapshot. */
   kitObservabilityRegistry?: StationKitObservabilityRegistry;
   /** Project-scoped terminal termination; the route supplies the identity. */
-  terminalService?: Pick<TerminalService, 'closeForProject'>;
   /**
    * #3994: a session id the terminal socket issued (a UUID) closes in
    * TerminalSessions, under the caller's own terminal authority and only
@@ -1514,9 +1512,9 @@ export function createProjectRoutes(
   });
 
   /**
-   * Explicit terminal termination belongs to the TerminalService. The route
-   * first resolves the Project selected by the URL, then passes only that
-   * route-bound slug plus the terminal id to the service. A renderer cannot
+   * Explicit terminal termination belongs to the terminal sessions. The
+   * route first resolves the Project selected by the URL, then passes only
+   * that route-bound Project plus the terminal id to them. A renderer cannot
    * close an arbitrary raw session id, and mounting a terminal renderer is
    * not a prerequisite for this operation.
    */
@@ -1534,41 +1532,20 @@ export function createProjectRoutes(
         return c.json({ success: false, error: 'Project not found' }, 404);
       }
 
-      if (
-        deps.closeScopedTerminal &&
-        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
-          terminalId,
-        )
-      ) {
-        // Refusal and absence answer alike: an id outside this Project
-        // discloses nothing about the session it names.
-        return (await deps.closeScopedTerminal(
-          c.req.raw,
-          projectId,
-          terminalId,
-        ))
-          ? c.json({
-              success: true,
-              data: { sessionId: terminalId, projectSlug: slug, terminalId },
-            })
-          : c.json({ success: false, error: 'Terminal not found' }, 404);
-      }
-
-      if (!deps.terminalService) {
+      if (!deps.closeScopedTerminal) {
         return c.json(
           { success: false, error: 'Terminal service is unavailable' },
           503,
         );
       }
-
-      const closed = await deps.terminalService.closeForProject(
-        slug,
-        terminalId,
-      );
-      if (!closed) {
-        return c.json({ success: false, error: 'Terminal not found' }, 404);
-      }
-      return c.json({ success: true, data: closed });
+      // Refusal and absence answer alike: an id outside this Project
+      // discloses nothing about the session it names.
+      return (await deps.closeScopedTerminal(c.req.raw, projectId, terminalId))
+        ? c.json({
+            success: true,
+            data: { sessionId: terminalId, projectSlug: slug, terminalId },
+          })
+        : c.json({ success: false, error: 'Terminal not found' }, 404);
     } catch (error: unknown) {
       return c.json({ success: false, error: errorMessage(error) }, 400);
     }

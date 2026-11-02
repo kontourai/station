@@ -116,9 +116,14 @@ describe('FeaturePreviewRegistry', () => {
     const first = new FeaturePreviewRegistry(directory, logger);
     const firstProbe = bindProbe(first);
     expect(selectProbe(firstProbe)).toBe('skipped');
+    expect(first.generation('probe')).toBe(0);
 
     await first.setEnabled('probe', true);
     expect(selectProbe(firstProbe)).toBe('probed');
+    expect(first.generation('probe')).toBe(1);
+    await first.setEnabled('probe', false);
+    await first.setEnabled('probe', true);
+    expect(first.generation('probe')).toBe(3);
     if (process.platform !== 'win32')
       expect(statSync(join(directory, 'config')).mode & 0o077).toBe(0);
 

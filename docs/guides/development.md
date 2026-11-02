@@ -182,8 +182,8 @@ just dev --watch --instance=hot --temp-home --port=3342 --ui-port=3374
   (`--temp-home` or `--home`). The browser workspace refuses to load a page
   served by a listener of the *same* home as a Station listener, so a dev
   instance on the viewer's home cannot be shown in it.
-- **Port band.** An instance occupies its server port, the next three (terminal,
-  voice, consent) and its UI port. Choose a `--port`/`--ui-port` whose whole
+- **Port band.** An instance occupies its server port, voice (+2), consent
+  (+3) and its UI port. Choose a `--port`/`--ui-port` whose whole
   band is clear of every other running Station on the host, the normal one
   included (never 3141 or 3000 for a test).
 - **Polling.** Some hosts (certain bind mounts, network and virtualized

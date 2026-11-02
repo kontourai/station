@@ -12,6 +12,7 @@ import type {
   ConversationOpenResolution,
   ConversationTurnActivity,
 } from '@kontourai/station-contracts/orchestration';
+import type { ProviderDurabilityProfile } from '@kontourai/station-contracts/provider';
 import {
   type ApprovalMode,
   type EngineId,
@@ -620,6 +621,7 @@ export type ChatUIState = {
   approvalPostureSequence?: number;
   orchestrationSessionStarted?: boolean;
   orchestrationProvider?: EngineId;
+  orchestrationDurability?: ProviderDurabilityProfile;
   orchestrationModel?: string;
   orchestrationStatus?: string;
   /**
@@ -1105,11 +1107,14 @@ export function hydrateActiveChats(
       ],
       ...(pendingDispatch ? { queueDrainHeldForOpen: true } : {}),
       queuedMessageMetadata: [
-        ...(pendingDispatch ? [pendingDispatch.metadata] : []),
+        ...(pendingDispatch
+          ? [{ ...pendingDispatch.metadata, originUnverified: true as const }]
+          : []),
         ...stringList(session.queuedMessages).map<PendingMessageMetadata>(
           (_, index) => {
             const metadata = session.queuedMessageMetadata?.[index];
             return {
+              originUnverified: true,
               id:
                 typeof metadata?.id === 'string'
                   ? metadata.id
@@ -1124,6 +1129,14 @@ export function hydrateActiveChats(
                 : {}),
               ...(typeof metadata?.steerTurnId === 'string'
                 ? { steerTurnId: metadata.steerTurnId }
+                : {}),
+              ...(typeof metadata?.inboxSteerConversationId === 'string'
+                ? {
+                    inboxSteerConversationId: metadata.inboxSteerConversationId,
+                  }
+                : {}),
+              ...(typeof metadata?.inboxSteerHead === 'string'
+                ? { inboxSteerHead: metadata.inboxSteerHead }
                 : {}),
             };
           },
@@ -1465,8 +1478,13 @@ export interface PendingMessageMetadata {
   id: string;
   mode: 'queue' | 'steer';
   delivery?: 'steering' | 'indeterminate';
+  /** Legacy storage has no originating Station or authority. Never automatically send it. */
+  originUnverified?: true;
   steerThreadId?: string;
   steerTurnId?: string;
+  /** A possibly submitted inbox steer must be reconciled through its inbox. */
+  inboxSteerConversationId?: string;
+  inboxSteerHead?: string;
 }
 
 function reconcilePendingMetadata(

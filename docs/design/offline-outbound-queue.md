@@ -99,31 +99,32 @@ settlement. A lost answer leaves the original key for inspection. Apply a pendin
 approval change before queuing. Existing browser-local follow-ups and offline
 outbox entries remain subject to the rules below.
 
-Browser-local follow-ups held behind a running turn stay in the tab's session storage, and
-each keeps a durable copy in the queue under the key the queue will send it
-with. Nothing sends that copy automatically: the window's own queue sends it
-when the turn ends, a reload's restored queue takes the copies back (so an
-edit or a delete there is what counts), and a copy another window holds is
-listed first with Send and Discard for the user (it does not hold back later
-messages). While that window runs (it holds its renderer lock) the copy is its
-ordinary follow-up; once the window is proven gone it needs the person. Send on
-a closed window's copy, while a turn runs or this window's queue holds
-follow-ups, puts it in that queue under its own key (the queue's durable copy
-takes it over); otherwise it is released to send now. A discarded or delivered message is never sent
-again from any window. A
-message whose row is already on its way or possibly started is never sent
-again from the composer or the queue. A non-inbox send refused because the engine is
-busy can join that queue with its own key and copy, and the queue's drain writes
-the same before-the-request row as a composer send. Sends with attachments or
-a visual skill are not written to the queue (their draft is kept until
-Station answers, as before). A message Station composes for the person (the
-chat's Continue after a restart) gets the same before-the-request row under its
-own derived key, and every send under that key (a Retry or a replay as much as
-the first) leaves the composer out: it carries none of the composer's files, a refusal hands nothing back to the composer, and while a
-turn is running it is not sent, steered or queued under a new key. A busy
-refusal before Station began sending holds it in the queue under the same key,
-like any send; a refusal after it began spends the key, so that Continue can
-only report the refusal.
+New busy sends use Station's server inbox rather than a per-tab automatic
+queue. IndexedDB remains the durable transport outbox until the same Station
+and authority confirm acceptance. A queued receipt retires that outbox row;
+all clients then read the same server queue. Plain automatic replay retains
+its fixed background route and resource-admission class through placement.
+A definitive refusal that was not queued restores the draft without making
+a new local queue entry. Closed-window copies keep their original key and are
+released through the outbox, including while a conversation is busy.
+
+Legacy sessionStorage input has no originating Station or authority. Hydration
+retains its text and marks it for destination review. It is excluded from
+automatic drain, interrupt/send-now, steering and assignment into the current
+authority's outbox. Review and resend moves it only into an empty composer;
+the user's next Send creates a new explicit intent. Existing drafts are never
+overwritten. Uncertain delivery remains disclosed.
+
+Steers retain text, key and the original observed head before network handoff.
+An unanswered submission reconciles the exact sender, key, text and head in
+the original authority. An already observed head can support offline capture;
+without one the draft stays put. A server claim that may already have reached
+an engine stays unconfirmed and is never automatically replayed.
+
+Sends carrying attachments or a visual skill keep their existing request and
+staging rules. Station-authored Continue messages retain their derived key and
+never borrow the composer's files or become a new-key steer while a turn runs.
+A definitive settled-key refusal requires a new deliberate user request.
 
 Configuration edits are excluded from the outbound chat queue by default. Station has no single
 configuration-mutation protocol: agent, connection, plugin, and system edits

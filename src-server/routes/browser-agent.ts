@@ -158,9 +158,27 @@ export function createBrowserAgentRoutes(deps: BrowserAgentRoutesDeps) {
       return c.json(invalid('The request body is not JSON.'));
     }
 
+    const caller = deps.resolveCaller(c.req.raw);
+    const isCurrent = () => {
+      const next = deps.resolveCaller(c.req.raw);
+      return (
+        !!caller &&
+        !!next &&
+        caller.sessionId === next.sessionId &&
+        caller.assurance === next.assurance &&
+        caller.principal?.id === next.principal?.id &&
+        caller.principal?.source === next.principal?.source &&
+        caller.principal?.elevationEligible ===
+          next.principal?.elevationEligible &&
+        caller.localProjectId === next.localProjectId &&
+        caller.projectIdSource === next.projectIdSource &&
+        caller.conversationId === next.conversationId
+      );
+    };
     const decided = await authorizeBrowserAgentCaller(
-      deps.resolveCaller(c.req.raw),
+      caller,
       deps.authorizePrincipal,
+      isCurrent,
     );
     if (!decided.ok) return c.json({ ok: false, ...decided.refusal });
     const authority = decided.authority;

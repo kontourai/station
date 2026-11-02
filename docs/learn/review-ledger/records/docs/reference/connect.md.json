@@ -124,8 +124,6 @@
 
     "src-server/services/ssh/environment-security-service.ts",
 
-    "src-server/services/terminal/terminal-ws-server.ts",
-
     "src-ui/src/__tests__/compatibility.test.ts",
 
     "src-ui/src/__tests__/serverHealth.test.ts",
@@ -190,7 +188,9 @@
 
     "src-server/runtime/consent/consent-listener.ts",
 
-    "src-server/services/identity/operator-sessions.ts"
+    "src-server/services/identity/operator-sessions.ts",
+
+    "src-server/services/terminal/terminal-gateway.ts"
   ],
 
   "checks": [

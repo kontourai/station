@@ -56,13 +56,24 @@ import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import { ConfigLoader } from '../../domain/config-loader.js';
 import { ensureStationHomeSchema } from '../../domain/home-schema-gate.js';
 import { getOrchestrationDatabasePath } from '../../domain/migrations/003-orchestration-events.js';
+import {
+  emit,
+  FakeCodexProcess,
+  flushIo,
+  repliesTo,
+  waitFor,
+  withTimeout,
+} from '../../providers/__tests__/codex-adapter-wire-harness.js';
 import { listProviders } from '../../providers/registries/registry.js';
 import type { AccountSharingRuntimeState } from '../../routes/system/account-sharing-routes.js';
 import {
   principalKey,
   UnattendedGrantStore,
 } from '../../services/agents/unattended-grant-store.js';
-import type { FeaturePreviewRegistry } from '../../services/feature-previews/feature-preview-registry.js';
+import {
+  FeaturePreviewNotOfferedError,
+  type FeaturePreviewRegistry,
+} from '../../services/feature-previews/feature-preview-registry.js';
 import {
   type AccountSharingRecord,
   accountSharingSettingPath,
@@ -425,32 +436,6 @@ function stationBrowserOriginsFor(port: number) {
 
 const MCPManager = await import('../mcp/mcp-manager.js');
 
-function replaceTerminalListener(
-  runtime: InstanceType<typeof StationRuntime>,
-): {
-  start: ReturnType<typeof vi.fn>;
-  stop: ReturnType<typeof vi.fn>;
-} {
-  let running = false;
-  const start = vi.fn((port: number, host?: string) => {
-    if (running) throw new Error('terminal listener is already running');
-    running = true;
-    return { port, host };
-  });
-  const stop = vi.fn(async () => {
-    running = false;
-  });
-  (
-    runtime as unknown as {
-      terminalWsServer: {
-        start: ReturnType<typeof vi.fn>;
-        stop: ReturnType<typeof vi.fn>;
-      };
-    }
-  ).terminalWsServer = { start, stop };
-  return { start, stop };
-}
-
 /**
  * Wait for the boot under test to reach route configuration (#1791).
  *
@@ -564,6 +549,140 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
     }
   });
 
+  it('keeps Codex tools off by default and on hosted runtimes, and applies runtime policy before dispatch', async () => {
+    home = await createSchemaHome('station-codex-bound-runtime-');
+    const agentDir = join(home, 'agents', 'bound-test');
+    mkdirSync(agentDir, { recursive: true });
+    writeFileSync(
+      join(agentDir, 'agent.json'),
+      JSON.stringify({
+        name: 'Bound Test',
+        prompt: 'Test agent.',
+        model: 'anthropic.test-model',
+      }),
+    );
+    runtime = new StationRuntime({
+      projectHomeDir: home,
+      port: TEST_PORT,
+      host: '127.0.0.1',
+    });
+    await runtime.initialize();
+    const subject = runtime as any;
+    let adapter = subject.codexAdapter;
+    let child = new FakeCodexProcess();
+    adapter.processFactory = () => child;
+    const start = async (threadId: string) => {
+      child = new FakeCodexProcess();
+      const write = child.stdin._write.bind(child.stdin);
+      child.stdin._write = (chunk, encoding, callback) => {
+        write(chunk, encoding, callback);
+        child.emit('wire-write');
+      };
+      const wire = async (method: string): Promise<any> => {
+        for (;;) {
+          const found = child.stdin.lines
+            .map((line: string) => JSON.parse(line))
+            .find((line: any) => line.method === method);
+          if (found) return found;
+          await new Promise<void>((resolve) =>
+            child.once('wire-write', resolve),
+          );
+        }
+      };
+      const promise = adapter.startSession({
+        provider: 'codex',
+        threadId,
+        cwd: home,
+        agent: { slug: 'bound-test' },
+        metadata: {
+          delegation: {
+            mode: 'isolated-child',
+            depth: 1,
+            maxDepth: 2,
+            parentAgentSlug: 'parent',
+            rootAgentSlug: 'root',
+            blockedTools: ['station-browser_browser_status'],
+          },
+        },
+      });
+      const initialize = await wire('initialize');
+      await emit(child, { id: initialize.id, result: { userAgent: 'test' } });
+      const thread = await wire('thread/start');
+      await emit(child, {
+        id: thread.id,
+        result: { thread: { id: `native-${threadId}` } },
+      });
+      await promise;
+      return thread.params;
+    };
+    const off = await start('preview-off');
+    expect(off.dynamicTools).toBeUndefined();
+    await adapter.stopSession('preview-off');
+    await subject.featurePreviews.setEnabled(
+      'codex-bound-browser-device-tools',
+      true,
+    );
+    const policy = vi.spyOn(subject, 'resolveExternalPreToolPolicy');
+    const dispatch = vi.spyOn(subject, 'codexToolDispatch');
+    const enabled = await start('preview-on');
+    expect(
+      enabled.dynamicTools.some((tool: any) => tool.name === 'browser_status'),
+    ).toBe(true);
+    expect(policy).toHaveBeenCalled();
+    await expect(policy.mock.results[0].value).resolves.toBeDefined();
+    const turn = adapter.sendTurn({ threadId: 'preview-on', input: 'go' });
+    await flushIo();
+    await emit(child, { id: '3', result: { turn: { id: 'turn' } } });
+    await withTimeout(turn, 'runtime turn');
+    await emit(child, {
+      id: 51,
+      method: 'item/tool/call',
+      params: {
+        threadId: 'native-preview-on',
+        turnId: 'turn',
+        callId: 'call',
+        tool: 'browser_status',
+        arguments: {},
+      },
+    });
+    await waitFor(() => repliesTo(child, 51)[0], 'policy denial');
+    expect(repliesTo(child, 51)[0].error.message).toBe('Bound tool refused');
+    expect(dispatch).not.toHaveBeenCalled();
+    await adapter.stopSession('preview-on');
+    await runtime.shutdown();
+    runtime = undefined;
+    rmDirSyncRetrying(home);
+    home = await createSchemaHome('station-codex-bound-hosted-');
+    const registryPath = join(home, 'hosted-tenants.json');
+    writeFileSync(
+      registryPath,
+      JSON.stringify({
+        schemaVersion: 1,
+        tenants: [{ id: 'alpha', authority: 'alpha.station.test' }],
+      }),
+    );
+    process.env[hostedRegistryFileEnv] = registryPath;
+    runtime = new StationRuntime({
+      projectHomeDir: home,
+      port: TEST_PORT,
+      host: '127.0.0.1',
+    });
+    await runtime.initialize();
+    const hosted = runtime as any;
+    expect(hosted.codexBoundToolsPreview).toBeUndefined();
+    await expect(
+      hosted.featurePreviews.setEnabled(
+        'codex-bound-browser-device-tools',
+        true,
+      ),
+    ).rejects.toBeInstanceOf(FeaturePreviewNotOfferedError);
+    adapter = hosted.codexAdapter;
+    adapter.processFactory = () => child;
+    const hostedStart = await start('hosted');
+    expect(hostedStart.dynamicTools).toBeUndefined();
+    await adapter.stopSession('hosted');
+  });
+
   it('rejects an incompatible home before EventStore can create SQLite state', () => {
     home = mkdtempSync(join(tmpdir(), 'station-coldstart-incompatible-'));
     mkdirSync(join(home, 'config'), { recursive: true });
@@ -643,22 +762,19 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
     journal.close();
 
     const virtualReady = vi.fn();
-    const terminal = replaceTerminalListener(
-      (runtime = new StationRuntime({
-        projectHomeDir: home,
-        port: TEST_PORT,
-        virtualApplication: {
-          origin: 'https://virtual.example.test',
-          ready: virtualReady,
-        },
-      })),
-    );
+    runtime = new StationRuntime({
+      projectHomeDir: home,
+      port: TEST_PORT,
+      virtualApplication: {
+        origin: 'https://virtual.example.test',
+        ready: virtualReady,
+      },
+    });
     routeMocks.deferServerFactory = true;
 
     await expect(runtime.initialize()).rejects.toThrow(
       'Relay enrollment cleanup is unconfirmed',
     );
-    expect(terminal.start).not.toHaveBeenCalled();
     expect(routeMocks.configureRuntimeRoutes).not.toHaveBeenCalled();
     expect(virtualReady).not.toHaveBeenCalled();
   });
@@ -687,7 +803,6 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
       port: TEST_PORT,
       host: '127.0.0.1',
     });
-    replaceTerminalListener(runtime);
     routeMocks.deferServerFactory = true;
 
     let bootSettled = false;
@@ -734,7 +849,6 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
       port: TEST_PORT,
       host: '127.0.0.1',
     });
-    replaceTerminalListener(runtime);
     vi.spyOn(
       runtime as unknown as { resolveBuiltinEngineBinding: () => unknown },
       'resolveBuiltinEngineBinding',
@@ -887,7 +1001,6 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
                 ready: virtualReady,
               },
       });
-      replaceTerminalListener(runtime);
       // This receipt-composition proof does not cover native-engine discovery.
       // Match the existing archive#2365 cold-start harness so unavailable sandbox CLIs
       // cannot consume the test's timeout budget.
@@ -1041,7 +1154,6 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
       port,
       host: '127.0.0.1',
     });
-    replaceTerminalListener(runtime);
     const resolveModelId = vi
       .spyOn(BedrockModelCatalog.prototype, 'resolveModelId')
       .mockResolvedValue('anthropic.test-model');
@@ -1165,7 +1277,6 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
           port: TEST_PORT,
           host: '127.0.0.1',
         });
-        replaceTerminalListener(runtime);
         // A namespaced workItemRef routes dispatch through the assignment
         // claim; stub that gate (and the workspace it needs) so this case
         // observes the brief. Both are read when the dispatcher is composed.
@@ -1317,7 +1428,6 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
       port: TEST_PORT,
       host: '127.0.0.1',
     });
-    replaceTerminalListener(runtime);
     // Native-engine readiness probes are unrelated to managed-agent hook
     // composition and can take tens of seconds in the sandbox. Keep the
     // built-in agent on Station's engine, which is the production path this
@@ -1410,7 +1520,6 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
   it('schedules store integrity verification against the store it opened (#3218)', async () => {
     home = await createSchemaHome('station-coldstart-store-integrity-');
     runtime = new StationRuntime({ projectHomeDir: home, port: TEST_PORT });
-    replaceTerminalListener(runtime);
 
     await expect(runtime.initialize()).resolves.toBeUndefined();
 
@@ -1451,7 +1560,6 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
       projectSharing: true,
       localAccounts: { publicOrigin: `http://localhost:${TEST_PORT}` },
     });
-    replaceTerminalListener(runtime);
     vi.mocked(attachVoiceWebSocket).mockClear();
     await expect(runtime.initialize()).resolves.toBeUndefined();
 
@@ -1551,7 +1659,6 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
         port: TEST_PORT,
         host: '127.0.0.1',
       });
-      replaceTerminalListener(runtime);
       await expect(runtime.initialize()).resolves.toBeUndefined();
     };
     const stop = async () => {
@@ -1790,29 +1897,6 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
     });
   });
 
-  it('hosted tenant isolation never binds the unauthorised terminal port', async () => {
-    home = await createSchemaHome('station-coldstart-hosted-terminal-');
-    const registryPath = join(home, 'hosted-tenants.json');
-    writeFileSync(
-      registryPath,
-      JSON.stringify({
-        schemaVersion: 1,
-        tenants: [{ id: 'alpha', authority: 'alpha.station.test' }],
-      }),
-    );
-    process.env[hostedRegistryFileEnv] = registryPath;
-    runtime = new StationRuntime({
-      projectHomeDir: home,
-      port: TEST_PORT,
-      host: '0.0.0.0',
-    });
-    const terminalListener = replaceTerminalListener(runtime);
-
-    await expect(runtime.initialize()).resolves.toBeUndefined();
-
-    expect(terminalListener.start).not.toHaveBeenCalled();
-  });
-
   it('external-engine-bound agent records (incl. promoted defaults) do not build managed runtime instances and log no errors (station#954)', async () => {
     home = await createSchemaHome('station-coldstart-external-');
     // Byte-for-byte the zero-override shape a promoted default
@@ -1853,7 +1937,6 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
       port: TEST_PORT,
       host: '127.0.0.1',
     });
-    replaceTerminalListener(runtime);
     const logger = (
       runtime as unknown as {
         logger: {
@@ -1888,7 +1971,7 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
     runtime = undefined;
   });
 
-  it('releases terminal and defers voice when initialization fails, then retries cleanly', async () => {
+  it('defers voice when initialization fails, then retries cleanly', async () => {
     home = await createSchemaHome('station-coldstart-retry-');
     await new ConfigLoader({ projectHomeDir: home }).mutateAppConfig(() => ({
       registryTrust: { profiles: [] },
@@ -1899,7 +1982,6 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
       port,
       host: '127.0.0.1',
     });
-    const terminalListener = replaceTerminalListener(runtime);
     const policies = (
       runtime as unknown as { orchestrationEventStore: EventStore }
     ).orchestrationEventStore.createRegistryTrustPolicyDecisions();
@@ -1909,7 +1991,7 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
       }
     ).eventLog;
     const originalLoad = eventLog.loadRecentEvents.bind(eventLog);
-    const failure = new Error('deterministic post-terminal startup failure');
+    const failure = new Error('deterministic startup failure');
     eventLog.loadRecentEvents = vi
       .fn()
       .mockRejectedValueOnce(failure)
@@ -1919,13 +2001,6 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
 
     await expect(runtime.initialize()).rejects.toBe(failure);
     expect(policies.read()).toBeNull();
-    expect(terminalListener.stop).toHaveBeenCalledTimes(1);
-    expect(terminalListener.start).toHaveBeenNthCalledWith(
-      1,
-      port + 1,
-      '127.0.0.1',
-      stationBrowserOriginsFor(port),
-    );
     expect(attachVoiceWebSocket).not.toHaveBeenCalled();
     expect(routeMocks.servicePairs).toHaveLength(1);
     const failedVoltAgent = (
@@ -1943,12 +2018,6 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
 
     await expect(runtime.initialize()).resolves.toBeUndefined();
     expect(policies.read()?.identity.configured).toBe(true);
-    expect(terminalListener.start).toHaveBeenNthCalledWith(
-      2,
-      port + 1,
-      '127.0.0.1',
-      stationBrowserOriginsFor(port),
-    );
     expect(attachVoiceWebSocket).toHaveBeenCalledTimes(1);
     expect(attachVoiceWebSocket).toHaveBeenCalledWith(
       port + 2,
@@ -1982,7 +2051,6 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
       port: TEST_PORT,
       host: '127.0.0.1',
     });
-    replaceTerminalListener(runtime);
     const subject = runtime as unknown as {
       eventLog: { loadRecentEvents(): Promise<void> };
       orchestrationEventStore: EventStore;
@@ -2188,7 +2256,6 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
       port: TEST_PORT,
       host: '127.0.0.1',
     });
-    replaceTerminalListener(runtime);
 
     const captureSpy = vi.spyOn(
       runtime as unknown as {
@@ -2220,7 +2287,6 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
       port: TEST_PORT,
       host: '127.0.0.1',
     });
-    replaceTerminalListener(runtime);
     await expect(runtime.initialize()).resolves.toBeUndefined();
     expect(globals.__stationSignedStartupImports).toBeGreaterThan(before);
     const internal = runtime as unknown as {
@@ -2257,7 +2323,6 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
       port: TEST_PORT,
       host: '127.0.0.1',
     });
-    replaceTerminalListener(runtime);
     const peer = new EventStore(getOrchestrationDatabasePath(home));
     const internal = runtime as any;
     await internal.configLoader.mutateAppConfig(() => ({
@@ -2317,7 +2382,6 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
       port: TEST_PORT,
       host: '127.0.0.1',
     });
-    replaceTerminalListener(runtime);
 
     let settled = false;
     const initialization = runtime.initialize().finally(() => {
@@ -2347,7 +2411,6 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
       port: TEST_PORT,
       host: '127.0.0.1',
     });
-    replaceTerminalListener(runtime);
 
     const initialization = runtime
       .initialize()
@@ -2391,7 +2454,6 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
       port: TEST_PORT,
       host: '127.0.0.1',
     });
-    replaceTerminalListener(runtime);
     const primaryFailure = new Error('initialization failed');
     (
       runtime as unknown as {

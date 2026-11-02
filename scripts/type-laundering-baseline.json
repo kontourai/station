@@ -2343,12 +2343,6 @@
       "reason": "legacy-cast"
     },
     {
-      "file": "src-server/services/terminal/terminal-ws-server.ts",
-      "rule": "as-unknown",
-      "fingerprint": "5d68cbf34deb5f5f1809132b66dfa43c18a3c5b8a5e9311c4bf760cf24b26ec9",
-      "reason": "legacy-cast"
-    },
-    {
       "file": "src-server/tools/station-control-delegation.ts",
       "rule": "as-unknown",
       "fingerprint": "c2f17f7c0945e044ee46ebf84ddcd55b42abab605fbbe6dbbca71907aac18b8e",

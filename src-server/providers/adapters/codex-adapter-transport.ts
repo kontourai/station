@@ -221,6 +221,7 @@ export class CodexAdapterTransport {
 
   unregisterSession(record: CodexSessionRecord): void {
     this.sessions.delete(record.externalThreadId);
+    this.closeBoundChannel(record);
     const threads = this.threadLookup.get(record.process);
     if (threads) {
       for (const [threadId, owner] of threads) {
@@ -228,6 +229,25 @@ export class CodexAdapterTransport {
       }
       if (threads.size === 0) this.threadLookup.delete(record.process);
     }
+  }
+
+  private closeBoundChannel(record: CodexSessionRecord): void {
+    if (record.boundChannelClosed) return;
+    record.boundChannelClosed = true;
+    for (const [requestId, pending] of record.boundToolApprovals ?? []) {
+      pending.resolve(false);
+      this.publish({
+        eventId: crypto.randomUUID(),
+        provider: 'codex',
+        threadId: record.externalThreadId,
+        createdAt: this.now().toISOString(),
+        requestId,
+        method: 'request.resolved',
+        status: 'cancelled',
+      });
+    }
+    record.boundToolApprovals?.clear();
+    void record.closeBoundTools?.().catch(() => {});
   }
 
   setCodexThreadId(record: CodexSessionRecord, codexThreadId: string): void {
@@ -281,6 +301,7 @@ export class CodexAdapterTransport {
     );
     record.process.once('exit', () => stopWatchingOomKills?.());
     record.process.on('exit', (code, signal) => {
+      this.closeBoundChannel(record);
       // An intentional stop (stopSession/stopAll) already settled pending
       // requests and published session.exited — skip re-running that here
       // so a synchronous `exit` from kill() (as the test doubles emit)
@@ -313,6 +334,7 @@ export class CodexAdapterTransport {
     // failures (#774 corrected D3's claim that it did): that EPIPE emits on
     // the stdin stream, handled by the dedicated door below.
     record.process.on('error', (error) => {
+      this.closeBoundChannel(record);
       if (record.stopped) return;
       record.stopped = true;
       this.settleAcknowledgementWatches(record);
@@ -353,6 +375,7 @@ export class CodexAdapterTransport {
     // `finalizeUnexpectedExit` and `publishOrphanedTurnFailure`'s
     // terminalPublishedForTurnId guard for the exit-order).
     record.process.stdin.on('error', (error) => {
+      this.closeBoundChannel(record);
       // Exit-first double fire: `finalizeUnexpectedExit` already unregistered
       // the session — nothing is in flight anymore, and re-running this door
       // would duplicate `session.exited`. (For the stdin-first order the
@@ -638,6 +661,26 @@ export class CodexAdapterTransport {
     );
     if (rpcRequestId === undefined) return;
     const key = jsonRpcIdKey(rpcRequestId);
+    if (record.activeBoundRequests?.has(key)) {
+      record.cancelledBoundRequests ??= new Set();
+      record.cancelledBoundRequests.add(key);
+      for (const [requestId, pending] of record.boundToolApprovals ?? []) {
+        if (pending.rpcKey !== key) continue;
+        record.boundToolApprovals!.delete(requestId);
+        pending.resolve(false);
+        this.publish({
+          eventId: crypto.randomUUID(),
+          provider: 'codex',
+          threadId: record.externalThreadId,
+          createdAt: this.now().toISOString(),
+          requestId,
+          method: 'request.resolved',
+          status: 'cancelled',
+          response: { reason: 'closed-by-engine' },
+        });
+      }
+      return;
+    }
     const entry = record.awaitingAcknowledgements?.get(key);
     if (!entry) {
       for (const [requestId, pending] of record.pendingApprovals) {
@@ -818,6 +861,7 @@ export class CodexAdapterTransport {
       return;
     }
     record.stopped = true;
+    this.closeBoundChannel(record);
     this.settleAcknowledgementWatches(record);
 
     // Settle outstanding inbound approval requests before teardown so the
@@ -938,6 +982,49 @@ export class CodexAdapterTransport {
     record: CodexSessionRecord,
     request: JsonRpcRequest & { id: JsonRpcId },
   ): void {
+    if (request.method === 'item/tool/call') {
+      if (!record.boundToolHandler) {
+        this.sendErrorResponse(record, request.id, 'Bound tool unavailable');
+        return;
+      }
+      const key = jsonRpcIdKey(request.id);
+      record.activeBoundRequests ??= new Set();
+      if (
+        record.activeBoundRequests.has(key) ||
+        record.activeBoundRequests.size >= 16
+      ) {
+        this.sendErrorResponse(record, request.id, 'Bound tool refused');
+        return;
+      }
+      record.activeBoundRequests.add(key);
+      const mayReply = () =>
+        !record.stopped && !record.cancelledBoundRequests?.has(key);
+      void record
+        .boundToolHandler(request.params, key)
+        .then(
+          (result) => {
+            if (mayReply()) this.sendResponse(record, request.id, result);
+          },
+          (error: unknown) => {
+            if (mayReply()) {
+              const message =
+                error instanceof Error &&
+                error.message === 'bound-tool-executed-result-withheld'
+                  ? 'Bound tool executed; result withheld'
+                  : error instanceof Error &&
+                      error.message === 'bound-tool-session-restart-required'
+                    ? 'Bound tool unavailable; restart the Session'
+                    : 'Bound tool refused';
+              this.sendErrorResponse(record, request.id, message);
+            }
+          },
+        )
+        .finally(() => {
+          record.activeBoundRequests?.delete(key);
+          record.cancelledBoundRequests?.delete(key);
+        });
+      return;
+    }
     // #562: the reply must carry the id exactly as received (value and
     // type). Codex sends numeric ids and drops a reply whose id is `"0"`
     // for request `0`, leaving the approval recorded but never delivered.

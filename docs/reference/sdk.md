@@ -54,6 +54,9 @@ native shell's host-owned transport), and `requestTicket`, `createSocket` and
   server-resolved program (`{kind: 'shell'}` or `{kind: 'agent', connectionId,
   mode}`); no executable, argument or directory is sent. `legacyTerminalId`
   imports a pre-socket Coding terminal's owned history once.
+
+Station has no `port + 1` terminal listener; the SDK no longer exports
+`fetchTerminalPort`, and `GET /api/system/terminal-port` is not served.
 - `attach(target, terminalId)` views an existing session; repeated calls share
   one view until it is detached.
 - `list(target)` returns the binding's session records, oldest first.
@@ -4974,7 +4977,9 @@ not a successful delivery outcome or permission to resend the key. The
 the conversation's inbox while its turn runs (#3568). It needs `conversationId`
 and `clientTurnId`, takes no approval pick, and resolves
 `{ outcome: 'started', receipt }` or a `ConversationInboxQueuedReceipt`
-(`outcome: 'queued'`). A Station that predates the inbox, and any send it
+(`outcome: 'queued'`). With `automaticBackground: true` it uses the fixed
+background route and retains that admission class through server placement.
+A Station that predates the inbox, and any send it
 cannot hold (attachments, a target other than the conversation's binding),
 can refuse a send before its keyed dispatch begins with
 `provider_turn_in_progress` or `provider_session_starting`; that message can
@@ -4989,6 +4994,23 @@ replacement key automatically. A deliberate new user request requires a new key.
 `listConversationInbox(apiBase, conversationId)` lists the held messages and
 `cancelConversationInboxEntry(apiBase, conversationId, clientTurnId)` withdraws
 one, or dismisses one that is `unconfirmed` or `refused`.
+
+`readConversationInboxHead(apiBase, conversationId)` reads the opaque current
+head. `submitConversationSteer(apiBase, conversationId, {key, message,
+expectedHead?})` submits through the durable inbox; if no head is supplied it
+reads one first and refuses an older host that does not expose a head. A stale
+head or conflicting key is a definitive refusal. Retain the original key,
+text and head after an unanswered request and reconcile against the same
+Station and authority before retrying. An unconfirmed handoff is never
+replayed automatically. Session snapshots and conversation-open execution also
+carry the current adapter's optional `durability` declaration; a missing field
+provides no steering authority. Conversation-open decoding accepts a complete
+adapter declaration, validates its capability states and placement/ownership
+fields, and rejects malformed declarations as `invalid-response`.
+Profile extraction uses the contracts' `readProviderDurabilityProfile` helper:
+absent carriers remain unknown, including legacy metadata without a declaration.
+Display notes have a separate 50-note capacity
+and seven-day retention, pruned on submission. See [inbox kinds and crash outcomes](session-api.md#submit-steer-follow-up-or-display-input).
 
 `ProjectTaskRoomProtocolError` remains a plain `Error` subclass. Its
 HTTP/envelope failure form carries `status`, `code`, `details` and

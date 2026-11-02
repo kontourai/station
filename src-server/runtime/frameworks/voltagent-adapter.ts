@@ -21,7 +21,7 @@ import {
   type Tool,
   ToolDeniedError,
 } from '@voltagent/core';
-import { jsonSchema, type UIMessage } from 'ai';
+import { jsonSchema, type PrepareStepFunction, type UIMessage } from 'ai';
 import type { FileMemoryAdapter } from '../../adapters/file/memory-adapter.js';
 import { createPromptOnlyMemoryView } from '../../adapters/file/memory-adapter-prompt-view.js';
 import { resolveMaxSteps } from '../../constants.js';
@@ -42,6 +42,7 @@ import { currentAuthorizedTurnCorrelation } from '../conversation/authorized-tur
 import { guardBoundedApiModel } from '../conversation/bounded-api-model.js';
 import { assertBoundedApiExecutionAvailable } from '../conversation/bounded-api-turn-grant.js';
 import { createConfiguredDispatchModel } from '../conversation/dispatch-model-policy.js';
+import { createInboxStepPreparation } from '../conversation/inbox-model-step.js';
 import * as MCPManager from '../mcp/mcp-manager.js';
 import {
   createNativeOutputDeclarationTool,
@@ -539,6 +540,9 @@ function bindModelInputComposition(agent: Agent): void {
       input: string | ModelInputMessage[],
       options?: {
         composeModelInput?: ModelInputComposer;
+        userId?: string;
+        conversationId?: string;
+        prepareStep?: PrepareStepFunction;
         hooks?: AgentHooks;
         [key: string]: unknown;
       },
@@ -556,6 +560,14 @@ function bindModelInputComposition(agent: Agent): void {
         authored,
         {
           ...invokeOptions,
+          prepareStep: createInboxStepPreparation(
+            invokeOptions.prepareStep ?? agent.prepareStep,
+            {
+              memory: agent.getMemory(),
+              userId: invokeOptions.userId,
+              conversationId: invokeOptions.conversationId,
+            },
+          ),
           // #3112: VoltAgent persists (and titles from) the input it is handed,
           // so it is handed the authored turn and the context joins only the
           // messages prepared for the model.

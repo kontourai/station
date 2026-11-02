@@ -608,8 +608,7 @@ async function harness(
         acpBridge: { shutdown: async () => {} },
         feedbackService: { stop: () => {} },
         voiceService: { stop: async () => {} },
-        terminalWsServer: { stop: () => {} },
-        terminalService: { dispose: async () => {} },
+        scopedTerminals: {},
         configLoader: {
           getProjectHomeDir: () => home,
           dispose: async () => {},

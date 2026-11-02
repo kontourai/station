@@ -34,7 +34,6 @@ function fixture(files: Record<string, string>) {
 const EMPTY_TRANSPORT_BOUNDARIES = Object.fromEntries(
   [
     'src-server/runtime/conversation/stream-orchestrator.ts',
-    'src-server/services/terminal/terminal-ws-server.ts',
     'src-server/voice/voice-session.ts',
     'src-server/runtime/mcp/mcp-ui-frame-server.ts',
   ].map((file) => [file, '']),

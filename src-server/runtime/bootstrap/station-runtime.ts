@@ -150,6 +150,7 @@ import {
 import type { FileStorageAdapter } from '../../domain/file-storage-adapter.js';
 import { ensureStationHomeSchemaSync } from '../../domain/home-schema-gate.js';
 import { getOrchestrationDatabasePath } from '../../domain/migrations/003-orchestration-events.js';
+import type { IPtyAdapter } from '../../domain/pty-adapter.js';
 import { registerRuntimeConversationKnowledgeRoot } from '../../knowledge-store/conversation-root-bootstrap.js';
 import type { KnowledgeStoreProvider } from '../../knowledge-store/knowledge-store-provider.js';
 import type { MonitoringEmitter } from '../../monitoring/emitter.js';
@@ -241,8 +242,7 @@ import type {
 } from '../../services/secrets/secret-binding-administration.js';
 import { EnvironmentSecurityService } from '../../services/ssh/environment-security-service.js';
 import type { SshEnvironmentService } from '../../services/ssh/ssh-environment-service.js';
-import type { TerminalService } from '../../services/terminal/terminal-service.js';
-import type { TerminalWebSocketServer } from '../../services/terminal/terminal-ws-server.js';
+import type { TerminalSessions } from '../../services/terminal/terminal-sessions.js';
 import { UsageTelemetryService } from '../../services/usage-telemetry-service.js';
 import {
   consentListenerState,
@@ -502,7 +502,10 @@ import {
   createStationControlCallerRecordResolver,
   stationControlCallerRecordSources,
 } from '../mcp/station-control-caller.js';
-import { claudeInProcessStationControlOptions } from '../mcp/station-control-in-process.js';
+import {
+  claudeInProcessStationControlOptions,
+  createCodexBoundToolServer,
+} from '../mcp/station-control-in-process.js';
 import {
   buildStationControlMcpHeaderUrl,
   coordinatorGeneration,
@@ -1001,6 +1004,40 @@ export class StationRuntime {
     },
   });
   private codexAdapter = new CodexAdapter({
+    resolveBoundToolPolicy: (input) =>
+      this.resolveExternalPreToolPolicy(input, 'authentic'),
+    boundToolsEpoch: () =>
+      this.featurePreviews.generation('codex-bound-browser-device-tools'),
+    boundToolsEnabled: () =>
+      this.codexBoundToolsPreview?.select({
+        enabled: () => true,
+        disabled: () => false,
+      }) ?? false,
+    createBoundTools: (input) =>
+      createCodexBoundToolServer({
+        ...input,
+        resolveRecord: createStationControlCallerRecordResolver(
+          stationControlCallerRecordSources({
+            orchestrationService: {
+              resolveSessionActingPrincipal: (threadId) =>
+                this.orchestrationService.resolveSessionActingPrincipal(
+                  threadId,
+                ),
+              firstStartedMetadataOfThread: (threadId) =>
+                this.orchestrationService.firstStartedMetadataOfThread(
+                  threadId,
+                ),
+            },
+            eventStore: this.orchestrationEventStore,
+            getProject: (slug) => this.storageAdapter.getProject(slug),
+          }),
+        ),
+        dispatch: (request) => {
+          if (!this.codexToolDispatch)
+            throw new Error('Station tool dispatch unavailable');
+          return this.codexToolDispatch(request);
+        },
+      }),
     resolveMcpOAuth: (input) => this.resolveExternalMcpOAuth(input),
     nativeSessionOwnership: {
       assertMutable: (sessionId) =>
@@ -1193,9 +1230,9 @@ export class StationRuntime {
   /** #4003: the one exact-identity tracker reader (host `gh` login). */
   private readonly workItemObserver: WorkItemObserver =
     new GitHubWorkItemObserver();
-  private terminalService!: TerminalService;
-  private terminalWsServer!: TerminalWebSocketServer;
-  private terminalWsStarted = false;
+  private ptyAdapter!: IPtyAdapter;
+  private readonly scopedTerminals: { sessions?: TerminalSessions<Request> } =
+    {};
   private voiceService!: VoiceSessionService;
   private voiceWsListener: WebSocketServer | null = null;
   private voiceWsClosing: Promise<void> | null = null;
@@ -1213,6 +1250,7 @@ export class StationRuntime {
   /** archive#1398 — see {@link StationRuntime.fleetProbes}. */
   private fleetProbeService: FleetProbeService | undefined;
   private readonly featurePreviews: FeaturePreviewRegistry;
+  private codexToolDispatch?: (request: Request) => Promise<Response>;
   private projectWorkingConfiguration: ProjectWorkingRuntime | undefined;
   private learningReview: LearningReviewRuntime | undefined;
   private reviewedTariffConfiguration:
@@ -1242,6 +1280,7 @@ export class StationRuntime {
   /** #4305: gates the Settings control, not deployment configuration. */
   private accountSharingSettingPreview!: FeaturePreviewSelector;
   private progressiveToolsPreview!: FeaturePreviewSelector;
+  private codexBoundToolsPreview?: FeaturePreviewSelector;
   private sshEnvironmentService: SshEnvironmentService;
   private timers: NodeJS.Timeout[] = [];
   private analyticsMaintenance?: (
@@ -1651,6 +1690,17 @@ export class StationRuntime {
         description:
           'Load authorized Station tool families on demand for compatible Codex sessions. Other engines retain their existing tool loading.',
       });
+      if (
+        !isHostedTenantExecutionRequired() &&
+        !loadHostedTenantRegistryFromEnvironment()
+      ) {
+        this.codexBoundToolsPreview = this.featurePreviews.bind({
+          id: 'codex-bound-browser-device-tools',
+          label: 'Codex browser and device tools',
+          description:
+            'Let Codex Sessions use authorized browser and device tools through a bound channel.',
+        });
+      }
       // Journal consumers wire after the quarantine notice: the runtime must
       // report a recorded corruption before anything asks the store for more
       // than its publisher.
@@ -1792,7 +1842,6 @@ export class StationRuntime {
           await this.recoverRuntimeProjections(resetIntegrationState);
         },
         usageAggregatorRef: { get: () => this.usageAggregator },
-        getTerminalShell: () => this.appConfig?.terminalShell,
         persistEvent: (event: any) => this.eventLog.persist(event),
         bootstrapVoiceAgent: async () => this.bootstrapVoiceAgent(),
         resolveVectorDbProvider: () =>
@@ -1817,8 +1866,7 @@ export class StationRuntime {
       this.knowledgeService = services.knowledgeService;
       this.knowledgeStoreProvider = services.knowledgeStoreProvider;
       this.fileTreeService = services.fileTreeService;
-      this.terminalService = services.terminalService;
-      this.terminalWsServer = services.terminalWsServer;
+      this.ptyAdapter = services.ptyAdapter;
       this.voiceService = services.voiceService;
       this.monitoringEmitter = services.monitoringEmitter;
       this.acpBridge = services.acpBridge;
@@ -4221,18 +4269,6 @@ export class StationRuntime {
         plugins: packageProjections.pending,
       });
     await this.sshEnvironmentService.initialize();
-    // Terminal sessions are process-global and have no durable tenant
-    // binding. A hosted tenant-isolated runtime must not bind the separate
-    // terminal port until that transport has tenant authorization.
-    if (!this.terminalWsStarted && !isHostedTenantExecutionRequired()) {
-      this.terminalWsServer.start(this.port + 1, this.host, {
-        allowedBrowserOrigins: resolveStationBrowserOrigins({
-          port: this.port,
-          host: this.host,
-        }),
-      });
-      this.terminalWsStarted = true;
-    }
     let initialized: Awaited<ReturnType<typeof initializeRuntime>>;
     try {
       // Private SQLite takes ownership of old config-backed credential
@@ -4819,9 +4855,6 @@ export class StationRuntime {
         );
       }
     });
-    if (await attempt(() => this.terminalWsServer.stop())) {
-      this.terminalWsStarted = false;
-    }
 
     if (failures.length > 1) {
       throw new AggregateError(
@@ -5090,6 +5123,7 @@ export class StationRuntime {
   private configureRoutes(
     app: Parameters<NonNullable<HonoServerConfig['configureApp']>>[0],
   ): void {
+    this.codexToolDispatch = async (request) => app.fetch(request);
     // The existing handshake environment identity qualifies these local owner
     // records; it is not a new logical Station or machine identity.
     this.runtimeSearch ??= createRuntimeSearch({
@@ -5182,7 +5216,8 @@ export class StationRuntime {
       runtimeSearch: this.runtimeSearch,
       taskDispatcher: this.taskDispatcher,
       workItemObserver: this.workItemObserver,
-      terminalService: this.terminalService,
+      ptyAdapter: this.ptyAdapter,
+      scopedTerminals: this.scopedTerminals,
       actionOperations: this.actionOperations,
       delegationAttemptClaims: this.delegationAttemptClaims,
       orchestrationService: this.orchestrationService,
@@ -6057,8 +6092,7 @@ export class StationRuntime {
               },
             }
           : undefined,
-        terminalWsServer: this.terminalWsServer,
-        terminalService: this.terminalService,
+        terminalSessions: this.scopedTerminals.sessions,
         monitoringEmitter: this.monitoringEmitter,
         sshEnvironmentService: this.sshEnvironmentService,
         // Deliberately not handed over (station#1815): this loader is the

@@ -87,7 +87,7 @@ type FakeOptions = {
   currentUnhealthy?: boolean;
   dirty?: 'before' | 'after';
   installFailure?: boolean;
-  failedListener?: 'api' | 'terminal' | 'voice' | 'ui';
+  failedListener?: 'api' | 'voice' | 'ui';
   recoveryFailure?: boolean;
   recoveryHistoryLength?: number;
   localFailure?: boolean;
@@ -135,7 +135,7 @@ type FixtureCommandResult = {
   stderr: string;
 };
 
-type ListenerName = 'api' | 'terminal' | 'voice' | 'ui';
+type ListenerName = 'api' | 'voice' | 'ui';
 
 interface ReconcileFixtureCapabilities {
   calls: FixtureCommandCall[];
@@ -183,7 +183,6 @@ export function createFixture(
     options.active === false && !options.legacyActive ? null : initialActiveSha;
   const listenerHealth = {
     api: !(options.currentUnhealthy || options.failedListener === 'api'),
-    terminal: options.failedListener !== 'terminal',
     voice: options.failedListener !== 'voice',
     ui: options.failedListener !== 'ui',
   };
@@ -519,7 +518,6 @@ export function createFixture(
         );
         if (!options.recoveryFailure) {
           listenerHealth.api = true;
-          listenerHealth.terminal = true;
           listenerHealth.voice = true;
           listenerHealth.ui = true;
         }
