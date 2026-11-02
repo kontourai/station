@@ -1495,6 +1495,7 @@ export type {
 export {
   fetchTaskCaptureContent,
   fetchTaskCaptureSessions,
+  fetchTaskDeviceCaptureSessions,
   fetchTaskReview,
   fetchTaskReviewItem,
   fetchTaskReviewThread,
@@ -1502,6 +1503,7 @@ export {
   TASK_REVIEW_OPENING_PREVIEW_CHARS,
   type TaskCapture,
   type TaskCaptureBrowserSession,
+  type TaskCaptureDeviceSession,
   type TaskReviewArtifactKind,
   type TaskReviewCreateCaptureRequest,
   type TaskReviewCreateThreadRequest,
