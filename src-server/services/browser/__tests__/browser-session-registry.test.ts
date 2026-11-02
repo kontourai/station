@@ -131,6 +131,7 @@ function harness(
   let ids = 0;
   const registry = new BrowserSessionRegistry({
     stationHome,
+    experienceEnabled: () => true,
     idleShutdownMs: options.idleShutdownMs ?? 1_000,
     hostResolver: createLocalBrowserHostResolver(() => {
       const host = fakeHost(hosts.length + 1, options.holds);
@@ -143,6 +144,58 @@ function harness(
 }
 
 describe('BrowserSessionRegistry', () => {
+  test('zoom changes only the selected target and follows its nominal viewport', async () => {
+    const { registry, hosts } = harness();
+    const first = await registry.createSession({
+      projectId: 'alpha',
+      projectSlug: 'alpha',
+      url: 'about:blank',
+      actor: OPERATOR,
+    });
+    const second = await registry.createSession({
+      projectId: 'alpha',
+      projectSlug: 'alpha',
+      url: 'about:blank',
+      actor: OPERATOR,
+    });
+    const next = await registry.setZoom(first.browserSessionId, 0.5, {
+      generation: first.generation,
+      actor: OPERATOR,
+      guard: () => {},
+    });
+    expect(next.viewport).toEqual(first.viewport);
+    expect(next.zoomFactor).toBe(0.5);
+    expect(registry.getSession(second.browserSessionId)?.zoomFactor ?? 1).toBe(
+      1,
+    );
+    expect(hosts[0]!.sent).toContainEqual({
+      method: 'Emulation.setDeviceMetricsOverride',
+      params: {
+        width: first.viewport.width * 2,
+        height: first.viewport.height * 2,
+        deviceScaleFactor: first.viewport.deviceScaleFactor,
+        mobile: false,
+      },
+      sessionId: 'H1-S1',
+    });
+    await registry.setViewport(
+      first.browserSessionId,
+      { width: 600, height: 400, deviceScaleFactor: 1 },
+      { actor: OPERATOR, generation: first.generation },
+    );
+    expect(hosts[0]!.sent).toContainEqual({
+      method: 'Emulation.setDeviceMetricsOverride',
+      params: { width: 1200, height: 800, deviceScaleFactor: 1, mobile: false },
+      sessionId: 'H1-S1',
+    });
+    await expect(
+      registry.setZoom(first.browserSessionId, 0.25, {
+        actor: OPERATOR,
+        guard: () => {},
+      }),
+    ).rejects.toMatchObject({ code: 'invalid-zoom' });
+    await registry.shutdown();
+  });
   test('a title observed while the first navigation is in flight is kept', async () => {
     const hostsRef: Array<ReturnType<typeof fakeHost>> = [];
     const { registry, hosts } = harness({

@@ -1,15 +1,14 @@
 /**
  * Who may view or drive a Browser session (#90 amendment D5).
  *
- * Only the Station operator and Project admins (role `admin` or `owner`) of
- * the session's Project. Contributors and viewers get nothing. The personal
+ * The Station operator and Project admins (role `admin` or `owner`) can
+ * drive. A current operator-owned device may view within its granted scope.
+ * Contributors and viewers get nothing. The personal
  * host gate that mounts the routes is necessary but not sufficient; this
  * check runs on every request, and every failure — including an error while
  * resolving membership — is a refusal.
  *
- * `view` and `drive` are separate on purpose: today both require the same
- * standing, but input (drive) must stay independently authorizable for a
- * future read-only viewer role.
+ * `view` and `drive` are separate: input must stay independently authorized.
  */
 import type {
   ProjectMembershipScope,
@@ -41,6 +40,8 @@ const PROJECT_ADMIN_ROLES: ReadonlySet<ProjectMemberView['role']> = new Set([
 export interface BrowserAccessDeps {
   /** Resolves when the request carries Station operator authority. */
   operator(request: Request): Promise<void>;
+  /** A current operator-owned device may watch, but does not acquire drive authority. */
+  operatorDeviceMayView?(request: Request): boolean;
   /** Absent when Project sharing is not configured: then operator only. */
   membership?: {
     readableProjectAdmissions(
@@ -69,8 +70,15 @@ export function createBrowserProjectAuthorizer(
   deps: BrowserAccessDeps,
 ): BrowserProjectAuthorizer {
   const isOperator = createBrowserOperatorAuthorizer(deps);
-  return async (request, projectId, _purpose) => {
+  return async (request, projectId, purpose) => {
     if (await isOperator(request)) return { kind: 'operator' };
+    if (purpose === 'view') {
+      try {
+        if (deps.operatorDeviceMayView?.(request)) return { kind: 'operator' };
+      } catch {
+        return undefined;
+      }
+    }
     if (!deps.membership) return undefined;
     try {
       const admissions = await deps.membership.readableProjectAdmissions(

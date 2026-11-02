@@ -50,6 +50,7 @@ export interface BrowserServiceOptions {
   consentPort?: number;
   /** The resolved allowed-origin list (`resolveConfiguredRuntimeOrigins`). */
   configuredOrigins: readonly string[];
+  experienceEnabled?: () => boolean;
   /**
    * More Station-owned listener ports, read LIVE on every check and never
    * cached: the managed device hub and its stream helpers (#1970), whose
@@ -154,6 +155,9 @@ export function createBrowserService(
   const localTargets = new LocalTargetStore(options.stationHome);
   const registry = new BrowserSessionRegistry({
     stationHome: options.stationHome,
+    ...(options.experienceEnabled
+      ? { experienceEnabled: options.experienceEnabled }
+      : {}),
     isStationAddress: (url) =>
       isStationSelfUrl(url, listeners(), localInterfaceAddresses()),
     // #90 D13: the resolver is the one path to a host; local only today.
@@ -190,6 +194,9 @@ export function createBrowserService(
         sessions: registry,
         surfaces: options.liveSurfaces.registry,
         authorizeProject: options.liveSurfaces.authorizeProject,
+        ...(options.experienceEnabled
+          ? { experienceEnabled: options.experienceEnabled }
+          : {}),
         onError: (message, error) =>
           logger.warn(`browser: ${message}`, {
             error: error instanceof Error ? error.message : String(error),

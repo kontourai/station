@@ -58,6 +58,7 @@ import {
 
 export interface LiveSurfaceRouteOptions {
   isRequestPrincipalCurrent: (request: Request) => boolean;
+  agentActionsEnabled?: () => boolean;
   /**
    * The authenticated HUMAN caller and the client it acts from, or null for
    * an unattributable or agent-originated request (which is then refused).
@@ -208,9 +209,15 @@ export function createLiveSurfaceRoutes(
       queryKeys.some(
         (key) =>
           (!STREAM_QUERY_KEYS.includes(key as keyof LiveSurfaceStreamParams) &&
-            key !== AUTHORIZATION_CONTEXT_QUERY_KEY) ||
+            key !== AUTHORIZATION_CONTEXT_QUERY_KEY &&
+            key !== 'agentActions') ||
           (c.req.queries(key)?.length ?? 0) > 1,
       )
+    )
+      return failure(c, 'invalid-request', 400);
+    if (
+      c.req.query('agentActions') !== undefined &&
+      c.req.query('agentActions') !== '1'
     )
       return failure(c, 'invalid-request', 400);
     const parsed = parseLiveSurfaceStreamParams({
@@ -222,10 +229,16 @@ export function createLiveSurfaceRoutes(
     if (!parsed.ok) return failure(c, 'invalid-request', 400);
 
     const request = c.req.raw;
-    const viewer = entry.hub.attach(parsed.params, {
-      principal: human.principal,
-      device: human.device,
-    });
+    const viewer = entry.hub.attach(
+      parsed.params,
+      {
+        principal: human.principal,
+        device: human.device,
+      },
+      c.req.query('agentActions') === '1'
+        ? { agentActions: () => options.agentActionsEnabled?.() === true }
+        : undefined,
+    );
     const abort = new AbortController();
     const end = () => {
       abort.abort();

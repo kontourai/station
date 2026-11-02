@@ -545,6 +545,15 @@ export class ChromiumServerHost implements BrowserHost {
   private readonly titleListeners = new Set<
     (targetId: string, title: string) => void
   >();
+  private readonly faviconListeners = new Set<
+    (targetId: string, favicon: string | undefined) => void
+  >();
+  onFaviconChanged(
+    fn: (targetId: string, favicon: string | undefined) => void,
+  ): () => void {
+    this.faviconListeners.add(fn);
+    return () => this.faviconListeners.delete(fn);
+  }
   private readonly targetClosedListeners = new Set<
     (targetId: string) => void
   >();
@@ -620,6 +629,11 @@ export class ChromiumServerHost implements BrowserHost {
       if (pending) clearTimeout(pending);
       running.pendingUntracked.delete(targetId);
       await transport.send('Page.enable', {}, sessionId);
+      await transport.send(
+        'Network.enable',
+        { maxTotalBufferSize: 262144, maxResourceBufferSize: 32768 },
+        sessionId,
+      );
       await transport.send(
         'Emulation.setDeviceMetricsOverride',
         {
@@ -1290,6 +1304,11 @@ export class ChromiumServerHost implements BrowserHost {
       });
       await transport.send('Page.enable', {}, sessionId);
       await transport.send(
+        'Network.enable',
+        { maxTotalBufferSize: 262144, maxResourceBufferSize: 32768 },
+        sessionId,
+      );
+      await transport.send(
         'Emulation.setDeviceMetricsOverride',
         { ...opener.viewport, mobile: opener.viewport.mobile === true },
         sessionId,
@@ -1345,10 +1364,164 @@ export class ChromiumServerHost implements BrowserHost {
         )
         .catch(() => {});
     };
+    let documentUrl = '';
+    let iconUrl = '';
+    let documentVersion = 0;
+    const responses = new Map<
+      string,
+      { requestId: string; mime: string; size?: number }
+    >();
+    const emitIcon = (icon: string | undefined) => {
+      if (this.running !== running || !running.targets.has(targetId)) return;
+      for (const listener of this.faviconListeners) listener(targetId, icon);
+    };
+    const publishIcon = async () => {
+      const version = documentVersion;
+      const candidate = responses.get(iconUrl);
+      if (!candidate || candidate.size === undefined || candidate.size > 32768)
+        return;
+      try {
+        const result = await transport.send<{
+          body: string;
+          base64Encoded: boolean;
+        }>(
+          'Network.getResponseBody',
+          { requestId: candidate.requestId },
+          sessionId,
+        );
+        if (
+          !result.base64Encoded ||
+          result.body.length > 43692 ||
+          documentVersion !== version ||
+          responses.get(iconUrl) !== candidate
+        )
+          return;
+        const bytes = Buffer.from(result.body, 'base64');
+        if (bytes.length === 0 || bytes.length > 32768) return;
+        const png = bytes
+          .subarray(0, 8)
+          .equals(Buffer.from('89504e470d0a1a0a', 'hex'));
+        const jpeg =
+          bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
+        const gif =
+          bytes.subarray(0, 6).toString('ascii') === 'GIF87a' ||
+          bytes.subarray(0, 6).toString('ascii') === 'GIF89a';
+        const ico = bytes.subarray(0, 4).equals(Buffer.from([0, 0, 1, 0]));
+        const webp =
+          bytes.subarray(0, 4).toString('ascii') === 'RIFF' &&
+          bytes.subarray(8, 12).toString('ascii') === 'WEBP';
+        const mime = png
+          ? 'image/png'
+          : jpeg
+            ? 'image/jpeg'
+            : gif
+              ? 'image/gif'
+              : ico
+                ? 'image/x-icon'
+                : webp
+                  ? 'image/webp'
+                  : undefined;
+        if (mime) emitIcon(`data:${mime};base64,${bytes.toString('base64')}`);
+      } catch {
+        /* The bounded Chromium resource buffer may have evicted it. */
+      }
+    };
+    const offIconNavigation = transport.on(
+      'Page.frameNavigated',
+      (params, eventSession) => {
+        if (eventSession !== sessionId) return;
+        const frame = (
+          params as { frame?: { url?: string; parentId?: string } }
+        ).frame;
+        if (!frame?.url || frame.parentId !== undefined) return;
+        documentVersion++;
+        responses.clear();
+        documentUrl = frame.url;
+        try {
+          iconUrl = new URL('/favicon.ico', documentUrl).href;
+        } catch {
+          iconUrl = '';
+        }
+        emitIcon(undefined);
+      },
+    );
+    const offIconResponse = transport.on(
+      'Network.responseReceived',
+      (params, eventSession) => {
+        if (eventSession !== sessionId) return;
+        const event = params as {
+          requestId?: string;
+          response?: { url?: string; mimeType?: string };
+        };
+        const url = event.response?.url;
+        const mime = event.response?.mimeType;
+        if (
+          !url ||
+          !event.requestId ||
+          !mime ||
+          !/^image\/(png|jpeg|gif|webp|x-icon|vnd\.microsoft\.icon)$/i.test(
+            mime,
+          )
+        )
+          return;
+        if (responses.size >= 64)
+          responses.delete(responses.keys().next().value!);
+        responses.set(url, { requestId: event.requestId, mime });
+      },
+    );
+    const offIconFinished = transport.on(
+      'Network.loadingFinished',
+      (params, eventSession) => {
+        if (eventSession !== sessionId) return;
+        const event = params as {
+          requestId?: string;
+          encodedDataLength?: number;
+        };
+        for (const candidate of responses.values())
+          if (candidate.requestId === event.requestId)
+            candidate.size = event.encodedDataLength;
+        void publishIcon();
+      },
+    );
+    const readIcon = async (_: unknown, eventSession?: string) => {
+      if (eventSession !== sessionId || !documentUrl) return;
+      const version = documentVersion;
+      try {
+        const { root } = await transport.send<{ root: { nodeId: number } }>(
+          'DOM.getDocument',
+          {},
+          sessionId,
+        );
+        const { nodeId } = await transport.send<{ nodeId: number }>(
+          'DOM.querySelector',
+          { nodeId: root.nodeId, selector: 'link[rel~="icon"][href]' },
+          sessionId,
+        );
+        if (nodeId) {
+          const { attributes } = await transport.send<{ attributes: string[] }>(
+            'DOM.getAttributes',
+            { nodeId },
+            sessionId,
+          );
+          const index = attributes.indexOf('href');
+          if (version !== documentVersion) return;
+          if (index >= 0 && attributes[index + 1])
+            iconUrl = new URL(attributes[index + 1], documentUrl).href;
+        }
+        await publishIcon();
+      } catch {
+        /* An icon is optional, and the document can navigate while read. */
+      }
+    };
+    const offIconLoaded = transport.on('Page.loadEventFired', readIcon);
     const offParsed = transport.on('Page.domContentEventFired', readTitle);
     const offLoaded = transport.on('Page.loadEventFired', readTitle);
     const offCommitted = this.watchCommittedUrls(running, targetId, sessionId);
     return () => {
+      offIconNavigation();
+      offIconResponse();
+      offIconFinished();
+      offIconLoaded();
       offParsed();
       offLoaded();
       offCommitted();

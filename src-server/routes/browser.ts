@@ -13,7 +13,7 @@ import {
   BROWSER_SESSION_ID_PATTERN as SESSION_ID,
   BROWSER_THREAD_ID_PATTERN as THREAD_ID,
 } from '@kontourai/station-contracts/workspace-browser-pane';
-import { Hono } from 'hono';
+import { type Context, Hono } from 'hono';
 import { readBoundedRequestBody } from '../security/bounded-request-body.js';
 import type {
   BrowserOperatorAuthorizer,
@@ -31,10 +31,12 @@ import {
   type BrowserHistoryDirection,
   type BrowserSessionActor,
   BrowserSessionError,
+  type BrowserSessionRecord,
   type BrowserSessionRegistry,
   browserProfileFor,
   browserViewportProblem,
   isValidBrowserProjectId,
+  isValidBrowserZoom,
 } from '../services/browser/browser-session-registry.js';
 import { CdpProtocolError } from '../services/browser/cdp-pipe-transport.js';
 import {
@@ -60,6 +62,13 @@ const DIALOG_ID = /^d[0-9]{1,12}$/;
 const PROMPT_TEXT_MAX = 4_096;
 const CONSOLE_AFTER = /^(0|[1-9][0-9]{0,14})$/;
 const TARGET_ID = /^lt_[0-9a-f-]{36}$/;
+const EXPERIENCE_DISABLED = {
+  success: false,
+  error: 'Enable Browser experience in Settings → Advanced → Feature previews.',
+  code: 'feature_preview_disabled',
+  previewId: 'browser-experience',
+  settingsPath: '/settings?view=feature-previews&highlight=feature-previews',
+} as const;
 
 /** A Project as the routes see it: canonical ID plus its current slug. */
 export interface BrowserRouteProject {
@@ -82,7 +91,14 @@ export interface BrowserRoutesDeps {
     | 'setViewport'
     | 'getSessionSummary'
     | 'captureScreenshot'
-  >;
+  > &
+    Partial<Pick<BrowserSessionRegistry, 'setZoom' | 'setColorScheme'>>;
+  browserExperienceEnabled?(): boolean;
+  withHumanControl?(
+    context: Context,
+    browserSessionId: string,
+    operation: (guard: () => void) => Promise<BrowserSessionRecord>,
+  ): Promise<BrowserSessionRecord>;
   /**
    * The live-surface id of a live session (its screencast), when live
    * surfaces are wired. Session responses carry it as `surfaceId`.
@@ -145,6 +161,8 @@ export interface BrowserRoutesDeps {
   /** Slug to canonical Project; undefined when there is no such Project. */
   resolveProject(slug: string): BrowserRouteProject | undefined;
   isRequestPrincipalCurrent(request: Request): boolean;
+  /** Whether this credential's current scope admits Browser mutations. */
+  mayDriveBrowser?(request: Request): boolean;
   /** Test seam: the server clock stamped on session views as `serverNow`. */
   now?(): Date;
 }
@@ -172,24 +190,31 @@ async function readJsonObject(
 
 function sessionErrorStatus(
   error: BrowserSessionError,
-): 400 | 404 | 409 | 413 | 503 | 504 {
+): 400 | 403 | 404 | 409 | 413 | 503 | 504 {
   switch (error.code) {
     case 'url-not-allowed':
     case 'invalid-project':
     case 'invalid-viewport':
+    case 'invalid-zoom':
+    case 'invalid-appearance':
     case 'invalid-actor':
       return 400;
     case 'not-found':
+    case 'feature-preview-disabled':
       return 404;
     case 'not-live':
     case 'stale-generation':
     case 'no-history-entry':
+    case 'control-interrupted':
       return 409;
+    case 'control-refused':
+      return 403;
     case 'screenshot-too-large':
       return 413;
     case 'page-busy':
       return 504;
     case 'stopped':
+    case 'surface-busy':
       return 503;
   }
 }
@@ -254,18 +279,25 @@ export function createBrowserRoutes(deps: BrowserRoutesDeps) {
         ? body.generation
         : null;
   const denied = { success: false, code: 'access-denied' } as const;
+  const staleSignIn = { success: false, code: 'stale-sign-in' } as const;
   const invalid = { success: false, code: 'invalid-request' } as const;
 
   app.use('*', async (c, next) => {
     c.header('Cache-Control', 'no-store');
     if (deps.isStationInternalRequest(c.req.raw)) return c.json(denied, 403);
-    if (!deps.isRequestPrincipalCurrent(c.req.raw)) return c.json(denied, 403);
+    if (!deps.isRequestPrincipalCurrent(c.req.raw)) {
+      const isAccessRead =
+        c.req.method === 'GET' && /\/projects\/[^/]+\/access$/.test(c.req.path);
+      return c.json(isAccessRead ? staleSignIn : denied, 403);
+    }
     await next();
   });
 
   // Map domain failures to typed responses; anything unknown propagates.
   app.onError((error, c) => {
     if (error instanceof BrowserSessionError) {
+      if (error.code === 'feature-preview-disabled')
+        return c.json(EXPERIENCE_DISABLED, 404);
       return c.json(
         {
           success: false,
@@ -603,6 +635,72 @@ export function createBrowserRoutes(deps: BrowserRoutesDeps) {
     return c.json({ success: true, data: present(session) });
   });
 
+  app.post('/sessions/:browserSessionId/zoom', async (c) => {
+    if (!deps.browserExperienceEnabled?.())
+      return c.json(EXPERIENCE_DISABLED, 404);
+    if (!deps.registry.setZoom || !deps.withHumanControl)
+      return c.json({ success: false, code: 'not-supported' }, 404);
+    const body = await readJsonObject(c.req.raw, ['factor', 'generation']);
+    const generation = body ? generationOf(body) : null;
+    if (!body || !isValidBrowserZoom(body.factor) || generation === null)
+      return c.json(invalid, 400);
+    const found = await sessionFor(
+      c.req.raw,
+      c.req.param('browserSessionId'),
+      'drive',
+    );
+    if (found.status !== 200) return c.json(refuse(found.status), found.status);
+    if (!deps.isRequestPrincipalCurrent(c.req.raw)) return c.json(denied, 403);
+    const factor = body.factor;
+    const session = await deps.withHumanControl(
+      c,
+      found.session.browserSessionId,
+      (guard) =>
+        deps.registry.setZoom!(found.session.browserSessionId, factor, {
+          actor: found.actor,
+          guard,
+          ...(generation === undefined ? {} : { generation }),
+        }),
+    );
+    return c.json({ success: true, data: present(session) });
+  });
+
+  app.post('/sessions/:browserSessionId/appearance', async (c) => {
+    if (!deps.browserExperienceEnabled?.())
+      return c.json(EXPERIENCE_DISABLED, 404);
+    if (!deps.registry.setColorScheme || !deps.withHumanControl)
+      return c.json({ success: false, code: 'not-supported' }, 404);
+    const body = await readJsonObject(c.req.raw, ['scheme', 'generation']);
+    const generation = body ? generationOf(body) : null;
+    if (
+      !body ||
+      (body.scheme !== 'system' &&
+        body.scheme !== 'light' &&
+        body.scheme !== 'dark') ||
+      generation === null
+    )
+      return c.json(invalid, 400);
+    const found = await sessionFor(
+      c.req.raw,
+      c.req.param('browserSessionId'),
+      'drive',
+    );
+    if (found.status !== 200) return c.json(refuse(found.status), found.status);
+    if (!deps.isRequestPrincipalCurrent(c.req.raw)) return c.json(denied, 403);
+    const scheme = body.scheme;
+    const session = await deps.withHumanControl(
+      c,
+      found.session.browserSessionId,
+      (guard) =>
+        deps.registry.setColorScheme!(found.session.browserSessionId, scheme, {
+          actor: found.actor,
+          guard,
+          ...(generation === undefined ? {} : { generation }),
+        }),
+    );
+    return c.json({ success: true, data: present(session) });
+  });
+
   // A person answers the dialog the page holds for them (alert, confirm,
   // prompt). Never an agent's request: the dialog was held BECAUSE a person
   // was in control, and an agent must not answer what they are being shown.
@@ -718,6 +816,18 @@ export function createBrowserRoutes(deps: BrowserRoutesDeps) {
     const shot = await deps.registry.captureScreenshot(
       found.session.browserSessionId,
     );
+    const current = await sessionFor(
+      c.req.raw,
+      found.session.browserSessionId,
+      'view',
+    );
+    if (current.status !== 200 || !deps.isRequestPrincipalCurrent(c.req.raw))
+      return c.json(denied, 403);
+    if (
+      current.session.generation !== found.session.generation ||
+      current.session.state !== 'live'
+    )
+      return c.json({ success: false, code: 'stale-generation' }, 409);
     c.header('X-Content-Type-Options', 'nosniff');
     return c.body(new Uint8Array(shot.data), 200, {
       'Content-Type': shot.mimeType,
@@ -803,13 +913,45 @@ export function createBrowserRoutes(deps: BrowserRoutesDeps) {
     const project = isValidBrowserProjectId(slug)
       ? deps.resolveProject(slug)
       : undefined;
-    const actor = project
-      ? await deps.authorizeProject(c.req.raw, project.id, 'view')
-      : undefined;
-    if (!project || !actor) return c.json(denied, 403);
+    if (!project) {
+      const operator = await deps.authorizeOperator(c.req.raw);
+      if (!deps.isRequestPrincipalCurrent(c.req.raw))
+        return c.json(staleSignIn, 403);
+      return c.json(
+        operator ? { success: false, code: 'project-not-found' } : denied,
+        403,
+      );
+    }
+    const actor = await deps.authorizeProject(c.req.raw, project.id, 'view');
+    if (!actor) {
+      if (!deps.isRequestPrincipalCurrent(c.req.raw))
+        return c.json(staleSignIn, 403);
+      return c.json(denied, 403);
+    }
     const operator = await deps.authorizeOperator(c.req.raw);
+    const driveActor = await deps.authorizeProject(
+      c.req.raw,
+      project.id,
+      'drive',
+    );
+    const viewProfile = browserProfileFor(project.id, actor);
+    const driveProfile = driveActor
+      ? browserProfileFor(project.id, driveActor)
+      : undefined;
+    const currentActor = await deps.authorizeProject(
+      c.req.raw,
+      project.id,
+      'view',
+    );
+    if (
+      !currentActor ||
+      browserProfileFor(project.id, currentActor)?.principalKey !==
+        viewProfile?.principalKey
+    )
+      return c.json(denied, 403);
     const acquisition = deps.acquisition.status();
-    if (!deps.isRequestPrincipalCurrent(c.req.raw)) return c.json(denied, 403);
+    if (!deps.isRequestPrincipalCurrent(c.req.raw))
+      return c.json(staleSignIn, 403);
     return c.json({
       success: true,
       data: {
@@ -818,6 +960,11 @@ export function createBrowserRoutes(deps: BrowserRoutesDeps) {
         // The profile this caller's sessions run in (D7).
         principalKey: browserProfileFor(project.id, actor)?.principalKey,
         operator,
+        canDrive:
+          deps.mayDriveBrowser?.(c.req.raw) === true &&
+          !!driveProfile &&
+          driveProfile.principalKey === viewProfile?.principalKey,
+        experiencePreviewEnabled: deps.browserExperienceEnabled?.() === true,
         browser:
           acquisition.state === 'found-system' ||
           acquisition.state === 'downloaded'

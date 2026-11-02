@@ -736,6 +736,18 @@ export function parseLiveSurfaceFrameHeader(
  * also sends one as a heartbeat, which is what lets a client tell "the page
  * has not changed" from "the stream has stalled".
  */
+export interface LiveSurfaceAgentAction {
+  seq: number;
+  at: number;
+  generation: number;
+  kind: 'click' | 'hover' | 'drag';
+  point: { x: number; y: number };
+  box: { x: number; y: number; width: number; height: number };
+  viewport: { x: number; y: number; width: number; height: number };
+}
+
+export const LIVE_SURFACE_AGENT_ACTION_LIMIT = 12;
+
 export interface LiveSurfaceStreamState {
   surfaceId: string;
   lease: LiveSurfaceControlLease;
@@ -777,6 +789,8 @@ export interface LiveSurfaceStreamState {
    * host (a device on the Station's own machine is `local`; D13).
    */
   hostId?: string;
+  /** Negotiated only: recent, bounded agent actions and the server's clock. */
+  agentActions?: { now: number; events: LiveSurfaceAgentAction[] };
 }
 
 export type LiveSurfaceInputChannelState =
@@ -873,6 +887,82 @@ export interface LiveSurfaceViewerIdentity {
   device: string;
 }
 
+export function parseLiveSurfaceAgentActions(
+  value: unknown,
+): LiveSurfaceStreamState['agentActions'] | null {
+  const envelope = plainRecord(value);
+  if (
+    !envelope ||
+    !onlyKeys(envelope, ['now', 'events']) ||
+    !intInRange(envelope.now, 0, Number.MAX_SAFE_INTEGER) ||
+    !Array.isArray(envelope.events) ||
+    envelope.events.length > LIVE_SURFACE_AGENT_ACTION_LIMIT
+  )
+    return null;
+  const events: LiveSurfaceAgentAction[] = [];
+  for (const value of envelope.events) {
+    const action = plainRecord(value);
+    const point = plainRecord(action?.point);
+    const box = plainRecord(action?.box);
+    const viewport = plainRecord(action?.viewport);
+    if (
+      !action ||
+      !onlyKeys(action, [
+        'seq',
+        'at',
+        'generation',
+        'kind',
+        'point',
+        'box',
+        'viewport',
+      ]) ||
+      !intInRange(action.seq, 1, Number.MAX_SAFE_INTEGER) ||
+      !intInRange(action.at, 0, Number.MAX_SAFE_INTEGER) ||
+      !intInRange(action.generation, 0, Number.MAX_SAFE_INTEGER) ||
+      (action.kind !== 'click' &&
+        action.kind !== 'hover' &&
+        action.kind !== 'drag') ||
+      !point ||
+      !onlyKeys(point, ['x', 'y']) ||
+      !finiteInRange(point.x, 0, 100000) ||
+      !finiteInRange(point.y, 0, 100000) ||
+      !box ||
+      !onlyKeys(box, ['x', 'y', 'width', 'height']) ||
+      !finiteInRange(box.x, 0, 100000) ||
+      !finiteInRange(box.y, 0, 100000) ||
+      !finiteInRange(box.width, 0, 100000) ||
+      !finiteInRange(box.height, 0, 100000) ||
+      !viewport ||
+      !onlyKeys(viewport, ['x', 'y', 'width', 'height']) ||
+      !finiteInRange(viewport.x, 0, 100000) ||
+      !finiteInRange(viewport.y, 0, 100000) ||
+      !finiteInRange(viewport.width, 0.01, 100000) ||
+      !finiteInRange(viewport.height, 0.01, 100000)
+    )
+      return null;
+    events.push({
+      seq: action.seq as number,
+      at: action.at as number,
+      generation: action.generation as number,
+      kind: action.kind,
+      point: { x: point.x as number, y: point.y as number },
+      box: {
+        x: box.x as number,
+        y: box.y as number,
+        width: box.width as number,
+        height: box.height as number,
+      },
+      viewport: {
+        x: viewport.x as number,
+        y: viewport.y as number,
+        width: viewport.width as number,
+        height: viewport.height as number,
+      },
+    });
+  }
+  return { now: envelope.now as number, events };
+}
+
 export function parseLiveSurfaceStreamState(
   value: unknown,
 ): LiveSurfaceStreamState | null {
@@ -891,6 +981,7 @@ export function parseLiveSurfaceStreamState(
       'videoDegradedReason',
       'orientation',
       'hostId',
+      'agentActions',
     ]) ||
     (record.wedged !== undefined && typeof record.wedged !== 'boolean') ||
     (record.wedgedSince !== undefined &&
@@ -904,6 +995,11 @@ export function parseLiveSurfaceStreamState(
   if (!lease || lease.surfaceId !== record.surfaceId) return null;
   const producerStatus = parseProducerStatus(record);
   if (!producerStatus) return null;
+  const agentActions =
+    record.agentActions === undefined
+      ? undefined
+      : parseLiveSurfaceAgentActions(record.agentActions);
+  if (agentActions === null) return null;
   let viewer: LiveSurfaceViewerIdentity | undefined;
   if (record.viewer !== undefined) {
     const identity = plainRecord(record.viewer);
@@ -926,6 +1022,7 @@ export function parseLiveSurfaceStreamState(
       ? {}
       : { wedgedSince: record.wedgedSince as number | null }),
     ...producerStatus,
+    ...(agentActions ? { agentActions } : {}),
   };
 }
 

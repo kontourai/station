@@ -144,6 +144,16 @@ describe('ChromiumServerHost against a real installed Chromium', () => {
     stationPort = await listen(station);
     dev = createServer((req, res) => {
       devArrivals.push(req.url ?? '');
+      if (req.url === '/favicon.ico') {
+        res.writeHead(200, { 'content-type': 'image/png' });
+        res.end(
+          Buffer.from(
+            'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/aXcAAAAASUVORK5CYII=',
+            'base64',
+          ),
+        );
+        return;
+      }
       if (req.url === '/dl') {
         res.writeHead(200, {
           'content-type': 'application/octet-stream',
@@ -210,6 +220,13 @@ describe('ChromiumServerHost against a real installed Chromium', () => {
             fetch('/sw-ok'),
           ]));
         });`);
+        return;
+      }
+      if (req.url === '/zoom') {
+        res.writeHead(200, { 'content-type': 'text/html' });
+        res.end(
+          '<title>zoom</title><div id="box" style="width:100px;height:100px;background:black"></div>',
+        );
         return;
       }
       res.writeHead(200, { 'content-type': 'text/html' });
@@ -301,6 +318,59 @@ describe('ChromiumServerHost against a real installed Chromium', () => {
     );
     expect(await evaluate('document.title')).toBe('fixture /hello');
     expect(await evaluate('innerWidth + "x" + innerHeight')).toBe('800x600');
+  });
+
+  test('viewport emulation changes a fixed-size element relative to the displayed frame', async (ctx) => {
+    if (!executablePath || !raw) return ctx.skip(SKIP_REASON);
+    await gotoDev('/zoom');
+    try {
+      for (const scale of [0.5, 1.5]) {
+        const width = Math.round(800 / scale);
+        const height = Math.round(600 / scale);
+        await raw.send(
+          'Emulation.setDeviceMetricsOverride',
+          { width, height, deviceScaleFactor: 1, mobile: false },
+          session,
+        );
+        expect(Number(await evaluate('innerWidth'))).toBe(width);
+        const elementWidth = Number(
+          await evaluate(
+            'document.getElementById("box").getBoundingClientRect().width',
+          ),
+        );
+        expect(elementWidth / width).toBeCloseTo((100 / 800) * scale, 2);
+        const image = await raw.send<{ data: string }>(
+          'Page.captureScreenshot',
+          { format: 'png' },
+          session,
+        );
+        expect(Buffer.from(image.data, 'base64').readUInt32BE(16)).toBe(width);
+      }
+    } finally {
+      await raw.send(
+        'Emulation.setDeviceMetricsOverride',
+        { width: 800, height: 600, deviceScaleFactor: 1, mobile: false },
+        session,
+      );
+    }
+  });
+
+  test('publishes a bounded favicon already fetched by Chromium', async (ctx) => {
+    if (!executablePath) return ctx.skip(SKIP_REASON);
+    let icon: string | undefined;
+    const off = host.onFaviconChanged((observedTargetId, value) => {
+      if (observedTargetId === targetId && value) icon = value;
+    });
+    try {
+      await gotoDev('/favicon-page');
+      const found = await poll(async () => icon, Boolean);
+      expect(found).toMatch(/^data:image\/png;base64,/);
+      expect(
+        Buffer.from(found!.split(',')[1]!, 'base64').subarray(0, 8),
+      ).toEqual(Buffer.from('89504e470d0a1a0a', 'hex'));
+    } finally {
+      off();
+    }
   });
 
   test('a file: navigation is refused by the guard AND failed by the network layer', async (ctx) => {

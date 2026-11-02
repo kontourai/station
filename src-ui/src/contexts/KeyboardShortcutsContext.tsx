@@ -53,11 +53,13 @@ export function withShortcutHint(
 export type ShortcutContextKey =
   | 'composerFocused'
   | 'terminalFocused'
+  | 'browserFocused'
   | 'dialogOpen'
   | 'dockFocused';
 export const SHORTCUT_CONTEXT_KEYS: readonly ShortcutContextKey[] = [
   'composerFocused',
   'terminalFocused',
+  'browserFocused',
   'dialogOpen',
   'dockFocused',
 ];
@@ -314,7 +316,7 @@ export function findShortcutConflicts(
 ): ShortcutConflict[] {
   const byChord = new Map<string, KeyboardShortcut[]>();
   for (const shortcut of shortcuts) {
-    if (shortcut.disabled) continue;
+    if (shortcut.disabled || !shortcut.key) continue;
     const chord = [
       ...[...shortcut.modifiers].sort(),
       shortcut.key.toLowerCase(),
@@ -405,6 +407,7 @@ export function shouldIgnoreShortcut(
   if (event.defaultPrevented) return true;
   const target = event.target;
   const targetElement = target instanceof Element ? target : null;
+  if (targetElement?.closest('[data-live-surface-keyboard]')) return true;
   const ownerDocument = targetElement?.ownerDocument ?? document;
   if (isModalDialogOpen(ownerDocument)) return true;
   if (editingChordOwnsKey(shortcut, targetElement, ownerDocument)) return true;

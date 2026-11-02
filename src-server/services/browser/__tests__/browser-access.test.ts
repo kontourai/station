@@ -129,6 +129,30 @@ async function harness() {
 }
 
 describe('browser access (D5) with the real membership service', () => {
+  test('an operator-owned paired device receives view standing only', async () => {
+    let own = true;
+    const authorize = createBrowserProjectAuthorizer({
+      operator: async () => {
+        throw new ProjectMembershipRefusal('forbidden');
+      },
+      operatorDeviceMayView: () => own,
+      authority: () => ({
+        current: async () => ({ principal: stranger, verifiedEmails: [] }),
+        operator: async () => {
+          throw new ProjectMembershipRefusal('forbidden');
+        },
+      }),
+    });
+    const request = new Request(
+      'http://station.test/api/browser/projects/alpha/access',
+    );
+    expect(await authorize(request, 'alpha', 'view')).toEqual({
+      kind: 'operator',
+    });
+    expect(await authorize(request, 'alpha', 'drive')).toBeUndefined();
+    own = false;
+    expect(await authorize(request, 'alpha', 'view')).toBeUndefined();
+  });
   test('Project owner and admin are admitted as project-admin for view and drive', async () => {
     const h = await harness();
     for (const principal of [owner, admin]) {
