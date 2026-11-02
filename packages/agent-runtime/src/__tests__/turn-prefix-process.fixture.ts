@@ -88,6 +88,7 @@ for await (const part of result.stream) {
   const acknowledged = new Promise<void>((resolve) =>
     process.once('message', () => resolve()),
   );
+  await lease.frame(`answer:${count}`, `data: ${JSON.stringify(part)}\n\n`);
   process.send?.({ index: count++, delta: part.delta });
   await acknowledged;
   if (count === 400) finish();

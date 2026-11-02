@@ -109,6 +109,7 @@ function parseBlock(row: Record<string, unknown>): AgentFrame[] {
         .array(z.string().max(32 * 1024 * 1024))
         .min(1)
         .max(1024),
+      times: z.array(z.iso.datetime()).max(1024).optional(),
     })
     .strict()
     .parse(
@@ -130,6 +131,7 @@ function parseBlock(row: Record<string, unknown>): AgentFrame[] {
         raw,
       ]),
     ) !== envelope.digest ||
+    (raw.times !== undefined && raw.times.length !== raw.wires.length) ||
     Number(row.last_position) !== Number(row.position) + raw.wires.length - 1 ||
     Number(row.last_ordinal) !==
       Number(row.first_ordinal) + raw.wires.length - 1
@@ -144,7 +146,7 @@ function parseBlock(row: Record<string, unknown>): AgentFrame[] {
       position: Number(row.position) + index,
       wire,
       digest: hash(wire),
-      createdAt: raw.at,
+      createdAt: raw.times?.[index] ?? raw.at,
     }),
   );
 }
@@ -153,10 +155,32 @@ function putBlock(
   turnId: string,
   frames: AgentFrame[],
 ) {
+  const previous = agentStatement(
+    database,
+    'SELECT * FROM agent_steps_frame_blocks WHERE turn_id=? ORDER BY position DESC LIMIT 1',
+  ).get(turnId);
+  const incoming = frames[0]!;
+  const incomingAddress = frameAddress(incoming.id);
+  const append =
+    previous &&
+    previous.group_id === incomingAddress.group &&
+    Number(previous.last_position) + 1 === incoming.position &&
+    Number(previous.last_ordinal) + 1 === incomingAddress.ordinal &&
+    Number(previous.last_position) -
+      Number(previous.position) +
+      1 +
+      frames.length <=
+      128;
+  if (append) frames = [...parseBlock(previous), ...frames];
   const first = frames[0]!;
   const last = frames.at(-1)!;
   const address = frameAddress(first.id);
-  const raw = { at: first.createdAt, wires: frames.map((frame) => frame.wire) };
+  const times = frames.map((frame) => frame.createdAt);
+  const raw = {
+    at: first.createdAt,
+    wires: frames.map((frame) => frame.wire),
+    ...(times.some((at) => at !== first.createdAt) ? { times } : {}),
+  };
   const digest = hash(
     canonical([
       turnId,
@@ -168,6 +192,24 @@ function putBlock(
       raw,
     ]),
   );
+  if (append) {
+    const changed = agentStatement(
+      database,
+      'UPDATE agent_steps_frame_blocks SET last_position=?,last_ordinal=?,record=? WHERE turn_id=? AND position=? AND record=?',
+    ).run(
+      last.position,
+      frameAddress(last.id).ordinal,
+      JSON.stringify({
+        digest,
+        payload: deflateSync(JSON.stringify(raw)).toString('base64'),
+      }),
+      turnId,
+      first.position,
+      String(previous.record),
+    );
+    if (changed.changes !== 1) throw new Error('DURABLE_AGENT_FRAME_DAMAGED');
+    return;
+  }
   agentStatement(
     database,
     'INSERT INTO agent_steps_frame_blocks VALUES(?,?,?,?,?,?,?)',
@@ -307,7 +349,7 @@ export function projectAgentFrames(
         previous &&
         (frameAddress(previous.id).group !== address.group ||
           frameAddress(previous.id).ordinal + 1 !== address.ordinal ||
-          pending.length === 1024)
+          pending.length === 128)
       )
         flush();
       pending.push(frame);

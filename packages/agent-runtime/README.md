@@ -296,8 +296,8 @@ The chat projection commits bounded batches before displaying any frame. Each fr
 The benchmark includes the actual in-process chat/SSE route and `projectFrame`/`projectFrameBatch`, with 0, 5 and 20 ms token pacing. It reports total home bytes divided by emitted text bytes, journal/body/frame bytes, transient WAL peak, elapsed ratio, command and amortized projection costs, and event-loop stall. The fresh-journal workload budget is 128 KiB fixed + 16 KiB per model step + three times emitted text bytes; immutable body storage has a separate 8 KiB per-step + twice-text budget. `--delta-bytes=4` measures small deltas independently from the default 64-byte workload, and `dbstat` reports allocated bytes per table and index alongside logical payload bytes. These allowances include indexed frame/change metadata; they are not a claim that total disk usage is twice text, or that retained raw disk is bounded. TCP and the outer EventStore relay remain outside this benchmark. SDK tracing stays active; fixture traces and garbage are cleared between measurements, never within a measured turn.
 
 
-Writer 11 stores foreground frames in compressed blocks while preserving every
-frame's original ID, wire, timestamp, digest and position. Nonterminal controls share ordered batches. An indexed group and
+Writer 11 appends foreground frames to bounded compressed tail blocks across commits while preserving every
+frame's original ID, wire, timestamp, digest and position. A compressed timestamp vector preserves the time of each committed frame. Nonterminal controls share ordered batches. An indexed group and
 ordinal locate individual frames without scanning previous blocks. Legacy frame
 rows remain readable. The 1,048,576-frame ceiling remains reachable: compression
 reduces storage, not logical frame counts. Two reserved positions carry a typed

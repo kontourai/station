@@ -447,6 +447,8 @@ it.each([65_536, 1_048_576, 1_048_573])(
     cleanup.push(() => owner.pause());
     const entered = gate();
     const resume = gate();
+    const releaseAbort = gate();
+    let capacityAborted = false;
     let finished = 0;
     const agent: IAgent = {
       id: 'assistant',
@@ -454,13 +456,25 @@ it.each([65_536, 1_048_576, 1_048_573])(
       model: { modelId: 'capacity' },
       getMemory: () => null,
       generateText: async () => ({ text: 'unused' }),
-      streamText: async () => ({
+      streamText: async (_input, options) => ({
         fullStream: (async function* () {
           entered.resolve();
           await resume.promise;
           yield { type: 'text-start', id: 'a' };
           yield { type: 'text-delta', id: 'a', text: 'AFTER_CAP' };
           yield { type: 'text-end', id: 'a' };
+          if (limit === 1_048_576) {
+            const aborted = () => {
+              capacityAborted = true;
+              releaseAbort.resolve();
+            };
+            if (options.abortSignal.aborted) aborted();
+            else
+              options.abortSignal.addEventListener('abort', aborted, {
+                once: true,
+              });
+            await releaseAbort.promise;
+          }
           finished++;
           yield { type: 'finish', finishReason: 'stop' };
         })(),
@@ -503,6 +517,7 @@ it.each([65_536, 1_048_576, 1_048_573])(
     const wire = response.text();
     cleanup.push(async () => {
       resume.resolve();
+      releaseAbort.resolve();
       await wire.catch(() => {});
     });
     await entered.promise;
@@ -532,6 +547,8 @@ it.each([65_536, 1_048_576, 1_048_573])(
       db.close();
     }
     resume.resolve();
+    if (limit === 1_048_576)
+      await expect.poll(() => capacityAborted, { timeout: 2_000 }).toBe(true);
     const result = await wire;
     const events = result
       .split('\n')

@@ -155,6 +155,7 @@ export function createAgentRuntime(options: {
         );
         if (answer.kind === 'owned' && answer.frameCapacity) {
           turn = answer.turn;
+          controller.abort(new RuntimeError('DURABLE_AGENT_FRAME_CAPACITY'));
           throw new RuntimeError('DURABLE_AGENT_FRAME_CAPACITY');
         }
         if (answer.kind !== 'frames')
@@ -175,6 +176,7 @@ export function createAgentRuntime(options: {
         );
         if (answer.kind === 'owned' && answer.frameCapacity) {
           turn = answer.turn;
+          controller.abort(new RuntimeError('DURABLE_AGENT_FRAME_CAPACITY'));
           throw new RuntimeError('DURABLE_AGENT_FRAME_CAPACITY');
         }
         if (answer.kind !== 'frame')

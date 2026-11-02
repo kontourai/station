@@ -321,11 +321,16 @@ it('400 individually committed text chunks retain bounded storage and an exact a
   const parts: string[] = [];
   let textBytes = 0;
   for (let index = 0; index < 400; index++) {
+    f.advance(20);
     const delta = `token-${index}: `.padEnd(64, 'text ');
     textBytes += Buffer.byteLength(delta);
     const part = agentWire({ type: 'text-delta', id: 'a', delta });
     parts.push(part);
     await f.lease.effect({ type: 'effectPartial', id: 'paced', part });
+    await f.lease.frame(
+      `paced:${index}`,
+      `data: ${JSON.stringify({ type: 'text-delta', id: 'a', delta })}\n\n`,
+    );
   }
   f.database.exec('PRAGMA wal_checkpoint(TRUNCATE)');
   expect(diskBytes() - before).toBeLessThanOrEqual(2 * textBytes + 128 * 1024);
@@ -344,6 +349,20 @@ it('400 individually committed text chunks retain bounded storage and an exact a
   expect(() => f.database.exec('DELETE FROM agent_steps_changes')).toThrow(
     'immutable latest agent change',
   );
+  const frames = readSqliteAgentFrames({ database: f.database, key: f.key });
+  expect(frames).toHaveLength(400);
+  expect(frames.map((frame) => frame.createdAt)).toEqual(
+    Array.from({ length: 400 }, (_, index) =>
+      new Date(1_000 + (index + 1) * 20).toISOString(),
+    ),
+  );
+  expect(
+    Number(
+      f.database
+        .prepare('SELECT count(*) AS n FROM agent_steps_frame_blocks')
+        .get()?.n,
+    ),
+  ).toBeLessThanOrEqual(4);
   const recovered = await f.recover();
   const { effect } = await recovered.effect({
     type: 'effectRead',

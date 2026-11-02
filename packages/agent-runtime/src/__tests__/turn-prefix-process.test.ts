@@ -11,7 +11,7 @@ import {
   openSqliteAgentJournal,
   runWithAgentTurn,
 } from '../index.js';
-import { readAgentWire } from '../internal.js';
+import { readAgentWire, readSqliteAgentFrames } from '../internal.js';
 
 const children = new Set<ChildProcess>();
 const temporary: ReturnType<typeof mkdtempDisposableSync>[] = [];
@@ -115,6 +115,13 @@ it.each([5, 130, 300, 389])(
         ),
       );
       expect(prefix.slice(0, visible.length)).toEqual(visible);
+      const frames = readSqliteAgentFrames({ database, key: lease.key });
+      expect(
+        frames.map((frame) => JSON.parse(frame.wire.slice(6)).delta),
+      ).toEqual(visible);
+      expect(new Set(frames.map((frame) => frame.id)).size).toBe(
+        visible.length,
+      );
       let calls = 0;
       const model = durableLanguageModel({
         specificationVersion: 'v3',

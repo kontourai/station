@@ -10,7 +10,7 @@ export const retainedBodyDefinitions = [
   "CREATE TRIGGER agent_steps_body_chunks_no_delete BEFORE DELETE ON agent_steps_body_chunks WHEN EXISTS(SELECT 1 FROM agent_steps_bodies b,json_each(b.wire,'$.chunks') c WHERE c.value=OLD.digest) OR EXISTS(SELECT 1 FROM agent_steps_body_nodes n,json_each(n.refs) r WHERE r.value=OLD.digest) BEGIN SELECT RAISE(ABORT,'immutable agent chunk'); END",
 ];
 export const retentionDefinitions = [
-  'CREATE TABLE agent_steps_retained(turn_id TEXT PRIMARY KEY REFERENCES agent_steps_turns(id), expired_at INTEGER NOT NULL CHECK(expired_at>0)) STRICT',
+  'CREATE TABLE agent_steps_retained(turn_id TEXT PRIMARY KEY REFERENCES agent_steps_turns(id), expired_at INTEGER NOT NULL CHECK(expired_at>0)) STRICT, WITHOUT ROWID',
   'CREATE INDEX agent_steps_terminal_age ON agent_steps_terminal(state,settled_at)',
 ];
 /** Reclaim unreachable payloads; live recovery roots remain protected by triggers. */
