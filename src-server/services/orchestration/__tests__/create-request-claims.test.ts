@@ -477,9 +477,7 @@ test('capacity pressure prunes only the oldest tombstone and preserves newer ind
   const ledger = JSON.parse(readFileSync(file, 'utf8'));
   const completed = {
     kind: 'foreground',
-    digest: Object.values(ledger.claims).map(
-      (row) => row as { digest: string },
-    )[0].digest,
+    digest: ledger.claims[Object.keys(ledger.claims)[0]].digest,
     sessionId: 'fixture-completed',
     completedAt: Date.now(),
     result: handle('fixture-completed'),

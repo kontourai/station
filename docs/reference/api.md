@@ -2712,9 +2712,7 @@ A pruned tombstone no longer protects its key. Retain the original Session
 reference and never blindly retry an old key: pruning or absence does not prove
 failure or authorize an automatic resend. A deliberate separate request with a
 new key may duplicate existing work. These bounds are separate from the turn
-ledger's seven-day retention. The general create ledger is introduced by this
-change; main persists only the separate portable-attempt ledger, so no legacy
-create-ledger migration is provided.
+ledger's seven-day retention.
 
 An authorized delivery lookup for an explicitly settled prepared turn returns
 HTTP `409` with `code: client_turn_settled` and `disposition: cancelled` or

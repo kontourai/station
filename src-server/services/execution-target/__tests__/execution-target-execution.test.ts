@@ -89,7 +89,7 @@ describe('executeForegroundMessage', () => {
     const deps = dependencies();
     deps.startSession = vi.fn(async (_access, start) => {
       const rows = JSON.parse(
-        readFileSync(join(home, 'delegation-create-claims.json'), 'utf8'),
+        readFileSync(join(home, 'create-request-claims.json'), 'utf8'),
       ).claims;
       expect(Object.values(rows)).toEqual([
         expect.objectContaining({
@@ -110,7 +110,7 @@ describe('executeForegroundMessage', () => {
         ),
         requestKey: 'first-key',
         intent: { message: 'first' },
-        sessionExists: () => false,
+        hasSessionStartRecord: () => false,
       },
       (conversationId) =>
         executeForegroundMessage(

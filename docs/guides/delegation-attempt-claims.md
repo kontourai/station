@@ -20,8 +20,7 @@ HTTP 429 starts nothing. A pruned key loses protection, so neither absence nor
 expiry authorizes automatic retry. Inspect the original Session before any
 deliberate separate new request, which may duplicate existing work. The
 [API reference](../reference/api.md) owns the precise starting/refusal rules,
-3 KiB pending receipt reservation and clock limits. The general create store is
-new in this change and has no deployed-format migration. It preserves the peer
+3 KiB pending receipt reservation and clock limits. It preserves the peer
 identity, lookup authority and opt-in `attemptId` protocol below. The SDK uses an
 existing `attemptId` as its default key; retain it with the original input.
 
