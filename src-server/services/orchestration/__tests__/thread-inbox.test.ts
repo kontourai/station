@@ -499,6 +499,8 @@ describe('thread inbox (#3568)', () => {
           },
           { userId: payload.actor.userId },
         );
+        if (!result.result || !('outcome' in result.result))
+          throw new Error('Steer dispatch did not return a placement outcome.');
         return result.result;
       },
     });
