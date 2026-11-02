@@ -495,7 +495,7 @@ describe.skipIf(process.platform === 'win32')(
       expect(next.ordinal).toBe(2);
     });
 
-    test('a restarted shell drops its previous run\'s end markers, so a later exit by itself is not restored', async () => {
+    test("a restarted shell drops its previous run's end markers, so a later exit by itself is not restored", async () => {
       const shell = await sessions.open(request(), scope, dimensions);
       await sessions.dispose();
       // The in-process host stopped with its core: ended, marked hostStopped.
