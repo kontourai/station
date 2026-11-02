@@ -19,6 +19,7 @@ import {
 } from '../../components/AccountIdentityConflict';
 import { Button } from '../../components/Button';
 import { PageSection } from '../../components/PageSection';
+import { ResponsiveSurfaceActions } from '../../components/ResponsiveDialogSurface';
 import { Empty, ErrorState, SkeletonList } from '../../components/state';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { useNavigationActions } from '../../contexts/NavigationContext';
@@ -64,14 +65,14 @@ function StationSharingActions() {
   const { navigate } = useNavigationActions();
   return (
     <div className="project-access__setup">
-      <div className="project-access__actions">
+      <ResponsiveSurfaceActions className="project-access__setup-actions">
         <Button onClick={() => navigate('/settings', { view: 'system' })}>
           Sharing setup
         </Button>
         <Button onClick={() => navigate('/notifications')}>
           Review browser requests
         </Button>
-      </div>
+      </ResponsiveSurfaceActions>
       <p className="project-access__hint">
         Project sharing setting is in{' '}
         <Button

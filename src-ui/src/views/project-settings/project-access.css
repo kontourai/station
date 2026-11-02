@@ -55,7 +55,7 @@
 
 .project-access__journey {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr));
   gap: var(--k-space-4);
   margin: 0;
   padding: var(--k-space-4);
@@ -86,12 +86,6 @@
   margin: 0;
 }
 
-@media (max-width: 600px) {
-  .project-access__journey {
-    grid-template-columns: minmax(0, 1fr);
-  }
-}
-
 .project-access__setup button {
   min-height: 44px;
 }
@@ -103,4 +97,10 @@
 
 .project-access .page-section__body > h3 {
   margin: 0;
+}
+
+.project-access__setup-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--k-space-2);
 }
