@@ -1709,7 +1709,7 @@ into from it.
 - **The chords stay out of text.** A shortcut handler may return `false` to
   decline its key (`KeyboardShortcutsContext`), which is then neither
   prevented nor consumed. The stack's chords decline only inside an editor
-  that owns those keys itself (CodeMirror, xterm, a contenteditable editor),
+  that owns those keys itself (CodeMirror, the terminal, a contenteditable editor),
   and when there is nothing to go back or forward to in the layout, so the
   browser keeps its own Back. In a plain input, textarea or the composer they
   are the stack's Back and Forward (off macOS, Alt+← there would otherwise be
@@ -1882,7 +1882,7 @@ per conversation.** Below the fold nothing above changes.
   lower panel. Either way the Terminal remounts: its tabs and their
   server-side processes carry across (the tab list is the pane's own
   session storage and the socket reconnects within the server's grace
-  window), while xterm's local scrollback and selection do not.
+  window), while the terminal view's local scrollback and selection do not.
 - **Geometry stays out of Chat.** The centre's Chat is memoised on its own
   props (the bar's slot elements, whether it is on screen, two stable
   setters); a separator drag writes the room's custom properties directly
@@ -1945,7 +1945,7 @@ per conversation.** Below the fold nothing above changes.
   same 32px close. The Terminal: with the shell the only kind of terminal
   (no agent connections), an open empty panel opens a shell and "+" opens
   another, no picker; its chrome — tabs, "+", the empty state, the picker
-  — is on the app's tokens and face in both themes, and the xterm viewport
+  — is on the app's tokens and face in both themes, and the terminal view
   keeps monospace and takes the terminal palette for the mode
   (`--terminal-*`: dark ground in dark, a light terminal in light). The bar's New
   chat is a compose mark, not a "+", beside the rail's "Add pane" "+". A

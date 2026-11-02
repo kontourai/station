@@ -11,7 +11,7 @@ import {
 } from 'react';
 import { ActionControl } from '../components/ActionControl';
 import { ErrorState } from '../components/ErrorState';
-import { TerminalController } from './controller';
+import { type ControllerSnapshot, TerminalController } from './controller';
 import { loadSymbolsFont, TERMINAL_FONT_FAMILY } from './font';
 import type { TerminalLinkTarget } from './links';
 import type { FontSpec } from './render/glyph-atlas';
@@ -87,6 +87,319 @@ const SESSION_NOTICE: Record<string, string> = {
   failed: 'The terminal connection failed.',
 };
 
+type Snapshot = ControllerSnapshot | null;
+
+function FindBar({
+  controller,
+  search,
+  onClose,
+}: {
+  controller: TerminalController | null;
+  search: ControllerSnapshot['search'];
+  onClose(): void;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [needle, setNeedle] = useState('');
+  useEffect(() => inputRef.current?.focus(), []);
+  const run = (direction: 'next' | 'prev' | 'same', value = needle) =>
+    void controller?.find(value, direction);
+  const close = () => {
+    void controller?.find('', 'same');
+    onClose();
+  };
+  return (
+    <search className="station-terminal__find" aria-label="Find in terminal">
+      <input
+        ref={inputRef}
+        type="search"
+        aria-label="Find"
+        placeholder="Find"
+        value={needle}
+        onChange={(event) => {
+          setNeedle(event.target.value);
+          run('same', event.target.value);
+        }}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter') {
+            event.preventDefault();
+            run(event.shiftKey ? 'prev' : 'next');
+          } else if (event.key === 'Escape') {
+            event.preventDefault();
+            close();
+          }
+        }}
+      />
+      <span className="station-terminal__find-count" aria-live="polite">
+        {needle
+          ? search?.total
+            ? `${search.selected + 1} of ${search.total}`
+            : 'No results'
+          : ''}
+      </span>
+      <ActionControl
+        type="button"
+        variant="ghost"
+        size="sm"
+        aria-label="Previous match"
+        onClick={() => run('prev')}
+      >
+        ↑
+      </ActionControl>
+      <ActionControl
+        type="button"
+        variant="ghost"
+        size="sm"
+        aria-label="Next match"
+        onClick={() => run('next')}
+      >
+        ↓
+      </ActionControl>
+      <ActionControl
+        type="button"
+        variant="ghost"
+        size="sm"
+        aria-label="Close find"
+        onClick={close}
+      >
+        ✕
+      </ActionControl>
+    </search>
+  );
+}
+
+function Scrollbar({
+  controller,
+  scrollbar,
+  controls,
+}: {
+  controller: TerminalController | null;
+  scrollbar: ControllerSnapshot['scrollbar'];
+  controls: string;
+}) {
+  return (
+    <div
+      className="station-terminal__scrollbar"
+      role="scrollbar"
+      aria-label="Terminal scrollback"
+      aria-orientation="vertical"
+      aria-valuemin={0}
+      aria-valuemax={scrollbar.total - scrollbar.length}
+      aria-valuenow={scrollbar.offset}
+      aria-controls={controls}
+      tabIndex={-1}
+      onPointerDown={(event) => {
+        const target = event.currentTarget;
+        const rect = target.getBoundingClientRect();
+        const jump = (clientY: number) =>
+          controller?.scrollTo(
+            Math.round(
+              ((clientY - rect.top) / rect.height) * scrollbar.total -
+                scrollbar.length / 2,
+            ),
+          );
+        jump(event.clientY);
+        target.setPointerCapture(event.pointerId);
+        const move = (e: PointerEvent) => jump(e.clientY);
+        target.addEventListener('pointermove', move);
+        target.addEventListener(
+          'pointerup',
+          () => target.removeEventListener('pointermove', move),
+          { once: true },
+        );
+      }}
+    >
+      <div
+        className="station-terminal__thumb"
+        style={{
+          top: `${(scrollbar.offset / scrollbar.total) * 100}%`,
+          height: `${Math.max(4, (scrollbar.length / scrollbar.total) * 100)}%`,
+        }}
+      />
+    </div>
+  );
+}
+
+function StatusOverlay({
+  snapshot,
+  notices,
+  onRetry,
+  onReconnect,
+}: {
+  snapshot: Snapshot;
+  notices: boolean;
+  onRetry(): void;
+  onReconnect?(): void;
+}) {
+  const status = snapshot?.status ?? 'loading';
+  if (status === 'loading')
+    return (
+      <div
+        className="station-terminal__overlay"
+        role="status"
+        aria-label="Starting terminal"
+      >
+        <Skeleton />
+      </div>
+    );
+  if (status === 'error')
+    return (
+      <div className="station-terminal__overlay">
+        <ErrorState
+          title="The terminal could not start"
+          description={snapshot?.failure ?? undefined}
+          action={
+            <ActionControl type="button" onClick={onRetry}>
+              Retry
+            </ActionControl>
+          }
+          variant="compact"
+        />
+      </div>
+    );
+  const state = snapshot?.session ?? 'none';
+  const notice = SESSION_NOTICE[state];
+  if (!notices || !notice) return null;
+  const recoverable = state === 'exited' || state === 'failed';
+  return (
+    <div className="station-terminal__banner" role="status">
+      <span>{notice}</span>
+      {recoverable && onReconnect ? (
+        <ActionControl type="button" size="sm" onClick={onReconnect}>
+          {state === 'exited' ? 'Restart' : 'Reconnect'}
+        </ActionControl>
+      ) : null}
+    </div>
+  );
+}
+
+const TOUCH_KEYS: readonly [
+  label: string,
+  text: string,
+  code: string,
+  key: string,
+  mods?: number,
+][] = [
+  ['Interrupt (Ctrl+C)', 'Ctrl+C', 'KeyC', 'c', 1 << 1],
+  ['Escape', 'Esc', 'Escape', 'Escape'],
+  ['Tab', 'Tab', 'Tab', 'Tab'],
+  ['Previous command', '↑', 'ArrowUp', 'ArrowUp'],
+  ['Next command', '↓', 'ArrowDown', 'ArrowDown'],
+  ['Left', '←', 'ArrowLeft', 'ArrowLeft'],
+  ['Right', '→', 'ArrowRight', 'ArrowRight'],
+];
+
+function TouchKeys({
+  controller,
+  stickyCtrl,
+  disabled,
+}: {
+  controller: TerminalController | null;
+  stickyCtrl: boolean;
+  disabled: boolean;
+}) {
+  const press = (run: () => void) => () => {
+    run();
+    controller?.focus();
+  };
+  return (
+    <div
+      className="station-terminal__keys"
+      role="toolbar"
+      aria-label="Terminal keys"
+    >
+      {TOUCH_KEYS.map(([label, text, code, key, mods]) => (
+        <button
+          key={label}
+          type="button"
+          aria-label={label}
+          disabled={disabled}
+          onPointerDown={(event) => event.preventDefault()}
+          onClick={press(() => controller?.sendKey(code, key, mods))}
+        >
+          {text}
+        </button>
+      ))}
+      <button
+        type="button"
+        aria-label="Control (applies to the next key)"
+        aria-pressed={stickyCtrl}
+        disabled={disabled}
+        onPointerDown={(event) => event.preventDefault()}
+        onClick={press(() => controller?.setStickyCtrl(!stickyCtrl))}
+      >
+        Ctrl
+      </button>
+    </div>
+  );
+}
+
+interface MenuItem {
+  label: string;
+  run: () => void | Promise<void>;
+  disabled?: boolean;
+}
+
+function TerminalMenu({
+  at,
+  items,
+  onClose,
+}: {
+  at: { x: number; y: number };
+  items: readonly MenuItem[];
+  onClose(): void;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    ref.current?.querySelector<HTMLElement>('[role="menuitem"]')?.focus();
+    const close = (event: PointerEvent) => {
+      if (!ref.current?.contains(event.target as Node)) onClose();
+    };
+    window.addEventListener('pointerdown', close);
+    return () => window.removeEventListener('pointerdown', close);
+  }, [onClose]);
+  const onKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    const enabled = [
+      ...(ref.current?.querySelectorAll<HTMLElement>(
+        '[role="menuitem"]:not([disabled])',
+      ) ?? []),
+    ];
+    const index = enabled.indexOf(document.activeElement as HTMLElement);
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      onClose();
+    } else if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault();
+      const step = event.key === 'ArrowDown' ? 1 : -1;
+      enabled[(index + step + enabled.length) % enabled.length]?.focus();
+    } else if (event.key === 'Tab') event.preventDefault();
+  };
+  return (
+    <div
+      ref={ref}
+      className="station-terminal__menu"
+      role="menu"
+      aria-label="Terminal actions"
+      style={{ left: at.x, top: at.y }}
+      onKeyDown={onKeyDown}
+    >
+      {items.map((item) => (
+        <button
+          key={item.label}
+          type="button"
+          role="menuitem"
+          disabled={item.disabled}
+          onClick={async () => {
+            onClose();
+            await item.run();
+          }}
+        >
+          {item.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 /**
  * Station's terminal surface over Ghostty's libghostty-vt. The emulator runs
  * in a worker; this component owns the canvas, input and chrome.
@@ -111,12 +424,9 @@ export function TerminalView({
   const gridRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
-  const findRef = useRef<HTMLInputElement>(null);
-  const menuRef = useRef<HTMLDivElement>(null);
   const [attempt, setAttempt] = useState(0);
   const [controller, setController] = useState<TerminalController | null>(null);
   const [findOpen, setFindOpen] = useState(false);
-  const [needle, setNeedle] = useState('');
   const [menu, setMenu] = useState<{ x: number; y: number } | null>(null);
   const [notice, setNotice] = useState('');
   const reducedMotion = useReducedMotion();
@@ -186,49 +496,22 @@ export function TerminalView({
   );
 
   useEffect(() => {
-    if (findOpen) findRef.current?.focus();
-  }, [findOpen]);
-  useEffect(() => {
     if (!notice) return;
     const timer = setTimeout(() => setNotice(''), 4000);
     return () => clearTimeout(timer);
   }, [notice]);
-  useEffect(() => {
-    if (!menu) return;
-    menuRef.current?.querySelector<HTMLElement>('[role="menuitem"]')?.focus();
-    const close = (event: PointerEvent) => {
-      if (!menuRef.current?.contains(event.target as Node)) setMenu(null);
-    };
-    window.addEventListener('pointerdown', close);
-    return () => window.removeEventListener('pointerdown', close);
-  }, [menu]);
 
   const readOnly = session?.readOnly ?? true;
-  const status = snapshot?.status ?? 'loading';
-  const sessionState = snapshot?.session ?? 'none';
-
-  const closeMenu = () => {
+  const closeMenu = useCallback(() => {
     setMenu(null);
     controller?.focus();
-  };
-  const runFind = async (
-    direction: 'next' | 'prev' | 'same',
-    value = needle,
-  ) => {
-    await controller?.find(value, direction);
-  };
+  }, [controller]);
   const closeFind = () => {
     setFindOpen(false);
-    setNeedle('');
-    void controller?.find('', 'same');
     controller?.focus();
   };
 
-  const menuItems: {
-    label: string;
-    run: () => void | Promise<void>;
-    disabled?: boolean;
-  }[] = [
+  const menuItems: MenuItem[] = [
     {
       label: 'Copy',
       disabled: !snapshot?.hasSelection,
@@ -267,97 +550,26 @@ export function TerminalView({
     { label: 'Clear', run: () => controller?.clear() },
   ];
 
-  const onMenuKey = (event: ReactKeyboardEvent<HTMLDivElement>) => {
-    const items = [
-      ...(menuRef.current?.querySelectorAll<HTMLElement>(
-        '[role="menuitem"]:not([disabled])',
-      ) ?? []),
-    ];
-    const index = items.indexOf(document.activeElement as HTMLElement);
-    if (event.key === 'Escape') {
-      event.preventDefault();
-      closeMenu();
-    } else if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
-      event.preventDefault();
-      const step = event.key === 'ArrowDown' ? 1 : -1;
-      items[(index + step + items.length) % items.length]?.focus();
-    } else if (event.key === 'Tab') event.preventDefault();
-  };
-
   const scrollbar = snapshot?.scrollbar;
-  const scrollable = scrollbar && scrollbar.total > scrollbar.length;
+  const cursor = snapshot?.cursorCss;
 
   return (
     <div
       ref={rootRef}
       className={['station-terminal', className].filter(Boolean).join(' ')}
       data-renderer={snapshot?.renderer ?? undefined}
-      data-state={status}
+      data-state={snapshot?.status ?? 'loading'}
     >
       <p id={helpId} className="station-terminal__visually-hidden">
         Press Escape then Tab to leave the terminal. Shift+F10 opens the
         terminal menu.
       </p>
       {findOpen && (
-        <search
-          className="station-terminal__find"
-          aria-label="Find in terminal"
-        >
-          <input
-            ref={findRef}
-            type="search"
-            aria-label="Find"
-            placeholder="Find"
-            value={needle}
-            onChange={(event) => {
-              setNeedle(event.target.value);
-              void runFind('same', event.target.value);
-            }}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter') {
-                event.preventDefault();
-                void runFind(event.shiftKey ? 'prev' : 'next');
-              } else if (event.key === 'Escape') {
-                event.preventDefault();
-                closeFind();
-              }
-            }}
-          />
-          <span className="station-terminal__find-count" aria-live="polite">
-            {needle
-              ? snapshot?.search?.total
-                ? `${(snapshot.search.selected ?? 0) + 1} of ${snapshot.search.total}`
-                : 'No results'
-              : ''}
-          </span>
-          <ActionControl
-            type="button"
-            variant="ghost"
-            size="sm"
-            aria-label="Previous match"
-            onClick={() => void runFind('prev')}
-          >
-            ↑
-          </ActionControl>
-          <ActionControl
-            type="button"
-            variant="ghost"
-            size="sm"
-            aria-label="Next match"
-            onClick={() => void runFind('next')}
-          >
-            ↓
-          </ActionControl>
-          <ActionControl
-            type="button"
-            variant="ghost"
-            size="sm"
-            aria-label="Close find"
-            onClick={closeFind}
-          >
-            ✕
-          </ActionControl>
-        </search>
+        <FindBar
+          controller={controller}
+          search={snapshot?.search ?? null}
+          onClose={closeFind}
+        />
       )}
       <div className="station-terminal__body">
         {/* biome-ignore lint/a11y/useSemanticElements: a fieldset would give the canvas surface form semantics. */}
@@ -382,67 +594,26 @@ export function TerminalView({
             enterKeyHint="send"
             rows={1}
             style={
-              snapshot?.cursorCss
-                ? {
-                    left: snapshot.cursorCss.left,
-                    top: snapshot.cursorCss.top,
-                    height: snapshot.cursorCss.height,
-                  }
+              cursor
+                ? { left: cursor.left, top: cursor.top, height: cursor.height }
                 : undefined
             }
           />
           {snapshot?.composing ? (
             <span
               className="station-terminal__composition"
-              style={{
-                left: snapshot.cursorCss?.left ?? 0,
-                top: snapshot.cursorCss?.top ?? 0,
-              }}
+              style={{ left: cursor?.left ?? 0, top: cursor?.top ?? 0 }}
             >
               {snapshot.composing}
             </span>
           ) : null}
         </div>
-        {scrollable && scrollbar ? (
-          <div
-            className="station-terminal__scrollbar"
-            role="scrollbar"
-            aria-label="Terminal scrollback"
-            aria-orientation="vertical"
-            aria-valuemin={0}
-            aria-valuemax={scrollbar.total - scrollbar.length}
-            aria-valuenow={scrollbar.offset}
-            aria-controls={mirrorId}
-            tabIndex={-1}
-            onPointerDown={(event) => {
-              const rect = event.currentTarget.getBoundingClientRect();
-              const jump = (clientY: number) =>
-                controller?.scrollTo(
-                  Math.round(
-                    ((clientY - rect.top) / rect.height) * scrollbar.total -
-                      scrollbar.length / 2,
-                  ),
-                );
-              jump(event.clientY);
-              event.currentTarget.setPointerCapture(event.pointerId);
-              const move = (e: PointerEvent) => jump(e.clientY);
-              const target = event.currentTarget;
-              target.addEventListener('pointermove', move);
-              target.addEventListener(
-                'pointerup',
-                () => target.removeEventListener('pointermove', move),
-                { once: true },
-              );
-            }}
-          >
-            <div
-              className="station-terminal__thumb"
-              style={{
-                top: `${(scrollbar.offset / scrollbar.total) * 100}%`,
-                height: `${Math.max(4, (scrollbar.length / scrollbar.total) * 100)}%`,
-              }}
-            />
-          </div>
+        {scrollbar && scrollbar.total > scrollbar.length ? (
+          <Scrollbar
+            controller={controller}
+            scrollbar={scrollbar}
+            controls={mirrorId}
+          />
         ) : null}
         {snapshot && !snapshot.atBottom ? (
           <ActionControl
@@ -457,135 +628,22 @@ export function TerminalView({
             Jump to latest
           </ActionControl>
         ) : null}
-        {status === 'loading' ? (
-          <div
-            className="station-terminal__overlay"
-            role="status"
-            aria-label="Starting terminal"
-          >
-            <Skeleton />
-          </div>
-        ) : status === 'error' ? (
-          <div className="station-terminal__overlay">
-            <ErrorState
-              title="The terminal could not start"
-              description={snapshot?.failure ?? undefined}
-              action={
-                <ActionControl
-                  type="button"
-                  onClick={() => setAttempt((n) => n + 1)}
-                >
-                  Retry
-                </ActionControl>
-              }
-              variant="compact"
-            />
-          </div>
-        ) : notices &&
-          sessionState !== 'ready' &&
-          sessionState !== 'none' &&
-          SESSION_NOTICE[sessionState] ? (
-          <div className="station-terminal__banner" role="status">
-            <span>{SESSION_NOTICE[sessionState]}</span>
-            {(sessionState === 'exited' || sessionState === 'failed') &&
-            onReconnect ? (
-              <ActionControl type="button" size="sm" onClick={onReconnect}>
-                {sessionState === 'exited' ? 'Restart' : 'Reconnect'}
-              </ActionControl>
-            ) : null}
-          </div>
-        ) : null}
+        <StatusOverlay
+          snapshot={snapshot}
+          notices={notices}
+          onRetry={() => setAttempt((n) => n + 1)}
+          onReconnect={onReconnect}
+        />
       </div>
       {touchKeys ? (
-        <div
-          className="station-terminal__keys"
-          role="toolbar"
-          aria-label="Terminal keys"
-        >
-          {(
-            [
-              [
-                'Interrupt (Ctrl+C)',
-                'Ctrl+C',
-                () => controller?.sendKey('KeyC', 'c', 1 << 1),
-              ],
-              ['Escape', 'Esc', () => controller?.sendKey('Escape', 'Escape')],
-              ['Tab', 'Tab', () => controller?.sendKey('Tab', 'Tab')],
-              [
-                'Previous command',
-                '↑',
-                () => controller?.sendKey('ArrowUp', 'ArrowUp'),
-              ],
-              [
-                'Next command',
-                '↓',
-                () => controller?.sendKey('ArrowDown', 'ArrowDown'),
-              ],
-              [
-                'Left',
-                '←',
-                () => controller?.sendKey('ArrowLeft', 'ArrowLeft'),
-              ],
-              [
-                'Right',
-                '→',
-                () => controller?.sendKey('ArrowRight', 'ArrowRight'),
-              ],
-            ] as const
-          ).map(([name, text, run]) => (
-            <button
-              key={name}
-              type="button"
-              aria-label={name}
-              disabled={readOnly}
-              onPointerDown={(event) => event.preventDefault()}
-              onClick={() => {
-                run();
-                controller?.focus();
-              }}
-            >
-              {text}
-            </button>
-          ))}
-          <button
-            type="button"
-            aria-label="Control (applies to the next key)"
-            aria-pressed={snapshot?.stickyCtrl ?? false}
-            disabled={readOnly}
-            onPointerDown={(event) => event.preventDefault()}
-            onClick={() => {
-              controller?.setStickyCtrl(!snapshot?.stickyCtrl);
-              controller?.focus();
-            }}
-          >
-            Ctrl
-          </button>
-        </div>
+        <TouchKeys
+          controller={controller}
+          stickyCtrl={snapshot?.stickyCtrl ?? false}
+          disabled={readOnly}
+        />
       ) : null}
       {menu ? (
-        <div
-          ref={menuRef}
-          className="station-terminal__menu"
-          role="menu"
-          aria-label="Terminal actions"
-          style={{ left: menu.x, top: menu.y }}
-          onKeyDown={onMenuKey}
-        >
-          {menuItems.map((item) => (
-            <button
-              key={item.label}
-              type="button"
-              role="menuitem"
-              disabled={item.disabled}
-              onClick={async () => {
-                closeMenu();
-                await item.run();
-              }}
-            >
-              {item.label}
-            </button>
-          ))}
-        </div>
+        <TerminalMenu at={menu} items={menuItems} onClose={closeMenu} />
       ) : null}
       {screenReader ? (
         <div
@@ -597,7 +655,7 @@ export function TerminalView({
           aria-label={`${label} output`}
         >
           {(snapshot?.mirror ?? []).map((line, index) => (
-            <div key={index}>{line || ' '}</div>
+            <div key={index}>{line || ' '}</div>
           ))}
         </div>
       ) : null}

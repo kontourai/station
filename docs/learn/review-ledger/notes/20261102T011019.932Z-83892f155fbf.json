@@ -1,0 +1,225 @@
+{
+  "revision": "a36bd5627751f01c4e8f135042bab25f8f5d1d3e",
+
+  "notes": [
+    {"path":"CONTEXT-MAP.md","note":"module-map gained the SDK TerminalView section and dropped the xterm panel description; the claims this document makes about modules are unchanged.","inputs":["CONTEXT-MAP.md","docs/architecture/module-map.md"]},
+
+    {"path":"CONTEXT.md","note":"module-map gained the SDK TerminalView section and dropped the xterm panel description; the claims this document makes about modules are unchanged.","inputs":["CONTEXT.md","docs/architecture/module-map.md"]},
+
+    {"path":"README.md","note":"module-map gained the SDK TerminalView section and dropped the xterm panel description; the claims this document makes about modules are unchanged.","inputs":["README.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/README.md","note":"module-map gained the SDK TerminalView section and dropped the xterm panel description; the claims this document makes about modules are unchanged.","inputs":["docs/README.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/adr/0021-separate-plugin-and-agent-sdk-surfaces.md","note":"SDK exports add only ./terminal-view; the entries this document names are unchanged.","inputs":["docs/adr/0021-separate-plugin-and-agent-sdk-surfaces.md","packages/sdk/package.json#/exports"]},
+
+    {"path":"docs/architecture.md","note":"TerminalPanel now renders the SDK TerminalView through toTerminalViewSession and routes links to Browser and file preview; checked the panel description against the code. SDK exports add only ./terminal-view; the entries this document names are unchanged.","inputs":["docs/architecture.md","packages/sdk/package.json#/exports","src-ui/src/components/coding-layout/TerminalPanel.tsx"]},
+
+    {"path":"docs/architecture/abstraction-review.md","note":"module-map gained the SDK TerminalView section and dropped the xterm panel description; the claims this document makes about modules are unchanged.","inputs":["docs/architecture/abstraction-review.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/architecture/module-map.md","note":"the TerminalView section matches packages/sdk/src/terminal-view (engine worker, renderers, input, a11y); the xterm panel text is gone. the lockfile change only drops @xterm/xterm and its addons, which TerminalView replaces; this document names none of them and no dependency it relies on changed.","inputs":["docs/architecture/module-map.md","pnpm-lock.yaml#/packages","pnpm-lock.yaml#/snapshots"]},
+
+    {"path":"docs/conformance/tool-policy-delivery.md","note":"the lockfile change only drops @xterm/xterm and its addons, which TerminalView replaces; this document names none of them and no dependency it relies on changed.","inputs":["docs/conformance/tool-policy-delivery.md","pnpm-lock.yaml#/packages","pnpm-lock.yaml#/snapshots"]},
+
+    {"path":"docs/design/chat-composer.md","note":"index.css changed one comment line (the terminal view, not xterm, paints the canvas); no token, selector or value changed, so nothing shown or claimed here moves. the editor-ignore selector names .station-terminal instead of .xterm; keys typed in the terminal still never dismiss, as documented.","inputs":["docs/design/chat-composer.md","src-ui/src/index.css","src-ui/src/components/chat-dock/inbox-dismissals.tsx"]},
+
+    {"path":"docs/design/conduit-runtime-integration.md","note":"the lockfile change only drops @xterm/xterm and its addons, which TerminalView replaces; this document names none of them and no dependency it relies on changed.","inputs":["docs/design/conduit-runtime-integration.md","pnpm-lock.yaml#/packages","pnpm-lock.yaml#/snapshots"]},
+
+    {"path":"docs/design/event-store-ledger-migration.md","note":"module-map gained the SDK TerminalView section and dropped the xterm panel description; the claims this document makes about modules are unchanged.","inputs":["docs/design/event-store-ledger-migration.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/design/inference-fleet.md","note":"the lockfile change only drops @xterm/xterm and its addons, which TerminalView replaces; this document names none of them and no dependency it relies on changed.","inputs":["docs/design/inference-fleet.md","pnpm-lock.yaml#/packages","pnpm-lock.yaml#/snapshots"]},
+
+    {"path":"docs/design/pane-host-contract.md","note":"the note on RelatedTerminalOpenRequest matches the contract and decoder; host routing is a follow-up lane. the contract adds RelatedTerminalOpenRequest and its decoder to related-pane open targets; the members this document describes are unchanged.","inputs":["docs/design/pane-host-contract.md","packages/contracts/src/workspace-pane-host-contract.ts"]},
+
+    {"path":"docs/design/placement.md","note":"replaced the three xterm mentions (key ownership, local scrollback, viewport palette) with the terminal view; behaviour described is unchanged. index.css changed one comment line (the terminal view, not xterm, paints the canvas); no token, selector or value changed, so nothing shown or claimed here moves.","inputs":["docs/design/placement.md","src-ui/src/index.css"]},
+
+    {"path":"docs/design/pnpm-workspace-installation.md","note":"the lockfile change only drops @xterm/xterm and its addons, which TerminalView replaces; this document names none of them and no dependency it relies on changed.","inputs":["docs/design/pnpm-workspace-installation.md","pnpm-lock.yaml#/packages","pnpm-lock.yaml#/snapshots"]},
+
+    {"path":"docs/design/session-tape-replay.md","note":"index.css changed one comment line (the terminal view, not xterm, paints the canvas); no token, selector or value changed, so nothing shown or claimed here moves.","inputs":["docs/design/session-tape-replay.md","src-ui/src/index.css"]},
+
+    {"path":"docs/design/settings-architecture.md","note":"index.css changed one comment line (the terminal view, not xterm, paints the canvas); no token, selector or value changed, so nothing shown or claimed here moves.","inputs":["docs/design/settings-architecture.md","src-ui/src/index.css"]},
+
+    {"path":"docs/design/shell-plugins-distributions.md","note":"theming.md changed only its paragraph on canvas consumers (the terminal view replaces xterm); the white-label branding section linked here is unchanged.","inputs":["docs/design/shell-plugins-distributions.md","docs/guides/theming.md"]},
+
+    {"path":"docs/design/survey-flow-review.md","note":"the lockfile change only drops @xterm/xterm and its addons, which TerminalView replaces; this document names none of them and no dependency it relies on changed.","inputs":["docs/design/survey-flow-review.md","pnpm-lock.yaml#/packages","pnpm-lock.yaml#/snapshots"]},
+
+    {"path":"docs/design/terminal.md","note":"emulator boundary and status describe TerminalView; the vendored engine loads only when its SHA-256 matches REVISION; legacy xterm notes are past tense. terminal-transport only re-exports RelatedTerminalOpenRequest as TerminalPaneTarget; no endpoint, message or transport behaviour changed, and the port+1 listener this may describe is still present (its removal is another lane). TerminalPanel now renders the SDK TerminalView through toTerminalViewSession and routes links to Browser and file preview; checked the panel description against the code.","inputs":["docs/design/terminal.md","src-ui/src/components/coding-layout/TerminalPanel.tsx","packages/contracts/src/terminal-transport.ts"]},
+
+    {"path":"docs/glossary.md","note":"module-map gained the SDK TerminalView section and dropped the xterm panel description; the claims this document makes about modules are unchanged.","inputs":["docs/glossary.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/guides/agent-development.md","note":"SDK exports add only ./terminal-view; the entries this document names are unchanged.","inputs":["docs/guides/agent-development.md","packages/sdk/package.json#/exports"]},
+
+    {"path":"docs/guides/agent-efficiency.md","note":"module-map gained the SDK TerminalView section and dropped the xterm panel description; the claims this document makes about modules are unchanged.","inputs":["docs/guides/agent-efficiency.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/guides/android-build.md","note":"the lockfile change only drops @xterm/xterm and its addons, which TerminalView replaces; this document names none of them and no dependency it relies on changed.","inputs":["docs/guides/android-build.md","pnpm-lock.yaml#/packages","pnpm-lock.yaml#/snapshots"]},
+
+    {"path":"docs/guides/build-your-first-plugin.md","note":"SDK exports add only ./terminal-view; the entries this document names are unchanged.","inputs":["docs/guides/build-your-first-plugin.md","packages/sdk/package.json#/exports"]},
+
+    {"path":"docs/guides/connections.md","note":"index.css changed one comment line (the terminal view, not xterm, paints the canvas); no token, selector or value changed, so nothing shown or claimed here moves.","inputs":["docs/guides/connections.md","src-ui/src/index.css"]},
+
+    {"path":"docs/guides/dependency-security.md","note":"the lockfile change only drops @xterm/xterm and its addons, which TerminalView replaces; this document names none of them and no dependency it relies on changed.","inputs":["docs/guides/dependency-security.md","pnpm-lock.yaml#/packages","pnpm-lock.yaml#/snapshots"]},
+
+    {"path":"docs/guides/deployment-authentication.md","note":"the lockfile change only drops @xterm/xterm and its addons, which TerminalView replaces; this document names none of them and no dependency it relies on changed.","inputs":["docs/guides/deployment-authentication.md","pnpm-lock.yaml#/packages","pnpm-lock.yaml#/snapshots"]},
+
+    {"path":"docs/guides/desktop-build.md","note":"the lockfile change only drops @xterm/xterm and its addons, which TerminalView replaces; this document names none of them and no dependency it relies on changed.","inputs":["docs/guides/desktop-build.md","pnpm-lock.yaml#/packages","pnpm-lock.yaml#/snapshots"]},
+
+    {"path":"docs/guides/desktop-tray.md","note":"the lockfile change only drops @xterm/xterm and its addons, which TerminalView replaces; this document names none of them and no dependency it relies on changed.","inputs":["docs/guides/desktop-tray.md","pnpm-lock.yaml#/packages","pnpm-lock.yaml#/snapshots"]},
+
+    {"path":"docs/guides/e2e-coverage-matrix.md","note":"the spec now finds the terminal by its group role instead of xterm's application role; same focus-on-click coverage.","inputs":["docs/guides/e2e-coverage-matrix.md","tests/coding-layout-plan-panel.spec.ts"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"sdk.md gained the Terminal view section (entry, toTerminalViewSession, notices); checked against packages/sdk/src/terminal-view/index.ts.","inputs":["docs/guides/integrating-station.md","docs/reference/sdk.md"]},
+
+    {"path":"docs/guides/keyboard-shortcuts.md","note":"the editor-ignore selector names .station-terminal instead of .xterm; keys typed in the terminal still never dismiss, as documented.","inputs":["docs/guides/keyboard-shortcuts.md","src-ui/src/components/chat-dock/inbox-dismissals.tsx"]},
+
+    {"path":"docs/guides/knowledge.md","note":"index.css changed one comment line (the terminal view, not xterm, paints the canvas); no token, selector or value changed, so nothing shown or claimed here moves.","inputs":["docs/guides/knowledge.md","src-ui/src/index.css"]},
+
+    {"path":"docs/guides/monitoring.md","note":"the lockfile change only drops @xterm/xterm and its addons, which TerminalView replaces; this document names none of them and no dependency it relies on changed.","inputs":["docs/guides/monitoring.md","pnpm-lock.yaml#/packages","pnpm-lock.yaml#/snapshots"]},
+
+    {"path":"docs/guides/release-channel-ports.md","note":"the lockfile change only drops @xterm/xterm and its addons, which TerminalView replaces; this document names none of them and no dependency it relies on changed.","inputs":["docs/guides/release-channel-ports.md","pnpm-lock.yaml#/packages","pnpm-lock.yaml#/snapshots"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"wantsNativeContextMenu now leaves three cases to the platform; the terminal opens its own menu and the guard leaves an answered menu alone (checked native-context-menu.ts and NativeContextMenuGuard). the TerminalPanel selection-actions row left the inventory with the xterm overlay (the SDK view owns its menu and 44px touch keys); the responsive guidance here is unchanged. index.css changed one comment line (the terminal view, not xterm, paints the canvas); no token, selector or value changed, so nothing shown or claimed here moves. the lockfile change only drops @xterm/xterm and its addons, which TerminalView replaces; this document names none of them and no dependency it relies on changed.","inputs":["docs/guides/responsive-ui.md","docs/ui/responsive-action-surfaces.txt","pnpm-lock.yaml#/packages","pnpm-lock.yaml#/snapshots","src-ui/src/index.css"]},
+
+    {"path":"docs/guides/self-configuring-agent.md","note":"module-map gained the SDK TerminalView section and dropped the xterm panel description; the claims this document makes about modules are unchanged.","inputs":["docs/guides/self-configuring-agent.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/guides/starter-work.md","note":"index.css changed one comment line (the terminal view, not xterm, paints the canvas); no token, selector or value changed, so nothing shown or claimed here moves.","inputs":["docs/guides/starter-work.md","src-ui/src/index.css"]},
+
+    {"path":"docs/guides/testing.md","note":"the boundary lists the import-boundary suite as an unreported path reader with its reason; the documented rule is unchanged. the manifest adds the terminal-view import-boundary suite to REPO_SCAN_SUITES; the testing rules described here are unchanged.","inputs":["docs/guides/testing.md","scripts/__tests__/path-read-pin-boundary.test.ts","scripts/test-impact-manifest.mjs"]},
+
+    {"path":"docs/guides/theming.md","note":"the terminal view, not xterm, paints the canvas and watches the <html> theme attributes itself (packages/sdk/src/terminal-view/theme.ts); --terminal-* tokens unchanged. the TerminalPanel selection-actions row left the inventory with the xterm overlay (the SDK view owns its menu and 44px touch keys); the responsive guidance here is unchanged. index.css changed one comment line (the terminal view, not xterm, paints the canvas); no token, selector or value changed, so nothing shown or claimed here moves. the lockfile change only drops @xterm/xterm and its addons, which TerminalView replaces; this document names none of them and no dependency it relies on changed. root-theme.ts comment no longer lists the terminal among its consumers (the SDK view observes the same attributes); theming.md says the same.","inputs":["docs/guides/theming.md","docs/ui/responsive-action-surfaces.txt","pnpm-lock.yaml#/packages","pnpm-lock.yaml#/snapshots","src-ui/src/index.css","src-ui/src/lib/root-theme.ts"]},
+
+    {"path":"docs/learn/README.md","note":"the atlas adds the TerminalView module node; the learning paths and claims here are unchanged.","inputs":["docs/learn/README.md","docs/learn/atlas.json"]},
+
+    {"path":"docs/learn/walkthroughs.md","note":"index.css changed one comment line (the terminal view, not xterm, paints the canvas); no token, selector or value changed, so nothing shown or claimed here moves.","inputs":["docs/learn/walkthroughs.md","src-ui/src/index.css"]},
+
+    {"path":"docs/patterns/backend.md","note":"the TerminalPanel selection-actions row left the inventory with the xterm overlay (the SDK view owns its menu and 44px touch keys); the responsive guidance here is unchanged. index.css changed one comment line (the terminal view, not xterm, paints the canvas); no token, selector or value changed, so nothing shown or claimed here moves. the lockfile change only drops @xterm/xterm and its addons, which TerminalView replaces; this document names none of them and no dependency it relies on changed.","inputs":["docs/patterns/backend.md","docs/ui/responsive-action-surfaces.txt","pnpm-lock.yaml#/packages","pnpm-lock.yaml#/snapshots","src-ui/src/index.css"]},
+
+    {"path":"docs/patterns/frontend.md","note":"the TerminalPanel selection-actions row left the inventory with the xterm overlay (the SDK view owns its menu and 44px touch keys); the responsive guidance here is unchanged. index.css changed one comment line (the terminal view, not xterm, paints the canvas); no token, selector or value changed, so nothing shown or claimed here moves. the lockfile change only drops @xterm/xterm and its addons, which TerminalView replaces; this document names none of them and no dependency it relies on changed.","inputs":["docs/patterns/frontend.md","docs/ui/responsive-action-surfaces.txt","pnpm-lock.yaml#/packages","pnpm-lock.yaml#/snapshots","src-ui/src/index.css"]},
+
+    {"path":"docs/plans/agent-identity-supported-surface-inventory.md","note":"module-map gained the SDK TerminalView section and dropped the xterm panel description; the claims this document makes about modules are unchanged.","inputs":["docs/plans/agent-identity-supported-surface-inventory.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/privacy-policy.md","note":"the lockfile change only drops @xterm/xterm and its addons, which TerminalView replaces; this document names none of them and no dependency it relies on changed.","inputs":["docs/privacy-policy.md","pnpm-lock.yaml#/packages","pnpm-lock.yaml#/snapshots"]},
+
+    {"path":"docs/reference/agent-smoke-confidence.md","note":"index.css changed one comment line (the terminal view, not xterm, paints the canvas); no token, selector or value changed, so nothing shown or claimed here moves.","inputs":["docs/reference/agent-smoke-confidence.md","src-ui/src/index.css"]},
+
+    {"path":"docs/reference/api.md","note":"terminal-transport only re-exports RelatedTerminalOpenRequest as TerminalPaneTarget; no endpoint, message or transport behaviour changed, and the port+1 listener this may describe is still present (its removal is another lane).","inputs":["docs/reference/api.md","packages/contracts/src/terminal-transport.ts"]},
+
+    {"path":"docs/reference/config.md","note":"the lockfile change only drops @xterm/xterm and its addons, which TerminalView replaces; this document names none of them and no dependency it relies on changed.","inputs":["docs/reference/config.md","pnpm-lock.yaml#/packages","pnpm-lock.yaml#/snapshots"]},
+
+    {"path":"docs/reference/contracts.md","note":"terminal-transport only re-exports RelatedTerminalOpenRequest as TerminalPaneTarget; no endpoint, message or transport behaviour changed, and the port+1 listener this may describe is still present (its removal is another lane).","inputs":["docs/reference/contracts.md","packages/contracts/src/terminal-transport.ts"]},
+
+    {"path":"docs/reference/play-data-safety.md","note":"the lockfile change only drops @xterm/xterm and its addons, which TerminalView replaces; this document names none of them and no dependency it relies on changed.","inputs":["docs/reference/play-data-safety.md","pnpm-lock.yaml#/packages","pnpm-lock.yaml#/snapshots"]},
+
+    {"path":"docs/reference/project-task-room-collaboration-acceptance.md","note":"index.css changed one comment line (the terminal view, not xterm, paints the canvas); no token, selector or value changed, so nothing shown or claimed here moves.","inputs":["docs/reference/project-task-room-collaboration-acceptance.md","src-ui/src/index.css"]},
+
+    {"path":"docs/reference/sdk.md","note":"sdk.md gained the Terminal view section (entry, toTerminalViewSession, notices); checked against packages/sdk/src/terminal-view/index.ts. SDK exports add only ./terminal-view; the entries this document names are unchanged. the lockfile change only drops @xterm/xterm and its addons, which TerminalView replaces; this document names none of them and no dependency it relies on changed. package.json adds the ./terminal-view export only.","inputs":["docs/reference/sdk.md","packages/sdk/package.json","packages/sdk/package.json#/exports","pnpm-lock.yaml#/packages","pnpm-lock.yaml#/snapshots"]},
+
+    {"path":"docs/reference/settings-deep-links.md","note":"module-map gained the SDK TerminalView section and dropped the xterm panel description; the claims this document makes about modules are unchanged.","inputs":["docs/reference/settings-deep-links.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/reference/shared.md","note":"the lockfile change only drops @xterm/xterm and its addons, which TerminalView replaces; this document names none of them and no dependency it relies on changed.","inputs":["docs/reference/shared.md","pnpm-lock.yaml#/packages","pnpm-lock.yaml#/snapshots"]},
+
+    {"path":"docs/reference/skill-experiences.md","note":"the contract adds RelatedTerminalOpenRequest and its decoder to related-pane open targets; the members this document describes are unchanged.","inputs":["docs/reference/skill-experiences.md","packages/contracts/src/workspace-pane-host-contract.ts"]},
+
+    {"path":"docs/reference/station-docs.md","note":"regenerated MCP docs content for the terminal docs; docs:mcp:check is clean. module-map gained the SDK TerminalView section and dropped the xterm panel description; the claims this document makes about modules are unchanged. the atlas adds the TerminalView module node; the learning paths and claims here are unchanged.","inputs":["docs/reference/station-docs.md","docs/architecture/module-map.md","docs/learn/atlas.json","src-server/tools/station-docs-content.ts"]},
+
+    {"path":"docs/security/remote-access-threat-model.md","note":"the lockfile change only drops @xterm/xterm and its addons, which TerminalView replaces; this document names none of them and no dependency it relies on changed.","inputs":["docs/security/remote-access-threat-model.md","pnpm-lock.yaml#/packages","pnpm-lock.yaml#/snapshots"]},
+
+    {"path":"docs/user/concepts.md","note":"module-map gained the SDK TerminalView section and dropped the xterm panel description; the claims this document makes about modules are unchanged.","inputs":["docs/user/concepts.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/user/getting-started.md","note":"index.css changed one comment line (the terminal view, not xterm, paints the canvas); no token, selector or value changed, so nothing shown or claimed here moves. the editor-ignore selector names .station-terminal instead of .xterm; keys typed in the terminal still never dismiss, as documented.","inputs":["docs/user/getting-started.md","src-ui/src/index.css","src-ui/src/components/chat-dock/inbox-dismissals.tsx"]},
+
+    {"path":"examples/builder-delivery-viewer/README.md","note":"the lockfile change only drops @xterm/xterm and its addons, which TerminalView replaces; this document names none of them and no dependency it relies on changed.","inputs":["examples/builder-delivery-viewer/README.md","pnpm-lock.yaml#/packages","pnpm-lock.yaml#/snapshots"]},
+
+    {"path":"examples/fieldwork-review/README.md","note":"the lockfile change only drops @xterm/xterm and its addons, which TerminalView replaces; this document names none of them and no dependency it relies on changed.","inputs":["examples/fieldwork-review/README.md","pnpm-lock.yaml#/packages","pnpm-lock.yaml#/snapshots"]},
+
+    {"path":"examples/knowledge-library/README.md","note":"index.css changed one comment line (the terminal view, not xterm, paints the canvas); no token, selector or value changed, so nothing shown or claimed here moves.","inputs":["examples/knowledge-library/README.md","src-ui/src/index.css"]},
+
+    {"path":"examples/mcp-ui-demo/README.md","note":"the lockfile change only drops @xterm/xterm and its addons, which TerminalView replaces; this document names none of them and no dependency it relies on changed.","inputs":["examples/mcp-ui-demo/README.md","pnpm-lock.yaml#/packages","pnpm-lock.yaml#/snapshots"]},
+
+    {"path":"examples/repository-knowledge-graph/README.md","note":"module-map gained the SDK TerminalView section and dropped the xterm panel description; the claims this document makes about modules are unchanged. the atlas adds the TerminalView module node; the learning paths and claims here are unchanged.","inputs":["examples/repository-knowledge-graph/README.md","docs/architecture/module-map.md","docs/learn/atlas.json"]},
+
+    {"path":"examples/survey-review-workbench/README.md","note":"the lockfile change only drops @xterm/xterm and its addons, which TerminalView replaces; this document names none of them and no dependency it relies on changed.","inputs":["examples/survey-review-workbench/README.md","pnpm-lock.yaml#/packages","pnpm-lock.yaml#/snapshots"]},
+
+    {"path":"packages/agent-runtime/CONTEXT.md","note":"the manifest adds the terminal-view import-boundary suite to REPO_SCAN_SUITES; the testing rules described here are unchanged.","inputs":["packages/agent-runtime/CONTEXT.md","scripts/test-impact-manifest.mjs"]},
+
+    {"path":"packages/sdk/AGENTS.md","note":"sdk.md gained the Terminal view section (entry, toTerminalViewSession, notices); checked against packages/sdk/src/terminal-view/index.ts. SDK exports add only ./terminal-view; the entries this document names are unchanged.","inputs":["packages/sdk/AGENTS.md","docs/reference/sdk.md","packages/sdk/package.json#/exports"]},
+
+    {"path":"packages/sdk/README.md","note":"SDK exports add only ./terminal-view; the entries this document names are unchanged.","inputs":["packages/sdk/README.md","packages/sdk/package.json#/exports"]},
+
+    {"path":"packaging/node-pty-prebuilds/README.md","note":"the lockfile change only drops @xterm/xterm and its addons, which TerminalView replaces; this document names none of them and no dependency it relies on changed.","inputs":["packaging/node-pty-prebuilds/README.md","pnpm-lock.yaml#/packages","pnpm-lock.yaml#/snapshots"]},
+
+    {"path":"src-desktop/icons/README.md","note":"index.css changed one comment line (the terminal view, not xterm, paints the canvas); no token, selector or value changed, so nothing shown or claimed here moves.","inputs":["src-desktop/icons/README.md","src-ui/src/index.css"]},
+
+    {"path":"src-server/AGENTS.md","note":"module-map gained the SDK TerminalView section and dropped the xterm panel description; the claims this document makes about modules are unchanged.","inputs":["src-server/AGENTS.md","docs/architecture/module-map.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"module-map gained the SDK TerminalView section and dropped the xterm panel description; the claims this document makes about modules are unchanged.","inputs":["src-ui/AGENTS.md","docs/architecture/module-map.md"]},
+
+    {"path":"tests/AGENTS.md","note":"runStation runs the CLI entry with tsx on Windows, where the bash launcher cannot run; the pairBrowser guidance here is unchanged.","inputs":["tests/AGENTS.md","tests/live/helpers/station-instance.mjs"]},
+
+    {"path":"docs/learn/media/project-with-task.png","note":"index.css changed one comment line (the terminal view, not xterm, paints the canvas); no token, selector or value changed, so nothing shown or claimed here moves.","inputs":["docs/learn/media/project-with-task.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/shared-task-document.png","note":"index.css changed one comment line (the terminal view, not xterm, paints the canvas); no token, selector or value changed, so nothing shown or claimed here moves.","inputs":["docs/learn/media/shared-task-document.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/connections-models.png","note":"index.css changed one comment line (the terminal view, not xterm, paints the canvas); no token, selector or value changed, so nothing shown or claimed here moves.","inputs":["docs/learn/media/connections-models.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/inspect-request.png","note":"index.css changed one comment line (the terminal view, not xterm, paints the canvas); no token, selector or value changed, so nothing shown or claimed here moves.","inputs":["docs/learn/media/inspect-request.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/inspect-request.webm","note":"index.css changed one comment line (the terminal view, not xterm, paints the canvas); no token, selector or value changed, so nothing shown or claimed here moves.","inputs":["docs/learn/media/inspect-request.webm","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/connections-tour.webm","note":"index.css changed one comment line (the terminal view, not xterm, paints the canvas); no token, selector or value changed, so nothing shown or claimed here moves.","inputs":["docs/learn/media/connections-tour.webm","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/repository-knowledge.png","note":"index.css changed one comment line (the terminal view, not xterm, paints the canvas); no token, selector or value changed, so nothing shown or claimed here moves.","inputs":["docs/learn/media/repository-knowledge.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/repository-knowledge-narrow.png","note":"index.css changed one comment line (the terminal view, not xterm, paints the canvas); no token, selector or value changed, so nothing shown or claimed here moves.","inputs":["docs/learn/media/repository-knowledge-narrow.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/oauth-mcp-sign-in-comparison.png","note":"index.css changed one comment line (the terminal view, not xterm, paints the canvas); no token, selector or value changed, so nothing shown or claimed here moves.","inputs":["docs/learn/media/oauth-mcp-sign-in-comparison.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/oauth-mcp-picker-comparison.png","note":"index.css changed one comment line (the terminal view, not xterm, paints the canvas); no token, selector or value changed, so nothing shown or claimed here moves.","inputs":["docs/learn/media/oauth-mcp-picker-comparison.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/operator-s3-paired-before-sign-in.png","note":"index.css changed one comment line (the terminal view, not xterm, paints the canvas); no token, selector or value changed, so nothing shown or claimed here moves.","inputs":["docs/learn/media/operator-s3-paired-before-sign-in.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/operator-s3-consent-sign-in.png","note":"index.css changed one comment line (the terminal view, not xterm, paints the canvas); no token, selector or value changed, so nothing shown or claimed here moves.","inputs":["docs/learn/media/operator-s3-consent-sign-in.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/operator-s3-paired-after-sign-in.png","note":"index.css changed one comment line (the terminal view, not xterm, paints the canvas); no token, selector or value changed, so nothing shown or claimed here moves.","inputs":["docs/learn/media/operator-s3-paired-after-sign-in.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/operator-s3-other-browser-refused.png","note":"index.css changed one comment line (the terminal view, not xterm, paints the canvas); no token, selector or value changed, so nothing shown or claimed here moves.","inputs":["docs/learn/media/operator-s3-other-browser-refused.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/operator-s4-before-sign-in.png","note":"index.css changed one comment line (the terminal view, not xterm, paints the canvas); no token, selector or value changed, so nothing shown or claimed here moves.","inputs":["docs/learn/media/operator-s4-before-sign-in.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/operator-s4-after-sign-in.png","note":"index.css changed one comment line (the terminal view, not xterm, paints the canvas); no token, selector or value changed, so nothing shown or claimed here moves.","inputs":["docs/learn/media/operator-s4-after-sign-in.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/operator-s4-step-up-review.png","note":"index.css changed one comment line (the terminal view, not xterm, paints the canvas); no token, selector or value changed, so nothing shown or claimed here moves.","inputs":["docs/learn/media/operator-s4-step-up-review.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/operator-s4-after-step-up.png","note":"index.css changed one comment line (the terminal view, not xterm, paints the canvas); no token, selector or value changed, so nothing shown or claimed here moves.","inputs":["docs/learn/media/operator-s4-after-step-up.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/session-goals-before-390-dark.png","note":"index.css changed one comment line (the terminal view, not xterm, paints the canvas); no token, selector or value changed, so nothing shown or claimed here moves.","inputs":["docs/learn/media/session-goals-before-390-dark.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/session-goals-before-390-light.png","note":"index.css changed one comment line (the terminal view, not xterm, paints the canvas); no token, selector or value changed, so nothing shown or claimed here moves.","inputs":["docs/learn/media/session-goals-before-390-light.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/session-goals-before-1440-dark.png","note":"index.css changed one comment line (the terminal view, not xterm, paints the canvas); no token, selector or value changed, so nothing shown or claimed here moves.","inputs":["docs/learn/media/session-goals-before-1440-dark.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/session-goals-before-1440-light.png","note":"index.css changed one comment line (the terminal view, not xterm, paints the canvas); no token, selector or value changed, so nothing shown or claimed here moves.","inputs":["docs/learn/media/session-goals-before-1440-light.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/session-goals-after-390-dark.png","note":"index.css changed one comment line (the terminal view, not xterm, paints the canvas); no token, selector or value changed, so nothing shown or claimed here moves.","inputs":["docs/learn/media/session-goals-after-390-dark.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/session-goals-after-390-light.png","note":"index.css changed one comment line (the terminal view, not xterm, paints the canvas); no token, selector or value changed, so nothing shown or claimed here moves.","inputs":["docs/learn/media/session-goals-after-390-light.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/session-goals-after-1440-dark.png","note":"index.css changed one comment line (the terminal view, not xterm, paints the canvas); no token, selector or value changed, so nothing shown or claimed here moves.","inputs":["docs/learn/media/session-goals-after-1440-dark.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/session-goals-after-1440-light.png","note":"index.css changed one comment line (the terminal view, not xterm, paints the canvas); no token, selector or value changed, so nothing shown or claimed here moves.","inputs":["docs/learn/media/session-goals-after-1440-light.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/agent-efficiency-learning-390-light.png","note":"index.css changed one comment line (the terminal view, not xterm, paints the canvas); no token, selector or value changed, so nothing shown or claimed here moves.","inputs":["docs/learn/media/agent-efficiency-learning-390-light.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/agent-efficiency-learning-390-dark.png","note":"index.css changed one comment line (the terminal view, not xterm, paints the canvas); no token, selector or value changed, so nothing shown or claimed here moves.","inputs":["docs/learn/media/agent-efficiency-learning-390-dark.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/agent-efficiency-learning-1440-light.png","note":"index.css changed one comment line (the terminal view, not xterm, paints the canvas); no token, selector or value changed, so nothing shown or claimed here moves.","inputs":["docs/learn/media/agent-efficiency-learning-1440-light.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/agent-efficiency-learning-1440-dark.png","note":"index.css changed one comment line (the terminal view, not xterm, paints the canvas); no token, selector or value changed, so nothing shown or claimed here moves.","inputs":["docs/learn/media/agent-efficiency-learning-1440-dark.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/agent-efficiency-working-configuration.png","note":"index.css changed one comment line (the terminal view, not xterm, paints the canvas); no token, selector or value changed, so nothing shown or claimed here moves.","inputs":["docs/learn/media/agent-efficiency-working-configuration.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/agent-efficiency-compaction.png","note":"index.css changed one comment line (the terminal view, not xterm, paints the canvas); no token, selector or value changed, so nothing shown or claimed here moves.","inputs":["docs/learn/media/agent-efficiency-compaction.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/agent-efficiency-supervision.png","note":"index.css changed one comment line (the terminal view, not xterm, paints the canvas); no token, selector or value changed, so nothing shown or claimed here moves.","inputs":["docs/learn/media/agent-efficiency-supervision.png","src-ui/src/index.css"]},
+
+    {"path":"docs/learn/media/agent-efficiency-usage.png","note":"index.css changed one comment line (the terminal view, not xterm, paints the canvas); no token, selector or value changed, so nothing shown or claimed here moves.","inputs":["docs/learn/media/agent-efficiency-usage.png","src-ui/src/index.css"]}
+  ]
+}

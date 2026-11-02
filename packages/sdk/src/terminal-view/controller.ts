@@ -14,7 +14,13 @@ import {
 } from './engine/engine-client';
 import type { Frame } from './engine/frame';
 import type { EngineSize, SearchState } from './engine/terminal-engine';
-import { FocusEscape, keyInput, modsOf, viewKeyAction } from './input/keyboard';
+import {
+  FocusEscape,
+  keyInput,
+  modsOf,
+  type ViewKeyAction,
+  viewKeyAction,
+} from './input/keyboard';
 import { linkAt, type TerminalLink, type TerminalLinkTarget } from './links';
 import { Canvas2dRenderer } from './render/canvas2d-renderer';
 import {
@@ -59,9 +65,8 @@ export interface ControllerOptions {
   onFocusLeave?(direction: 'next' | 'previous'): void;
   onContextMenu?(position: { x: number; y: number }): void;
   onFindRequest?(): void;
-  /** Test seam: a different worker or wasm source. */
+  /** Test seam: a different engine worker. */
   createWorker?: () => EnginePort;
-  wasmUrl?: URL | string;
   /** Test seam: a renderer without a GPU or 2D canvas. */
   createRenderer?: (canvas: HTMLCanvasElement) => TerminalRenderer;
   /** Test seam: cell metrics where no 2D canvas can measure text. */
@@ -74,6 +79,7 @@ export interface ControllerElements {
   input: HTMLTextAreaElement;
 }
 
+const MODIFIER_KEYS = new Set(['Shift', 'Control', 'Alt', 'Meta']);
 const LONG_PRESS_MS = 450;
 const BLINK_MS = 600;
 
@@ -154,7 +160,7 @@ export class TerminalController {
   async start(): Promise<void> {
     this.update({ status: 'loading', failure: null });
     try {
-      const module = await loadGhosttyVt(this.options.wasmUrl);
+      const module = await loadGhosttyVt();
       if (this.disposed) return;
       this.theme = readTerminalTheme(this.elements.root);
       this.metrics = (this.options.measureCell ?? measureCell)(
@@ -609,27 +615,10 @@ export class TerminalController {
     const action = viewKeyAction(event, this.snapshot.hasSelection);
     if (action) {
       event.preventDefault();
-      if (action === 'copy') void this.copy();
-      else if (action === 'paste') void this.pasteFromClipboard();
-      else if (action === 'find') this.options.onFindRequest?.();
-      else if (action === 'select-all') this.selectAll();
-      else if (action === 'context-menu') {
-        const cursor = this.snapshot.cursorCss;
-        const rect = this.elements.root.getBoundingClientRect();
-        this.options.onContextMenu?.({
-          x: rect.left + (cursor?.left ?? 0),
-          y: rect.top + (cursor?.top ?? 0) + (cursor?.height ?? 0),
-        });
-      }
+      this.runViewAction(action);
       return;
     }
-    if (
-      event.key === 'Shift' ||
-      event.key === 'Control' ||
-      event.key === 'Alt' ||
-      event.key === 'Meta'
-    )
-      return;
+    if (MODIFIER_KEYS.has(event.key)) return;
     // Printable keys without modifiers arrive through beforeinput, which also
     // covers soft keyboards; everything else is encoded here.
     const printable = [...event.key].length === 1;
@@ -650,6 +639,21 @@ export class TerminalController {
     }
     this.typed();
     this.engine?.send({ type: 'key', input: key });
+  }
+
+  private runViewAction(action: NonNullable<ViewKeyAction>): void {
+    if (action === 'copy') void this.copy();
+    else if (action === 'paste') void this.pasteFromClipboard();
+    else if (action === 'find') this.options.onFindRequest?.();
+    else if (action === 'select-all') this.selectAll();
+    else if (action === 'context-menu') {
+      const cursor = this.snapshot.cursorCss;
+      const rect = this.elements.root.getBoundingClientRect();
+      this.options.onContextMenu?.({
+        x: rect.left + (cursor?.left ?? 0),
+        y: rect.top + (cursor?.top ?? 0) + (cursor?.height ?? 0),
+      });
+    }
   }
 
   private typed(): void {

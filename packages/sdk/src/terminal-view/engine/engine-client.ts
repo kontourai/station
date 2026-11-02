@@ -52,21 +52,37 @@ export interface EngineClientHandlers {
   error(message: string): void;
 }
 
+/** SHA-256 of the vendored module, as recorded in its `REVISION` file. */
+export const GHOSTTY_VT_SHA256 =
+  '19318c11df6816ad76f9f612d693ce57cadef4d15321aa5f0f2c84c117762e73';
+
 let modulePromise: Promise<WebAssembly.Module> | null = null;
 
-/** The vendored module, compiled once per page. */
-export function loadGhosttyVt(
-  url: URL | string = new URL(
-    '../vendor/ghostty-vt/ghostty-vt.wasm',
-    import.meta.url,
-  ),
-): Promise<WebAssembly.Module> {
+async function sha256Hex(bytes: ArrayBuffer): Promise<string> {
+  const digest = new Uint8Array(await crypto.subtle.digest('SHA-256', bytes));
+  return Array.from(digest, (byte) => byte.toString(16).padStart(2, '0')).join(
+    '',
+  );
+}
+
+/**
+ * The vendored module, compiled once per page. Only the vendored file is
+ * ever loaded, and only when its bytes match {@link GHOSTTY_VT_SHA256}.
+ */
+export function loadGhosttyVt(): Promise<WebAssembly.Module> {
   modulePromise ??= (async () => {
-    const response = await fetch(url);
+    const response = await fetch(
+      new URL('../vendor/ghostty-vt/ghostty-vt.wasm', import.meta.url),
+    );
     if (!response.ok)
       throw new Error(`Terminal engine unavailable (${response.status})`);
+    const bytes = await response.arrayBuffer();
+    if ((await sha256Hex(bytes)) !== GHOSTTY_VT_SHA256)
+      throw new Error(
+        'Terminal engine refused: ghostty-vt.wasm does not match its recorded SHA-256',
+      );
     // compileStreaming needs application/wasm; some static servers differ.
-    return WebAssembly.compile(await response.arrayBuffer());
+    return WebAssembly.compile(bytes);
   })();
   modulePromise.catch(() => {
     modulePromise = null;

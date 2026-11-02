@@ -581,145 +581,167 @@ export class TerminalEngine {
     };
   }
 
-  private readRow(id: string, y: number, cols: number): RowCells {
+  /** Whether the current row soft-wraps, and its selected column span. */
+  private readRowFacts(): {
+    wrapped: boolean;
+    selection: [number, number] | null;
+  } {
     const vt = this.vt;
     const s = this.scratch;
-    const codepoints = new Uint32Array(cols);
-    const fg = new Uint32Array(cols).fill(DEFAULT_COLOR);
-    const bg = new Uint32Array(cols).fill(DEFAULT_COLOR);
-    const attrs = new Uint16Array(cols);
-    const clusters: Record<number, string> = {};
-
     vt.check('ghostty_render_state_row_get', this.rowIterator, RowData.RAW, s);
     const rawRow = vt.data().getBigUint64(s, true);
     vt.data().setUint8(s, 0);
     vt.call('ghostty_row_get', rawRow, 1 /* GHOSTTY_ROW_DATA_WRAP */, s);
     const wrapped = vt.data().getUint8(s) !== 0;
 
-    let selection: [number, number] | null = null;
     const sel = L.GhosttyRenderStateRowSelection;
     vt.data().setUint32(s, sel.size, true);
-    if (
+    const found =
       vt.call(
         'ghostty_render_state_row_get',
         this.rowIterator,
         RowData.SELECTION,
         s,
-      ) === Result.SUCCESS
-    ) {
-      const view = vt.data();
-      selection = [
-        view.getUint16(s + sel.fields.start_x, true),
-        view.getUint16(s + sel.fields.end_x, true),
-      ];
-    }
+      ) === Result.SUCCESS;
+    const view = vt.data();
+    const selection: [number, number] | null = found
+      ? [
+          view.getUint16(s + sel.fields.start_x, true),
+          view.getUint16(s + sel.fields.end_x, true),
+        ]
+      : null;
+    return { wrapped, selection };
+  }
 
-    vt.data().setUint32(s, this.rowCells, true);
+  /** The current cell's wide state and hyperlink flag, as attribute bits. */
+  private readCellShape(): { wide: number; attr: number } {
+    const vt = this.vt;
+    const s = this.scratch;
     vt.check(
+      'ghostty_render_state_row_cells_get',
+      this.rowCells,
+      CellsData.RAW,
+      s,
+    );
+    const raw = vt.data().getBigUint64(s, true);
+    vt.check('ghostty_cell_get', raw, CellData.WIDE, s);
+    const wide = vt.data().getInt32(s, true);
+    let attr = (wide << Attr.WIDE_SHIFT) & Attr.WIDE_MASK;
+    vt.check('ghostty_cell_get', raw, CellData.HAS_HYPERLINK, s);
+    if (vt.data().getUint8(s)) attr |= Attr.HYPERLINK;
+    return { wide, attr };
+  }
+
+  /** The current cell's first code point and, for a cluster, its text. */
+  private readCellText(): { codepoint: number; cluster: string | null } {
+    const vt = this.vt;
+    vt.check(
+      'ghostty_render_state_row_cells_get',
+      this.rowCells,
+      CellsData.GRAPHEMES_LEN,
+      this.scratch,
+    );
+    const length = vt.data().getUint32(this.scratch, true);
+    if (length === 0 || length > MAX_CLUSTER_CODEPOINTS)
+      return { codepoint: 0, cluster: null };
+    const buf = this.out + CLUSTER_OFFSET;
+    vt.check(
+      'ghostty_render_state_row_cells_get',
+      this.rowCells,
+      CellsData.GRAPHEMES_BUF,
+      buf,
+    );
+    const view = vt.data();
+    const codepoint = view.getUint32(buf, true);
+    if (length === 1) return { codepoint, cluster: null };
+    let cluster = '';
+    for (let i = 0; i < length; i += 1)
+      cluster += String.fromCodePoint(view.getUint32(buf + i * 4, true));
+    return { codepoint, cluster };
+  }
+
+  /** Style attribute bits for the current cell, or null when it is unstyled. */
+  private readCellStyle(): number | null {
+    const vt = this.vt;
+    vt.check(
+      'ghostty_render_state_row_cells_get',
+      this.rowCells,
+      CellsData.HAS_STYLING,
+      this.scratch,
+    );
+    if (vt.data().getUint8(this.scratch) === 0) return null;
+    const style = this.out;
+    const sf = L.GhosttyStyle.fields;
+    vt.data().setUint32(style, L.GhosttyStyle.size, true);
+    vt.check(
+      'ghostty_render_state_row_cells_get',
+      this.rowCells,
+      CellsData.STYLE,
+      style,
+    );
+    const view = vt.data();
+    const flags: [number, number][] = [
+      [sf.bold, Attr.BOLD],
+      [sf.italic, Attr.ITALIC],
+      [sf.faint, Attr.FAINT],
+      [sf.blink, Attr.BLINK],
+      [sf.inverse, Attr.INVERSE],
+      [sf.invisible, Attr.INVISIBLE],
+      [sf.strikethrough, Attr.STRIKETHROUGH],
+      [sf.overline, Attr.OVERLINE],
+    ];
+    let attr = 0;
+    for (const [offset, bit] of flags)
+      if (view.getUint8(style + offset)) attr |= bit;
+    attr |=
+      ((view.getInt32(style + sf.underline, true) & 0b111) <<
+        Attr.UNDERLINE_SHIFT) &
+      Attr.UNDERLINE_MASK;
+    return attr;
+  }
+
+  /** A resolved cell colour (CellsData.FG_COLOR or BG_COLOR), or default. */
+  private readCellColor(data: number): number {
+    return this.vt.call(
+      'ghostty_render_state_row_cells_get',
+      this.rowCells,
+      data,
+      this.scratch,
+    ) === Result.SUCCESS
+      ? packRgb(this.vt.data(), this.scratch)
+      : DEFAULT_COLOR;
+  }
+
+  private readRow(id: string, y: number, cols: number): RowCells {
+    const codepoints = new Uint32Array(cols);
+    const fg = new Uint32Array(cols).fill(DEFAULT_COLOR);
+    const bg = new Uint32Array(cols).fill(DEFAULT_COLOR);
+    const attrs = new Uint16Array(cols);
+    const clusters: Record<number, string> = {};
+    const { wrapped, selection } = this.readRowFacts();
+
+    this.vt.data().setUint32(this.scratch, this.rowCells, true);
+    this.vt.check(
       'ghostty_render_state_row_get',
       this.rowIterator,
       RowData.CELLS,
-      s,
+      this.scratch,
     );
-
-    const style = this.out;
-    const sf = L.GhosttyStyle.fields;
     for (let x = 0; x < cols; x += 1) {
-      if (!vt.call('ghostty_render_state_row_cells_next', this.rowCells)) break;
-      let attr = 0;
-
-      vt.check(
-        'ghostty_render_state_row_cells_get',
-        this.rowCells,
-        CellsData.RAW,
-        s,
-      );
-      const raw = vt.data().getBigUint64(s, true);
-      vt.check('ghostty_cell_get', raw, CellData.WIDE, s);
-      const wide = vt.data().getInt32(s, true);
-      attr |= (wide << Attr.WIDE_SHIFT) & Attr.WIDE_MASK;
-      vt.check('ghostty_cell_get', raw, CellData.HAS_HYPERLINK, s);
-      if (vt.data().getUint8(s)) attr |= Attr.HYPERLINK;
-
+      if (!this.vt.call('ghostty_render_state_row_cells_next', this.rowCells))
+        break;
+      const { wide, attr } = this.readCellShape();
       if (wide !== CellWide.SPACER_TAIL && wide !== CellWide.SPACER_HEAD) {
-        vt.check(
-          'ghostty_render_state_row_cells_get',
-          this.rowCells,
-          CellsData.GRAPHEMES_LEN,
-          s,
-        );
-        const length = vt.data().getUint32(s, true);
-        if (length > 0 && length <= MAX_CLUSTER_CODEPOINTS) {
-          const count = length;
-          const buf = this.out + CLUSTER_OFFSET;
-          vt.check(
-            'ghostty_render_state_row_cells_get',
-            this.rowCells,
-            CellsData.GRAPHEMES_BUF,
-            buf,
-          );
-          const view = vt.data();
-          const first = view.getUint32(buf, true);
-          codepoints[x] = first;
-          if (count > 1) {
-            let text = '';
-            for (let i = 0; i < count; i += 1)
-              text += String.fromCodePoint(view.getUint32(buf + i * 4, true));
-            clusters[x] = text;
-          }
-        }
+        const { codepoint, cluster } = this.readCellText();
+        codepoints[x] = codepoint;
+        if (cluster) clusters[x] = cluster;
       }
-
-      vt.check(
-        'ghostty_render_state_row_cells_get',
-        this.rowCells,
-        CellsData.HAS_STYLING,
-        s,
-      );
-      const styled = vt.data().getUint8(s) !== 0;
-      if (styled) {
-        vt.data().setUint32(style, L.GhosttyStyle.size, true);
-        vt.check(
-          'ghostty_render_state_row_cells_get',
-          this.rowCells,
-          CellsData.STYLE,
-          style,
-        );
-        const view = vt.data();
-        if (view.getUint8(style + sf.bold)) attr |= Attr.BOLD;
-        if (view.getUint8(style + sf.italic)) attr |= Attr.ITALIC;
-        if (view.getUint8(style + sf.faint)) attr |= Attr.FAINT;
-        if (view.getUint8(style + sf.blink)) attr |= Attr.BLINK;
-        if (view.getUint8(style + sf.inverse)) attr |= Attr.INVERSE;
-        if (view.getUint8(style + sf.invisible)) attr |= Attr.INVISIBLE;
-        if (view.getUint8(style + sf.strikethrough)) attr |= Attr.STRIKETHROUGH;
-        if (view.getUint8(style + sf.overline)) attr |= Attr.OVERLINE;
-        attr |=
-          ((view.getInt32(style + sf.underline, true) & 0b111) <<
-            Attr.UNDERLINE_SHIFT) &
-          Attr.UNDERLINE_MASK;
-        if (
-          vt.call(
-            'ghostty_render_state_row_cells_get',
-            this.rowCells,
-            CellsData.FG_COLOR,
-            s,
-          ) === Result.SUCCESS
-        )
-          fg[x] = packRgb(vt.data(), s);
-      }
+      const style = this.readCellStyle();
+      if (style !== null) fg[x] = this.readCellColor(CellsData.FG_COLOR);
       // A background can come from the cell content itself (erase with a
       // colour) as well as from its style, so ask regardless of styling.
-      if (
-        vt.call(
-          'ghostty_render_state_row_cells_get',
-          this.rowCells,
-          CellsData.BG_COLOR,
-          s,
-        ) === Result.SUCCESS
-      )
-        bg[x] = packRgb(vt.data(), s);
-      attrs[x] = attr;
+      bg[x] = this.readCellColor(CellsData.BG_COLOR);
+      attrs[x] = attr | (style ?? 0);
     }
     return { id, y, codepoints, clusters, fg, bg, attrs, selection, wrapped };
   }

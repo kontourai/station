@@ -8,6 +8,7 @@
 import type { FrameColors, RowCells } from '../engine/frame';
 import type { CellMetrics } from './glyph-atlas';
 import {
+  type CellPaint,
   cellPaint,
   type ScreenModel,
   type TerminalTheme,
@@ -100,7 +101,6 @@ export function paintRow(
   const glyphs: GlyphOp[] = [];
   const cw = metrics.width;
   const ch = metrics.height;
-  const t = decorationThickness(metrics);
   let run: RectOp | null = null;
   for (let x = 0; x < row.codepoints.length; x += 1) {
     const paint = cellPaint(row, x, colors, theme);
@@ -132,29 +132,26 @@ export function paintRow(
         italic: paint.italic,
         color: paint.fg,
       });
-    const width = cw * paint.span;
-    if (paint.underline)
-      underlineRects(paint.underline, x * cw, width, paint.fg, metrics, rects);
-    if (paint.strikethrough)
-      rects.push({
-        x: x * cw,
-        y: Math.round(ch / 2),
-        width,
-        height: t,
-        color: paint.fg,
-        alpha: 1,
-      });
-    if (paint.overline)
-      rects.push({
-        x: x * cw,
-        y: 0,
-        width,
-        height: t,
-        color: paint.fg,
-        alpha: 1,
-      });
+    decorationRects(paint, x * cw, metrics, rects);
   }
   return { rects, glyphs };
+}
+
+/** Underline, strikethrough and overline for one cell's glyph. */
+function decorationRects(
+  paint: CellPaint,
+  x: number,
+  metrics: CellMetrics,
+  out: RectOp[],
+): void {
+  const width = metrics.width * paint.span;
+  const t = decorationThickness(metrics);
+  const line = (y: number) =>
+    out.push({ x, y, width, height: t, color: paint.fg, alpha: 1 });
+  if (paint.underline)
+    underlineRects(paint.underline, x, width, paint.fg, metrics, out);
+  if (paint.strikethrough) line(Math.round(metrics.height / 2));
+  if (paint.overline) line(0);
 }
 
 const cache = new WeakMap<RowCells, { key: string; paint: RowPaint }>();

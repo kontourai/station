@@ -170,6 +170,8 @@ const ROOT_ATTRIBUTES = [
   'data-color-theme',
   'data-color-theme-flavor',
   'data-color-theme-accent',
+  'data-app-channel',
+  'data-brand-focus',
   'class',
   'style',
 ];

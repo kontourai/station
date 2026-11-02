@@ -22,9 +22,21 @@ export const SUITE_REQUEST_HEADER = 'x-fresh-home-walkthrough';
 
 export function runStation(root, args, { timeoutMs, env }) {
   return new Promise((resolvePromise, rejectPromise) => {
-    const child = spawn('./station', args, {
+    // `./station` is a bash launcher; Windows runs its CLI entry directly.
+    const [command, launch] =
+      process.platform === 'win32'
+        ? [
+            process.execPath,
+            [
+              join(root, 'node_modules/tsx/dist/cli.mjs'),
+              'scripts/station-cli.ts',
+              ...args,
+            ],
+          ]
+        : ['./station', args];
+    const child = spawn(command, launch, {
       cwd: root,
-      env: env ?? process.env,
+      env: { ...(env ?? process.env), STATION_INVOKED_CWD: root },
       stdio: ['ignore', 'pipe', 'pipe'],
       windowsHide: true,
     });

@@ -2,9 +2,9 @@
  * One observer for "the colours the root resolves to may have changed".
  *
  * Most of the UI reads colour through CSS custom properties and follows the
- * cascade for free. A few consumers cannot: the terminal paints a canvas, MCP App
- * and HTML-reply frames receive resolved token values over postMessage. Those
- * have to re-read the tokens whenever anything that feeds the cascade on
+ * cascade for free. A few consumers cannot: MCP App and HTML-reply frames
+ * receive resolved token values over postMessage (the SDK terminal view, which
+ * paints a canvas, watches the same attributes itself). Those have to re-read the tokens whenever anything that feeds the cascade on
  * `<html>` changes:
  *
  * - `data-theme` (light/dark), written by ThemeToggle and AccountPreferences;
