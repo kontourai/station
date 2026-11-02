@@ -62,7 +62,9 @@ non-background descendants and pending stop obligations.
 
 `releaseUnknownOwnedWork` is an orchestration command with `threadId` and
 `confirmation: 'child-process-may-still-be-running'`. It requires an at-rest
-Station-owned parent and checked unknown child custody. The writer rechecks the
+Station-owned parent and checked unknown child custody. Station Control callers
+must satisfy the same recorded-owner, Project and host-confinement scope as
+`stopSession`; bound operators retain their existing reach. The writer rechecks the
 observed boundary snapshot, removes that parent's unknown obligations, and
 deletes the parent while retaining child history and cancellation fences against
 replay. It neither stops

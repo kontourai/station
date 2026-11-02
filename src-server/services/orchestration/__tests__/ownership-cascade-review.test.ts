@@ -55,6 +55,7 @@ async function fixture(
     idleSessionParkAfterMs: 0,
     logger: { debug() {}, warn() {} },
   });
+  store.bindSessionActivity((id) => service.hasLocalSessionBinding(id));
   service.initialize();
   await awaitSessionRecoveryCompleted(service);
   for (const id of ['parent', 'child'])
@@ -350,7 +351,7 @@ test.each(['owner', 'revision'] as const)(
   },
 );
 
-test('explicit local bindings cannot hide or release another registration’s custody', () => {
+test('the composed binding is single-shot and reports current local custody', () => {
   const store = new EventStore(
     join(makeTempDir('cascade-binding-owner-'), 'events.sqlite'),
   );
@@ -364,18 +365,17 @@ test('explicit local bindings cannot hide or release another registration’s cu
       createdAt: '2026-01-01T00:00:00Z',
     });
     expect(store.cascadeStopOwner('child').custody).toBe('settled');
-    const held = () => true;
-    const first = store.bindSessionActivity(held);
-    const idle = store.bindSessionActivity(() => false);
+    let held = false;
+    store.bindSessionActivity(() => held);
+    expect(store.cascadeStopOwner('child').custody).toBe('settled');
+    held = true;
     expect(store.cascadeStopOwner('child').custody).toBe('local');
     expect(store.cascadeStopOwner('child', false).custody).toBe('local');
-    const second = store.bindSessionActivity(held);
-    first();
-    first();
+    expect(() => store.bindSessionActivity(() => false)).toThrow(
+      'already bound',
+    );
     expect(store.cascadeStopOwner('child').custody).toBe('local');
-    idle();
-    expect(store.cascadeStopOwner('child').custody).toBe('local');
-    second();
+    held = false;
     expect(store.cascadeStopOwner('child').custody).toBe('settled');
   } finally {
     store.close();

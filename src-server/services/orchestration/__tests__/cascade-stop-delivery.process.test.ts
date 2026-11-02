@@ -35,6 +35,7 @@ adapter.stopSession = async () => { stops++; effects = 1; };
 adapter.hasSession = async () => effects === 0;
 const service = new OrchestrationService({ adapterRegistry: createGateTestRegistry(adapter),
   eventStore: store, eventBus: new EventBus(), idleSessionParkAfterMs: 0, logger: { debug() {}, warn() {} } });
+store.bindSessionActivity((id) => service.hasLocalSessionBinding(id));
 service.initialize();
 await service.whenSessionRecoveryCompleted();
 service.seedSessionRecord({ threadId: 'child', provider: 'claude', status: 'running' });
@@ -173,6 +174,7 @@ test.each([
         eventBus: new EventBus(),
         logger: { debug() {}, warn() {} },
       });
+      store.bindSessionActivity((id) => service!.hasLocalSessionBinding(id));
       service.initialize();
       await awaitSessionRecoveryCompleted(service);
       await service.sweepIdleSessions();
@@ -228,6 +230,7 @@ test.each([
           eventBus: new EventBus(),
           logger: { debug() {}, warn() {} },
         });
+        store.bindSessionActivity((id) => service!.hasLocalSessionBinding(id));
         service.initialize();
         await awaitSessionRecoveryCompleted(service);
         const redelivered = message(execution.child);

@@ -42,6 +42,7 @@ test('targeted cancellation leaves children alone for a stale turn and cascades 
     eventBus: new EventBus(),
     logger: { debug() {}, warn: warnings },
   });
+  store.bindSessionActivity((id) => service.hasLocalSessionBinding(id));
   try {
     service.initialize();
     await awaitSessionRecoveryCompleted(service);
@@ -157,6 +158,7 @@ test.each(['idle', 'completed'] as const)(
       eventBus: new EventBus(),
       logger: { debug() {}, warn() {} },
     });
+    store.bindSessionActivity((id) => service.hasLocalSessionBinding(id));
     let stop: ReturnType<OrchestrationService['dispatch']> | undefined;
     const readStates = async () => {
       const detail = await service.readSession(
@@ -306,6 +308,7 @@ test('Stop traverses verified descendants bottom-up and excludes claimed and bac
     eventBus: new EventBus(),
     logger: { debug() {}, warn() {} },
   });
+  store.bindSessionActivity((id) => service.hasLocalSessionBinding(id));
   try {
     service.initialize();
     await awaitSessionRecoveryCompleted(service);
@@ -396,6 +399,7 @@ test.each(['missing', 'dead', 'unavailable', 'reused'] as const)(
       eventBus: new EventBus(),
       logger: { debug() {}, warn },
     });
+    store.bindSessionActivity((id) => service.hasLocalSessionBinding(id));
     const db = new DatabaseSync(path);
     try {
       service.initialize();
@@ -469,6 +473,7 @@ test('cascade stops a child whose turn admission committed before the fence', as
     eventBus: new EventBus(),
     logger: { debug() {}, warn() {} },
   });
+  store.bindSessionActivity((id) => service.hasLocalSessionBinding(id));
   try {
     service.initialize();
     await awaitSessionRecoveryCompleted(service);

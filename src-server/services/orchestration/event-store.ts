@@ -15089,22 +15089,16 @@ export class EventStore {
     );
   }
 
-  private readonly sessionBindings = new Set<{
-    hasSession: (threadId: string) => boolean;
-  }>();
+  private sessionBinding?: (threadId: string) => boolean;
 
-  bindSessionActivity(binding: (threadId: string) => boolean): () => void {
-    const registration = { hasSession: binding };
-    this.sessionBindings.add(registration);
-    return () => {
-      this.sessionBindings.delete(registration);
-    };
+  bindSessionActivity(binding: (threadId: string) => boolean): void {
+    if (this.sessionBinding)
+      throw new Error('Session activity is already bound.');
+    this.sessionBinding = binding;
   }
 
   private hasSessionBinding(threadId: string): boolean {
-    for (const binding of this.sessionBindings)
-      if (binding.hasSession(threadId)) return true;
-    return false;
+    return this.sessionBinding?.(threadId) === true;
   }
 
   private isCascadeSessionSettled(childId: string): boolean {

@@ -68,6 +68,7 @@ vi.mock('../../../services/orchestration/event-store.js', () => ({
       runtimeMocks.eventStore(path);
     }
     bindUsageExportActivation() {}
+    bindSessionActivity() {}
     createOperationalEventPublisher() {
       return {};
     }

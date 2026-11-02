@@ -1564,6 +1564,10 @@ export class StationRuntime {
       this.orchestrationEventStore = openedEventStore = new EventStore(
         orchestrationDatabasePath,
       );
+      this.orchestrationEventStore.bindSessionActivity(
+        (threadId) =>
+          this.orchestrationService?.hasLocalSessionBinding(threadId) ?? false,
+      );
       this.orchestrationEventStore.bindUsageExportActivation(
         analyticsHomeExportActivation(projectHomeDir),
       );

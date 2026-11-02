@@ -2550,7 +2550,6 @@ export class OrchestrationService {
   })();
 
   private readonly stopSessionDeletionNotifications?: () => void;
-  private readonly releaseSessionActivity?: () => void;
   private readonly sessionDeletionReaders = new Set<SessionReadScope>();
 
   retainSessionDeletionReader(authority: SessionReadScope): () => void {
@@ -2560,14 +2559,16 @@ export class OrchestrationService {
     };
   }
 
+  hasLocalSessionBinding(threadId: string): boolean {
+    return (
+      this.sessionAdapters.has(threadId) ||
+      this.cascadeStopAdapters.has(threadId) ||
+      this.startingSessionThreads.has(threadId)
+    );
+  }
+
   constructor(private readonly options: OrchestrationServiceOptions) {
     this.nativeForkStoredReadVerifier = options.nativeForkStoredReadVerifier;
-    this.releaseSessionActivity = options.eventStore?.bindSessionActivity(
-      (threadId) =>
-        this.sessionAdapters.has(threadId) ||
-        this.cascadeStopAdapters.has(threadId) ||
-        this.startingSessionThreads.has(threadId),
-    );
     // All delete paths converge here, including Draft discard and attached alias cleanup.
     this.stopSessionDeletionNotifications = options.eventStore?.observeCommits({
       threadDeleting: (threadId) => {
@@ -4421,7 +4422,6 @@ export class OrchestrationService {
     ]);
     this.activeEventAdapters.clear();
     this.adoption.unregisterOwner();
-    this.releaseSessionActivity?.();
     const failures = [
       ...(await retirementResults),
       ...cascadeResults,
