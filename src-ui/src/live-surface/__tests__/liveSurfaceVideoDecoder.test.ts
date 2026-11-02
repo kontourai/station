@@ -105,10 +105,12 @@ describe('client H.264 decoding (#4418)', () => {
   });
 
   test('never decodes a delta before a keyframe; configures from the SPS', async () => {
-    const { decoder } = build();
+    const { decoder, errors } = build();
     expect(await decoder.decode(header(1, false), delta)).toBe(
       'awaiting-keyframe',
     );
+    // A quiet drop, not a failure: no error, so no reconnect for a keyframe.
+    expect(errors).toEqual([]);
     expect(FakeVideoDecoder.instances).toHaveLength(0);
     expect(await decoder.decode(header(2, true), sample)).toBe('decoding');
     expect(FakeVideoDecoder.checks[0]).toMatchObject({
@@ -162,6 +164,7 @@ describe('client H.264 decoding (#4418)', () => {
     expect(await decoder.decode(header(2, false), delta)).toBe(
       'awaiting-keyframe',
     );
+    expect(errors).toHaveLength(1);
     expect(await decoder.decode(header(3, true), sample)).toBe('decoding');
     const second = FakeVideoDecoder.instances[1]!;
     expect(second.configs).toHaveLength(1);
