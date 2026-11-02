@@ -1315,6 +1315,83 @@ test('publication holds expire and an expired release cannot release a newer hol
   }
 });
 
+test('an unavailable completed answer stays blocked while other Sessions recover, then publishes once on retry', async () => {
+  const f = await fixture(false);
+  try {
+    const unavailableSession = await requestAgent(f);
+    await f.complete(unavailableSession, 'turn-1', 'Deferred canonical answer');
+    const response = await f.post('/delegations', {
+      prompt: 'Independent investigation',
+      target: {
+        environment: { kind: 'current' },
+        agent: 'researcher',
+        workspace: { kind: 'project', projectSlug: 'project' },
+      },
+      taskRoomRequest: {
+        taskId: f.task.id,
+        taskCreatedAt: f.task.createdAt,
+        operationId: 'independent-request',
+      },
+    });
+    expect(response.status, await response.clone().text()).toBe(200);
+    const body = await readJson<{ data: TaskRoomWorkOutcome }>(response);
+    if (body.data.kind !== 'recorded')
+      throw new Error('Missing second request');
+    const healthySession = body.data.record.sessionId;
+    expect(healthySession).not.toBe(unavailableSession);
+    await f.complete(healthySession, 'turn-2', 'Independent canonical answer');
+    const read = f.sessions.sessionQueries.readAssistantTurn.bind(
+      f.sessions.sessionQueries,
+    );
+    const projection = vi
+      .spyOn(f.sessions.sessionQueries, 'readAssistantTurn')
+      .mockImplementation((query, authority) =>
+        query.threadId === unavailableSession
+          ? Promise.resolve({ status: 'unavailable' as const })
+          : read(query, authority),
+      );
+
+    await f.room.reconcileAgentLifecycles([f.task.id]);
+    expect(JSON.stringify(await f.history())).toContain(
+      'Independent canonical answer',
+    );
+    expect(JSON.stringify(await f.history())).not.toContain(
+      'Deferred canonical answer',
+    );
+    expect(
+      await f.room.liveActivity({
+        request: new Request('http://station.test'),
+      }),
+    ).toMatchObject({
+      kind: 'available',
+      projection: {
+        participants: [
+          expect.objectContaining({
+            work: expect.objectContaining({
+              sessionId: unavailableSession,
+              workState: 'blocked',
+              workName: "Answer couldn't be posted",
+            }),
+          }),
+        ],
+      },
+    });
+    projection.mockRestore();
+    await f.room.reconcileAgentLifecycles([f.task.id]);
+    await f.room.reconcileAgentLifecycles([f.task.id]);
+    const answers = (await f.history()).filter(
+      (entry) => entry.correlationId === `room-answer:${unavailableSession}`,
+    );
+    expect(answers).toHaveLength(1);
+    expect(JSON.stringify(answers)).toContain('Deferred canonical answer');
+    expect(await f.agentCount()).toBe(0);
+    expect(f.adapter.turns).toHaveLength(2);
+  } finally {
+    vi.restoreAllMocks();
+    await f.close();
+  }
+});
+
 test('canonical initial answers remain readable without a reply journal, while corrupt journals fail closed', async () => {
   const f = await fixture(false);
   try {

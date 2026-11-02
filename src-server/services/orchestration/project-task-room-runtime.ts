@@ -238,6 +238,10 @@ interface ProjectTaskRoomRuntimeDeps {
   }) => Promise<
     readonly { turnId: string; text: string; occurredAt: string }[]
   >;
+  readonly onAnswerUnavailable?: (
+    error: TaskRoomAnswerUnavailableError,
+    taskId: string,
+  ) => void;
   /** Hosted tenancy has no task-room ownership model yet: never expose it. */
   readonly hosted?: () => boolean;
   /** Test-only crash boundary for durable publication recovery proofs. */
@@ -388,6 +392,16 @@ type LiveCommandInput = {
   selection?: { anchor: number; focus: number };
   outcome?: 'completed' | 'failed' | 'cancelled';
 };
+
+export class TaskRoomAnswerUnavailableError extends Error {
+  constructor(
+    readonly sessionId: string,
+    readonly turnId: string,
+  ) {
+    super('Completed Task answer is unavailable.');
+    this.name = 'TaskRoomAnswerUnavailableError';
+  }
+}
 
 export class ProjectTaskRoomRuntime {
   readonly #deps: ProjectTaskRoomRuntimeDeps;
@@ -1440,7 +1454,13 @@ export class ProjectTaskRoomRuntime {
           sessionId: request.sessionId,
         });
         if (!durable) continue;
-        await this.publishAgentAnswers(taskId, request.sessionId);
+        try {
+          await this.publishAgentAnswers(taskId, request.sessionId);
+        } catch (error) {
+          if (!(error instanceof TaskRoomAnswerUnavailableError)) throw error;
+          this.#deps.onAnswerUnavailable?.(error, taskId);
+          continue;
+        }
         const started: PendingAgentLifecycle = {
           taskId,
           sessionId: request.sessionId,
