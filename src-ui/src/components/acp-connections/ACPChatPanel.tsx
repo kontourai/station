@@ -341,9 +341,7 @@ export function ACPChatPanel({
         busyFollowUp={
           isTurnInFlight(activeSession) &&
           sessionAdapterSupportsSteering(
-            activeSession.agentConnectionId,
-            [],
-            activeSession.orchestrationProvider,
+            activeSession.orchestrationDurability,
           ) &&
           chatInput.attachments.length === 0
             ? 'steer'

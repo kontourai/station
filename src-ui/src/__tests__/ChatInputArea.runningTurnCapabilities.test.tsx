@@ -109,6 +109,25 @@ function renderComposer(
 }
 
 describe('ChatInputArea: one capability contract while a turn runs', () => {
+  test('unavailable steering stays disabled and explains the missing host profile', async () => {
+    renderComposer({
+      busyFollowUp: 'queue',
+      busySteeringUnavailableReason:
+        'Steering unavailable: the host did not report a durability profile.',
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Send mode: Queue' }));
+    expect(
+      (
+        (await screen.findByRole('button', {
+          name: 'Steer this turn',
+        })) as HTMLButtonElement
+      ).disabled,
+    ).toBe(true);
+    expect(
+      screen.getByText(/host did not report a durability profile/),
+    ).toBeTruthy();
+  });
+
   test('dictation and the paperclip stay usable during a running turn', async () => {
     const props = renderComposer();
     const mic = screen.getByRole('button', { name: 'Speak message' });

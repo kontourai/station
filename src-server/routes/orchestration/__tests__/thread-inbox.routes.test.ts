@@ -6,6 +6,7 @@ import {
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { sessionReadAuthorityFromRequest } from '@kontourai/station-contracts/tenancy';
 import { describe, expect, test, vi } from 'vitest';
+import { ClientTurnInputConflictError } from '../../../providers/adapter-shape.js';
 import { turnDedupKey } from '../../../services/orchestration/sqlite-turn-dedup-persistence.js';
 import { foregroundTurnSubmissionDigest } from '../../../services/orchestration/turn-submission-digest.js';
 
@@ -21,6 +22,170 @@ import {
 
 describe('POST /chat whenBusy queue (#3568)', () => {
   const station = createInboxHarness();
+
+  test('the inbox read exposes the current session head for a steer submission', async () => {
+    const world = station();
+    await world.busy();
+    const response = await world.listInbox();
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      data: { currentHead: world.inbox.currentHead(CONVERSATION) },
+    });
+  });
+
+  test.each(['steer', 'follow-up'] as const)(
+    '%s admission rejects a stale head and leaves the inbox empty',
+    async (kind) => {
+      const world = station();
+      await world.busy();
+      const current = world.service.currentConversationSessionId(CONVERSATION);
+      const currentHead = world.inbox.currentHead(CONVERSATION);
+      expect(currentHead).not.toBe(JSON.stringify([current, 0]));
+      const response = await world.app.request(
+        `/api/orchestration/conversations/${encodeURIComponent(CONVERSATION)}/inbox`,
+        {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            kind,
+            key: 'stale-steer',
+            message: 'change direction',
+            expectedHead: JSON.stringify([current, 0]),
+          }),
+        },
+      );
+      expect(response.status).toBe(409);
+      expect(await response.json()).toMatchObject({
+        code: 'inbox_stale_head',
+        currentHead,
+      });
+      expect(world.inbox.list(CONVERSATION)).toEqual([]);
+    },
+  );
+
+  test.each(['steer', 'follow-up'] as const)(
+    '%s is recorded with its head before any delivery',
+    async (kind) => {
+      const world = station();
+      await world.busy();
+      const expectedHead = world.inbox.currentHead(CONVERSATION);
+      const send = () =>
+        world.app.request(
+          `/api/orchestration/conversations/${encodeURIComponent(CONVERSATION)}/inbox`,
+          {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({
+              kind,
+              key: 'steer-one',
+              message: 'change direction',
+              expectedHead,
+            }),
+          },
+        );
+      expect((await send()).status).toBe(202);
+      expect((await send()).status).toBe(202);
+      await world.inbox.idle();
+      expect(world.inbox.list(CONVERSATION)).toMatchObject([
+        { kind, state: 'queued', message: 'change direction' },
+      ]);
+      const stored = world.store
+        .threadInboxStore()
+        .read(CONVERSATION, 'steer-one');
+      expect(JSON.parse(stored!.payload)).toMatchObject({ expectedHead });
+      expect(world.adapter.turns).toHaveLength(1);
+    },
+  );
+
+  test('a plain automatic replay can be held with its background admission class durable', async () => {
+    const world = station();
+    await world.busy();
+    const response = await world.app.request(
+      '/api/orchestration/chat/background',
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          message: 'background held text',
+          conversationId: CONVERSATION,
+          clientTurnId: 'background-key',
+          whenBusy: 'queue',
+          target: { environment: { kind: 'current' }, agent: AGENT },
+        }),
+      },
+    );
+    expect(response.status).toBe(202);
+    const entry = world.store
+      .threadInboxStore()
+      .read(CONVERSATION, 'background-key');
+    expect(JSON.parse(entry!.payload)).toMatchObject({
+      message: 'background held text',
+      automaticBackground: true,
+    });
+    expect(world.prompts()).toEqual(['read the file']);
+  });
+
+  test('a typed steer receipt conflict is HTTP409 before inbox admission', async () => {
+    const world = station();
+    await world.busy();
+    vi.spyOn(world.inbox, 'submitSteer').mockImplementation(() => {
+      throw new ClientTurnInputConflictError();
+    });
+    const response = await world.app.request(
+      `/api/orchestration/conversations/${CONVERSATION}/inbox`,
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          kind: 'steer',
+          key: 'conflict',
+          message: 'different text',
+          expectedHead: world.inbox.currentHead(CONVERSATION),
+        }),
+      },
+    );
+    expect(response.status).toBe(409);
+    expect(await response.json()).toMatchObject({
+      code: 'client_turn_input_conflict',
+    });
+    expect(world.inbox.list(CONVERSATION)).toEqual([]);
+  });
+
+  test('a display entry is visible immediately to another reader without starting a turn', async () => {
+    const world = station();
+    await world.busy();
+    const url = `/api/orchestration/conversations/${encodeURIComponent(CONVERSATION)}/inbox`;
+    const request = () =>
+      world.app.request(url, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          kind: 'display',
+          key: 'display-one',
+          message: 'visible note',
+        }),
+      });
+    expect((await request()).status).toBe(202);
+    expect((await request()).status).toBe(202);
+    const read = await world.listInbox(READER);
+    expect(read.status).toBe(200);
+    expect(await read.json()).toMatchObject({
+      data: {
+        entries: [
+          {
+            kind: 'display',
+            state: 'sent',
+            message: 'visible note',
+            ownedByCaller: false,
+          },
+        ],
+      },
+    });
+    expect(await (await world.listInbox()).json()).toMatchObject({
+      data: { entries: [{ ownedByCaller: true }] },
+    });
+    expect(world.adapter.turns).toHaveLength(1);
+  });
 
   test.each([
     [false, false],

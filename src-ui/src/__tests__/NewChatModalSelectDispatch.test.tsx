@@ -22,6 +22,7 @@ import {
   engineConnectionId,
   engineId,
 } from '@kontourai/station-contracts/agent-identity';
+import { ENGINE_CAPABILITY_MATRICES } from '@kontourai/station-contracts/engine-capability-matrix';
 import type {
   InstalledSkillExperienceV1,
   SkillExperienceDefinitionV1,
@@ -408,6 +409,24 @@ function clickAgent(slug: string) {
 }
 
 describe('NewChatModal select dispatch invariant (#3013)', () => {
+  test.each([
+    ['none', 'Native engine fork unavailable'],
+    ['emulated', 'Engine fork is emulated'],
+    ['native', 'Native engine fork declared'],
+  ] as const)(
+    'fork disclosure follows the selected engine durability profile: %s',
+    (state, label) => {
+      const profile = ENGINE_CAPABILITY_MATRICES.station.durability.fork;
+      const original = profile.state;
+      try {
+        profile.state = state;
+        renderForkModal();
+        expect(screen.getByText(label)).toBeTruthy();
+      } finally {
+        profile.state = original;
+      }
+    },
+  );
   test('fork mode defaults to the source Agent and explicitly discloses replay-only state', async () => {
     selectionModelState.agents = [AUTHORED_CODEX, AGENT];
     renderForkModal();
