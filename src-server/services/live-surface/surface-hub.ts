@@ -116,7 +116,8 @@ export type LiveSurfaceViewerCodec = 'image' | 'h264';
  * Keyframe requests reach the encoder at most this often. Each one makes the
  * encoder send a large IDR to EVERY viewer, so several viewers overflowing
  * together, or one that keeps falling behind, must not turn into a stream
- * of keyframes that raises everyone's bitrate.
+ * of keyframes that raises everyone's bitrate. A request inside the window is
+ * deferred to its end, never dropped: a viewer may be waiting on it.
  */
 export const KEYFRAME_REQUEST_MIN_INTERVAL_MS = 500;
 
@@ -255,6 +256,7 @@ export class LiveSurfaceHub {
   private idleTimer: ReturnType<typeof setTimeout> | null = null;
   private disposed = false;
   private lastKeyframeRequestAt = Number.NEGATIVE_INFINITY;
+  private keyframeTimer: ReturnType<typeof setTimeout> | null = null;
   private readonly unsubscribeLease: () => void;
   private readonly unsubscribeStatus: () => void;
   private inputHealth: () => { wedged: boolean; wedgedSince: number | null } =
@@ -308,12 +310,13 @@ export class LiveSurfaceHub {
     if (codec === 'image' && this.running && this.lastPublished)
       viewer.slot = this.lastPublished;
     this.viewers.add(viewer);
-    if (codec === 'h264' && this.running) this.requestKeyframe();
     if (this.idleTimer) {
       clearTimeout(this.idleTimer);
       this.idleTimer = null;
     }
+    // Demand first: the producer opens its H.264 path before it is asked.
     this.onTargetChanged();
+    if (codec === 'h264' && this.running) this.requestKeyframe();
     this.reconcile();
     return viewer;
   }
@@ -419,10 +422,18 @@ export class LiveSurfaceHub {
 
   /** @internal An `h264` viewer needs a decoding point. */
   requestKeyframe(): void {
-    const at = this.now();
-    if (at - this.lastKeyframeRequestAt < KEYFRAME_REQUEST_MIN_INTERVAL_MS)
+    const wait =
+      this.lastKeyframeRequestAt +
+      KEYFRAME_REQUEST_MIN_INTERVAL_MS -
+      this.now();
+    if (wait > 0) {
+      this.keyframeTimer ??= setTimeout(() => {
+        this.keyframeTimer = null;
+        if (!this.disposed) this.requestKeyframe();
+      }, wait);
       return;
-    this.lastKeyframeRequestAt = at;
+    }
+    this.lastKeyframeRequestAt = this.now();
     try {
       this.producer.requestKeyframe?.();
     } catch (error) {
@@ -450,6 +461,8 @@ export class LiveSurfaceHub {
     for (const viewer of [...this.viewers]) viewer.close();
     if (this.idleTimer) clearTimeout(this.idleTimer);
     this.idleTimer = null;
+    if (this.keyframeTimer) clearTimeout(this.keyframeTimer);
+    this.keyframeTimer = null;
     this.reconcile();
     await this.lifecycle;
   }

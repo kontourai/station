@@ -86,6 +86,9 @@ class FakeSocket extends EventEmitter implements DeviceSocket {
     super();
   }
   send(data: string | Uint8Array, callback: (error?: Error) => void): void {
+    // Like `ws`: sending before the handshake completes throws.
+    if (this.readyState === 0)
+      throw new Error('WebSocket is not open: readyState 0 (CONNECTING)');
     this.sent.push(data);
     if (this.acks) queueMicrotask(() => callback());
   }
@@ -884,6 +887,66 @@ describe('Android', () => {
       expect(h.sockets).toHaveLength(1);
       h.producer.setCodecDemand({ image: false, h264: false });
       expect(video.readyState).toBe(3);
+    });
+
+    test('a decoder restart while the video socket is still connecting sends nothing and throws nothing', async () => {
+      const decoder = fakeDecoder();
+      const h = android({ decoder: decoder.provider });
+      await h.producer.start(PARAMS, () => {});
+      await until(() => h.sockets.length === 1, 'video socket');
+      const video = h.sockets[0]!;
+      decoder.exit('crash');
+      await until(() => decoder.state.created === 2, 'restart');
+      h.producer.requestKeyframe();
+      expect(video.sent).toEqual([]);
+      video.opened();
+      expect(resets(video)).toBe(1);
+    });
+
+    test('with image viewers too, H.264 frames take the decoded JPEG size, so input maps the same', async () => {
+      const decoder = fakeDecoder();
+      const h = android({ decoder: decoder.provider });
+      h.producer.setCodecDemand({ image: true, h264: true });
+      await h.producer.start(PARAMS, (header, body) => {
+        h.frames.push({ header, body });
+        if (header.codec !== 'h264') h.producer.ack(header.seq);
+      });
+      await until(() => h.sockets.length === 1, 'video socket');
+      const video = h.sockets[0]!;
+      video.opened();
+      video.emit('message', semuUnit(true, sps, pps, idr), true);
+      // The decoder was started at another size than the current params fit.
+      decoder.emit(jpeg(540, 1200));
+      video.emit('message', semuUnit(false, delta1), true);
+      const sizes = h.frames.map(
+        (frame) =>
+          `${frame.header.codec}:${frame.header.width}x${frame.header.height}`,
+      );
+      expect(sizes).toEqual([
+        'h264:576x1280',
+        'jpeg:540x1200',
+        'h264:540x1200',
+      ]);
+    });
+
+    test('a new encoder session forgets the old parameter sets', async () => {
+      const h = android();
+      h.producer.setCodecDemand({ image: false, h264: true });
+      await h.producer.start(PARAMS, (header, body) =>
+        h.frames.push({ header, body }),
+      );
+      await until(() => h.sockets.length === 1, 'video socket');
+      const video = h.sockets[0]!;
+      video.opened();
+      video.emit('message', semuUnit(true, sps, pps, idr), true);
+      video.emit('message', Buffer.from('{"type":"video-session"}'), false);
+      // An IDR before the new session's SPS has nothing current to carry.
+      video.emit('message', semuUnit(true, idr), true);
+      video.emit('message', semuUnit(false, delta1), true);
+      expect(h.frames).toHaveLength(1);
+      video.emit('message', semuUnit(true, sps, pps, idr), true);
+      expect(h.frames).toHaveLength(2);
+      expect(h.frames[1]!.header.keyframe).toBe(true);
     });
 
     test('the hub keyframe request reaches the encoder', async () => {

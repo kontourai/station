@@ -386,10 +386,35 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
   const [acceptH264] = useState(() => liveSurfaceH264Capable());
   const videoDecoderRef = useRef<LiveSurfaceH264Decoder | null>(null);
   const lastResyncRef = useRef(Number.NEGATIVE_INFINITY);
+  const resyncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /**
+   * Ask for a keyframe by reconnecting (a fresh stream starts at one), at
+   * most every two seconds; a request inside that window is deferred to its
+   * end, because the reset decoder waits for nothing else.
+   */
+  const resyncVideo = useCallback(() => {
+    if (resyncTimerRef.current) return;
+    const wait =
+      lastResyncRef.current + VIDEO_RESYNC_MIN_INTERVAL_MS - Date.now();
+    resyncTimerRef.current = setTimeout(
+      () => {
+        resyncTimerRef.current = null;
+        lastResyncRef.current = Date.now();
+        surfaceRef.current.retry();
+      },
+      Math.max(0, wait),
+    );
+  }, []);
   const closeVideoDecoder = useCallback(() => {
     videoDecoderRef.current?.close();
     videoDecoderRef.current = null;
   }, []);
+  useEffect(
+    () => () => {
+      if (resyncTimerRef.current) clearTimeout(resyncTimerRef.current);
+    },
+    [],
+  );
   const decodeVideo = useCallback(
     async (frame: LiveSurfaceFrame) => {
       let decoder = videoDecoderRef.current;
@@ -402,15 +427,7 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
               picture.close();
             }
           },
-          onError: () => {
-            // Reset already; ask for a keyframe by reconnecting (a fresh
-            // stream starts at one), at most every two seconds.
-            const at = Date.now();
-            if (at - lastResyncRef.current < VIDEO_RESYNC_MIN_INTERVAL_MS)
-              return;
-            lastResyncRef.current = at;
-            surfaceRef.current.retry();
-          },
+          onError: resyncVideo,
         });
         videoDecoderRef.current = decoder;
       }
@@ -420,7 +437,7 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
         surfaceRef.current.declineH264();
       }
     },
-    [paint, closeVideoDecoder],
+    [paint, closeVideoDecoder, resyncVideo],
   );
   useEffect(() => closeVideoDecoder, [closeVideoDecoder]);
 

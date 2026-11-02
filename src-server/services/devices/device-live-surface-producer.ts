@@ -235,6 +235,11 @@ interface AndroidVideo {
   /** The last unit carried a non-IDR slice: the screen changed. */
   lastUnitHadContent: boolean;
   requestKeyframe: (() => void) | null;
+  /**
+   * The size of the decoder's last JPEG. While the decoder runs, H.264
+   * frames are headed with it, so every viewer's input maps against one size.
+   */
+  imageSize: { width: number; height: number } | null;
   /** The latest parameter sets, prepended to an IDR that lacks them. */
   sps: Uint8Array | null;
   pps: Uint8Array | null;
@@ -260,10 +265,10 @@ function withParameterSets(
 }
 
 /**
- * The size an H.264 frame is shown at: the picture fitted inside the
- * stream's max size, never upscaled, even dimensions. It matches what the
- * ffmpeg image path scales to, so input maps to the same unit square
- * whichever path a viewer takes.
+ * The size an H.264 frame is shown at while no decoder runs: the picture
+ * fitted inside the stream's max size, never upscaled, even dimensions (the
+ * box the ffmpeg image path scales to). While a decoder runs, frames take its
+ * JPEGs' actual size instead (`AndroidVideo.imageSize`).
  */
 function fittedVideoSize(
   sequence: { width: number; height: number },
@@ -641,6 +646,7 @@ export class DeviceLiveSurfaceProducer implements LiveSurfaceProducer {
       connecting: false,
       polling: false,
       lastUnitHadContent: false,
+      imageSize: null,
       requestKeyframe: null,
       sps: null,
       pps: null,
@@ -675,6 +681,7 @@ export class DeviceLiveSurfaceProducer implements LiveSurfaceProducer {
     if (!decode && run.decoder) {
       const decoder = run.decoder;
       run.decoder = null;
+      android.imageSize = null;
       void decoder.close();
     }
     const wantSocket = this.demand.h264 || decode;
@@ -784,12 +791,15 @@ export class DeviceLiveSurfaceProducer implements LiveSurfaceProducer {
         onImage: (jpeg) => {
           if (run.decoder !== decoder) return;
           const size = jpegSize(jpeg);
-          if (size) this.offer(run, { codec: 'jpeg', body: jpeg, ...size });
+          if (!size) return;
+          android.imageSize = size;
+          this.offer(run, { codec: 'jpeg', body: jpeg, ...size });
         },
         onExit: (reason) => {
           if (this.run !== run || run.decoder !== decoder) return;
           this.reportError('device video decoder exited', reason);
           run.decoder = null;
+          android.imageSize = null;
           // A decoder that ran stably before dying is a fresh failure, not
           // the second of a pattern.
           const restarts =
@@ -859,11 +869,19 @@ export class DeviceLiveSurfaceProducer implements LiveSurfaceProducer {
     run.socket = socket;
     android.decoderAwaitingKey = true;
     android.videoAwaitingKey = true;
-    const requestKeyframe = () =>
-      socket.send(
-        JSON.stringify({ type: 'reset-video', ack: false }),
-        () => {},
-      );
+    // `ws` throws from `send` until the socket opens; the `open` handler
+    // asks for a keyframe then, so an earlier request has nothing to add.
+    const requestKeyframe = () => {
+      if (socket.readyState !== 1) return;
+      try {
+        socket.send(
+          JSON.stringify({ type: 'reset-video', ack: false }),
+          () => {},
+        );
+      } catch (error) {
+        this.reportError('device keyframe request failed', error);
+      }
+    };
     android.requestKeyframe = requestKeyframe;
     // Idle keyframes (see `keyframeIdleMs`): re-armed on every access unit;
     // only a content slice starts a new quiet period (below).
@@ -896,8 +914,14 @@ export class DeviceLiveSurfaceProducer implements LiveSurfaceProducer {
         // next keyframe carries the new SPS.
         const text = bytesOf(data);
         if (new TextDecoder().decode(text).includes('"video-session"')) {
+          // A new session has new parameter sets and size: never prepend or
+          // size its IDR with the old session's.
           android.decoderAwaitingKey = true;
           android.videoAwaitingKey = true;
+          android.sps = null;
+          android.pps = null;
+          android.sequence = null;
+          android.imageSize = null;
           requestKeyframe();
         }
         return;
@@ -945,10 +969,10 @@ export class DeviceLiveSurfaceProducer implements LiveSurfaceProducer {
         if (type === 8) android.pps = nal.slice();
         if (type !== 7) continue;
         android.sps = nal.slice();
-        const sequence = parseLiveSurfaceH264Sequence(
+        // An SPS that does not parse leaves no size to head frames with.
+        android.sequence = parseLiveSurfaceH264Sequence(
           Buffer.concat([ANNEX_B_START, nal]),
         );
-        if (sequence) android.sequence = sequence;
       }
     }
     const idr = types.has(5);
@@ -976,8 +1000,11 @@ export class DeviceLiveSurfaceProducer implements LiveSurfaceProducer {
 
   /** An H.264 access unit, published as it arrives: the hub queues it. */
   private publishVideo(run: VideoRun, unit: Uint8Array, keyframe: boolean) {
-    const sequence = run.android!.sequence!;
-    const size = fittedVideoSize(sequence, run.params);
+    const android = run.android!;
+    const size =
+      run.decoder && android.imageSize
+        ? android.imageSize
+        : fittedVideoSize(android.sequence!, run.params);
     const rotation = frameRotationFor(
       this.options.platform,
       this.orientation,
@@ -1071,7 +1098,9 @@ export class DeviceLiveSurfaceProducer implements LiveSurfaceProducer {
   }
 
   ack(seq: number): void {
-    if (this.awaitingAck === null || seq < this.awaitingAck) return;
+    // Exact: H.264 units share the sequence and are never acked, so a stray
+    // ack of one (the hub acks a malformed frame) must not release an image.
+    if (seq !== this.awaitingAck) return;
     this.awaitingAck = null;
     const next = this.pending;
     this.pending = null;

@@ -1534,6 +1534,38 @@ describe('LiveSurfaceCanvas: client H.264 (#4418)', () => {
     );
   });
 
+  test('a decode error reconnects for a keyframe; a second inside the window waits for its end', async () => {
+    const codecs = webCodecs(true);
+    const h = harness();
+    await mount(h);
+    const first = h.streams.at(-1)!;
+    await first.push(stateRecord(lease(0)));
+    await first.push(videoRecord(1, true));
+    await act(async () => {
+      codecs.decoders
+        .at(-1)!
+        .init.error(new DOMException('bad', 'EncodingError'));
+    });
+    await flush();
+    expect(h.streams).toHaveLength(2);
+    expect(first.signal?.aborted).toBe(true);
+    const second = h.streams[1]!;
+    expect(new URL(second.url).searchParams.get('codec')).toBe('h264');
+    await second.push(stateRecord(lease(0)));
+    await second.push(videoRecord(2, true));
+    await act(async () => {
+      codecs.decoders
+        .at(-1)!
+        .init.error(new DOMException('bad', 'EncodingError'));
+    });
+    await flush();
+    expect(h.streams).toHaveLength(2);
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 2_100));
+    });
+    expect(h.streams).toHaveLength(3);
+  }, 10_000);
+
   test('a profile the browser refuses reconnects for images', async () => {
     const codecs = webCodecs(false);
     const h = harness();
