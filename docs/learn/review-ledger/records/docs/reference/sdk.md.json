@@ -848,7 +848,9 @@
 
     "src-ui/src/components/chat/PublishedHtmlReply.tsx",
 
-    "src-ui/src/workspace-panes/agents/ChildWorkTranscript.tsx"
+    "src-ui/src/workspace-panes/agents/ChildWorkTranscript.tsx",
+
+    "src-server/services/orchestration/create-request-claims.ts"
   ],
 
   "checks": [

@@ -202,3 +202,58 @@
   width: fit-content;
   min-height: 44px;
 }
+
+.invite-flow__address {
+  display: grid;
+  gap: var(--k-space-1);
+  padding: var(--k-space-3);
+  border: var(--k-border-thin) solid var(--k-line);
+  border-radius: var(--k-radius-control);
+}
+
+.invite-flow__address code {
+  overflow-wrap: anywhere;
+}
+
+.invite-flow__address p,
+.invitation-link p {
+  margin: 0;
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+}
+
+.invitation-link {
+  display: grid;
+  gap: var(--k-space-3);
+  min-width: 0;
+  padding: var(--k-space-4);
+  border: var(--k-border-thin) solid var(--k-line-strong);
+  border-radius: var(--k-radius-md);
+  background: var(--k-panel);
+}
+
+.invitation-link h3 {
+  margin: 0;
+}
+
+.invitation-link > .button {
+  justify-self: start;
+  min-height: 44px;
+}
+
+.invitation-link label {
+  display: grid;
+  gap: var(--k-space-1);
+}
+
+.invitation-link input {
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  padding: var(--k-space-2);
+  border: var(--k-border-thin) solid var(--k-line);
+  border-radius: var(--k-radius-control);
+  background: var(--k-bg);
+  color: var(--k-text);
+  font: inherit;
+}

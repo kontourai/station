@@ -1,0 +1,7 @@
+{
+  "revision": "e95baae1ce6233ddb1a054df97cf0d804d7446d1",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed durable turn admission through the real prepare/commit/beginInvocation/resume paths, the stored provider turn id and invocation-tagged terminal retirement. Four focused owners passed 80 tests, including real SIGKILL at prepared and invoking cuts and backward-clock reused-id retirement. Corrupting only the resumed provider input failed four cases (18 passed); byte-exact restoration passed all 22 process cases. The new create owner and registry guard have separate replay/conflict and injected-route evidence. This is local scripted and source evidence; live providers, installed runtime and release qualification remain separate.","inputs":["docs/architecture/module-map.md","src-server/routes/orchestration/__tests__/adopted-continuation-dock.routes.test.ts","src-server/routes/orchestration/orchestration.ts","src-server/services/orchestration/event-store.ts","src-server/tools/station-control-delegation.ts","src-server/services/orchestration/delegation-create-claims.ts","src-server/runtime/routes/__tests__/send-route-key-inventory.test.ts"]}
+  ]
+}

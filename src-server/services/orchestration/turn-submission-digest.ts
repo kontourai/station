@@ -74,6 +74,11 @@ function canonicalJson(value: unknown, ancestors = new Set<object>()): string {
   }
 }
 
+/** Digest a JSON request without silently dropping unsupported input. */
+export function chatTurnSubmissionDigest(value: unknown): string {
+  return `station-chat-submission/v1:sha256:${createHash('sha256').update(canonicalJson(value)).digest('hex')}`;
+}
+
 /** Own JSON intent without JSON.stringify silently discarding unsupported values. */
 export function snapshotTurnSubmissionValue<T>(value: T): T {
   return JSON.parse(canonicalJson(value));

@@ -1,3 +1,4 @@
+import type { TurnClaim } from '@kontourai/monument';
 import type {
   RecoveryLedgerProcessIdentity,
   RecoveryOwner,
@@ -24,7 +25,6 @@ import {
 } from '@kontourai/station-contracts/runtime-events';
 import { SessionStartRefusedError } from '../../providers/adapter-shape.js';
 import type { CapturedTurnIntent } from './prepared-turn-intent.js';
-import type { TurnClaim } from './turn-deduplicator.js';
 
 export { SESSION_START_INDETERMINATE_CODE } from '@kontourai/station-contracts/provider-failure';
 
