@@ -18,6 +18,7 @@ import {
 } from '@kontourai/monument/sqlite';
 import { z } from 'zod';
 import { readPreparedClaimCustody } from '../turn-idempotency.js';
+import { isCancellationAdmissionBlocked } from './cancellation-fence.js';
 import {
   type CapturedTurnIntent,
   decodeTurnIntent,
@@ -167,6 +168,8 @@ export function createSqliteSessionTurnBoundaryCoordinator({
       {
         name: 'station-boundary-admission',
         admit(command) {
+          if (isCancellationAdmissionBlocked(db, command))
+            return { refuse: 'session-cancellation-fenced' };
           if (
             (command.type === 'turnBoundary.resumePrepared' ||
               command.type === 'turnBoundary.beginInvocation') &&

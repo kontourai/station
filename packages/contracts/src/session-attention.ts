@@ -140,7 +140,7 @@ export type SessionStateLabel =
  * UI shows and not a second table; station#3413).
  *
  * It starts from {@link sessionAttentionDisposition} and deliberately
- * overrides `lifecycleState` in five places; each override is a fixed defect:
+ * overrides the own `lifecycleState` at these presentation boundaries:
  *
  * | shape | `lifecycleState` says | this says |
  * |---|---|---|
@@ -149,6 +149,7 @@ export type SessionStateLabel =
  * | `status: 'closed'`, `running` | Running | **Completed** (archive#1296) |
  * | `needs_input`, `answerable: false` | Waiting on you | **Unanswerable** (archive#1783) |
  * | `queued`/`running`, `hasActiveTurn: false`, `draft: true` | Queued/Running | **Draft** (#2310) |
+ * | live owned children or pending cleanup, including a closed parent | own turn ended | **Running** aggregate; custody words remain distinct |
  *
  * `answerability` is consulted only inside the awaiting arm (a detached
  * `completed` session takes the finished arm, so an ungated check would
@@ -165,6 +166,14 @@ export function orchestrationLifecycleLabel(
   const currentChildWork =
     session.conversationActivity?.currentThreadId === session.threadId &&
     session.conversationActivity.runningChildWork !== undefined;
+  const owned = session.ownedWork;
+  if (
+    owned &&
+    (owned.runningChildCount > 0 || owned.pendingStopCount > 0) &&
+    disposition.state !== 'awaiting' &&
+    disposition.state !== 'failed'
+  )
+    return 'Running';
   // A completed or stopped parent turn may leave reported children running.
   // Keep the attention fold unchanged: background work is not a request to
   // the user. A closed or failed session retains its terminal outcome.
@@ -255,14 +264,57 @@ export const SESSION_STATUS_WORDS = {
   idle: 'Idle',
 } as const;
 
+export const OWNED_WORK_STATUS_WORDS = {
+  stopping: 'Stopping',
+  'waiting-on-peer': 'Waiting on another Station process',
+  unknown: 'Unknown',
+} as const;
+
+export function ownedWorkUnknownReasons(
+  owned: OrchestrationSessionSummary['ownedWork'],
+): string[] {
+  return [
+    ...new Set(
+      (owned?.pendingStops ?? [])
+        .filter((stop) => stop.custody === 'unknown')
+        .map((stop) => unknownStopReason(stop.reason)),
+    ),
+  ];
+}
+
+function unknownStopReason(reason: string): string {
+  switch (reason) {
+    case 'unresolved-invocation':
+      return 'The child still has an unresolved invocation.';
+    case 'no-session-owner':
+      return 'Station has no record of which process owns the child.';
+    case 'dead-owner':
+      return 'The Station process that owned the child has exited.';
+    case 'unverified-local-owner':
+      return 'The child names this process with a different process identity.';
+    case 'local-owner-unbound':
+      return 'This Station process no longer has an adapter for the child.';
+    case 'binding-unavailable':
+      return 'Station could not check the child’s adapter.';
+    case 'owner-changed':
+      return 'The child’s owner changed while Station was checking it.';
+    case 'unobserved':
+      return 'Station has not checked the child’s owner yet.';
+    default:
+      return 'Station cannot verify which process owns the child.';
+  }
+}
+
 /**
- * The ladder's word for a session summary alone, as `workStatus(item, now)`
- * words it without UI facts: the lane is the same with or without them, and
- * the facts only refine words inside the Running rung.
+ * The ladder's word for a session summary, including owned cleanup custody.
+ * UI facts can additionally refine running work with child counts or the
+ * no-progress observation; custody words are shared by both readers.
  */
 export function sessionLadderWord(
   session: OrchestrationSessionSummary,
-): (typeof SESSION_STATUS_WORDS)[keyof typeof SESSION_STATUS_WORDS] {
+):
+  | (typeof SESSION_STATUS_WORDS)[keyof typeof SESSION_STATUS_WORDS]
+  | (typeof OWNED_WORK_STATUS_WORDS)[keyof typeof OWNED_WORK_STATUS_WORDS] {
   if (session.controlMode === 'read-only-attached')
     return SESSION_STATUS_WORDS.elsewhere;
   switch (orchestrationLifecycleLabel(session)) {
@@ -274,8 +326,12 @@ export function sessionLadderWord(
       return SESSION_STATUS_WORDS.stopped;
     case 'Unanswerable':
       return SESSION_STATUS_WORDS.elsewhere;
-    case 'Running':
-      return SESSION_STATUS_WORDS.running;
+    case 'Running': {
+      const state = session.ownedWork?.state;
+      return state && state !== 'running'
+        ? OWNED_WORK_STATUS_WORDS[state]
+        : SESSION_STATUS_WORDS.running;
+    }
     case 'Draft':
       return SESSION_STATUS_WORDS.draft;
     case 'Completed':

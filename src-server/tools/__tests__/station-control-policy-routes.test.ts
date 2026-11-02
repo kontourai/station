@@ -172,6 +172,23 @@ const ARGS: Record<string, Record<string, unknown>> = {
     deviceSessionId: 'device-session',
     durationMs: 1000,
   },
+  device_install_app: {
+    deviceSessionId: 'device-session',
+    workspacePath: 'build/app.apk',
+  },
+  device_launch_app: {
+    deviceSessionId: 'device-session',
+    appId: 'com.example.app',
+  },
+  device_terminate_app: {
+    deviceSessionId: 'device-session',
+    appId: 'com.example.app',
+  },
+  device_open_url: {
+    deviceSessionId: 'device-session',
+    appId: 'com.example.app',
+    url: 'https://example.test/',
+  },
   device_snapshot: { deviceSessionId: 'device-session' },
   device_input: {
     deviceSessionId: 'device-session',
