@@ -2071,6 +2071,11 @@ matrix carries the same profile for clients that describe an engine before a
 Session exists. Legacy third-party adapter metadata may omit it; omission is
 unreported capability, never inferred support. Built-in adapter conformance
 rejects omitted cells.
+`readProviderDurabilityProfile(carrier)` is the shared optional-field reader for
+adapter metadata, Session projections, execution responses and matrix views.
+A missing adapter, metadata object or Session yields no declaration; the helper
+never derives support from an engine name. Wire decoders still validate unknown
+values before exposing a profile.
 
 The engine description's **Recovery and delivery** disclosure reads these cells.
 Current Session summaries and conversation-open execution carry the registered

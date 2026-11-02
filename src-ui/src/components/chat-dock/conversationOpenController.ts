@@ -2,6 +2,7 @@ import type {
   ConversationListItem,
   ConversationOpenResolution,
 } from '@kontourai/station-contracts/orchestration';
+import { readProviderDurabilityProfile } from '@kontourai/station-contracts/provider';
 import { EXECUTION_MODE } from '@kontourai/station-contracts/tool';
 import type { ChatUIState } from '../../contexts/active-chats-state';
 import type { workObservation } from '../../contexts/work-observation';
@@ -169,7 +170,7 @@ export function conversationOpenPatch(
             : undefined,
         provider: native ? nativeProvider : execution.provider,
         orchestrationProvider: execution.provider,
-        orchestrationDurability: execution.durability,
+        orchestrationDurability: readProviderDurabilityProfile(execution),
         executionMode:
           execution.provider === 'station-agent'
             ? EXECUTION_MODE.STATION

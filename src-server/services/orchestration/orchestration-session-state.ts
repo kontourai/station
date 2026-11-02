@@ -346,6 +346,8 @@ export function trackOrchestrationSession(options: {
   );
 }
 
+export class OrchestrationProviderSessionNotFoundError extends Error {}
+
 export async function resolveOrchestrationAdapterForThread(options: {
   threadId: string;
   threadProviders: Map<string, EngineId>;
@@ -389,7 +391,9 @@ export async function resolveOrchestrationAdapterForThread(options: {
     return materialized;
   }
 
-  throw new Error(`No provider session found for thread: ${options.threadId}`);
+  throw new OrchestrationProviderSessionNotFoundError(
+    `No provider session found for thread: ${options.threadId}`,
+  );
 }
 
 export function projectOrchestrationEventToReadModel(options: {

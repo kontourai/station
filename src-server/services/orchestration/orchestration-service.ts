@@ -90,6 +90,7 @@ import {
   PROVIDER_SESSION_STARTING_CODE,
   PROVIDER_TURN_IN_PROGRESS_CODE,
   readApprovalMode,
+  readProviderDurabilityProfile,
   SESSION_AGENT_DISPLAY_NAME_MAX_LENGTH,
   SESSION_AGENT_DISPLAY_NAME_METADATA_KEY,
   SESSION_AGENT_ICON_METADATA_KEY,
@@ -436,6 +437,7 @@ import {
   buildOrchestrationSessionSummary,
   deriveReadModelSession,
   extractPeerPendingRequestObservation,
+  OrchestrationProviderSessionNotFoundError,
   PEER_PENDING_REQUEST_METADATA_KEY,
   persistReadModelSession,
   type RecoveredSessionStartOptions,
@@ -3334,7 +3336,7 @@ export class OrchestrationService {
                     session.assignedAgentSlug,
                   ),
                   provider: session.provider,
-                  durability: session.durability,
+                  durability: readProviderDurabilityProfile(session),
                   ...(executionAgentId ? { executionAgentId } : {}),
                   ...(expectedDefinitionFingerprint
                     ? { expectedDefinitionFingerprint }
@@ -5388,9 +5390,11 @@ export class OrchestrationService {
   readonly durabilityProfileForProvider = (
     provider: string | undefined,
   ): ProviderDurabilityProfile | undefined =>
-    provider === undefined
-      ? undefined
-      : this.options.adapterRegistry.get(provider)?.metadata.durability;
+    readProviderDurabilityProfile(
+      provider === undefined
+        ? undefined
+        : this.options.adapterRegistry.get(provider)?.metadata,
+    );
 
   recordPostToolSteer(input: {
     threadId: string;
@@ -5436,13 +5440,14 @@ export class OrchestrationService {
   async steerFidelityForThread(
     threadId: string,
   ): Promise<'native' | 'emulated' | 'none'> {
-    const adapter = await resolveOrchestrationAdapterForThread({
-      threadId,
-      threadProviders: this.threadProviders,
-      requireAdapter: (provider) => this.requireAdapter(provider),
-      adapters: this.options.adapterRegistry.list(),
-    });
-    return adapter.metadata.durability?.steerPlacement.state ?? 'none';
+    const provider =
+      this.threadProviders.get(threadId) ??
+      this.sessionReadModel.get(threadId)?.provider ??
+      this.options.eventStore?.readSessionByThread(threadId)?.provider;
+    return (
+      this.durabilityProfileForProvider(provider)?.steerPlacement.state ??
+      'none'
+    );
   }
 
   async readSession(
@@ -10386,39 +10391,69 @@ export class OrchestrationService {
             return { receipt, result: storedSteer };
           }
 
-          // archive#3476: same as interrupt — no engine, therefore no live
-          // turn to steer. `no-active-turn` is the existing vocabulary for
-          // exactly this and is what the caller would have received anyway
-          // once a freshly-restarted engine reported no turn in flight.
-          if (this.isDormantSessionThread(command.threadId)) {
-            const result: SteerTurnResult = {
-              outcome: 'no-active-turn',
-              threadId: command.threadId,
-            };
+          const recordedSession =
+            this.sessionReadModel.get(command.threadId) ??
+            this.options.eventStore?.readSessionByThread(command.threadId);
+          const knownProvider =
+            this.threadProviders.get(command.threadId) ??
+            recordedSession?.provider;
+          const refuseSteer = (result: SteerTurnResult, engine: string) => {
             orchestrationSteerDispatches.add(1, {
               outcome: result.outcome,
-              engine:
-                this.sessionReadModel.get(command.threadId)?.provider ??
-                'unknown',
+              engine,
             });
             steerMetricRecorded = true;
             this.persistReceipt(receipt);
             return { receipt, result };
+          };
+          if (this.isDormantSessionThread(command.threadId))
+            return refuseSteer(
+              { outcome: 'no-active-turn', threadId: command.threadId },
+              knownProvider ?? 'unknown',
+            );
+          if (knownProvider && !this.options.adapterRegistry.get(knownProvider))
+            return refuseSteer(
+              {
+                outcome: 'unsupported-engine',
+                threadId: command.threadId,
+                engineId: knownProvider,
+                engineName: engineDisplayLabel(knownProvider) ?? 'Engine',
+              },
+              knownProvider,
+            );
+          let adapter: ProviderAdapterShape;
+          try {
+            adapter = await resolveOrchestrationAdapterForThread({
+              threadId: command.threadId,
+              threadProviders: this.threadProviders,
+              requireAdapter: (provider) => this.requireAdapter(provider),
+              adapters: this.options.adapterRegistry.list(),
+            });
+          } catch (error) {
+            if (
+              !(error instanceof OrchestrationProviderSessionNotFoundError) ||
+              recordedSession ||
+              this.materializingSessions.has(command.threadId)
+            )
+              throw error;
+            return refuseSteer(
+              { outcome: 'no-active-turn', threadId: command.threadId },
+              knownProvider ?? 'unknown',
+            );
           }
-          const adapter = await resolveOrchestrationAdapterForThread({
-            threadId: command.threadId,
-            threadProviders: this.threadProviders,
-            requireAdapter: (provider) => this.requireAdapter(provider),
-            adapters: this.options.adapterRegistry.list(),
-          });
           const matrix = ENGINE_CAPABILITY_MATRICES[adapter.provider];
-          const engineId = matrix?.engineId ?? engineIdForAdapter(adapter);
+          const engineId =
+            matrix?.engineId ??
+            (adapter.metadata ? engineIdForAdapter(adapter) : adapter.provider);
           steerMetricEngine = engineId;
           const engineName =
-            engineDisplayLabel(engineId) ?? adapter.metadata.displayName;
+            engineDisplayLabel(engineId) ??
+            adapter.metadata?.displayName ??
+            'Engine';
+          const durability = readProviderDurabilityProfile(adapter.metadata);
           if (
-            !adapter.metadata.durability ||
-            adapter.metadata.durability.steerPlacement.state === 'none' ||
+            !durability ||
+            durability.steerPlacement.state === 'none' ||
             !adapter.steerTurn
           ) {
             const result: SteerTurnResult = {
@@ -10427,13 +10462,7 @@ export class OrchestrationService {
               engineId,
               engineName,
             };
-            orchestrationSteerDispatches.add(1, {
-              outcome: result.outcome,
-              engine: engineId,
-            });
-            steerMetricRecorded = true;
-            this.persistReceipt(receipt);
-            return { receipt, result };
+            return refuseSteer(result, engineId);
           }
           // archive#3559: `activeTurnIdForEvents` folds via `nextActiveTurnId`,
           // which reads only `ACTIVE_TURN_FOLD_METHODS` and treats every

@@ -64,6 +64,13 @@ export interface ProviderDurabilityProfile {
   usage: DurabilityCapability;
 }
 
+/** Read a declared profile; an absent carrier remains unknown. */
+export function readProviderDurabilityProfile<T>(
+  source: { readonly durability?: T } | null | undefined,
+): T | undefined {
+  return source?.durability;
+}
+
 export const NATIVE_RESUME_IDENTITY_METADATA_KEY = 'nativeResumeIdentity';
 export const NATIVE_RESUME_BINDING_METADATA_KEY = 'nativeResumeBindingKey';
 export type NativeResumeIdentityStatus = 'matched' | 'mismatch';

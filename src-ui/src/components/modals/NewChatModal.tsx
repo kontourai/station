@@ -1,3 +1,4 @@
+import { readProviderDurabilityProfile } from '@kontourai/station-contracts/provider';
 import './TaskChatStart.css';
 import {
   ENGINE_CAPABILITY_MATRICES,
@@ -659,6 +660,7 @@ export function NewChatModal({
           forkConnection,
         )
     : undefined;
+  const forkDurability = readProviderDurabilityProfile(forkProfile);
   // Where a project with no folder would run with this Agent.
   const folderlessHint = resolveNewChatWorkspaceHint({
     agent: showStart ? draftAgent : flatList[selectedAgentIndex],
@@ -1613,9 +1615,9 @@ export function NewChatModal({
             <strong>New independent conversation.</strong> {mode.disclosure}{' '}
             {forkProfile && (
               <span>
-                {forkProfile.durability.fork.state === 'native'
+                {forkDurability?.fork.state === 'native'
                   ? 'Native engine fork declared'
-                  : forkProfile.durability.fork.state === 'emulated'
+                  : forkDurability?.fork.state === 'emulated'
                     ? 'Engine fork is emulated'
                     : 'Native engine fork unavailable'}
               </span>

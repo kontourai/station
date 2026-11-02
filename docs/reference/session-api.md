@@ -674,6 +674,9 @@ HTTP409 `inbox_stale_head` and `currentHead`, without a write.
   a running turn this settles the inbox entry `refused`, with reason code
   `unsupported-engine`, before any handoff; it does not block later follow-ups.
   Direct steer dispatch also returns the typed `unsupported-engine` outcome.
+  A missing registered adapter also refuses before effect. A confirmed missing
+  Session returns `no-active-turn`; a Session still materializing retains its
+  existing unavailable outcome rather than claiming no turn can arrive.
 - **Follow-up:** waits for the current turn's terminal, then starts the next
   turn through the conversation's recorded binding.
 - **Display:** appears immediately as a server inbox note and is never model

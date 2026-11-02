@@ -4950,6 +4950,8 @@ carry the current adapter's optional `durability` declaration; a missing field
 provides no steering authority. Conversation-open decoding accepts a complete
 adapter declaration, validates its capability states and placement/ownership
 fields, and rejects malformed declarations as `invalid-response`.
+Profile extraction uses the contracts' `readProviderDurabilityProfile` helper:
+absent carriers remain unknown, including legacy metadata without a declaration.
 Display notes have a separate 50-note capacity
 and seven-day retention, pruned on submission. See [inbox kinds and crash outcomes](session-api.md#submit-steer-follow-up-or-display-input).
 

@@ -41,6 +41,7 @@ import type {
   ProviderTurnStartResult,
 } from '../../../providers/adapter-shape.js';
 import { ClientTurnInputConflictError } from '../../../providers/adapter-shape.js';
+import type { IProviderAdapterRegistry } from '../../../providers/provider-interfaces.js';
 import { isForegroundIndeterminateShape } from '../../../routes/orchestration/orchestration.js';
 import { runWithAuthorizedTurnCorrelation } from '../../../runtime/conversation/authorized-turn-correlation.js';
 import { createInboxStepPreparation } from '../../../runtime/conversation/inbox-model-step.js';
@@ -133,6 +134,7 @@ class CountingAdapter extends GateTestAdapter {
 
 interface World {
   adapter: CountingAdapter;
+  registry: IProviderAdapterRegistry;
   store: EventStore;
   bus: EventBus;
   service: OrchestrationService;
@@ -161,12 +163,13 @@ function boot(
   });
   const bus = new EventBus();
   const adapter = suppliedAdapter ?? new CountingAdapter();
+  const registry: IProviderAdapterRegistry = {
+    register() {},
+    get: (provider) => (provider === adapter.provider ? adapter : undefined),
+    list: () => [adapter],
+  };
   const service = new OrchestrationService({
-    adapterRegistry: {
-      register() {},
-      get: (provider) => (provider === adapter.provider ? adapter : undefined),
-      list: () => [adapter],
-    },
+    adapterRegistry: registry,
     eventBus: bus,
     eventStore: store,
     logger: { debug: vi.fn(), warn: vi.fn() },
@@ -236,7 +239,15 @@ function boot(
     ...ports,
   });
   inbox.start();
-  const world: World = { adapter, store, bus, service, inbox, afterStart };
+  const world: World = {
+    adapter,
+    registry,
+    store,
+    bus,
+    service,
+    inbox,
+    afterStart,
+  };
   open.push(world);
   return world;
 }
@@ -407,24 +418,69 @@ afterEach(async () => {
 describe('thread inbox (#3568)', () => {
   const path = () => join(makeTempDir('thread-inbox-'), 'orchestration.sqlite');
 
-  test.each(['none', 'missing'] as const)(
+  test.each(['none', 'missing', 'missing-metadata'] as const)(
     'steer dispatch refuses %s steering declaration even for a native-named provider',
     async (declaration) => {
       const world = boot(path());
       await runningFirstTurn(world);
-      world.adapter.metadata.durability =
-        declaration === 'missing' ? undefined : EXTERNAL_ENGINE_DURABILITY;
-      const result = await world.service.dispatchWithReceipt({
-        type: 'steerTurn',
-        threadId: THREAD,
-        turnId: 'turn-1',
-        input: 'must not steer',
-        clientInputId: 'profile-none',
-      });
-      expect(result.result).toMatchObject({ outcome: 'unsupported-engine' });
-      expect(world.adapter.steers).toEqual([]);
+      const metadata = world.adapter.metadata;
+      if (declaration === 'missing-metadata')
+        Reflect.deleteProperty(world.adapter, 'metadata');
+      else
+        metadata.durability =
+          declaration === 'missing' ? undefined : EXTERNAL_ENGINE_DURABILITY;
+      try {
+        const result = await world.service.dispatchWithReceipt({
+          type: 'steerTurn',
+          threadId: THREAD,
+          turnId: 'turn-1',
+          input: 'must not steer',
+          clientInputId: 'profile-none',
+        });
+        expect(result.result).toMatchObject({ outcome: 'unsupported-engine' });
+        expect(world.adapter.steers).toEqual([]);
+      } finally {
+        Reflect.set(world.adapter, 'metadata', metadata);
+      }
     },
   );
+
+  test('an absent adapter or Session remains unknown and refuses steering before effect', async () => {
+    const world = boot(path());
+    expect(
+      world.service.durabilityProfileForProvider('missing-engine'),
+    ).toBeUndefined();
+    expect(await world.service.steerFidelityForThread('missing-session')).toBe(
+      'none',
+    );
+    const result = await world.service.dispatchWithReceipt({
+      type: 'steerTurn',
+      threadId: 'missing-session',
+      input: 'must not steer',
+    });
+    expect(result.result).toEqual({
+      outcome: 'no-active-turn',
+      threadId: 'missing-session',
+    });
+    expect(world.adapter.steers).toEqual([]);
+  });
+
+  test('a removed adapter refuses steering a recorded live Session without replay or a crash', async () => {
+    const world = boot(path());
+    await runningFirstTurn(world);
+    vi.spyOn(world.registry, 'get').mockReturnValue(undefined);
+    expect(
+      world.service.durabilityProfileForProvider('claude'),
+    ).toBeUndefined();
+    const result = await world.service.dispatchWithReceipt({
+      type: 'steerTurn',
+      threadId: THREAD,
+      turnId: 'turn-1',
+      input: 'must not steer',
+    });
+    expect(result.result).toMatchObject({ outcome: 'unsupported-engine' });
+    expect(world.adapter.steers).toEqual([]);
+  });
 
   test('a missing adapter profile refuses a durable steer without blocking later follow-ups', async () => {
     let world: World;

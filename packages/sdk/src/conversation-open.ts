@@ -4,6 +4,7 @@ import {
   agentId as validateAgentId,
 } from '@kontourai/station-contracts/agent-identity';
 import type { ConversationOpenResolution } from '@kontourai/station-contracts/orchestration';
+import { readProviderDurabilityProfile } from '@kontourai/station-contracts/provider';
 import { authenticatedFetch, type ClientRequestOptions } from './client/http';
 import { StationRequestTimeoutError } from './client/request-deadline';
 import { resolveApiBase } from './query-core';
@@ -213,6 +214,7 @@ function validExecution(
     )
       return false;
   }
+  const durability = readProviderDurabilityProfile<unknown>(execution);
   const boundedText = (text: unknown) =>
     typeof text === 'string' &&
     text.length > 0 &&
@@ -235,8 +237,7 @@ function validExecution(
     execution.sessionId === sessionId &&
     execution.agentId === agentId &&
     parseEngineId(execution.provider) !== undefined &&
-    (execution.durability === undefined ||
-      validDurabilityProfile(execution.durability)) &&
+    (durability === undefined || validDurabilityProfile(durability)) &&
     (execution.expectedDefinitionFingerprint === undefined ||
       (typeof execution.expectedDefinitionFingerprint === 'string' &&
         /^sha256:[a-f0-9]{64}$/.test(
