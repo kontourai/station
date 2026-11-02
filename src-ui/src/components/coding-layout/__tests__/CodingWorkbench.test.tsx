@@ -1837,6 +1837,42 @@ describe('CodingWorkbench — design audit round: the flyout, Escape, the way ba
     expect(window.document.activeElement).toBe(trigger);
   });
 
+  test('the visible Browser action and shortcut open a Project-bound pane', () => {
+    const open = vi.fn(
+      (_instance: WorkspacePaneInstance) => WORKSPACE_PANE_OPENED,
+    );
+    render(
+      <NavigationProvider>
+        <CodingWorkbench
+          stackName="Coding"
+          drillInOrder={BUILTIN_CODING_DRILL_INS}
+          projectId="project-uuid"
+          projectSlug="demo"
+          centerChat
+          wide
+          location={{ page: 'chat', paneId: null }}
+          scope={scope}
+          instances={instances}
+          hostDocument={() => document}
+          paneLabel={label}
+          hostOpen={{ open }}
+          onOpenCatalog={vi.fn()}
+          browserPreviewAvailability={{
+            state: 'available',
+            reason: { code: 'ready', source: 'resolver' },
+          }}
+        >
+          <div />
+        </CodingWorkbench>
+      </NavigationProvider>,
+    );
+    fireEvent.click(screen.getByRole('button', { name: /^Open Browser$/ }));
+    expect(open).toHaveBeenCalledOnce();
+    expect(open.mock.calls[0]![0].boundContext?.projectId).toBe('project-uuid');
+    act(() => harness.shortcuts.get('browser.open')?.handler());
+    expect(open).toHaveBeenCalledTimes(2);
+  });
+
   test('a File Preview beside Chat offers the way back to Files in its head; other panels do not (U5)', async () => {
     const preview = createFilePreviewPaneInstance(
       { version: '1.0', projectSlug: 'demo', path: 'src/app.ts', wrap: true },

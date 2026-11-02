@@ -1,12 +1,15 @@
 import {
+  LIVE_SURFACE_AGENT_ACTION_LIMIT,
   LIVE_SURFACE_RECORD_MAX_BODY_BYTES,
   LIVE_SURFACE_STREAM_PARAM_BOUNDS,
+  type LiveSurfaceAgentAction,
   type LiveSurfaceFrameHeader,
   type LiveSurfaceProducerStatus,
   type LiveSurfaceRecord,
   type LiveSurfaceStreamParams,
   type LiveSurfaceStreamState,
   type LiveSurfaceViewerIdentity,
+  parseLiveSurfaceAgentActions,
   parseLiveSurfaceFrameHeader,
 } from '@kontourai/station-contracts/live-surface';
 import type { LiveSurfaceLeaseReader } from './control-lease.js';
@@ -105,6 +108,7 @@ class HubViewer implements LiveSurfaceViewer {
     readonly hub: LiveSurfaceHub,
     readonly requested: LiveSurfaceStreamParams,
     readonly identity: LiveSurfaceViewerIdentity | undefined,
+    readonly agentActions: (() => boolean) | undefined,
   ) {}
 
   notify(): void {
@@ -145,7 +149,10 @@ class HubViewer implements LiveSurfaceViewer {
     if (this.statePending) {
       this.statePending = false;
       this.busy = true;
-      return { kind: 'state', state: this.hub.state(this.identity) };
+      return {
+        kind: 'state',
+        state: this.hub.state(this.identity, this.agentActions),
+      };
     }
     const frame = this.slot;
     if (!frame) return null;
@@ -178,6 +185,8 @@ class HubViewer implements LiveSurfaceViewer {
 export class LiveSurfaceHub {
   readonly heartbeatMs: number;
   private readonly viewers = new Set<HubViewer>();
+  private readonly agentActions: LiveSurfaceAgentAction[] = [];
+  private agentActionSequence = 0;
   private readonly now: () => number;
   private readonly downgradeAfter: number;
   private readonly recoverAfterMs: number;
@@ -236,12 +245,14 @@ export class LiveSurfaceHub {
   attach(
     requested: LiveSurfaceStreamParams,
     identity?: LiveSurfaceViewerIdentity,
+    options?: { agentActions?: () => boolean },
   ): LiveSurfaceViewer {
     if (this.disposed) throw new Error('live surface hub is disposed');
     const viewer = new HubViewer(
       this,
       { ...requested },
       identity ? { ...identity } : undefined,
+      options?.agentActions,
     );
     if (this.running && this.lastPublished) viewer.slot = this.lastPublished;
     this.viewers.add(viewer);
@@ -303,8 +314,15 @@ export class LiveSurfaceHub {
     };
   }
 
-  state(viewer?: LiveSurfaceViewerIdentity): LiveSurfaceStreamState {
+  state(
+    viewer?: LiveSurfaceViewerIdentity,
+    agentActions?: () => boolean,
+  ): LiveSurfaceStreamState {
     const health = this.inputHealth();
+    let includeActions = false;
+    try {
+      includeActions = agentActions?.() === true;
+    } catch {}
     return {
       surfaceId: this.surfaceId,
       lease: this.lease.snapshot(),
@@ -313,7 +331,42 @@ export class LiveSurfaceHub {
       wedged: health.wedged,
       wedgedSince: health.wedgedSince,
       ...this.producerStatus(),
+      ...(includeActions
+        ? {
+            agentActions: {
+              now: Math.floor(this.now()),
+              events: structuredClone(this.agentActions),
+            },
+          }
+        : {}),
     };
+  }
+
+  /** Publish bounded geometry only; no page text or credentials enter the stream. */
+  publishAgentAction(
+    action: Omit<LiveSurfaceAgentAction, 'seq' | 'at'>,
+  ): boolean {
+    const at = Math.floor(this.now());
+    const parsed = parseLiveSurfaceAgentActions({
+      now: at,
+      events: [{ ...action, seq: this.agentActionSequence + 1, at }],
+    });
+    if (!parsed?.events[0]) return false;
+    this.agentActionSequence += 1;
+    this.agentActions.push(parsed.events[0]);
+    if (this.agentActions.length > LIVE_SURFACE_AGENT_ACTION_LIMIT)
+      this.agentActions.shift();
+    for (const viewer of this.viewers) {
+      let interested = false;
+      try {
+        interested = viewer.agentActions?.() === true;
+      } catch {}
+      if (interested) {
+        viewer.statePending = true;
+        viewer.notify();
+      }
+    }
+    return true;
   }
 
   /**

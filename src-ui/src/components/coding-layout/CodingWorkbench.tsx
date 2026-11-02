@@ -39,6 +39,7 @@ import {
   useDeviceSettingsActions,
 } from '../../contexts/DeviceSettingsContext';
 import {
+  getShortcutContext,
   type ShortcutWhen,
   useKeyboardShortcuts,
 } from '../../contexts/KeyboardShortcutsContext';
@@ -51,6 +52,7 @@ import { useMenuFocus } from '../../hooks/useMenuFocus';
 import { useMobileVisualViewport } from '../../hooks/useMobileVisualViewport';
 import { NO_SESSION_PANELS_KEY } from '../../lib/layout-panels-record';
 import { BrowserPreviewPaneLauncher } from '../../workspace-panes/BrowserPreviewPaneLauncher';
+import { createEmptyBrowserPreviewPaneInstance } from '../../workspace-panes/browserPreviewPaneInstance';
 import { useCodingChatPositionEffects } from '../../workspace-panes/CodingChatPane';
 import { clearOpenFilePreviewIntent } from '../../workspace-panes/openFilePreviewIntent';
 import { PaneHeadSlotsContext } from '../../workspace-panes/PaneHeadSlots';
@@ -61,6 +63,7 @@ import type {
 } from '../../workspace-panes/WorkspacePaneHostCommands';
 import type { WorkspacePaneHostOpenAction } from '../../workspace-panes/WorkspacePaneHostOpenContext';
 import { workspacePaneHostScopeKey } from '../../workspace-panes/workspacePaneHostNavigation';
+import { describeWorkspacePaneOpenRefusal } from '../../workspace-panes/workspacePaneHostOpenOutcome';
 import { workspacePaneHostGroupContaining } from '../../workspace-panes/workspacePaneHostReducerTree';
 import { ActionOverflowMenu, type OverflowAction } from '../ActionOverflowMenu';
 import { Button } from '../Button';
@@ -127,6 +130,7 @@ function focusInKeyOwningEditor(): boolean {
 }
 
 const STACK_CHORD_WHEN: ShortcutWhen = { not: 'terminalFocused' };
+const STACK_HISTORY_WHEN: ShortcutWhen = { not: 'browserFocused' };
 const USER_MOVE_WINDOW_MS = 1000;
 /** A separator press that moves less than this is a click, not a resize. */
 const DRAG_THRESHOLD_PX = 2;
@@ -331,6 +335,44 @@ export function CodingWorkbench({
   const [toolPicker, setToolPicker] = useState<{
     paneId: string | null;
   } | null>(null);
+  const [browserNotice, setBrowserNotice] = useState<string | null>(null);
+  const openBrowser = () => {
+    if (!hostOpen || browserPreviewAvailability?.state !== 'available')
+      return false;
+    const existing = instances.find(
+      (item) =>
+        item.descriptorId === WORKSPACE_BROWSER_PREVIEW_PANE_DESCRIPTOR_ID,
+    );
+    if (existing) {
+      if (hostOpen.focusExisting?.(existing.instanceId)) {
+        setBrowserNotice(null);
+        return true;
+      }
+      setBrowserNotice('This Browser pane is no longer available.');
+      return false;
+    }
+    const instance = createEmptyBrowserPreviewPaneInstance(projectId);
+    if (!instance) {
+      setBrowserNotice('Station could not open the Browser pane.');
+      return false;
+    }
+    const outcome = hostOpen.open(instance);
+    setBrowserNotice(
+      outcome.ok ? null : describeWorkspacePaneOpenRefusal(outcome.reason),
+    );
+    return outcome.ok;
+  };
+  useKeyboardShortcut(
+    'browser.open',
+    'j',
+    ['cmd', 'shift'],
+    'Open or focus Browser',
+    openBrowser,
+    !!browserPreviewAvailability,
+    0,
+    undefined,
+    !hostOpen || browserPreviewAvailability?.state !== 'available',
+  );
   const toolPickerOpen =
     isMobile && toolPicker !== null && toolPicker.paneId === paneId;
   const setToolPickerOpen = (open: boolean) =>
@@ -484,11 +526,17 @@ export function CodingWorkbench({
   }, []);
   // The chords stand down only inside an editor that owns the keys.
   const backChord = useCallback(
-    () => (focusInKeyOwningEditor() ? false : goBack()),
+    () =>
+      getShortcutContext('terminalFocused') || focusInKeyOwningEditor()
+        ? false
+        : goBack(),
     [goBack],
   );
   const forwardChord = useCallback(
-    () => (focusInKeyOwningEditor() ? false : goForward()),
+    () =>
+      getShortcutContext('terminalFocused') || focusInKeyOwningEditor()
+        ? false
+        : goForward(),
     [goForward],
   );
   useKeyboardShortcut(
@@ -499,7 +547,7 @@ export function CodingWorkbench({
     backChord,
     true,
     0,
-    STACK_CHORD_WHEN,
+    STACK_HISTORY_WHEN,
   );
   useKeyboardShortcut(
     'codingStack.forward',
@@ -509,7 +557,7 @@ export function CodingWorkbench({
     forwardChord,
     true,
     0,
-    STACK_CHORD_WHEN,
+    STACK_HISTORY_WHEN,
   );
   // ── Escape is the layout's own "up": it closes the panel the reader is
   // in (wide) or returns a drill-in to the conversation, and with nothing
@@ -1313,6 +1361,18 @@ export function CodingWorkbench({
               ref={setBarTrailing}
             />
           ) : null}
+          {browserPreviewAvailability ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled={
+                !hostOpen || browserPreviewAvailability.state !== 'available'
+              }
+              onClick={() => openBrowser()}
+            >
+              Open Browser
+            </Button>
+          ) : null}
           {page === 'drill-in' ? paneMenu : null}
         </div>
         <p className="coding-workbench__announcement" aria-live="polite">
@@ -1320,6 +1380,11 @@ export function CodingWorkbench({
         </p>
         {notice ? (
           <div className="coding-workbench__state">{notice}</div>
+        ) : null}
+        {browserNotice ? (
+          <p className="coding-workbench__notice" role="status">
+            {browserNotice}
+          </p>
         ) : null}
         {persistenceProblem ? (
           <p className="coding-workbench__notice" role="status">

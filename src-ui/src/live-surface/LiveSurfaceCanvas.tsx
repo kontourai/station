@@ -22,6 +22,7 @@ import {
 } from 'react';
 import { Button } from '../components/Button';
 import { useConstrainedNetwork } from '../platform/networkCost';
+import { AgentActionOverlay } from './AgentActionOverlay';
 import { mapClientPointToSurface } from './liveSurfaceGeometry';
 import {
   liveSurfaceStreamBudget,
@@ -120,6 +121,9 @@ export interface LiveSurfaceCanvasProps {
    * anyone meaning to drive it.
    */
   inputRequiresLease?: boolean;
+  /** This viewer may watch but must not send input. */
+  readOnly?: boolean;
+  agentActionsEnabled?: boolean;
 }
 
 /** What `renderOverlay` receives. */
@@ -370,16 +374,18 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
     transport: props.transport,
     now,
     ...(props.projectSlug ? { projectSlug: props.projectSlug } : {}),
+    agentActionsEnabled: props.agentActionsEnabled === true,
   });
   const { sendInput } = surface;
   const surfaceRef = useRef(surface);
   surfaceRef.current = surface;
   const inputChannel = surface.producerStatus.inputChannel;
   const inputReady =
+    !props.readOnly &&
     surface.status === 'live' &&
     !surface.wedged &&
     (inputChannel === undefined || inputChannel === 'connected');
-  const canInteract = inputReady && frameSize !== null;
+  const canInteract = inputReady && frameSize !== null && !props.readOnly;
 
   const holding = holdsControl(surface);
   /** A claiming interaction may be sent: always, unless the host requires the lease first. */
@@ -396,7 +402,7 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
   const fitting = props.fit !== undefined;
   useLayoutEffect(() => {
     const stage = stageRef.current;
-    if (!fitting || !stage) return;
+    if ((!fitting && !props.agentActionsEnabled) || !stage) return;
     const measure = () => {
       const rect = stage.getBoundingClientRect();
       setStageBox((previous) =>
@@ -410,7 +416,7 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
     const observer = new ResizeObserver(measure);
     observer.observe(stage);
     return () => observer.disconnect();
-  }, [fitting]);
+  }, [fitting, props.agentActionsEnabled]);
   let fitStyle: CSSProperties | undefined;
   if (props.fit && stageBox) {
     const aspect = frameSize
@@ -425,6 +431,10 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
         : {}),
     };
   }
+  const actionBox =
+    stageBox && frameSize
+      ? largestBoxAtAspect(stageBox, frameSize.width / frameSize.height)
+      : null;
 
   // A once-a-second clock for the honest age line, only while it can matter.
   const [clock, setClock] = useState(() => now());
@@ -772,6 +782,7 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
           )}
           <div className="live-surface__actions">
             {!props.hostControls &&
+            !props.readOnly &&
             controller.tone !== 'you' &&
             surface.status === 'live' ? (
               <Button
@@ -850,6 +861,7 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
         />
         <textarea
           ref={keyboardRef}
+          data-live-surface-keyboard=""
           className="live-surface__keyboard"
           aria-label={`Keyboard input for ${label}`}
           autoCapitalize="off"
@@ -881,6 +893,23 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
               rotation: frameRotation,
               visible: surface.status === 'live',
             })}
+          </div>
+        ) : null}
+        {props.agentActionsEnabled && surface.agentAction && actionBox ? (
+          <div
+            className="live-surface__overlay"
+            data-testid="agent-action-overlay"
+            style={{
+              width: `${actionBox.width}px`,
+              height: `${actionBox.height}px`,
+            }}
+          >
+            <AgentActionOverlay
+              key={`${props.surfaceId}:${surface.agentAction.action.seq}`}
+              action={surface.agentAction.action}
+              expiresAt={surface.agentAction.expiresAt}
+              now={now}
+            />
           </div>
         ) : null}
         {statusText ? (

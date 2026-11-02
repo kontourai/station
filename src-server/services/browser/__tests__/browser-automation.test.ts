@@ -281,6 +281,7 @@ async function harness(
     sessions,
     surfaces,
     surfaceIdFor: (id) => binder.surfaceIdFor(id),
+    agentActionsEnabled: () => true,
     dialogWaitingForPerson: (id) => binder.pendingDialogFor(id) !== undefined,
     settings,
     locatorEngine: async () => undefined,
@@ -323,6 +324,39 @@ const kindsOf = (
     .map((e) => e.kind);
 
 describe('BrowserAutomation: a session id is only a selector', () => {
+  test('a successful agent click publishes target geometry on its live surface', async () => {
+    const h = await harness();
+    scriptButton(h.fake);
+    const session = await h.open();
+    const entry = h.entryOf(session.browserSessionId);
+    const viewer = entry.hub.attach(
+      { maxFps: 10, quality: 70, maxWidth: 800, maxHeight: 600 },
+      undefined,
+      { agentActions: () => true },
+    );
+    try {
+      await viewer.next();
+      expect(
+        await h.automation.click(
+          await authorityFor(),
+          session.browserSessionId,
+          { x: 100, y: 50 },
+        ),
+      ).toMatchObject({ ok: true });
+      const record = await viewer.next();
+      expect(record?.kind).toBe('state');
+      if (record?.kind !== 'state') throw new Error('expected state');
+      expect(record.state.agentActions?.events.at(-1)).toMatchObject({
+        kind: 'click',
+        generation: session.generation,
+        point: { x: 100, y: 50 },
+      });
+    } finally {
+      viewer.close();
+      await h.binder.dispose();
+      await h.sessions.shutdown();
+    }
+  });
   test("another Project's session and another profile's session are both session-not-found", async () => {
     const h = await harness();
     const betaSession = await h.open({ kind: 'operator' }, 'beta');

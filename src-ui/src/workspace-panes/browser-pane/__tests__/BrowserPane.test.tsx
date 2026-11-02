@@ -6,6 +6,7 @@ import type {
 } from '@kontourai/station-contracts/workspace-browser-pane';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -13,24 +14,63 @@ import {
   waitFor,
   within,
 } from '@testing-library/react';
-import { type ReactNode, useState } from 'react';
+import { type ReactNode, useEffect, useState } from 'react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 
 vi.mock('../../../contexts/ApiBaseContext', () => ({
   useApiBase: () => ({ apiBase: 'http://station.test' }),
+  useHostRequestAuthorityScope: () => ({
+    apiBase: 'http://station.test',
+    authorityKey: 'fixture',
+    isCurrent: () => true,
+  }),
+}));
+vi.mock('../../../hooks/useSurfaceVisibilityFlags', () => ({
+  useSurfaceVisibilityFlags: () => new Set(['browser-experience']),
+}));
+const canvasState = vi.hoisted(() => ({
+  report: undefined as
+    | ((
+        state: import('../../../live-surface/LiveSurfaceCanvas').LiveSurfaceControlState,
+      ) => void)
+    | undefined,
 }));
 // The live view is its own tested component; here it only has to be mounted
 // on the right surface.
 vi.mock('../../../live-surface/LiveSurfaceCanvas', () => ({
-  LiveSurfaceCanvas: (props: { surfaceId: string; label: string }) => (
-    <div data-testid="live-canvas" data-surface={props.surfaceId}>
-      {props.label}
-    </div>
-  ),
+  LiveSurfaceCanvas: (props: {
+    surfaceId: string;
+    label: string;
+    readOnly?: boolean;
+    onControlState?: (
+      state: import('../../../live-surface/LiveSurfaceCanvas').LiveSurfaceControlState,
+    ) => void;
+  }) => {
+    useEffect(() => {
+      canvasState.report = props.onControlState;
+    }, [props.onControlState]);
+    return (
+      <div
+        data-testid="live-canvas"
+        data-surface={props.surfaceId}
+        data-read-only={props.readOnly}
+      >
+        {props.label}
+      </div>
+    );
+  },
 }));
 
+import { activeChatsStore } from '../../../contexts/active-chats-store';
+import { KeyboardShortcutsProvider } from '../../../contexts/KeyboardShortcutsContext';
+import { navigationStore } from '../../../contexts/navigation-store';
 import { browserFloatSourceKey } from '../../../float-over-chat/floatSource';
+import {
+  registerFloatHost,
+  takeFloatRequest,
+} from '../../../float-over-chat/floatStore';
 import { isSourceShown } from '../../../float-over-chat/shownSources';
+import { registerConversationFileReceiver } from '../../../lib/conversation-file-intake';
 import BrowserPane, { type BrowserPaneTarget } from '../BrowserPane';
 
 const SESSION = 'bs_0f8f7c1e-9a41-4f2b-9d4a-2b8b1c0e5a77';
@@ -58,10 +98,12 @@ function sessionView(
   };
 }
 
-type Route = (init: RequestInit & { url: string }) => {
-  status?: number;
-  body: unknown;
-};
+type Route = (init: RequestInit & { url: string }) =>
+  | Response
+  | {
+      status?: number;
+      body: unknown;
+    };
 
 /** A fake Station: routes are `METHOD path` → response. */
 function fakeStation(routes: Record<string, Route>) {
@@ -78,10 +120,12 @@ function fakeStation(routes: Record<string, Route>) {
       return new Response(JSON.stringify({ success: false, code: 'nope' }), {
         status: 599,
       });
-    const { status = 200, body: payload } = route({
+    const answer = route({
       ...init,
       url: String(input),
     });
+    if (answer instanceof Response) return answer;
+    const { status = 200, body: payload } = answer;
     return new Response(JSON.stringify(payload), { status });
   });
   return { transport, calls };
@@ -105,6 +149,7 @@ const OPERATOR_ACCESS = ok({
   role: 'operator',
   operator: true,
   browser: 'ready',
+  experiencePreviewEnabled: true,
 });
 const ADMIN_ACCESS = ok({
   projectId: 'p-alpha',
@@ -123,7 +168,9 @@ function renderPane(
     defaultOptions: { queries: { retry: false } },
   });
   const wrap = (node: ReactNode) => (
-    <QueryClientProvider client={client}>{node}</QueryClientProvider>
+    <KeyboardShortcutsProvider>
+      <QueryClientProvider client={client}>{node}</QueryClientProvider>
+    </KeyboardShortcutsProvider>
   );
   render(
     wrap(
@@ -140,6 +187,7 @@ function renderPane(
 
 afterEach(() => {
   cleanup();
+  canvasState.report = undefined;
   vi.useRealTimers();
 });
 
@@ -160,6 +208,306 @@ async function chooseFromMenu(
 }
 
 describe('BrowserPane honest states', () => {
+  test('the driver chip loads the latest twenty session actions', async () => {
+    const entries = Array.from({ length: 25 }, (_, i) => ({
+      seq: i + 1,
+      at: '2026-09-22T12:00:00.000Z',
+      kind: 'clicked',
+      actor: { kind: 'agent' as const, sessionId: 'agent-1' },
+      detail: `target ${i + 1}`,
+    }));
+    renderPane({
+      'GET /api/browser/projects/alpha/access': OPERATOR_ACCESS,
+      [`GET /api/browser/sessions/${SESSION}?view=summary`]: ok(sessionView()),
+      [`GET /api/browser/sessions/${SESSION}`]: ok(
+        sessionView({ history: { entries, total: entries.length } }),
+      ),
+    });
+    await screen.findByTestId('live-canvas');
+    act(() =>
+      canvasState.report?.({
+        status: 'live',
+        tone: 'you',
+        claimControl: async () => {},
+        releaseControl: async () => {},
+        keepControlAlive: async () => {},
+      }),
+    );
+    fireEvent.click(screen.getByRole('button', { name: /Control options/ }));
+    const actions = await screen.findByRole('region', {
+      name: 'Recent actions',
+    });
+    await waitFor(() =>
+      expect(within(actions).getAllByRole('listitem')).toHaveLength(20),
+    );
+    expect(within(actions).getByText(/target 25/)).toBeTruthy();
+    expect(within(actions).queryByText(/target 1\)/)).toBeNull();
+  });
+
+  test('a person can float the session and return it to the pane', async () => {
+    const release = registerFloatHost();
+    try {
+      renderPane({
+        'GET /api/browser/projects/alpha/access': OPERATOR_ACCESS,
+        [`GET /api/browser/sessions/${SESSION}?view=summary`]: ok(
+          sessionView(),
+        ),
+      });
+      await screen.findByTestId('live-canvas');
+      fireEvent.click(screen.getByRole('button', { name: 'Float over chat' }));
+      const request = takeFloatRequest();
+      expect(request?.source).toMatchObject({
+        kind: 'browser',
+        browserSessionId: SESSION,
+      });
+      act(() => request?.onTaken?.());
+      await waitFor(() =>
+        expect(isSourceShown(browserFloatSourceKey(SESSION))).toBe(false),
+      );
+      fireEvent.click(screen.getByRole('button', { name: 'Return to pane' }));
+      await waitFor(() =>
+        expect(isSourceShown(browserFloatSourceKey(SESSION))).toBe(true),
+      );
+    } finally {
+      release();
+    }
+  });
+
+  test('screenshot shortcut hands the image to the active Project chat', async () => {
+    const received = vi.fn(async (files: File[]) => ({
+      added: files.length,
+      errors: [],
+    }));
+    activeChatsStore.initChat('browser-capture-chat', {
+      projectSlug: 'alpha',
+      agentSlug: 'test',
+      agentName: 'Test',
+      title: 'Browser capture',
+    });
+    navigationStore.setActiveChat('browser-capture-chat');
+    const release = registerConversationFileReceiver({
+      apiBase: 'http://station.test',
+      sessionId: 'browser-capture-chat',
+      receive: received,
+    });
+    try {
+      renderPane({
+        'GET /api/browser/projects/alpha/access': OPERATOR_ACCESS,
+        [`GET /api/browser/sessions/${SESSION}?view=summary`]: ok(
+          sessionView(),
+        ),
+        [`GET /api/browser/sessions/${SESSION}/screenshot`]: () =>
+          new Response(new Blob(['png'], { type: 'image/png' }), {
+            headers: { 'content-type': 'image/png' },
+          }),
+      });
+      await screen.findByTestId('live-canvas');
+      const reload = screen.getByRole('button', { name: 'Reload' });
+      act(() => reload.focus());
+      fireEvent.keyDown(reload, {
+        key: 's',
+        ctrlKey: true,
+        shiftKey: true,
+        bubbles: true,
+      });
+      fireEvent.keyDown(reload, {
+        key: 's',
+        metaKey: true,
+        shiftKey: true,
+        bubbles: true,
+      });
+      await waitFor(() => expect(received).toHaveBeenCalledOnce());
+      expect(received.mock.calls[0]![0][0]).toMatchObject({
+        name: 'browser-screenshot.png',
+        type: 'image/png',
+      });
+    } finally {
+      release();
+      activeChatsStore.removeChat('browser-capture-chat');
+      navigationStore.setActiveChat(null);
+    }
+  });
+  test('zoom shortcut and appearance menu act on the selected session generation', async () => {
+    const session = sessionView();
+    const { calls } = renderPane({
+      'GET /api/browser/projects/alpha/access': OPERATOR_ACCESS,
+      [`GET /api/browser/sessions/${SESSION}?view=summary`]: ok(session),
+      [`POST /api/browser/sessions/${SESSION}/zoom`]: ok({
+        ...session,
+        zoomFactor: 1.1,
+      }),
+      [`POST /api/browser/sessions/${SESSION}/appearance`]: ok({
+        ...session,
+        zoomFactor: 1.1,
+        colorScheme: 'dark',
+      }),
+    });
+    await screen.findByTestId('live-canvas');
+    const reload = screen.getByRole('button', { name: 'Reload' });
+    act(() => reload.focus());
+    fireEvent.keyDown(reload, { key: '=', ctrlKey: true, bubbles: true });
+    fireEvent.keyDown(reload, { key: '=', metaKey: true, bubbles: true });
+    await waitFor(() =>
+      expect(calls.find((call) => call.path.endsWith('/zoom'))?.body).toEqual({
+        factor: 1.1,
+        generation: 1,
+      }),
+    );
+    expect(await screen.findByLabelText('Page zoom 110%')).toBeTruthy();
+    await chooseFromMenu('Appearance: system');
+    fireEvent.click(await screen.findByRole('menuitemradio', { name: 'Dark' }));
+    await waitFor(() =>
+      expect(
+        calls.find((call) => call.path.endsWith('/appearance'))?.body,
+      ).toEqual({ scheme: 'dark', generation: 1 }),
+    );
+  });
+  test('view-only access mounts a non-interactive live surface', async () => {
+    renderPane({
+      'GET /api/browser/projects/alpha/access': ok({
+        projectId: 'p-alpha',
+        role: 'operator',
+        operator: false,
+        canDrive: false,
+        browser: 'ready',
+      }),
+      [`GET /api/browser/sessions/${SESSION}?view=summary`]: ok(sessionView()),
+    });
+    expect((await screen.findByTestId('live-canvas')).dataset.readOnly).toBe(
+      'true',
+    );
+    expect(screen.getByRole('button', { name: 'Reload' })).toHaveProperty(
+      'disabled',
+      true,
+    );
+    expect(screen.getByText('View only')).toBeTruthy();
+  });
+  test('view-only access lists sessions without offering a new page', async () => {
+    renderPane(
+      {
+        'GET /api/browser/projects/alpha/access': ok({
+          projectId: 'p-alpha',
+          role: 'operator',
+          operator: false,
+          canDrive: false,
+          browser: 'ready',
+        }),
+        'GET /api/browser/sessions?projectSlug=alpha': ok([]),
+      },
+      { kind: 'new' },
+    );
+    expect(await screen.findByText(/view only/i)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Open' })).toBeNull();
+    expect(await screen.findByText('Nothing open yet')).toBeTruthy();
+  });
+  test('address shortcut runs through the registry while Browser chrome has focus', async () => {
+    renderPane({
+      'GET /api/browser/projects/alpha/access': OPERATOR_ACCESS,
+      [`GET /api/browser/sessions/${SESSION}?view=summary`]: ok(sessionView()),
+    });
+    await screen.findByTestId('live-canvas');
+    const reload = screen.getByRole('button', { name: 'Reload' });
+    act(() => reload.focus());
+    fireEvent.keyDown(reload, { key: 'l', ctrlKey: true, bubbles: true });
+    fireEvent.keyDown(reload, { key: 'l', metaKey: true, bubbles: true });
+    expect(document.activeElement).toBe(screen.getByLabelText('Address'));
+  });
+  test('new-tab shortcut opens a Browser tab through the registry', async () => {
+    const first = sessionView({
+      title: 'First page',
+      favicon: 'data:image/png;base64,aWNvbg==',
+    });
+    const station = fakeStation({
+      'GET /api/browser/projects/alpha/access': OPERATOR_ACCESS,
+      'GET /api/browser/sessions?projectSlug=alpha': ok([first]),
+      [`GET /api/browser/sessions/${SESSION}?view=summary`]: ok(first),
+      'POST /api/browser/sessions': ok(
+        sessionView({ browserSessionId: OTHER, url: 'about:blank' }),
+        201,
+      ),
+    });
+    const attach = vi.fn();
+    render(
+      <KeyboardShortcutsProvider>
+        <QueryClientProvider
+          client={
+            new QueryClient({ defaultOptions: { queries: { retry: false } } })
+          }
+        >
+          <BrowserPane
+            projectSlug="alpha"
+            target={{ kind: 'session', browserSessionId: SESSION }}
+            browserSessionIds={[SESSION]}
+            onTabsChange={vi.fn()}
+            onAttach={attach}
+            transport={station.transport as never}
+          />
+        </QueryClientProvider>
+      </KeyboardShortcutsProvider>,
+    );
+    const tab = await screen.findByRole('tab', { name: 'First page' });
+    act(() => tab.focus());
+    fireEvent.keyDown(tab, { key: 't', ctrlKey: true, bubbles: true });
+    fireEvent.keyDown(tab, { key: 't', metaKey: true, bubbles: true });
+    await waitFor(() => expect(attach).toHaveBeenCalledWith(OTHER));
+    expect(station.calls.find((call) => call.method === 'POST')?.body).toEqual({
+      projectSlug: 'alpha',
+      url: 'about:blank',
+    });
+  });
+  test('closing the last Browser tab and reopening replaces its closed reference', async () => {
+    const first = sessionView({ title: 'First page' });
+    const station = fakeStation({
+      'GET /api/browser/projects/alpha/access': OPERATOR_ACCESS,
+      'GET /api/browser/sessions?projectSlug=alpha': ok([first]),
+      [`GET /api/browser/sessions/${SESSION}?view=summary`]: ok(first),
+      [`DELETE /api/browser/sessions/${SESSION}`]: ok({
+        ...first,
+        state: 'closed',
+      }),
+      'POST /api/browser/sessions': ok(
+        sessionView({ browserSessionId: OTHER }),
+        201,
+      ),
+    });
+    const change = vi.fn();
+    render(
+      <KeyboardShortcutsProvider>
+        <QueryClientProvider
+          client={
+            new QueryClient({ defaultOptions: { queries: { retry: false } } })
+          }
+        >
+          <BrowserPane
+            projectSlug="alpha"
+            target={{ kind: 'session', browserSessionId: SESSION }}
+            browserSessionIds={[SESSION]}
+            onTabsChange={change}
+            onAttach={vi.fn()}
+            transport={station.transport as never}
+          />
+        </QueryClientProvider>
+      </KeyboardShortcutsProvider>,
+    );
+    const tab = await screen.findByRole('tab', { name: 'First page' });
+    act(() => tab.focus());
+    fireEvent.keyDown(tab, { key: 'w', ctrlKey: true, bubbles: true });
+    fireEvent.keyDown(tab, { key: 'w', metaKey: true, bubbles: true });
+    await screen.findByText('This session was closed');
+    fireEvent.keyDown(tab, {
+      key: 'T',
+      ctrlKey: true,
+      shiftKey: true,
+      bubbles: true,
+    });
+    fireEvent.keyDown(tab, {
+      key: 'T',
+      metaKey: true,
+      shiftKey: true,
+      bubbles: true,
+    });
+    await waitFor(() => expect(change).toHaveBeenCalledWith([OTHER], OTHER));
+  });
   test('a Station without the browser routes (hosted) says the browser is unavailable here', async () => {
     renderPane({ 'GET /api/browser/projects/alpha/access': refuse(404) });
     expect(
@@ -175,6 +523,18 @@ describe('BrowserPane honest states', () => {
       await screen.findByText("The browser isn't available to you"),
     ).toBeTruthy();
     expect(screen.queryByLabelText('Address')).toBeNull();
+    expect(screen.getByText(/grant you Project admin access/)).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Try again' })).toBeTruthy();
+  });
+
+  test.each([
+    ['project-not-found', 'Project not found', /Open an existing Project/],
+    ['stale-sign-in', 'Sign in again', /Reconnect this device/],
+  ])('explains %s with a recovery action', async (code, title, guidance) => {
+    renderPane({ 'GET /api/browser/projects/alpha/access': refuse(403, code) });
+    expect(await screen.findByText(title)).toBeTruthy();
+    expect(screen.getByText(guidance)).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Try again' })).toBeTruthy();
   });
 
   test('a live session mounts the live view on its surface', async () => {
@@ -296,6 +656,7 @@ describe('BrowserPane address bar', () => {
     const second = sessionView({
       browserSessionId: OTHER,
       title: 'Second page',
+      favicon: 'https://untrusted.test/icon.png',
       surfaceId: 'other-surface',
       url: 'https://second.test/',
     });
@@ -337,7 +698,12 @@ describe('BrowserPane address bar', () => {
         <Tabs />
       </QueryClientProvider>,
     );
+    const firstTab = await screen.findByRole('tab', { name: 'First page' });
+    expect(firstTab.querySelector('img')?.getAttribute('src')).toBe(
+      first.favicon,
+    );
     const secondTab = await screen.findByRole('tab', { name: 'Second page' });
+    expect(secondTab.querySelector('img')).toBeNull();
     fireEvent.click(secondTab);
     await waitFor(() =>
       expect(

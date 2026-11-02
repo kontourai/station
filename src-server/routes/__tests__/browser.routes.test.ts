@@ -12,7 +12,10 @@ import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { configureRuntimeHttp } from '../../runtime/bootstrap/runtime-http.js';
 import { requiredPairingScope } from '../../security/pairing-route-scopes.js';
-import { isRuntimeRequestPrincipalCurrent } from '../../security/runtime-request-security.js';
+import {
+  isRuntimeRequestPrincipalCurrent,
+  runtimeRequestPrincipalMayAccessHttpRoute,
+} from '../../security/runtime-request-security.js';
 import type { BrowserProjectAuthorizer } from '../../services/browser/browser-access.js';
 import {
   type BrowserHost,
@@ -72,6 +75,7 @@ function harness(
     admins?: Record<string, string[]>;
     surfaceIdFor?: (browserSessionId: string) => string | undefined;
     cdp?: CdpResponder;
+    experience?: boolean;
   } = {},
 ) {
   const credentials = new Map([
@@ -112,6 +116,7 @@ function harness(
   homes.push(stationHome);
   const registry = new BrowserSessionRegistry({
     stationHome,
+    experienceEnabled: () => options.experience !== false,
     hostResolver: createLocalBrowserHostResolver(() => fakeHost(options.cdp)),
   });
   const acquisitionStatus: ChromiumAcquisitionStatus = options.acquisition ?? {
@@ -180,6 +185,14 @@ function harness(
       suggestLocalTargets,
       resolveProject: (slug) => projects[slug],
       isStationInternalRequest,
+      mayDriveBrowser: (request) =>
+        runtimeRequestPrincipalMayAccessHttpRoute(request, security, {
+          method: 'POST',
+          path: '/api/browser/sessions',
+        }),
+      browserExperienceEnabled: () => options.experience !== false,
+      withHumanControl: async (_context, _id, operation) =>
+        operation(() => true),
       ...(options.surfaceIdFor ? { surfaceIdFor: options.surfaceIdFor } : {}),
       isRequestPrincipalCurrent: (request) => {
         const seen = checks.get(request) ?? 0;
@@ -270,6 +283,65 @@ describe('browser routes: pairing scope classification', () => {
 });
 
 describe('browser routes: per-Project authorization (D5)', () => {
+  test('a screenshot is not published after view standing is withdrawn during capture', async () => {
+    const h = harness();
+    const created = await h.create('operator');
+    const id = (
+      (await created.json()) as { data: { browserSessionId: string } }
+    ).data.browserSessionId;
+    let allowed = true;
+    h.authorizeProject.mockImplementation(async () =>
+      allowed ? { kind: 'operator' } : undefined,
+    );
+    vi.spyOn(h.registry, 'captureScreenshot').mockImplementation(async () => {
+      allowed = false;
+      return { mimeType: 'image/png', data: Buffer.from('image') };
+    });
+    expect(
+      (await h.request('GET', `/sessions/${id}/screenshot`, 'operator')).status,
+    ).toBe(403);
+  });
+  test('a viewer whose credential lacks drive scope is reported as view-only', async () => {
+    const h = harness();
+    h.authorizeProject.mockResolvedValue({
+      kind: 'project-admin',
+      principalId: 'viewer',
+    });
+    const response = await h.request('GET', '/projects/alpha/access', 'viewer');
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ data: { canDrive: false } });
+    expect((await h.create('viewer')).status).toBe(403);
+  });
+  test('view-only standing is reported without granting drive', async () => {
+    const h = harness();
+    h.authorizeProject.mockImplementation(
+      async (_request, _project, purpose) =>
+        purpose === 'view' ? { kind: 'operator' } : undefined,
+    );
+    const response = await h.request(
+      'GET',
+      '/projects/alpha/access',
+      'operator',
+    );
+    expect(await response.json()).toMatchObject({ data: { canDrive: false } });
+    expect((await h.create('operator')).status).toBe(403);
+  });
+  test('access explains a missing Project only to the operator', async () => {
+    const h = harness();
+    const operator = await h.request(
+      'GET',
+      '/projects/missing/access',
+      'operator',
+    );
+    expect(operator.status).toBe(403);
+    expect(await operator.json()).toMatchObject({ code: 'project-not-found' });
+    const other = await h.request(
+      'GET',
+      '/projects/missing/access',
+      'contributor-alpha',
+    );
+    expect(await other.json()).toMatchObject({ code: 'access-denied' });
+  });
   test('the operator and a Project admin may create and drive; others are refused', async () => {
     const h = harness();
     const byOperator = await h.create('operator');
@@ -613,7 +685,10 @@ describe('browser routes: a principal that stopped being current (review M3)', (
     ] as const) {
       const response = await h.request(method, path, 'operator', body);
       expect(response.status, `${method} ${path}`).toBe(403);
-      expect(await response.json()).toMatchObject({ code: 'access-denied' });
+      expect(await response.json()).toMatchObject({
+        code:
+          path === '/projects/alpha/access' ? 'stale-sign-in' : 'access-denied',
+      });
     }
     expect(h.registry.listSessions().map((s) => s.state)).toEqual(['live']);
     expect(h.registry.getSession(id)?.history.total).toBe(1);
@@ -652,7 +727,10 @@ describe('browser routes: a principal that expires mid-request (review M3)', () 
     ] as const) {
       const response = await h.request(method, path, 'operator', body);
       expect(response.status, `${method} ${path}`).toBe(403);
-      expect(await response.json()).toMatchObject({ code: 'access-denied' });
+      expect(await response.json()).toMatchObject({
+        code:
+          path === '/projects/alpha/access' ? 'stale-sign-in' : 'access-denied',
+      });
     }
     const after = h.registry.getSession(id);
     expect(after?.state).toBe('live');
@@ -794,6 +872,92 @@ describe('browser routes: registered local targets (D7)', () => {
 });
 
 describe('browser routes: pane v2 surface (#90 wave 2)', () => {
+  test('the Browser experience preview refuses zoom before it performs an effect', async () => {
+    const h = harness({ experience: false });
+    const first = (
+      (await (await h.create('operator')).json()) as {
+        data: { browserSessionId: string; generation: number };
+      }
+    ).data;
+    const response = await h.request(
+      'POST',
+      `/sessions/${first.browserSessionId}/zoom`,
+      'operator',
+      { factor: 0.5 },
+    );
+    expect(response.status).toBe(404);
+    expect(await response.json()).toMatchObject({
+      code: 'feature_preview_disabled',
+      previewId: 'browser-experience',
+    });
+    expect(
+      h.registry.getSession(first.browserSessionId)?.zoomFactor,
+    ).toBeUndefined();
+  });
+  test('zoom and appearance address one live tab and reject invalid or stale requests', async () => {
+    const h = harness();
+    const first = (
+      (await (await h.create('operator')).json()) as {
+        data: { browserSessionId: string; generation: number };
+      }
+    ).data;
+    const second = (
+      (await (await h.create('operator')).json()) as {
+        data: { browserSessionId: string; generation: number };
+      }
+    ).data;
+    const zoom = await h.request(
+      'POST',
+      `/sessions/${first.browserSessionId}/zoom`,
+      'operator',
+      { factor: 0.5, generation: first.generation },
+    );
+    expect(zoom.status).toBe(200);
+    expect(await zoom.json()).toMatchObject({ data: { zoomFactor: 0.5 } });
+    expect(
+      h.registry.getSession(second.browserSessionId)?.zoomFactor ?? 1,
+    ).toBe(1);
+    const appearance = await h.request(
+      'POST',
+      `/sessions/${first.browserSessionId}/appearance`,
+      'operator',
+      { scheme: 'dark', generation: first.generation },
+    );
+    expect(appearance.status).toBe(200);
+    expect(await appearance.json()).toMatchObject({
+      data: { colorScheme: 'dark' },
+    });
+    expect(
+      (
+        await h.request(
+          'POST',
+          `/sessions/${first.browserSessionId}/zoom`,
+          'operator',
+          { factor: 0.01 },
+        )
+      ).status,
+    ).toBe(400);
+    expect(
+      (
+        await h.request(
+          'POST',
+          `/sessions/${first.browserSessionId}/appearance`,
+          'operator',
+          { scheme: 'sepia' },
+        )
+      ).status,
+    ).toBe(400);
+    expect(
+      (
+        await h.request(
+          'POST',
+          `/sessions/${first.browserSessionId}/zoom`,
+          'operator',
+          { factor: 1, generation: first.generation + 1 },
+        )
+      ).status,
+    ).toBe(409);
+  });
   test('the access route answers role and browser readiness, and refuses a contributor', async () => {
     const h = harness();
     const operator = await h.request(
@@ -809,6 +973,8 @@ describe('browser routes: pane v2 surface (#90 wave 2)', () => {
         role: 'operator',
         principalKey: 'operator',
         operator: true,
+        canDrive: true,
+        experiencePreviewEnabled: true,
         browser: 'ready',
       },
     });
@@ -821,6 +987,7 @@ describe('browser routes: pane v2 surface (#90 wave 2)', () => {
       role: 'project-admin',
       principalKey: 'principal:admin-alpha',
       operator: false,
+      canDrive: true,
     });
     expect(
       (await h.request('GET', '/projects/alpha/access', 'contributor-alpha'))

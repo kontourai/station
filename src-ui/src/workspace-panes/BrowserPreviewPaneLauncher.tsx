@@ -13,7 +13,10 @@ import {
   browserPaneApi,
   describeBrowserFailure,
 } from './browser-pane/browserPaneApi';
-import { createBrowserPreviewPaneInstance } from './browserPreviewPaneInstance';
+import {
+  createBrowserPreviewPaneInstance,
+  createEmptyBrowserPreviewPaneInstance,
+} from './browserPreviewPaneInstance';
 import { createBrowserPreviewPaneStatePreparation } from './browserPreviewPaneStateStorage';
 import type { WorkspacePaneHostOpenAction } from './WorkspacePaneHostOpenContext';
 import { presentWorkspacePaneAvailability } from './workspacePaneAvailabilityPresentation';
@@ -98,7 +101,7 @@ export function BrowserPreviewPaneLauncher({
         outcome.ok ? null : describeWorkspacePaneOpenRefusal(outcome.reason),
       );
     },
-    onError: (failure, url) => {
+    onError: async (failure, url) => {
       if (
         failure instanceof BrowserApiError &&
         failure.code === 'browser-unavailable'
@@ -119,6 +122,29 @@ export function BrowserPreviewPaneLauncher({
         failure.status === 403 &&
         failure.code === 'access-denied'
       ) {
+        try {
+          const access = await api.access(projectSlug);
+          if (
+            access.projectId === projectId &&
+            access.canDrive === false &&
+            host
+          ) {
+            const instance = createEmptyBrowserPreviewPaneInstance(projectId);
+            if (!instance) {
+              setError('Station could not open this Browser pane.');
+              return;
+            }
+            const outcome = host.open(instance);
+            setError(
+              outcome.ok
+                ? null
+                : describeWorkspacePaneOpenRefusal(outcome.reason),
+            );
+            return;
+          }
+        } catch {
+          // The original refusal remains authoritative if access cannot be read.
+        }
         setError(
           "Only the Station operator and this Project's admins can open a browser here.",
         );

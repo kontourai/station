@@ -41,15 +41,20 @@ export function createBrowserPreviewPaneInstance(
   nonce?: string,
 ): WorkspacePaneInstance | null {
   const normalized = parseWorkspaceBrowserPaneState(state);
-  const opaqueNonce = nonce ?? randomNonce();
-  if (
-    !normalized ||
-    normalized.projectId !== projectId ||
-    !opaqueNonce ||
-    !BROWSER_PREVIEW_NONCE_PATTERN.test(opaqueNonce)
-  ) {
+  if (!normalized || normalized.projectId !== projectId) {
     return null;
   }
+  return createEmptyBrowserPreviewPaneInstance(projectId, nonce);
+}
+
+/** A pane with no session yet can list sessions the caller may view. */
+export function createEmptyBrowserPreviewPaneInstance(
+  projectId: string,
+  nonce?: string,
+): WorkspacePaneInstance | null {
+  const opaqueNonce = nonce ?? randomNonce();
+  if (!opaqueNonce || !BROWSER_PREVIEW_NONCE_PATTERN.test(opaqueNonce))
+    return null;
   const identity = `browser-preview:${opaqueNonce}`;
   return parseWorkspacePaneInstance({
     version: WORKSPACE_PANE_CONTRACT_VERSION,

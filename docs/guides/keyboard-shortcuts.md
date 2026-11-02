@@ -108,6 +108,12 @@ connects these rules to the editor, registry, device store, import/export owner
 and tests. DOM/storage tests do not qualify every physical keyboard, OS shortcut,
 or native shell.
 
+## Browser shortcuts
+
+With the Browser experience Feature Preview enabled, use Mod+Shift+J in Coding to open or focus Browser. When the Browser pane is focused, Mod+L focuses the address, Mod+R reloads, Mod+Shift+R reloads without cache, Alt+Left/Right or Mod+[/] moves through history, and Mod+T, Mod+W and Mod+Shift+T open, close and reopen tabs. Mod+=, Mod+- and Mod+0 change or reset page zoom. Mod+Shift+S attaches a screenshot to the active Project chat. Mod means Command on macOS and Control elsewhere.
+
+The command palette also offers take control and hand back; these commands have no default binding. Keys sent to the streamed page do not trigger Station shortcuts. Find in page is not available through the streamed host yet.
+
 ## Plugin shortcuts
 
 Plugins register shortcuts with the SDK's `useShortcut`. They join the same

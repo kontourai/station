@@ -35,6 +35,7 @@ import type {
 } from '../live-surface/registry.js';
 import type { BrowserProjectAuthorizer } from './browser-access.js';
 import { browserAgentGrantAllows } from './browser-agent-authority.js';
+import { browserColorSchemeParams } from './browser-color-scheme.js';
 import {
   BrowserConsoleLog,
   type BrowserConsoleSnapshot,
@@ -73,6 +74,7 @@ export interface BrowserLiveSurfacesOptions {
   sessions: Pick<
     BrowserSessionRegistry,
     | 'onSessionChange'
+    | 'getSession'
     | 'liveTarget'
     | 'listSessions'
     | 'recordDialog'
@@ -83,6 +85,7 @@ export interface BrowserLiveSurfacesOptions {
   >;
   surfaces: Pick<LiveSurfaceRegistry, 'register' | 'get'>;
   authorizeProject: BrowserProjectAuthorizer;
+  experienceEnabled?: () => boolean;
   dispatchTimeoutMs?: number;
   /** How long a dialog held for a person waits before its automatic answer. */
   dialogHoldMs?: number;
@@ -387,14 +390,17 @@ export class BrowserLiveSurfaces {
       lease?.onChange((next) => {
         const holder = next.holder;
         if (holder?.kind === 'human') {
-          // Human control never inherits an Agent's target-local theme override.
+          // Human control restores the person's target-local preference rather than inheriting an Agent override.
           void live.host
             .cdp()
             .send(
               'Emulation.setEmulatedMedia',
-              {
-                features: [{ name: 'prefers-color-scheme', value: '' }],
-              },
+              browserColorSchemeParams(
+                this.options.experienceEnabled?.() === true
+                  ? (this.options.sessions.getSession(id)?.colorScheme ??
+                      'system')
+                  : 'system',
+              ),
               live.target.cdpSessionId,
             )
             .catch((error) =>

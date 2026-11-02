@@ -326,8 +326,12 @@ export interface BrowserSessionView {
   url: string;
   /** Observed page title, when available from the host. */
   title?: string;
+  /** Bounded raster icon observed by the Browser host. */
+  favicon?: string;
   openerBrowserSessionId?: string;
   viewport: BrowserViewportView;
+  zoomFactor?: number;
+  colorScheme?: 'system' | 'light' | 'dark';
   generation: number;
   /** Which Station runs the browser (#90 D13); `local` today. */
   hostId?: string;
@@ -366,6 +370,9 @@ export interface BrowserPaneAccessView {
   /** The profile the caller's own sessions run in (D7). */
   principalKey?: string;
   operator: boolean;
+  /** False when the viewer may watch this profile but cannot drive it. */
+  canDrive?: boolean;
+  experiencePreviewEnabled?: boolean;
   browser: 'ready' | 'not-ready';
 }
 

@@ -21,6 +21,10 @@ import {
   type BrowserNavigationView,
 } from '@kontourai/station-contracts/workspace-browser-pane';
 import {
+  type BrowserColorScheme,
+  browserColorSchemeParams,
+} from './browser-color-scheme.js';
+import {
   type BrowserHost,
   type BrowserHostKind,
   type BrowserHostResolver,
@@ -69,6 +73,7 @@ export type BrowserSessionActionKind =
   | 'reloaded'
   | 'loading-stopped'
   | 'viewport-changed'
+  | 'zoom-changed'
   | 'page-navigated'
   | 'dialog-handled'
   // A person answered a JavaScript dialog Station held for them (the
@@ -234,8 +239,11 @@ export interface BrowserSessionRecord {
   threadId?: string;
   url: string;
   title?: string;
+  favicon?: string;
   openerBrowserSessionId?: string;
   viewport: BrowserViewport;
+  zoomFactor?: number;
+  colorScheme?: BrowserColorScheme;
   generation: number;
   hostKind: BrowserHostKind;
   /** Which Station runs this session's browser (#90 D13); `local` today. */
@@ -291,11 +299,17 @@ export type BrowserSessionErrorCode =
   | 'url-not-allowed'
   | 'invalid-project'
   | 'invalid-viewport'
+  | 'invalid-zoom'
+  | 'invalid-appearance'
   | 'invalid-actor'
   | 'not-found'
   | 'not-live'
   | 'stale-generation'
   | 'no-history-entry'
+  | 'control-refused'
+  | 'control-interrupted'
+  | 'surface-busy'
+  | 'feature-preview-disabled'
   | 'page-busy'
   | 'screenshot-too-large'
   | 'stopped';
@@ -375,6 +389,26 @@ export function isValidBrowserViewport(
   value: unknown,
 ): value is BrowserViewport {
   return browserViewportProblem(value) === undefined;
+}
+
+export function isValidBrowserZoom(value: unknown): value is number {
+  return (
+    typeof value === 'number' &&
+    Number.isFinite(value) &&
+    value >= 0.5 &&
+    value <= 2
+  );
+}
+
+function zoomedViewport(
+  viewport: BrowserViewport,
+  factor: number,
+): BrowserViewport {
+  return {
+    ...viewport,
+    width: Math.round(viewport.width / factor),
+    height: Math.round(viewport.height / factor),
+  };
 }
 
 export function isValidBrowserProjectId(
@@ -476,6 +510,7 @@ export interface BrowserSessionRegistryOptions {
   /** Test seams for the screenshot bounds. */
   screenshotDeadlineMs?: number;
   screenshotMaxBytes?: number;
+  experienceEnabled?: () => boolean;
 }
 
 /** A navigation this soon after someone's input is theirs (a link click). */
@@ -809,18 +844,121 @@ export class BrowserSessionRegistry {
     const session = live.target.cdpSessionId;
     const mobile = viewport.mobile === true;
     const previous = record.viewport;
+    const zoom =
+      this.options.experienceEnabled?.() === true
+        ? (record.zoomFactor ?? 1)
+        : 1;
     try {
-      await applyViewport(cdp, session, viewport);
+      await applyViewport(cdp, session, zoomedViewport(viewport, zoom));
     } catch (error) {
       // All or nothing: a half-applied emulation (new size, old touch mode)
       // must not outlive the refusal. Best effort; the original error wins.
-      await applyViewport(cdp, session, previous).catch(() => {});
+      await applyViewport(cdp, session, zoomedViewport(previous, zoom)).catch(
+        () => {},
+      );
       throw error;
     }
     this.requireLive(browserSessionId, record.generation);
     record.viewport = { ...viewport };
+    if (zoom === 1 && this.options.experienceEnabled?.() !== true)
+      delete record.zoomFactor;
     this.record(record, 'viewport-changed', options.actor, {
       detail: `${viewport.width}x${viewport.height}@${viewport.deviceScaleFactor}${mobile ? ' mobile' : ''}`,
+    });
+    return structuredClone(record);
+  }
+
+  async setZoom(
+    browserSessionId: string,
+    factor: number,
+    options: {
+      generation?: number;
+      actor: BrowserSessionActor;
+      guard: () => void;
+    },
+  ): Promise<BrowserSessionRecord> {
+    this.assertRunning();
+    if (this.options.experienceEnabled?.() !== true)
+      throw new BrowserSessionError(
+        'feature-preview-disabled',
+        'Browser experience is disabled.',
+      );
+    if (!isValidBrowserZoom(factor))
+      throw new BrowserSessionError(
+        'invalid-zoom',
+        'Zoom must be between 50% and 200%.',
+      );
+    const record = this.requireLive(browserSessionId, options.generation);
+    const live = this.liveTarget(browserSessionId);
+    if (!live)
+      throw new BrowserSessionError('not-live', 'The browser is not running.');
+    const cdp = live.host.cdp();
+    const previous = zoomedViewport(record.viewport, record.zoomFactor ?? 1);
+    try {
+      await applyViewport(
+        cdp,
+        live.target.cdpSessionId,
+        zoomedViewport(record.viewport, factor),
+        options.guard,
+      );
+      this.requireLive(browserSessionId, live.generation);
+      options.guard();
+    } catch (error) {
+      try {
+        options.guard();
+        await applyViewport(
+          cdp,
+          live.target.cdpSessionId,
+          previous,
+          options.guard,
+        );
+      } catch {}
+      throw error;
+    }
+    record.zoomFactor = factor;
+    this.record(record, 'zoom-changed', options.actor, {
+      detail: `${Math.round(factor * 100)}%`,
+    });
+    return structuredClone(record);
+  }
+
+  async setColorScheme(
+    browserSessionId: string,
+    scheme: BrowserColorScheme,
+    options: {
+      generation?: number;
+      actor: BrowserSessionActor;
+      guard: () => void;
+    },
+  ): Promise<BrowserSessionRecord> {
+    this.assertRunning();
+    if (this.options.experienceEnabled?.() !== true)
+      throw new BrowserSessionError(
+        'feature-preview-disabled',
+        'Browser experience is disabled.',
+      );
+    if (scheme !== 'system' && scheme !== 'light' && scheme !== 'dark')
+      throw new BrowserSessionError(
+        'invalid-appearance',
+        'Appearance must be system, light or dark.',
+      );
+    const record = this.requireLive(browserSessionId, options.generation);
+    const live = this.liveTarget(browserSessionId);
+    if (!live)
+      throw new BrowserSessionError('not-live', 'The browser is not running.');
+    options.guard();
+    await live.host
+      .cdp()
+      .send(
+        'Emulation.setEmulatedMedia',
+        browserColorSchemeParams(scheme),
+        live.target.cdpSessionId,
+      );
+    options.guard();
+    this.requireLive(browserSessionId, live.generation);
+    record.colorScheme = scheme;
+    this.record(record, 'color-scheme-changed', options.actor, {
+      detail: scheme,
     });
     return structuredClone(record);
   }
@@ -1322,12 +1460,16 @@ export class BrowserSessionRegistry {
         clearTimeout(entry.idleTimer);
         entry.idleTimer = undefined;
       }
+      if (this.options.experienceEnabled?.() !== true) {
+        delete record.zoomFactor;
+        delete record.colorScheme;
+      }
       const target = await entry.host.openTarget({
         profileDir: browserProfileDir(
           this.options.stationHome,
           record.profileRef,
         ),
-        viewport: record.viewport,
+        viewport: zoomedViewport(record.viewport, record.zoomFactor ?? 1),
       });
       if (record.state === 'closed') {
         // Closed while opening: nothing may run in a closed session.
@@ -1340,6 +1482,15 @@ export class BrowserSessionRegistry {
       // page whose load handler calls alert() must not hold anything up.
       offEarlyDialogs = this.answerDialogsUntilLive(record, entry, target);
       try {
+        if (record.colorScheme) {
+          await entry.host
+            .cdp()
+            .send(
+              'Emulation.setEmulatedMedia',
+              browserColorSchemeParams(record.colorScheme),
+              target.cdpSessionId,
+            );
+        }
         if (record.url !== ABOUT_BLANK) {
           await entry.host
             .cdp()
@@ -1447,6 +1598,19 @@ export class BrowserSessionRegistry {
           this.notify(record);
         }
       });
+      const offFavicon = host.onFaviconChanged?.((targetId, favicon) => {
+        for (const [id, target] of entry.targets) {
+          const record = this.sessions.get(id);
+          if (
+            target.targetId !== targetId ||
+            !record ||
+            (record.state !== 'live' && record.state !== 'opening')
+          )
+            continue;
+          record.favicon = favicon;
+          this.notify(record);
+        }
+      });
       const offTargetClosed = host.onTargetClosed?.((targetId) => {
         for (const [id, target] of entry.targets) {
           if (target.targetId !== targetId) continue;
@@ -1484,6 +1648,9 @@ export class BrowserSessionRegistry {
           openerBrowserSessionId: opener.browserSessionId,
           url: redactBrowserUrl(url),
           viewport: { ...opener.viewport },
+          ...(opener.zoomFactor !== undefined
+            ? { zoomFactor: opener.zoomFactor }
+            : {}),
           generation,
           hostKind: opener.hostKind,
           hostId: opener.hostId,
@@ -1507,6 +1674,7 @@ export class BrowserSessionRegistry {
       const offExit = entry.offExit;
       entry.offExit = () => {
         offTitle?.();
+        offFavicon?.();
         offTargetClosed?.();
         offPopup?.();
         offExit();
@@ -1774,6 +1942,13 @@ export class BrowserSessionRegistry {
       // Records from before #90 D13 ran on this Station.
       if (typeof record.hostId !== 'string')
         record.hostId = LOCAL_BROWSER_HOST_ID;
+      if (!isValidBrowserZoom(record.zoomFactor)) delete record.zoomFactor;
+      if (
+        record.colorScheme !== 'system' &&
+        record.colorScheme !== 'light' &&
+        record.colorScheme !== 'dark'
+      )
+        delete record.colorScheme;
       if (
         !record.history ||
         !Array.isArray(record.history.entries) ||
@@ -1811,7 +1986,7 @@ export class BrowserSessionRegistry {
     const store: StoreShape = {
       version: STORE_VERSION,
       generations: Object.fromEntries(this.generations),
-      sessions,
+      sessions: sessions.map(({ favicon: _favicon, ...record }) => record),
     };
     try {
       mkdirSync(join(this.options.stationHome, 'browser'), {
@@ -1905,8 +2080,10 @@ async function applyViewport(
   cdp: CdpTransport,
   session: string,
   viewport: BrowserViewport,
+  guard?: () => void,
 ): Promise<void> {
   const mobile = viewport.mobile === true;
+  guard?.();
   await cdp.send(
     'Emulation.setDeviceMetricsOverride',
     {
@@ -1917,9 +2094,11 @@ async function applyViewport(
     },
     session,
   );
+  guard?.();
   await cdp.send(
     'Emulation.setTouchEmulationEnabled',
     { enabled: mobile },
     session,
   );
+  guard?.();
 }
