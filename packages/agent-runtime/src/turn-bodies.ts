@@ -1,4 +1,5 @@
 import type { DatabaseSync } from 'node:sqlite';
+import { deflateSync, inflateSync } from 'node:zlib';
 import { z } from 'zod';
 import { hash } from './encoding.js';
 import { decodeAgentBody, encodeAgentBody } from './turn-body-codec.js';
@@ -93,14 +94,21 @@ export function readAgentBodyChunk(
     database,
     'SELECT wire,byte_length FROM agent_steps_body_chunks WHERE digest=?',
   ).get(digest);
-  if (
-    !row ||
-    typeof row.wire !== 'string' ||
-    Buffer.byteLength(row.wire) !== row.byte_length ||
-    hash(row.wire) !== digest
-  )
+  if (!row || typeof row.wire !== 'string')
     throw new Error('DURABLE_AGENT_CHUNK_DAMAGED');
-  const value = readAgentWire(row.wire);
+  let wire = row.wire;
+  if (wire.startsWith('{')) {
+    const packed = z
+      .object({ version: z.literal('agent-text/1'), payload: z.string() })
+      .strict()
+      .parse(JSON.parse(wire));
+    wire = inflateSync(Buffer.from(packed.payload, 'base64'), {
+      maxOutputLength: 128 * 1024,
+    }).toString('utf8');
+  }
+  if (Buffer.byteLength(wire) !== row.byte_length || hash(wire) !== digest)
+    throw new Error('DURABLE_AGENT_CHUNK_DAMAGED');
+  const value = readAgentWire(wire);
   if (typeof value !== 'string' || !value.length || value.length > CHUNK_UNITS)
     throw new Error('DURABLE_AGENT_CHUNK_DAMAGED');
   return value;
@@ -114,10 +122,22 @@ function putChunk(database: DatabaseSync, value: string): string {
     knownChunks.set(database, known);
   }
   if (known.has(digest)) return digest;
+  const packed = JSON.stringify({
+    version: 'agent-text/1',
+    payload: deflateSync(encoded).toString('base64'),
+  });
+  const stored =
+    packed.length < encoded.length &&
+    agentStatement(
+      database,
+      'SELECT writer_format FROM agent_steps_meta WHERE id=1',
+    ).get()?.writer_format === 'agent-steps/11'
+      ? packed
+      : encoded;
   const inserted = agentStatement(
     database,
     'INSERT INTO agent_steps_body_chunks VALUES(?,?,?) ON CONFLICT(digest) DO NOTHING',
-  ).run(digest, encoded, Buffer.byteLength(encoded));
+  ).run(digest, stored, Buffer.byteLength(encoded));
   if (inserted.changes !== 1 && readAgentBodyChunk(database, digest) !== value)
     throw new Error('DURABLE_AGENT_CHUNK_DAMAGED');
   if (known.size >= 4096) known.delete(known.values().next().value!);

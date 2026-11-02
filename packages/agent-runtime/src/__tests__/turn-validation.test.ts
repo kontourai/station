@@ -10,15 +10,12 @@ import {
   openSqliteAgentJournal,
   runWithAgentTurn,
 } from '../index.js';
-import {
-  agentWire,
-  readAgentWire,
-  readSqliteAgentFrames,
-} from '../internal.js';
+import { agentWire, readSqliteAgentFrames } from '../internal.js';
 import {
   bodyChunkDefinitions,
   bodyDefinitions,
   putAgentBody,
+  readAgentBodyChunk,
 } from '../turn-bodies.js';
 import { changeDefinitions } from '../turn-changes.js';
 import { finish, key, owner } from './fixture.js';
@@ -600,9 +597,9 @@ it('4-byte deltas share completed text with the next prompt and retain exact fra
     128 * 1024 + 2 * 16 * 1024 + 3 * Buffer.byteLength(text),
   );
   const storedText = f.database
-    .prepare('SELECT wire FROM agent_steps_body_chunks')
+    .prepare('SELECT digest FROM agent_steps_body_chunks')
     .all()
-    .map((row) => readAgentWire(String(row.wire)));
+    .map((row) => readAgentBodyChunk(f.database, String(row.digest)));
   expect(storedText.every((value) => typeof value === 'string')).toBe(true);
   expect(
     storedText.reduce<number>(

@@ -697,6 +697,7 @@ export function openSqliteAgentJournal(options: {
       "SELECT 1 FROM main.sqlite_schema WHERE lower(name) GLOB 'agent_steps_*' OR lower(tbl_name) GLOB 'agent_steps_*'",
     ).get()
   ) {
+    database.exec('PRAGMA auto_vacuum=INCREMENTAL; VACUUM');
     database.exec('BEGIN IMMEDIATE');
     try {
       for (const sql of currentDefinitions) database.exec(sql);
@@ -1064,6 +1065,11 @@ export function openSqliteAgentJournal(options: {
   }
   invalidateAgentValidation(database);
   validateSchema();
+  if (agentStatement(database, 'PRAGMA auto_vacuum').get()?.auto_vacuum !== 2) {
+    database.exec('PRAGMA auto_vacuum=INCREMENTAL; VACUUM');
+    invalidateAgentValidation(database);
+    validateSchema();
+  }
   const validateUnresolved = () => {
     for (const row of agentStatement(
       database,
@@ -1328,6 +1334,7 @@ export function openSqliteAgentJournal(options: {
         ) {
           retainAgentTurns(database, clock());
           compactAgentBodies(database);
+          database.exec('PRAGMA incremental_vacuum(64)');
           invalidateAgentValidation(database);
         }
         if (

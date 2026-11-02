@@ -297,7 +297,7 @@ The benchmark includes the actual in-process chat/SSE route and `projectFrame`/`
 
 
 Writer 11 stores foreground frames in compressed blocks while preserving every
-frame's original ID, wire, timestamp, digest and position. An indexed group and
+frame's original ID, wire, timestamp, digest and position. Nonterminal controls share ordered batches. An indexed group and
 ordinal locate individual frames without scanning previous blocks. Legacy frame
 rows remain readable. The 1,048,576-frame ceiling remains reachable: compression
 reduces storage, not logical frame counts. Two reserved positions carry a typed
@@ -316,8 +316,8 @@ turns retain full replay for seven days, then up to 16 expired turns per write l
 their payloads and replay an explicit expiry error. A small retired turn record,
 original input digest, terminal receipt and affinity remain: the old key cannot
 redispatch a model. Its retired input reads `[expired]`. Running, cancelled and
-blocked turns retain recovery evidence. Free SQLite pages are reused; cleanup does
-not promise an immediate filesystem shrink or reclaim uncertain effects.
+blocked turns retain recovery evidence. Native text chunks compress only when smaller. Incremental vacuum reclaims up to
+64 free pages per admission or settlement; cleanup does not promise an immediate full filesystem shrink or reclaim uncertain effects.
 
 Post-tool steer additions are captured lazily before dispatch. Recovery restores
 the same tool-anchored prompt additions and the deferred steer memory write without claiming the inbox again. Starting
