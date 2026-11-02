@@ -175,11 +175,7 @@ export function createTerminalHistoryRoutes(
   authorizeRequest: (request: Request) => boolean,
 ) {
   const app = new Hono();
-  app.use('*', async (c, next) => {
-    if (!authorizeRequest(c.req.raw))
-      return c.json({ success: false, error: 'Terminal access refused' }, 403);
-    await next();
-  });
+  const refused = { success: false, error: 'Terminal access refused' } as const;
   app.onError((error, c) => {
     if (error instanceof z.ZodError)
       return c.json({ success: false, error: 'Invalid terminal request' }, 400);
@@ -190,6 +186,7 @@ export function createTerminalHistoryRoutes(
     );
   });
   app.get('/', async (c) => {
+    if (!authorizeRequest(c.req.raw)) return c.json(refused, 403);
     const usage = await sessions.usage(c.req.raw);
     return c.json({
       success: true,
@@ -203,6 +200,7 @@ export function createTerminalHistoryRoutes(
     });
   });
   app.delete('/', async (c) => {
+    if (!authorizeRequest(c.req.raw)) return c.json(refused, 403);
     const projectId = c.req.query('projectId');
     const result = await sessions.clearHistory(
       c.req.raw,

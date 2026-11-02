@@ -196,12 +196,48 @@
     },
     {
       "id": "terminal-history",
-      "label": "Terminal history",
+      "label": "Keep terminal history",
       "help": "New terminals write their output to disk, so it survives a restart.",
       "scope": "station",
       "section": "host-runtime",
       "route": "/settings?view=host-runtime&highlight=terminal-history",
       "configKey": "terminalHistoryEnabled"
+    },
+    {
+      "id": "terminal-history-location",
+      "label": "Terminal history location",
+      "help": "Terminal history is stored in this directory, and ended terminals’ history moves here.",
+      "scope": "station",
+      "section": "host-runtime",
+      "route": "/settings?view=host-runtime&highlight=terminal-history-location",
+      "configKey": "terminalHistoryDirectory"
+    },
+    {
+      "id": "terminal-history-max-age",
+      "label": "Terminal history maximum age",
+      "help": "History of terminals that ended more than this many days ago is deleted.",
+      "scope": "station",
+      "section": "host-runtime",
+      "route": "/settings?view=host-runtime&highlight=terminal-history-max-age",
+      "configKey": "terminalHistoryMaxAgeDays"
+    },
+    {
+      "id": "terminal-history-per-terminal",
+      "label": "Terminal history per terminal",
+      "help": "Each terminal keeps at most this many MiB of history; the oldest output goes first.",
+      "scope": "station",
+      "section": "host-runtime",
+      "route": "/settings?view=host-runtime&highlight=terminal-history-per-terminal",
+      "configKey": "terminalHistoryMaxTerminalMiB"
+    },
+    {
+      "id": "terminal-history-total",
+      "label": "Terminal history total",
+      "help": "All terminals together keep at most this many MiB; the oldest ended terminals go first.",
+      "scope": "station",
+      "section": "host-runtime",
+      "route": "/settings?view=host-runtime&highlight=terminal-history-total",
+      "configKey": "terminalHistoryMaxTotalMiB"
     },
     {
       "id": "mcp-ui-host",

@@ -583,45 +583,6 @@ export function createConfigRoutes(
         }
       }
 
-      // Terminal history retention: each value's range is the registry's;
-      // the rules spanning settings are checked against the merged result.
-      if (
-        TERMINAL_RETENTION_KEYS.some((key) =>
-          Object.hasOwn(body as object, key),
-        )
-      ) {
-        const current = await configLoader.loadAppConfig();
-        const merged: Record<string, unknown> = { ...current };
-        for (const key of TERMINAL_RETENTION_KEYS) {
-          if (!Object.hasOwn(body as object, key)) continue;
-          const value = (body as Record<string, unknown>)[key];
-          if (value === null || value === undefined || value === '')
-            delete merged[key];
-          else merged[key] = value;
-        }
-        const problem = terminalRetentionProblem(merged);
-        if (problem)
-          return c.json(
-            { success: false, error: `${problem}; no settings were saved.` },
-            400,
-          );
-        if (
-          changesAny(body as object, current, ['terminalHistoryDirectory']) &&
-          requestMayBeAnAgent(c.req.raw)
-        ) {
-          logRefusal('scope_agent_command_not_granted');
-          return c.json(
-            {
-              success: false,
-              code: COMMAND_NOT_GRANTED_CODE,
-              error:
-                'An agent cannot move terminal history. The operator can, in Settings.',
-            },
-            403,
-          );
-        }
-      }
-
       if (Object.hasOwn(body as object, 'logLevel')) {
         return c.json(
           {
@@ -813,6 +774,45 @@ export function createConfigRoutes(
       if (ignored.length > 0) {
         configOps.add(1, { op: 'update_app_ignored_keys' });
       }
+      // Terminal history retention: each value's range is the registry's;
+      // the rules spanning settings are checked against the merged result.
+      if (
+        TERMINAL_RETENTION_KEYS.some((key) =>
+          Object.hasOwn(body as object, key),
+        )
+      ) {
+        const current = await configLoader.loadAppConfig();
+        const merged: Record<string, unknown> = { ...current };
+        for (const key of TERMINAL_RETENTION_KEYS) {
+          if (!Object.hasOwn(body as object, key)) continue;
+          const value = (body as Record<string, unknown>)[key];
+          if (value === null || value === undefined || value === '')
+            delete merged[key];
+          else merged[key] = value;
+        }
+        const problem = terminalRetentionProblem(merged);
+        if (problem)
+          return c.json(
+            { success: false, error: `${problem}; no settings were saved.` },
+            400,
+          );
+        if (
+          changesAny(body as object, current, ['terminalHistoryDirectory']) &&
+          requestMayBeAnAgent(c.req.raw)
+        ) {
+          logRefusal('scope_agent_command_not_granted');
+          return c.json(
+            {
+              success: false,
+              code: COMMAND_NOT_GRANTED_CODE,
+              error:
+                'An agent cannot move terminal history. The operator can, in Settings.',
+            },
+            403,
+          );
+        }
+      }
+
       // `agentConnections` is a composite that replaces the stored value
       // wholesale. Credential profiles written this way (including a settings
       // import) are normalized like any registry write, so an invalid env

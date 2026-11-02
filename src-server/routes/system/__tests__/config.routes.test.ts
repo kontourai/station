@@ -463,6 +463,105 @@ describe('Config Routes', () => {
     await expect(json(response)).resolves.toMatchObject({ success: false });
   });
 
+  describe('#3994: terminal history retention', () => {
+    const put = async (body: object, initial?: Record<string, unknown>) => {
+      const loader = createMockConfigLoader(
+        initial ?? { defaultModel: 'claude-3', region: 'us-east-1' },
+      );
+      const app = createConfigRoutes(loader as any, mockLogger);
+      const response = await app.request('/app', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      return { response, body: await json(response), loader };
+    };
+
+    test('in-range values save', async () => {
+      const { response, loader } = await put({
+        terminalHistoryEnabled: false,
+        terminalHistoryDirectory: '/var/station/terminals',
+        terminalHistoryMaxAgeDays: 7,
+        terminalHistoryMaxTerminalMiB: 32,
+        terminalHistoryMaxTotalMiB: 64,
+      });
+      expect(response.status).toBe(200);
+      expect(loader.updateAppConfig).toHaveBeenCalled();
+    });
+
+    test.each([
+      [{ terminalHistoryMaxAgeDays: 0 }, 'expected at least 1'],
+      [{ terminalHistoryMaxAgeDays: 3651 }, 'expected at most 3650'],
+      [{ terminalHistoryMaxAgeDays: 1.5 }, 'expected an integer'],
+      [{ terminalHistoryMaxTerminalMiB: 1025 }, 'expected at most 1024'],
+      [{ terminalHistoryMaxTotalMiB: 15 }, 'expected at least 16'],
+      [{ terminalHistoryEnabled: 'yes' }, 'expected a boolean'],
+      [
+        { terminalHistoryDirectory: 'relative/journals' },
+        'expected an absolute path',
+      ],
+      [
+        { terminalHistoryMaxTerminalMiB: 64, terminalHistoryMaxTotalMiB: 32 },
+        'at least the per-terminal size',
+      ],
+    ])('%o is refused, not clamped', async (update, message) => {
+      const { response, body, loader } = await put(update);
+      expect(response.status).toBe(400);
+      expect(JSON.stringify(body)).toContain(message);
+      expect(loader.updateAppConfig).not.toHaveBeenCalled();
+    });
+
+    test('an agent cannot move terminal history; the operator can', async () => {
+      const loader = createMockConfigLoader();
+      const app = new Hono();
+      let agent = true;
+      app.use('*', async (c, next) => {
+        setRuntimeAuthenticatedRequestPrincipal(
+          c.req.raw,
+          agent
+            ? {
+                kind: 'internal',
+                credential: 'internal-test',
+                authority: 'operator-credential',
+                source: 'bearer',
+              }
+            : {
+                kind: 'credential',
+                credential: 'operator-test',
+                authority: 'operator-credential',
+                source: 'bearer',
+              },
+        );
+        await next();
+      });
+      app.route('/', createConfigRoutes(loader as any, mockLogger));
+      const move = () =>
+        app.request('/app', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ terminalHistoryDirectory: '/tmp/elsewhere' }),
+        });
+      const refused = await move();
+      expect(refused.status).toBe(403);
+      expect((await json(refused)).error).toContain(
+        'cannot move terminal history',
+      );
+      expect(loader.updateAppConfig).not.toHaveBeenCalled();
+      agent = false;
+      expect((await move()).status).toBe(200);
+    });
+
+    test('the per-terminal size is checked against the saved total', async () => {
+      const { response, body, loader } = await put(
+        { terminalHistoryMaxTerminalMiB: 512 },
+        { defaultModel: 'claude-3', terminalHistoryMaxTotalMiB: 256 },
+      );
+      expect(response.status).toBe(400);
+      expect(body.error).toContain('at least the per-terminal size (512 MiB)');
+      expect(loader.updateAppConfig).not.toHaveBeenCalled();
+    });
+  });
+
   test('PUT /app refuses logLevel without mutating any settings', async () => {
     const loader = createMockConfigLoader();
     const app = createConfigRoutes(loader as any, mockLogger);

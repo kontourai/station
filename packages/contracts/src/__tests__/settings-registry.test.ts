@@ -318,6 +318,12 @@ describe('APP_SETTINGS_REGISTRY completeness', () => {
         'surfaceTrustFromVeritasEvidence',
         'telemetryEnabled',
         'telemetryTier',
+        // #3994: confirmed against `resolveTerminalRetention`, which falls
+        // through to on, 30 days, 16 MiB and 1024 MiB.
+        'terminalHistoryEnabled',
+        'terminalHistoryMaxAgeDays',
+        'terminalHistoryMaxTerminalMiB',
+        'terminalHistoryMaxTotalMiB',
         // #3157: confirmed against `autoResumeAllowed` (the coordinator) and
         // the `=== true` wiring in orchestration-service.ts — absent is off.
         'usageLimitAutoResume',

@@ -15,8 +15,13 @@ import type { ReactNode } from 'react';
 import { beforeEach, expect, test, vi } from 'vitest';
 import { CodingTerminalPane } from '../CodingTerminalPane';
 
-const { closeProjectTerminal, connections, server } = vi.hoisted(() => ({
+const { closeProjectTerminal, connections, server, adopt } = vi.hoisted(() => ({
   closeProjectTerminal: vi.fn(),
+  /**
+   * `POST …/terminal-sessions` with `adopt`: the binding's running shell, or
+   * a new one. `supported: false` is a host that predates it.
+   */
+  adopt: { supported: true, calls: 0 },
   /** What `useACPConnections` answers: the agent kinds, or not yet. */
   connections: { data: [] as unknown[], isPending: false },
   /**
@@ -44,6 +49,36 @@ const running = (terminalId: string, extra: object = {}) => ({
 });
 
 vi.mock('@kontourai/station-sdk', () => ({
+  openOrAdoptProjectShell: async (_apiBase: string, slug: string) => {
+    adopt.calls += 1;
+    if (!adopt.supported) return null;
+    const projectId = `${slug}-id`;
+    const shells = server.records.filter(
+      (record) =>
+        record.projectId === projectId &&
+        (record.launch as { kind?: string } | undefined)?.kind !== 'agent',
+    );
+    const live = shells.find((record) => record.status === 'running');
+    if (live)
+      return {
+        terminalId: live.terminalId as string,
+        ordinal: live.ordinal as number,
+        adopted: true,
+      };
+    const terminalId = `adopted-${server.records.length + 1}`;
+    const ordinal =
+      Math.max(0, ...shells.map((record) => Number(record.ordinal ?? 0))) + 1;
+    server.records.push({
+      terminalId,
+      projectId,
+      bindingKey: 'project',
+      status: 'running',
+      createdAt: ++clock,
+      launch: { kind: 'shell' },
+      ordinal,
+    });
+    return { terminalId, ordinal, adopted: false };
+  },
   // The service ends the session; the list keeps it, ended.
   closeProjectTerminal: async (...args: [string, string, string]) => {
     const result = await closeProjectTerminal(...args);
@@ -122,6 +157,8 @@ beforeEach(() => {
   connections.data = [];
   connections.isPending = false;
   server.records = [];
+  adopt.supported = true;
+  adopt.calls = 0;
   server.list
     .mockReset()
     .mockImplementation(async (target: { projectId: string }) =>
@@ -568,4 +605,69 @@ test('"+" has a name and stays outside the scrolling tab strip', async () => {
   await screen.findByRole('tab', { name: 'Shell 1' });
   const add = screen.getByRole('button', { name: 'New terminal' });
   expect(add.closest('[role="tablist"]')).toBeNull();
+});
+
+test('an empty binding opened by two views at once gets one shell, named by its stored number', async () => {
+  server.records = [
+    running('44444444-4444-4444-8444-444444444444', {
+      status: 'exited',
+      ordinal: 6,
+    }),
+  ];
+  renderInPage(
+    <>
+      <section aria-label="Bottom">
+        <CodingTerminalPane
+          presentation="pane"
+          projectSlug="project-a"
+          workingDir="/workspace"
+        />
+      </section>
+      <section aria-label="Dock">
+        <CodingTerminalPane
+          presentation="pane"
+          projectSlug="project-a"
+          workingDir="/workspace"
+        />
+      </section>
+    </>,
+  );
+  const names = (region: string) =>
+    within(screen.getByRole('region', { name: region }))
+      .queryAllByRole('tab')
+      .map((tab) => tab.getAttribute('aria-label'));
+  await waitFor(() => expect(names('Bottom')).toEqual(['Shell 7']));
+  await waitFor(() => expect(names('Dock')).toEqual(['Shell 7']));
+  expect(adopt.calls).toBe(2);
+  expect(server.open).not.toHaveBeenCalled();
+  expect(
+    server.records.filter((record) => record.status === 'running'),
+  ).toHaveLength(1);
+});
+
+test('shell names are the stored numbers, so evicting the oldest ended shells renames none', async () => {
+  // Shells 1 and 2 ended and were evicted; their numbers are not reused.
+  server.records = [
+    running(SHELL_ONE, { createdAt: 3, ordinal: 3 }),
+    running('33333333-3333-4333-8333-333333333333', {
+      createdAt: 4,
+      ordinal: 4,
+    }),
+  ];
+  renderPane([]);
+  await waitFor(() =>
+    expect(
+      screen.getAllByRole('tab').map((tab) => tab.getAttribute('aria-label')),
+    ).toEqual(['Shell 3', 'Shell 4']),
+  );
+  fireEvent.click(screen.getByTitle('New terminal'));
+  expect(screen.getByRole('tab', { name: 'Shell 5' })).toBeTruthy();
+});
+
+test('a host without the open-or-adopt answer opens the empty binding through the socket', async () => {
+  adopt.supported = false;
+  renderPane([]);
+  expect(await screen.findByRole('tab', { name: 'Shell 1' })).toBeTruthy();
+  await waitFor(() => expect(server.open).toHaveBeenCalledTimes(1));
+  expect(adopt.calls).toBe(1);
 });

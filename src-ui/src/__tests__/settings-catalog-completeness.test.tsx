@@ -259,6 +259,25 @@ vi.mock('@kontourai/station-sdk', async () => {
       error: null,
       mutate: vi.fn(),
     }),
+    useTerminalHistoryQuery: () => ({
+      isLoading: false,
+      error: null,
+      data: {
+        enabled: true,
+        directory: '/home/terminal-journals',
+        projects: [],
+        terminals: 0,
+        bytes: 0,
+      },
+      refetch: vi.fn(),
+    }),
+    useClearTerminalHistoryMutation: () => ({
+      isPending: false,
+      error: null,
+      data: undefined,
+      mutate: vi.fn(),
+    }),
+    TerminalHistoryUnsupportedError: class extends Error {},
     useKnowledgeAdaptersQuery: () => ({ data: [] }),
     useKnowledgeRootsQuery: () => ({ data: [] }),
     useCreateKnowledgeRootMutation: () => ({
