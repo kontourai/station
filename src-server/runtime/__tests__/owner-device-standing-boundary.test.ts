@@ -6,9 +6,9 @@
  * a read-only device keeps every refusal.
  */
 import { mkdtempSync, rmSync } from 'node:fs';
-import type { HttpBindings } from '@hono/node-server';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import type { HttpBindings } from '@hono/node-server';
 import { pairingScopePresetString } from '@kontourai/station-contracts';
 import { Hono } from 'hono';
 import { afterEach, describe, expect, test } from 'vitest';
@@ -147,7 +147,9 @@ async function harness() {
         ...(init.body !== undefined ? { body: JSON.stringify(init.body) } : {}),
       },
       // A tailnet peer: the owner's laptop or phone, never this host.
-      { incoming: { socket: { remoteAddress: '100.96.12.7' } } } as TestBindings,
+      {
+        incoming: { socket: { remoteAddress: '100.96.12.7' } },
+      } as TestBindings,
     );
   return { pair, call, pairing };
 }
@@ -156,7 +158,10 @@ describe('owner-device standing at the real boundary', () => {
   test("the owner's own device resolves to the owner, attributed to itself", async () => {
     const { pair, call } = await harness();
     const laptop = pair(pairingScopePresetString('standard'));
-    const response = await call('/api/orchestration/sessions', laptop.credential);
+    const response = await call(
+      '/api/orchestration/sessions',
+      laptop.credential,
+    );
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toEqual({
       owner: true,
@@ -169,7 +174,10 @@ describe('owner-device standing at the real boundary', () => {
   test('a read-only device stays a device', async () => {
     const { pair, call } = await harness();
     const display = pair(pairingScopePresetString('read-only'));
-    const response = await call('/api/orchestration/sessions', display.credential);
+    const response = await call(
+      '/api/orchestration/sessions',
+      display.credential,
+    );
     expect(response.status).toBe(200);
     const body = (await response.json()) as {
       owner: boolean;
@@ -227,9 +235,9 @@ describe('owner-device standing at the real boundary', () => {
   test('a read-only device keeps the pairing refusals', async () => {
     const { pair, call } = await harness();
     const display = pair(pairingScopePresetString('read-only'));
-    expect((await call('/api/pairing/devices', display.credential)).status).toBe(
-      403,
-    );
+    expect(
+      (await call('/api/pairing/devices', display.credential)).status,
+    ).toBe(403);
     expect(
       (
         await call('/api/pairing/offers', display.credential, {

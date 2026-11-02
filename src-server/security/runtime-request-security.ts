@@ -1473,8 +1473,7 @@ export function runtimeRequestPrincipalMayAccessHttpRoute(
       security.verifyOperatorCredential?.(principal.credential) === true,
       principal.locality === 'home-possession' ||
         (principal.authority === 'device-credential' &&
-          security.credentialHasOwnerStanding?.(principal.credential) ===
-            true),
+          security.credentialHasOwnerStanding?.(principal.credential) === true),
     )
   );
 }

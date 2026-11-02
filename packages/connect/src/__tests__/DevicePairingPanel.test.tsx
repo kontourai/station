@@ -3826,8 +3826,11 @@ describe('Pair phone quick flow (owner-device standing, 2026-11-02)', () => {
     ]);
     expect(screen.getByText('CODE1')).toBeTruthy();
     expect(
-      (screen.getByRole('radio', { name: /Tailscale HTTPS/ }) as HTMLInputElement)
-        .checked,
+      (
+        screen.getByRole('radio', {
+          name: /Tailscale HTTPS/,
+        }) as HTMLInputElement
+      ).checked,
     ).toBe(true);
     expect(screen.queryByRole('radio', { name: /127\.0\.0\.1/ })).toBeNull();
   });

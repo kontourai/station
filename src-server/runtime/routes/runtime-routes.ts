@@ -1078,7 +1078,9 @@ type HonoApp = Parameters<NonNullable<HonoServerConfig['configureApp']>>[0];
  * refuses.
  */
 function ownerIdentityForRequest(request: Request): string | undefined {
-  return isOperatorInPersonNotAgent(request) ? getCachedUser().alias : undefined;
+  return isOperatorInPersonNotAgent(request)
+    ? getCachedUser().alias
+    : undefined;
 }
 
 /** A session worktree is valid only within the project that owns the thread. */
@@ -8578,8 +8580,7 @@ export function configureRuntimeRoutes(
       }),
       {
         canManage: (request) =>
-          isBoundRuntimeOwner(request) &&
-          isRequestPrincipalCurrent(request),
+          isBoundRuntimeOwner(request) && isRequestPrincipalCurrent(request),
         canQuery: (request) => {
           return delegationContributionQueryAuthorized(request, {
             current: isRequestPrincipalCurrent,
@@ -10828,8 +10829,7 @@ export function configureRuntimeRoutes(
       // The reader owns which failures become "absent"; see its docblock.
       createConfigProjectReader(context.storageAdapter),
       (request) =>
-        isBoundRuntimeOwner(request) &&
-        isRequestPrincipalCurrent(request),
+        isBoundRuntimeOwner(request) && isRequestPrincipalCurrent(request),
       (config) => {
         context.getUsageTelemetry?.()?.reconfigure(config, true);
         reconfigureOtelTelemetryDelivery(config);

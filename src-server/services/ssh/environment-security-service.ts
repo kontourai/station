@@ -528,7 +528,9 @@ export class EnvironmentSecurityService {
   /** {@link credentialHasOwnerStanding}, by device id, for background work. */
   deviceHasOwnerStanding(deviceId: string): boolean {
     if (this.#hosted) return false;
-    return this.#devicePairingService?.deviceHasOwnerStanding(deviceId) ?? false;
+    return (
+      this.#devicePairingService?.deviceHasOwnerStanding(deviceId) ?? false
+    );
   }
 
   verifyOperatorCredential(candidate: string): boolean {

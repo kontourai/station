@@ -73,8 +73,9 @@ describe('owner-device standing', () => {
     expect(pairingScopeIncludes(granted, PAIRING_SCOPE_ACCESS_MANAGE)).toBe(
       true,
     );
-    expect(pairing.listDevices().find((d) => d.id === phone.device.id)?.scope)
-      .toBe(pairingScopePresetString('standard'));
+    expect(
+      pairing.listDevices().find((d) => d.id === phone.device.id)?.scope,
+    ).toBe(pairingScopePresetString('standard'));
   });
 
   test('a device without a host shell never holds it', async () => {
@@ -84,10 +85,13 @@ describe('owner-device standing', () => {
       pairingScopePresetString('inference'),
     ]) {
       const device = pair(scope);
-      expect(security.credentialHasOwnerStanding(device.credential), scope)
-        .toBe(false);
-      expect(pairing.credentialMayManagePairing(device.credential), scope)
-        .toBe(false);
+      expect(
+        security.credentialHasOwnerStanding(device.credential),
+        scope,
+      ).toBe(false);
+      expect(pairing.credentialMayManagePairing(device.credential), scope).toBe(
+        false,
+      );
       expect(
         pairingScopeIncludes(
           security.resolveGrantedScope(device.credential)!,
@@ -112,9 +116,7 @@ describe('owner-device standing', () => {
       locality: 'home-possession',
       mintKind: 'local-grant',
     });
-    expect(security.credentialHasOwnerStanding(desktop.credential)).toBe(
-      false,
-    );
+    expect(security.credentialHasOwnerStanding(desktop.credential)).toBe(false);
   });
 
   test('revoking or narrowing the device removes it on the next check', async () => {
@@ -122,18 +124,14 @@ describe('owner-device standing', () => {
     const revoked = pair(pairingScopePresetString('standard'));
     const narrowed = pair(pairingScopePresetString('standard'));
     expect(security.credentialHasOwnerStanding(revoked.credential)).toBe(true);
-    expect(security.credentialHasOwnerStanding(narrowed.credential)).toBe(
-      true,
-    );
+    expect(security.credentialHasOwnerStanding(narrowed.credential)).toBe(true);
 
     pairing.revokeDevice(revoked.device.id, 'operator-credential');
     pairing.setDeviceScope(narrowed.device.id, ['orchestration:read'], {
       kind: 'presented-credential',
     });
 
-    expect(security.credentialHasOwnerStanding(revoked.credential)).toBe(
-      false,
-    );
+    expect(security.credentialHasOwnerStanding(revoked.credential)).toBe(false);
     expect(security.credentialHasOwnerStanding(narrowed.credential)).toBe(
       false,
     );
