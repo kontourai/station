@@ -678,12 +678,12 @@
     {
       "path": "docs/learn/media/project-invitation-after-390-light.png",
       "kind": "image",
-      "digest": "f4773848d6cb1da74739bec1b06ac546d9bb6c5a586825fe5e78560b517571a8",
+      "digest": "366d0e8a5fe152cd3af6bb0a58fca78533901d9858ca54e8569a32b49a658359",
       "alt": "Project invitation controls after the guided journey change at 390-light.",
       "caption": "After invitation management, 390-light; synthetic local browser fixture.",
       "scenario": "Project invitation management",
-      "evidence": "Synthetic account and invitation fixture in real Chromium, rendering the after operator AccessSection and real SDK query/mutation owners at source 7b76098265eeddb98b777e90051063bf0674fe73. Before rendering loads the five invitation UI/CSS owners from git show at that source; after rendering uses the frozen checkout. Inspected at 390-light; this proves pictured UI geometry only. The loopback address and repeated-k token are synthetic. No public reachability, provider, native, physical-person or release qualification.",
-      "capturedRevision": "7b76098265eeddb98b777e90051063bf0674fe73",
+      "evidence": "Synthetic account and invitation fixture in real Chromium, rendering the after operator AccessSection and real SDK query/mutation owners at source 8fc2ee79376b288f76fe6d0e52d21dbc85b5bbde. Before rendering loads the five invitation UI/CSS owners from git show at that source; after rendering uses the frozen checkout. Inspected at 390-light; this proves pictured UI geometry only. The loopback address and repeated-k token are synthetic. No public reachability, provider, native, physical-person or release qualification.",
+      "capturedRevision": "8fc2ee79376b288f76fe6d0e52d21dbc85b5bbde",
       "documents": [
         "docs/guides/deployment-authentication.md"
       ]
@@ -691,12 +691,12 @@
     {
       "path": "docs/learn/media/project-invitation-after-1440-dark.png",
       "kind": "image",
-      "digest": "cd979f656f2fe8731b01dd13d29d1f735e491f656d72107a9f9494db4faba087",
+      "digest": "efaa0ca367752eae84cf157e43d9215707aafdd48b5c013cc61607be2b6398a3",
       "alt": "Project invitation controls after the guided journey change at 1440-dark.",
       "caption": "After invitation management, 1440-dark; synthetic local browser fixture.",
       "scenario": "Project invitation management",
-      "evidence": "Synthetic account and invitation fixture in real Chromium, rendering the after operator AccessSection and real SDK query/mutation owners at source 7b76098265eeddb98b777e90051063bf0674fe73. Before rendering loads the five invitation UI/CSS owners from git show at that source; after rendering uses the frozen checkout. Inspected at 1440-dark; this proves pictured UI geometry only. The loopback address and repeated-k token are synthetic. No public reachability, provider, native, physical-person or release qualification.",
-      "capturedRevision": "7b76098265eeddb98b777e90051063bf0674fe73",
+      "evidence": "Synthetic account and invitation fixture in real Chromium, rendering the after operator AccessSection and real SDK query/mutation owners at source 8fc2ee79376b288f76fe6d0e52d21dbc85b5bbde. Before rendering loads the five invitation UI/CSS owners from git show at that source; after rendering uses the frozen checkout. Inspected at 1440-dark; this proves pictured UI geometry only. The loopback address and repeated-k token are synthetic. No public reachability, provider, native, physical-person or release qualification.",
+      "capturedRevision": "8fc2ee79376b288f76fe6d0e52d21dbc85b5bbde",
       "documents": [
         "docs/guides/deployment-authentication.md"
       ]
