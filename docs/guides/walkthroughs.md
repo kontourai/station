@@ -45,8 +45,7 @@ The Browser pane also offers person-initiated silent WebM recording and chat
 frames, described in [Browser workspace](browser-workspace.md). With an active
 Task lead Session, Task access and a clean workspace pinned at recording start,
 **Add to Task clips** publishes through the same Task clip store after rechecks.
-Human and bound Agent Browser recordings share active admission slots. The bound Agent path below remains separate.
-
+Human and bound Agent recordings share active admission slots.
 
 With Walkthroughs enabled, a bound lead Session can call the sensitive
 `station-browser` tool `browser_record_to_task` with `durationMs` (1–30,000),
@@ -60,9 +59,8 @@ screencast frames, and encodes a silent WebM. It checks the workspace, Browser
 generation, caller, Task and preview again before publication. Dirty workspaces,
 unobservable submodules, changed authority, unavailable media tools, excess
 bytes or exhausted recording capacity refuse the operation. The shared recorder
-admits at most four active Browser and Device clips, with at most two per Task
-and author. A commit pin does
-not prove the displayed page was built from that commit. The manifest retains
+admits at most four active Browser and Device recordings per Station, with at
+most two per person or Agent; finished clips do not count. A commit pin does not prove the displayed page was built from that commit. The manifest retains
 the commit, recording digest and byte length, and up to ten selected frames;
 audio and transcript coverage are absent.
 

@@ -4,7 +4,6 @@ import type { TaskReviewAccess } from '../orchestration/project-task-room-runtim
 import { TaskBrowserCaptureError } from './task-browser-capture.js';
 import {
   type RecordingSource,
-  TASK_RECORDING_MAX_ACTIVE,
   type TaskBrowserRecording,
   TaskBrowserRecordingError,
 } from './task-browser-recording.js';
@@ -73,14 +72,7 @@ export class TaskDeviceRecording {
         'Recording duration is out of bounds.',
       );
     this.prune();
-    const active = [...this.jobs.values()].filter(
-      (job) => job.finishedAt === undefined,
-    );
-    if (
-      this.closed ||
-      active.length >= TASK_RECORDING_MAX_ACTIVE ||
-      active.filter((job) => job.key === key).length >= 2
-    )
+    if (this.closed)
       throw new TaskBrowserCaptureError(
         'capture-unavailable',
         'Recording capacity is exhausted.',

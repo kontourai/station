@@ -75,7 +75,10 @@ export async function publishTaskRecording(input: {
     });
     signal.throwIfAborted();
     if (!evidence.commitVerified)
-      throw new Error('The Task commit could not be verified.');
+      throw new TaskBrowserRecordingError(
+        'recording-unavailable',
+        'The Task commit could not be verified.',
+      );
     const manifest = parseWalkthrough({
       schema: WALKTHROUGH_SCHEMA,
       id: stage.id,
