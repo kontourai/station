@@ -1136,8 +1136,13 @@ export function ChatDockBody({
   const nativeSteering =
     sessionSteeringPlacement(activeSession.orchestrationDurability).state ===
     'native';
+  const steeringUnavailableReason = activeSession.orchestrationDurability
+    ? undefined
+    : 'Steering unavailable: the host did not report a durability profile.';
   const busyFollowUp =
-    isTurnInFlight(activeSession) && chatInput.attachments.length === 0
+    isTurnInFlight(activeSession) &&
+    chatInput.attachments.length === 0 &&
+    sessionAdapterSupportsSteering(activeSession.orchestrationDurability)
       ? 'steer'
       : 'queue';
   const isExecutionActive = isSessionExecutionActive(activeSession);
@@ -2118,6 +2123,7 @@ export function ChatDockBody({
                 // #2309: an explicit request; not held back by the record.
                 true,
               ),
+            steeringUnavailableReason,
             canSteer:
               Boolean(
                 isExecutionActive ||
@@ -2801,6 +2807,7 @@ export function ChatDockBody({
             sendRefused={!callerMayContinue || workspaceRefusedWithoutNewChat}
             turnInFlight={isTurnInFlight(activeSession)}
             busyFollowUp={busyFollowUp}
+            busySteeringUnavailableReason={steeringUnavailableReason}
             busySteeringKind={nativeSteering ? 'native' : 'safe-stop'}
             onQueueFollowUp={handleQueueFollowUp}
             stopPending={!!activeSession.stopPending}

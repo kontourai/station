@@ -21,6 +21,7 @@ interface QueuedMessagesProps {
   waitingForTools?: boolean;
   onSendMessageNow?: (messageId: string) => Promise<void>;
   canSteer?: boolean;
+  steeringUnavailableReason?: string;
   onSteer?: (message: string, clientInputId?: string) => Promise<boolean>;
   onPendingSettled?: () => void;
   /**
@@ -117,6 +118,7 @@ export function QueuedMessages({
   waitingForTools,
   onSendMessageNow,
   canSteer = false,
+  steeringUnavailableReason,
   onSteer,
   onPendingSettled,
   failure,
@@ -568,6 +570,9 @@ export function QueuedMessages({
         </div>
       )}
       <div id={queueId} className="queued-messages__content" hidden={!expanded}>
+        {steeringUnavailableReason && (
+          <p role="status">{steeringUnavailableReason}</p>
+        )}
         {failure && (
           <div className="queued-messages__failure" role="status">
             <span className="queued-messages__failure-text">

@@ -670,6 +670,10 @@ HTTP409 `inbox_stale_head` and `currentHead`, without a write.
   follow-ups resume after that review barrier and the turn's terminal.
   Later model steps retain the steer after its tool-result boundary and before
   the model's response to it, including when earlier history is compacted.
+  Missing adapter durability is treated as no declared steering support. During
+  a running turn this settles the inbox entry `refused`, with reason code
+  `unsupported-engine`, before any handoff; it does not block later follow-ups.
+  Direct steer dispatch also returns the typed `unsupported-engine` outcome.
 - **Follow-up:** waits for the current turn's terminal, then starts the next
   turn through the conversation's recorded binding.
 - **Display:** appears immediately as a server inbox note and is never model

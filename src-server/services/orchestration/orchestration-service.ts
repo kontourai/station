@@ -5442,9 +5442,7 @@ export class OrchestrationService {
       requireAdapter: (provider) => this.requireAdapter(provider),
       adapters: this.options.adapterRegistry.list(),
     });
-    const fidelity = adapter.metadata.durability?.steerPlacement.state;
-    if (!fidelity) throw new Error('Engine steering fidelity is unavailable.');
-    return fidelity;
+    return adapter.metadata.durability?.steerPlacement.state ?? 'none';
   }
 
   async readSession(

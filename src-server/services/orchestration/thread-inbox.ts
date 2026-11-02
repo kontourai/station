@@ -1792,6 +1792,32 @@ export class ThreadInboxDelivery {
         }
         if (head.state === 'queued' && this.isBusy(current)) {
           const fidelity = await this.ports.steerFidelity?.(current);
+          if (fidelity === 'none') {
+            const claimed = store.claimNext(
+              conversationId,
+              current,
+              this.now(),
+            );
+            if (claimed.kind !== 'claimed') return;
+            if (
+              claimed.entry.key !== head.key ||
+              claimed.entry.kind !== 'steer'
+            ) {
+              store.release(claimed.entry, false, this.now());
+              continue;
+            }
+            settle(
+              claimed.entry,
+              'refused',
+              {
+                reasonCode: 'unsupported-engine',
+                reason:
+                  'The engine has no declared steering support. Nothing was sent.',
+              },
+              this.now(),
+            );
+            continue;
+          }
           if (
             fidelity !== 'native' ||
             !this.ports.steer ||

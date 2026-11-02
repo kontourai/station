@@ -198,6 +198,7 @@ interface ChatInputAreaProps {
    */
   busyFollowUp?: 'steer' | 'queue';
   busySteeringKind?: 'native' | 'safe-stop';
+  busySteeringUnavailableReason?: string;
   /** Hold the draft as a follow-up instead of steering the open turn. */
   onQueueFollowUp?: () => Promise<void>;
   /**
@@ -470,6 +471,7 @@ export function ChatInputArea({
   allowDraftWhileDisabled = false,
   turnInFlight,
   busySteeringKind = 'native',
+  busySteeringUnavailableReason,
   busyFollowUp = 'queue',
   onQueueFollowUp,
   stopPending = false,
@@ -1957,6 +1959,9 @@ export function ChatInputArea({
                   ? 'Steer this turn'
                   : 'Steer when safe'}
               </Button>
+              {busySteeringUnavailableReason && (
+                <p role="status">{busySteeringUnavailableReason}</p>
+              )}
             </ResponsiveDialogSurface>
           )}
         </div>

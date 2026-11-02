@@ -407,19 +407,58 @@ afterEach(async () => {
 describe('thread inbox (#3568)', () => {
   const path = () => join(makeTempDir('thread-inbox-'), 'orchestration.sqlite');
 
-  test('steer dispatch refuses a profile that declares no steering even for a native-named provider', async () => {
-    const world = boot(path());
-    await runningFirstTurn(world);
-    world.adapter.metadata.durability = EXTERNAL_ENGINE_DURABILITY;
-    const result = await world.service.dispatchWithReceipt({
-      type: 'steerTurn',
-      threadId: THREAD,
-      turnId: 'turn-1',
-      input: 'must not steer',
-      clientInputId: 'profile-none',
+  test.each(['none', 'missing'] as const)(
+    'steer dispatch refuses %s steering declaration even for a native-named provider',
+    async (declaration) => {
+      const world = boot(path());
+      await runningFirstTurn(world);
+      world.adapter.metadata.durability =
+        declaration === 'missing' ? undefined : EXTERNAL_ENGINE_DURABILITY;
+      const result = await world.service.dispatchWithReceipt({
+        type: 'steerTurn',
+        threadId: THREAD,
+        turnId: 'turn-1',
+        input: 'must not steer',
+        clientInputId: 'profile-none',
+      });
+      expect(result.result).toMatchObject({ outcome: 'unsupported-engine' });
+      expect(world.adapter.steers).toEqual([]);
+    },
+  );
+
+  test('a missing adapter profile refuses a durable steer without blocking later follow-ups', async () => {
+    let world: World;
+    world = boot(path(), {
+      steerFidelity: (threadId) =>
+        world.service.steerFidelityForThread(threadId),
     });
-    expect(result.result).toMatchObject({ outcome: 'unsupported-engine' });
+    const owner = await runningFirstTurn(world);
+    delete world.adapter.metadata.durability;
+    expect(await world.service.steerFidelityForThread(THREAD)).toBe('none');
+    world.inbox.submitSteer({
+      conversationId: THREAD,
+      clientTurnId: 'missing-profile',
+      payload,
+      expectedHead: world.inbox.currentHead(THREAD),
+    });
+    await world.inbox.idle();
+    expect(world.inbox.list(THREAD)).toMatchObject([
+      {
+        state: 'refused',
+        reasonCode: 'unsupported-engine',
+        message: FOLLOW_UP,
+      },
+    ]);
     expect(world.adapter.steers).toEqual([]);
+    expect(followUpSends()).toEqual([]);
+    world.inbox.submit({
+      conversationId: THREAD,
+      clientTurnId: 'F2',
+      payload: { ...payload, message: 'follow-up F2' },
+    });
+    await emit(world, 'turn.completed', { turnId: 'turn-1' }, owner);
+    await settle(world);
+    expect(sends).toContain('follow-up F2');
   });
 
   test('the inbox drives a scripted adapter through the real receipted orchestration dispatch', async () => {
