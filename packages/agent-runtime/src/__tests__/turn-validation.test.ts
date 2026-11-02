@@ -5,7 +5,7 @@ import { constants, DatabaseSync } from 'node:sqlite';
 import { afterEach, expect, it } from 'vitest';
 import { createAgentRuntime, openSqliteAgentJournal } from '../index.js';
 import { agentWire } from '../internal.js';
-import { bodyDefinitions } from '../turn-bodies.js';
+import { bodyDefinitions, putAgentBody } from '../turn-bodies.js';
 import { key, owner } from './fixture.js';
 import { turnFixture } from './turn-fixture.js';
 
@@ -207,4 +207,59 @@ it('deleting an old receipt cannot remint an effect after a retained connection 
   await expect(f.lease.assertCurrent()).rejects.toThrow(
     'CHANGED_EFFECT_MISSING',
   );
+});
+
+it('writer 8 partials retain their logical bytes when converted into immutable batches', async () => {
+  const f = await turnFixture();
+  cleanup.push(() => f.close());
+  await f.lease.effect({
+    type: 'effectPlan',
+    intent: {
+      id: 'model:old',
+      kind: 'model',
+      replay: 'unsafe',
+      input: agentWire({ prompt: 'retained' }),
+    },
+  });
+  await f.lease.effect({ type: 'effectBegin', id: 'model:old' });
+  await f.lease.effect({
+    type: 'effectPartial',
+    id: 'model:old',
+    part: agentWire({ type: 'text-delta', id: 'a', delta: 'audit' }),
+  });
+  const { effect } = await f.lease.effect({
+    type: 'effectRead',
+    id: 'model:old',
+  });
+  const header = {
+    ...effect,
+    intent: { ...effect.intent, input: effect.inputDigest },
+    attempts: effect.attempts.map((attempt) => ({
+      ...attempt,
+      partials: attempt.partials.map((part) => putAgentBody(f.database, part)),
+    })),
+  };
+  f.database
+    .prepare('UPDATE agent_steps_effects SET record=? WHERE id=?')
+    .run(JSON.stringify(header), 'model:old');
+  f.database.exec(
+    "DROP TABLE agent_steps_meta; CREATE TABLE agent_steps_meta(id INTEGER PRIMARY KEY CHECK(id=1), writer_format TEXT NOT NULL CHECK(writer_format='agent-steps/8')) STRICT; INSERT INTO agent_steps_meta VALUES(1,'agent-steps/8')",
+  );
+  await f.crash.reopen();
+  expect(
+    (await f.lease.effect({ type: 'effectRead', id: 'model:old' })).effect,
+  ).toEqual(effect);
+  expect(
+    f.database.prepare('SELECT writer_format FROM agent_steps_meta').get()
+      ?.writer_format,
+  ).toBe('agent-steps/9');
+  expect(
+    JSON.parse(
+      String(
+        f.database
+          .prepare('SELECT record FROM agent_steps_effects WHERE id=?')
+          .get('model:old')?.record,
+      ),
+    ).version,
+  ).toBe(2);
 });

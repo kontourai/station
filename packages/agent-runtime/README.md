@@ -13,7 +13,7 @@ AI SDK v3 interface, VoltAgent 2.10.0 and Strands 1.19.0 VercelModel. Optional
 framework dependencies are exact peers. The package imports no Station code.
 
 The public root also exports an agent-turn journal and recovery owner. Its
-separate `agent_steps_` namespace declares writer format `agent-steps/8` and
+separate `agent_steps_` namespace declares writer format `agent-steps/9` and
 leaves existing `runtime-model/1` records intact. An active conversation has
 one owner. Recovery requires a proven-dead owner and compares the complete
 observed fence inside the SQLite write transaction. A retained Station turn
@@ -281,3 +281,5 @@ crash durability or a published runtime release.
 The `/internal` subpath groups the unstable host/framework ABI: `agentWire` and `readAgentWire` retain native DTO bytes; `runWithProviderParent` and `nextProviderCallId` correlate nested provider calls; `journalAgentStreamPrefix` applies the commit-before-show batch barrier; `listSqliteAgentTurns` and the `readSqliteAgent*` views bind recovery and Station publication to the journal. These are no longer root exports. The import gate permits this one declared integration entry and rejects filesystem/deep-module imports.
 
 Native tools that cannot expose the durable execution port are refused before model dispatch. Ordinary engine calls retain their prior tool-return values; only restored durable results use the host decoder. Late transport frames wait for an in-flight terminal receipt so they use its committed owner fence.
+
+Writer 9 groups partial wire values into immutable bodies of at most 128 entries. Its migration preserves logical partial/input/result bytes and existing turn records while rewriting effect control headers to physical version 2. Previous body rows remain retained. The old writer refuses the new metadata.

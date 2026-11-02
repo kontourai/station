@@ -51,18 +51,39 @@ export function copyAgentEffect(effect: EffectRecord): EffectRecord {
     })),
   };
 }
+function partialBatches(parts: readonly string[]): string[] {
+  const batches: string[] = [];
+  for (let offset = 0; offset < parts.length; offset += 128)
+    batches.push(agentWire(parts.slice(offset, offset + 128)));
+  return batches;
+}
+function readPartialBatch(database: DatabaseSync, ref: string): string[] {
+  const parts = readAgentWire(readAgentBody(database, ref));
+  if (
+    !Array.isArray(parts) ||
+    parts.length < 1 ||
+    parts.length > 128 ||
+    !parts.every((part) => typeof part === 'string')
+  )
+    throw new Error('DURABLE_AGENT_PARTIAL_BATCH_DAMAGED');
+  for (const part of parts) readAgentWire(part);
+  return parts;
+}
 export function agentEffectHeader(
   database: DatabaseSync,
   effect: EffectRecord,
+  legacy = false,
 ): string {
   return canonical({
     ...effect,
+    version: legacy ? 1 : 2,
     intent: { ...effect.intent, input: effect.inputDigest },
     attempts: effect.attempts.map((attempt) => ({
       ...attempt,
-      partials: attempt.partials.map((wire) =>
-        agentBodyReference(database, wire),
-      ),
+      partials: (legacy
+        ? attempt.partials
+        : partialBatches(attempt.partials)
+      ).map((wire) => agentBodyReference(database, wire)),
       output:
         attempt.output === null
           ? null
@@ -280,10 +301,20 @@ export function readAgentEffect(
     cache.set(key, prior);
     return copyAgentEffect(prior.value);
   }
-  const header = effectSchema.parse(JSON.parse(wire));
+  const raw = JSON.parse(wire);
+  const batched = raw?.version === 2;
+  const header = effectSchema.parse(batched ? { ...raw, version: 1 } : raw);
+  if (
+    !batched &&
+    header.intent.input.startsWith('sha256:') &&
+    database
+      .prepare('SELECT writer_format FROM agent_steps_meta WHERE id=1')
+      .get()?.writer_format === 'agent-steps/9'
+  )
+    throw new Error('DURABLE_AGENT_EFFECT_DAMAGED');
   if (!header.intent.input.startsWith('sha256:')) {
     if (
-      ['agent-steps/7', 'agent-steps/8'].includes(
+      ['agent-steps/7', 'agent-steps/8', 'agent-steps/9'].includes(
         String(
           database
             .prepare('SELECT writer_format FROM agent_steps_meta WHERE id=1')
@@ -303,7 +334,11 @@ export function readAgentEffect(
       },
       attempts: header.attempts.map((attempt) => ({
         ...attempt,
-        partials: attempt.partials.map((ref) => readAgentBody(database, ref)),
+        partials: attempt.partials.flatMap((ref) =>
+          batched
+            ? readPartialBatch(database, ref)
+            : [readAgentBody(database, ref)],
+        ),
         output:
           attempt.output === null
             ? null
@@ -318,14 +353,22 @@ export function readAgentEffect(
     throw new Error('DURABLE_AGENT_EFFECT_ID_DAMAGED');
   return effect;
 }
-function write(database: DatabaseSync, turnId: string, effect: EffectRecord) {
+function write(
+  database: DatabaseSync,
+  turnId: string,
+  effect: EffectRecord,
+  legacy = false,
+) {
   const input = putAgentBody(database, effect.intent.input);
   validate(effect, true, input);
   for (const attempt of effect.attempts) {
-    for (const part of attempt.partials) putAgentBody(database, part);
+    for (const part of legacy
+      ? attempt.partials
+      : partialBatches(attempt.partials))
+      putAgentBody(database, part);
     if (attempt.output !== null) putAgentBody(database, attempt.output);
   }
-  const wire = agentEffectHeader(database, effect);
+  const wire = agentEffectHeader(database, effect, legacy);
   rememberEffect(
     database,
     JSON.stringify([turnId, effect.intent.id]),
@@ -447,6 +490,7 @@ export function decideAgentEffect(
         16 * 1024 * 1024
     )
       return { kind: 'refused', reason: 'conflict' };
+    for (const part of parts) readAgentWire(part);
     attempt.partials.push(...parts);
   } else {
     attempt.output = command.output;
@@ -463,6 +507,15 @@ export function migrateAgentEffects(database: DatabaseSync) {
     .all()) {
     const turnId = String(row.turn_id);
     const effect = readAgentEffect(database, turnId, String(row.id))!;
-    write(database, turnId, effect);
+    write(database, turnId, effect, true);
+  }
+}
+
+export function migrateAgentEffectBatches(database: DatabaseSync) {
+  for (const row of database
+    .prepare('SELECT turn_id,id FROM agent_steps_effects')
+    .all()) {
+    const turnId = String(row.turn_id);
+    write(database, turnId, readAgentEffect(database, turnId, String(row.id))!);
   }
 }

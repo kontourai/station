@@ -40,7 +40,7 @@ it('migration from the ownership writer preserves original turn bytes and future
   expect(
     f.database.prepare('SELECT writer_format FROM agent_steps_meta').get()
       ?.writer_format,
-  ).toBe('agent-steps/8');
+  ).toBe('agent-steps/9');
   f.database.exec(
     "DROP TABLE agent_steps_meta; CREATE TABLE agent_steps_meta(id INTEGER PRIMARY KEY, writer_format TEXT NOT NULL) STRICT; INSERT INTO agent_steps_meta VALUES(1,'agent-steps/99');",
   );
@@ -64,5 +64,5 @@ it('writer-5 migration retains the original turn bytes', async () => {
   expect(
     f.database.prepare('SELECT writer_format FROM agent_steps_meta').get()
       ?.writer_format,
-  ).toBe('agent-steps/8');
+  ).toBe('agent-steps/9');
 });

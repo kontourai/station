@@ -28,6 +28,7 @@ import {
   effectCommands,
   effectIndexDefinition,
   effectsDefinition,
+  migrateAgentEffectBatches,
   migrateAgentEffects,
   takeOverAgentEffects,
   unfinishedAgentEffects,
@@ -215,10 +216,14 @@ const writer7Definitions = [
   ...bodyDefinitions,
   effectIndexDefinition,
 ];
-const currentDefinitions = [
+const writer8Definitions = [
   writer7Definitions[0]!.replaceAll('agent-steps/7', 'agent-steps/8'),
   ...writer7Definitions.slice(1),
   ...changeDefinitions,
+];
+const currentDefinitions = [
+  writer8Definitions[0]!.replaceAll('agent-steps/8', 'agent-steps/9'),
+  ...writer8Definitions.slice(1),
 ];
 const idOf = (key: RunKey) => canonical(key);
 const affinityKey = (spec: AgentTurnSpec): RunKey => ({
@@ -267,7 +272,7 @@ function validateAgentJournalSchema(
       ?.n !== 1 ||
     database
       .prepare('SELECT writer_format FROM agent_steps_meta WHERE id=1')
-      .get()?.writer_format !== 'agent-steps/8'
+      .get()?.writer_format !== 'agent-steps/9'
   )
     throw new Error('DURABLE_AGENT_WRITER_UNSUPPORTED');
 }
@@ -570,7 +575,7 @@ export function openSqliteAgentJournal(options: {
     database.exec('BEGIN IMMEDIATE');
     try {
       for (const sql of currentDefinitions) database.exec(sql);
-      database.exec("INSERT INTO agent_steps_meta VALUES(1,'agent-steps/8')");
+      database.exec("INSERT INTO agent_steps_meta VALUES(1,'agent-steps/9')");
       database.exec('COMMIT');
     } catch (error) {
       if (database.isTransaction) database.exec('ROLLBACK');
@@ -790,8 +795,52 @@ export function openSqliteAgentJournal(options: {
       }
       for (const sql of changeDefinitions) database.exec(sql);
       database.exec('DROP TABLE agent_steps_meta');
-      database.exec(currentDefinitions[0]!);
+      database.exec(writer8Definitions[0]!);
       database.exec("INSERT INTO agent_steps_meta VALUES(1,'agent-steps/8')");
+      database.exec('COMMIT');
+    } catch (error) {
+      if (database.isTransaction) database.exec('ROLLBACK');
+      invalidateAgentValidation(database);
+      throw error;
+    }
+  }
+  if (
+    database
+      .prepare('SELECT writer_format FROM agent_steps_meta WHERE id=1')
+      .get()?.writer_format === 'agent-steps/8'
+  ) {
+    const actual = database
+      .prepare(
+        "SELECT sql FROM main.sqlite_schema WHERE (lower(name) GLOB 'agent_steps_*' OR lower(tbl_name) GLOB 'agent_steps_*') AND sql IS NOT NULL ORDER BY sql",
+      )
+      .all()
+      .map((row) => row.sql);
+    if (
+      canonical(actual) !== canonical([...writer8Definitions].sort()) ||
+      database
+        .prepare(
+          "SELECT 1 FROM temp.sqlite_schema WHERE lower(name) GLOB 'agent_steps_*' OR lower(tbl_name) GLOB 'agent_steps_*'",
+        )
+        .get()
+    )
+      throw new Error('DURABLE_AGENT_MIGRATION_REFUSED');
+    database.exec('BEGIN IMMEDIATE');
+    try {
+      for (const row of database
+        .prepare('SELECT * FROM agent_steps_turns')
+        .all()) {
+        const turn = validateRow(row);
+        const id = idOf(turn.spec.key);
+        validateAgentEffects(database, id);
+        validateAgentApprovals(database, id);
+        readAgentFrames(database, id);
+        affinity(turn.spec);
+        settledAt(database, turn);
+      }
+      migrateAgentEffectBatches(database);
+      database.exec('DROP TABLE agent_steps_meta');
+      database.exec(currentDefinitions[0]!);
+      database.exec("INSERT INTO agent_steps_meta VALUES(1,'agent-steps/9')");
       database.exec('COMMIT');
     } catch (error) {
       if (database.isTransaction) database.exec('ROLLBACK');
