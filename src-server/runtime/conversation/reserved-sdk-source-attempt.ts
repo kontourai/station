@@ -62,7 +62,11 @@ export async function runReservedSdkSourceAttempt(input: {
       withHome && invokeCurrent && admissionCurrent
         ? {
             check: <Value>(body: () => Value) =>
-              withHome(admissionCurrent, async (scope) => scope.check(body)),
+              reportHome?.check
+                ? reportHome.check(admissionCurrent, body)
+                : withHome(admissionCurrent, async (scope) =>
+                    scope.check(body),
+                  ),
             publish: (publish) =>
               invokeCurrent(admissionCurrent, (check) => {
                 publish(check);

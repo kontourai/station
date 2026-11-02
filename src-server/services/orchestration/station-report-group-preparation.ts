@@ -984,6 +984,11 @@ export class StationReportGroupPreparation {
                 if (!retainCleanup) refuse();
                 return retainCleanup(cleanup);
               },
+              check: (current, body) => {
+                const check = launch.reportHome?.check;
+                if (!check) refuse();
+                return check(current, body);
+              },
               withHome: (current, body) => {
                 const withHome = launch.reportHome?.withHome;
                 if (!withHome) refuse();

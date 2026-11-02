@@ -1,9 +1,18 @@
 import assert from 'node:assert/strict';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DelegationRoundsTransactionUncertainError } from '@kontourai/flow-agents/delegation-group-rounds';
 import { RESERVED_SOURCE_EXECUTION_METADATA_KEY } from '@kontourai/station-contracts/provider';
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
+import { prepareFileMutationOwner } from '@kontourai/station-shared/lifecycle-events';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/client';
 import { onTestFinished, test, vi } from 'vitest';
 import { isRuntimePublicationParticipant } from '../../../runtime/bootstrap/runtime-publication-participant.js';
@@ -153,6 +162,8 @@ test.each([
         return publication.retainCleanup(cleanup);
       },
       persistence,
+      check: (current, body) =>
+        publication.check({ owner: writer, current }, body),
       withHome: (current, body) =>
         publication.withHome({ owner: writer, current }, body),
       invokeCurrent: (current, invoke) =>
@@ -445,3 +456,64 @@ test.each([
     }
   },
 );
+
+test('publication synchronous checks hold Home, refuse queued withdrawal and fence their return', async () => {
+  const home = mkdtempSync(join(tmpdir(), 'report-publication-check-'));
+  const runtime = new StationRuntime({ projectHomeDir: home });
+  onTestFinished(async () => {
+    await runtime.shutdown();
+    rmSync(home, { recursive: true, force: true });
+  });
+  const participant = Reflect.get(runtime, 'runtimePublicationParticipant');
+  assert.ok(isRuntimePublicationParticipant(participant));
+  const owner = await HomeWriterOwner.forHome(home);
+  const physical = await prepareFileMutationOwner(
+    join(home, 'security', '.home-writer.mutation'),
+  );
+  const failure = new Error('controlled source withdrawal');
+  let withdrawn = false;
+  const current = (): undefined => {
+    if (withdrawn) throw failure;
+    return undefined;
+  };
+  await withReportRoundsPublication(
+    { participant, home, signal: new AbortController().signal },
+    async (publication) => {
+      const value = await publication.check({ owner, current }, () => {
+        const probe = physical.tryAcquire();
+        if (probe.kind === 'acquired') probe.lease.tryRelease();
+        assert.equal(probe.kind, 'busy');
+        return 42;
+      });
+      assert.equal(value, 42);
+      const released = physical.tryAcquire();
+      assert.equal(released.kind, 'acquired');
+      if (released.kind === 'acquired') await released.lease.release();
+      const held = await owner.acquire();
+      let entered = false;
+      const queued = publication.check({ owner, current }, () => {
+        entered = true;
+      });
+      withdrawn = true;
+      await held.release();
+      await assert.rejects(queued, (error) => error === failure);
+      assert.equal(entered, false);
+      withdrawn = false;
+      await assert.rejects(
+        publication.check({ owner, current }, () => {
+          withdrawn = true;
+          return 'must not escape';
+        }),
+        (error: unknown) =>
+          error instanceof DelegationRoundsTransactionUncertainError &&
+          error.status === 'returned-cleanup-unknown' &&
+          error.errors[0] === failure,
+      );
+      withdrawn = false;
+      await assert.rejects(
+        publication.check({ owner, current }, async () => 42),
+      );
+    },
+  );
+  await owner.runRequest(new AbortController().signal, () => undefined);
+});

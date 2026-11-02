@@ -515,6 +515,8 @@ export class StationReportGroupContinuation {
                   });
                 },
               ),
+            check: <Value>(guard: () => undefined, body: () => Value) =>
+              publication.check({ owner: requestWriter, current: guard }, body),
             withHome: <Value>(
               guard: () => undefined,
               body: (

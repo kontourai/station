@@ -267,6 +267,8 @@ async function admitReservedStationCheck<Value>(
   if (!home) {
     return check();
   }
+  if (home.check)
+    return home.check(value.attempt.transport.launch.finalizeCurrent, check);
   if (home.withHome)
     return home.withHome(
       value.attempt.transport.launch.finalizeCurrent,

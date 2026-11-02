@@ -34,6 +34,7 @@ export interface ReportRoundsScope {
 export interface ReportRoundsPublication {
   assertCurrent(): undefined;
   retainCleanup(cleanup: () => Promise<void>): () => Promise<void>;
+  check<T>(input: HomeScopeInput, body: () => T): Promise<T>;
   withHome<T>(
     input: HomeScopeInput,
     body: (scope: ReportRoundsScope) => Promise<T>,
@@ -154,6 +155,52 @@ export async function withReportRoundsPublication<T>(
       );
       retiredScopes.add(retire);
       return retire;
+    },
+    check: async <Value>(
+      options: HomeScopeInput,
+      body: () => Value,
+    ): Promise<Value> => {
+      current();
+      const { owner, current: sourceCurrent } = options;
+      const child = parent.borrow(owner.homeDir);
+      let returned = false;
+      const work = owner.runRequest(signal, () => {
+        current();
+        child.assertCurrent();
+        sourceCurrent();
+        const value = body();
+        returned = true;
+        sourceCurrent();
+        current();
+        return value;
+      });
+      const join: () => Promise<void> = participant.retainCleanup(async () => {
+        await work.then(
+          () => undefined,
+          () => undefined,
+        );
+        await owner.settlePendingCleanup();
+        child.release();
+        retiredScopes.delete(join);
+      });
+      retiredScopes.add(join);
+      let outcome: Outcome<Value>;
+      try {
+        const value = await work;
+        current();
+        outcome = { ok: true, value };
+      } catch (error) {
+        outcome = {
+          ok: false,
+          error: returned
+            ? new DelegationRoundsTransactionUncertainError(
+                'returned-cleanup-unknown',
+                [error],
+              )
+            : error,
+        };
+      }
+      return finish(outcome, join);
     },
     withHome: async <Value>(
       options: HomeScopeInput,

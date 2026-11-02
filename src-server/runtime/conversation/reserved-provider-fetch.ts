@@ -81,9 +81,11 @@ export class ReservedProviderFetch {
     const home =
       launch.protocol === 'rounds-v1' ? launch.reportHome : undefined;
     const checkCurrent = <Value>(body: () => Value): Promise<Value> =>
-      home?.withHome
-        ? home.withHome(home.current, async (scope) => scope.check(body))
-        : Promise.resolve(body());
+      home?.check
+        ? home.check(home.current, body)
+        : home?.withHome
+          ? home.withHome(home.current, async (scope) => scope.check(body))
+          : Promise.resolve(body());
     const known = async (
       quote: BoundedApiAttemptQuote,
       readRaw: () => unknown,

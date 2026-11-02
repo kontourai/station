@@ -134,6 +134,7 @@ export type RoundsFinalFetchOwners = LaunchOwners & {
         >,
       ) => Promise<Value>,
     ): Promise<Value>;
+    check?<Value>(current: WireFinalizer, body: () => Value): Promise<Value>;
     withHome?<Value>(
       current: WireFinalizer,
       body: (

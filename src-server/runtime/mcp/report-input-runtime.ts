@@ -88,6 +88,7 @@ export function createReportInputRuntime(owners: {
   persistence: StationDelegationPersistence;
   authorize(binding: ReportInputBinding): Promise<DelegationEnvelopeV2>;
   retainCleanup: ReportRoundsPublication['retainCleanup'];
+  check<Value>(current: () => undefined, body: () => Value): Promise<Value>;
   withHome<Value>(
     current: () => undefined,
     body: (
@@ -140,7 +141,7 @@ export function createReportInputRuntime(owners: {
             .transact(key, update),
         ),
     });
-    const checkCurrent = () => withMetadata(async (scope) => scope.current());
+    const checkCurrent = () => owners.check(current, () => undefined);
     const authorize = async () => {
       await checkCurrent();
       const envelope = validateDelegationEnvelopeV2(
