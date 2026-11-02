@@ -148,11 +148,24 @@ try {
       await page
         .getByRole('button', { name: /^Switch tool, current:/ })
         .click();
-    await page
+    const terminalView = page
       .getByRole('navigation', { name: 'Views' })
       .getByRole('button', { name: /^Terminal(,|$)/ })
-      .first()
-      .click();
+      .first();
+    // On desktop the rail button toggles the lower panel; an earlier pass
+    // may have left it open, and clicking would close it.
+    const alreadyOpen =
+      !mobile &&
+      (await page
+        .getByTitle('New terminal')
+        .filter({ visible: true })
+        .first()
+        .waitFor({ timeout: 10_000 })
+        .then(
+          () => true,
+          () => false,
+        ));
+    if (!alreadyOpen) await terminalView.click();
     const newTerminal = page
       .getByTitle('New terminal')
       .filter({ visible: true })
@@ -252,10 +265,15 @@ try {
     await page.waitForTimeout(1500);
   };
 
+  // The theme is an account preference: the app re-applies it over a
+  // hand-set data-theme, so set it where the app reads it.
+  const setTheme = (theme) =>
+    apiOk(page, 'PATCH', '/api/me/preferences', { theme });
+
   for (const theme of ['light', 'dark']) {
     for (const width of [390, 1440]) {
       await page.setViewportSize({ width, height: width === 390 ? 844 : 900 });
-      await page.evaluate((t) => localStorage.setItem('theme', t), theme);
+      await setTheme(theme);
       await openTerminal();
       await page.evaluate(
         (t) => document.documentElement.setAttribute('data-theme', t),
@@ -283,7 +301,7 @@ try {
   // Right dock at 1440 in both themes.
   for (const theme of ['light', 'dark']) {
     await page.setViewportSize({ width: 1440, height: 900 });
-    await page.evaluate((t) => localStorage.setItem('theme', t), theme);
+    await setTheme(theme);
     await openTerminal();
     // The person's path: the Right region toggle, then Terminal in its
     // chooser (the Coding lower panel yields to a docked Terminal).
@@ -334,30 +352,35 @@ try {
   await type('clear\r');
   await page.waitForTimeout(1000);
   for (let i = 0; i < 30; i += 1) {
-    const echoed = terminalInput.evaluate(
-      (input) =>
-        new Promise((done, fail) => {
-          const left = input.style.left;
-          let pressed = 0;
-          input.addEventListener(
-            'keydown',
-            () => {
-              pressed = performance.now();
-            },
-            { capture: true, once: true },
-          );
-          const check = () => {
-            if (pressed && input.style.left !== left)
-              done(performance.now() - pressed);
-            else if (pressed && performance.now() - pressed > 5000)
-              fail(new Error('no glyph within 5 s'));
-            else requestAnimationFrame(check);
-          };
-          requestAnimationFrame(check);
-        }),
-    );
+    // Arm before typing: an unawaited evaluate can land after the keystroke,
+    // and then it waits for a keydown that already happened.
+    await terminalInput.evaluate((input) => {
+      window.__terminalEcho = new Promise((done, fail) => {
+        const left = input.style.left;
+        const armed = performance.now();
+        let pressed = 0;
+        input.addEventListener(
+          'keydown',
+          () => {
+            pressed = performance.now();
+          },
+          { capture: true, once: true },
+        );
+        const check = () => {
+          if (pressed && input.style.left !== left)
+            done(performance.now() - pressed);
+          else if (pressed && performance.now() - pressed > 5000)
+            fail(new Error('no glyph within 5 s'));
+          else if (!pressed && performance.now() - armed > 10000)
+            fail(new Error('no keydown on the terminal input within 10 s'));
+          else requestAnimationFrame(check);
+        };
+        requestAnimationFrame(check);
+      });
+    });
     await page.keyboard.type(String.fromCharCode(97 + (i % 26)));
-    results.latencyMs.push(Math.round((await echoed) * 10) / 10);
+    const echoed = await page.evaluate(() => window.__terminalEcho);
+    results.latencyMs.push(Math.round(echoed * 10) / 10);
   }
   await page.keyboard.press('Control+U');
 
