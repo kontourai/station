@@ -1,5 +1,6 @@
 import { open } from 'node:fs/promises';
 import { join } from 'node:path';
+import { createLogger } from '../../utils/logger.js';
 import type { FeaturePreviewSelector } from '../feature-previews/feature-preview-registry.js';
 import type {
   ProjectTaskRoomRuntime,
@@ -12,6 +13,8 @@ import {
 import { publishTaskRecording } from '../projects/task-recording-publication.js';
 import type { TaskWalkthroughStore } from '../walkthroughs/task-walkthrough-store.js';
 import type { BrowserSessionRecord } from './browser-session-registry.js';
+
+const logger = createLogger({ name: 'browser-human-task-clip' });
 
 export type HumanTaskClip = {
   taskId: string;
@@ -163,6 +166,10 @@ export class BrowserHumanTaskClip {
               store: this.deps.store,
               candidates: 0,
               retained: [],
+              onCleanupFailure: (error) =>
+                logger.warn('Task recording staging cleanup failed', {
+                  errorName: error instanceof Error ? error.name : typeof error,
+                }),
               recheck: async () =>
                 !!(await current(next)) && (await browserCurrent()),
             });

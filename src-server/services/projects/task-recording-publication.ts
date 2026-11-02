@@ -6,7 +6,11 @@ import {
 } from '@kontourai/station-contracts/walkthrough';
 import type { TaskReviewAccess } from '../orchestration/project-task-room-runtime.js';
 import type { TaskWalkthroughStore } from '../walkthroughs/task-walkthrough-store.js';
-import type { TaskBrowserCapture } from './task-browser-capture.js';
+import {
+  type TaskBrowserCapture,
+  TaskBrowserCaptureError,
+} from './task-browser-capture.js';
+import { TaskBrowserRecordingError } from './task-browser-recording.js';
 import { verifyTaskReviewEvidence } from './task-review-evidence.js';
 
 type Pin = Awaited<ReturnType<TaskBrowserCapture['pin']>>;
@@ -33,19 +37,31 @@ export async function publishTaskRecording(input: {
   const { access, before, stage, signal } = input;
   const current = async () => {
     signal.throwIfAborted();
-    if (!(await input.recheck())) return false;
+    if (!(await input.recheck()))
+      throw new TaskBrowserRecordingError(
+        'recording-unavailable',
+        'Recording authority changed.',
+      );
     const pin = await input.captures.pin(access);
     signal.throwIfAborted();
-    return (
-      pin.workspace === before.workspace &&
-      pin.pin.commit === before.pin.commit &&
-      pin.pin.statusDigest === before.pin.statusDigest &&
-      (await input.recheck())
-    );
+    if (
+      pin.workspace !== before.workspace ||
+      pin.pin.commit !== before.pin.commit ||
+      pin.pin.statusDigest !== before.pin.statusDigest
+    )
+      throw new TaskBrowserCaptureError(
+        'workspace-changed',
+        'The workspace changed during recording.',
+      );
+    if (!(await input.recheck()))
+      throw new TaskBrowserRecordingError(
+        'recording-unavailable',
+        'Recording authority changed.',
+      );
+    return true;
   };
   try {
-    if (!(await current()))
-      throw new Error('The workspace or recording access changed.');
+    await current();
     const evidence = await verifyTaskReviewEvidence({
       workspace: before.workspace,
       evidence: { commit: before.pin.commit },

@@ -299,11 +299,14 @@ export class BrowserHumanRecording {
         })
         .catch((error: unknown) => {
           job.publication = undefined;
-          throw error;
-        })
-        .finally(() => {
           job.publishing = false;
           if (job.expired) this.remove(job.id);
+          throw error;
+        })
+        .then((result) => {
+          job.publishing = false;
+          if (job.expired) this.remove(job.id);
+          return result;
         });
     }
     return job.publication;

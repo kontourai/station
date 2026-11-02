@@ -24,7 +24,6 @@ function fixture(
     state: 'live',
     url: 'https://example.test/',
   } as BrowserSessionRecord;
-  let delivered = 0;
   let dispose: (() => Promise<void>) | undefined;
   let waiting:
     | ((
@@ -51,43 +50,53 @@ function fixture(
       };
     },
     hub: {
-      attach: () => ({
-        close,
-        next: async (signal: AbortSignal) => {
-          if (delivered < frameLimit) {
-            delivered++;
-            return {
-              kind: 'frame',
+      attach: () => {
+        let delivered = 0;
+        return {
+          close,
+          next: async (signal: AbortSignal) => {
+            if (delivered < frameLimit) {
+              delivered++;
+              return {
+                kind: 'frame',
+                header: {
+                  codec: 'jpeg',
+                  width: 640,
+                  height: 480,
+                  deviceScaleFactor: 1,
+                  capturedAt: 1_700_000_000_000,
+                },
+                body: real?.jpeg ?? new Uint8Array([1, 2, 3]),
+              };
+            }
+            return new Promise<{
+              kind: 'frame';
               header: {
-                codec: 'jpeg',
-                width: 640,
-                height: 480,
-                deviceScaleFactor: 1,
-                capturedAt: 1_700_000_000_000,
-              },
-              body: real?.jpeg ?? new Uint8Array([1, 2, 3]),
-            };
-          }
-          return new Promise<{
-            kind: 'frame';
-            header: {
-              codec: 'jpeg';
-              width: number;
-              height: number;
-              deviceScaleFactor: number;
-              capturedAt: number;
-            };
-            body: Uint8Array;
-          } | null>((resolve) => {
-            waiting = resolve;
-            if (signal.aborted) resolve(null);
-            else
-              signal.addEventListener('abort', () => resolve(null), {
-                once: true,
-              });
-          });
-        },
-      }),
+                codec: 'jpeg';
+                width: number;
+                height: number;
+                deviceScaleFactor: number;
+                capturedAt: number;
+              };
+              body: Uint8Array;
+            } | null>((resolve) => {
+              waiting = resolve;
+              if (signal.aborted) resolve(null);
+              else
+                signal.addEventListener(
+                  'abort',
+                  () => {
+                    waiting = undefined;
+                    resolve(null);
+                  },
+                  {
+                    once: true,
+                  },
+                );
+            });
+          },
+        };
+      },
     },
   };
   let stage = '';
@@ -539,6 +548,62 @@ describe('human Browser recording', () => {
       vi.useRealTimers();
       await h.recorder.dispose();
     }
+  });
+
+  it('keeps a publishing clip through retention eviction', async () => {
+    const h = fixture();
+    let finish!: (value: { walkthroughId: string }) => void;
+    let signal!: AbortSignal;
+    const publish = ({ signal: s }: { signal: AbortSignal }) => {
+      signal = s;
+      return new Promise<{ walkthroughId: string }>((resolve) => {
+        finish = resolve;
+      });
+    };
+    const first = h.recorder.start({
+      session: h.session,
+      owner: 'alice',
+      authorize: async () => true,
+      prepareTask: async () => ({
+        kind: 'ready',
+        clip: { taskId: 'task-a', publish },
+      }),
+    });
+    await vi.waitFor(() => expect(h.canDeliver()).toBe(true));
+    h.recorder.stop(first, 'alice', 'bs_test', 3);
+    await vi.waitFor(() =>
+      expect(h.recorder.status(first, 'alice', 'bs_test', 3)?.state).toBe(
+        'ready',
+      ),
+    );
+    const pending = h.recorder.publishTask(
+      first,
+      'alice',
+      'bs_test',
+      3,
+      new Request('http://station.test'),
+    )!;
+    for (let i = 0; i < 4; i++) {
+      const id = h.recorder.start({
+        session: h.session,
+        owner: 'alice',
+        authorize: async () => true,
+      });
+      await vi.waitFor(() => expect(h.canDeliver()).toBe(true));
+      h.recorder.stop(id, 'alice', 'bs_test', 3);
+      await vi.waitFor(() =>
+        expect(h.recorder.status(id, 'alice', 'bs_test', 3)?.state).toBe(
+          'ready',
+        ),
+      );
+    }
+    expect(signal.aborted).toBe(false);
+    expect(h.recorder.video(first, 'alice', 'bs_test', 3)).toEqual(
+      Buffer.from('webm'),
+    );
+    finish({ walkthroughId: 'clip' });
+    await expect(pending).resolves.toEqual({ walkthroughId: 'clip' });
+    await h.recorder.dispose();
   });
 
   it('cancels a pending Task publication when the recording is discarded', async () => {
