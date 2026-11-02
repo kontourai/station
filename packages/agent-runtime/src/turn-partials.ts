@@ -37,7 +37,9 @@ export async function* journalAgentStreamPrefix<T>(
         continue;
       }
       if (result.done) break;
-      const part = result.value;
+      // Providers may reuse their event object when the next read starts.
+      const wire = agentWire(result.value);
+      const part = structuredClone(result.value);
       next = iterator.next();
       // Observe rejection while a committed batch is being delivered.
       void next.catch(() => {});
@@ -47,7 +49,6 @@ export async function* journalAgentStreamPrefix<T>(
         yield part;
         continue;
       }
-      const wire = agentWire(part);
       pending.push(part);
       wires.push(wire);
       bytes += Buffer.byteLength(wire);

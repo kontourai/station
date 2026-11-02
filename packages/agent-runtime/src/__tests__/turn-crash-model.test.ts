@@ -135,3 +135,49 @@ it('a pinned request proven never dispatched is sent identically after recovery'
   while (!(await reader.read()).done) {}
   expect(calls).toEqual([request]);
 });
+
+it('batching snapshots a provider part before requesting the next part', async () => {
+  const f = await turnFixture();
+  cleanup.push(() => f.close());
+  const shared: LanguageModelV3StreamPart & { type: 'text-delta' } = {
+    type: 'text-delta',
+    id: 'answer',
+    delta: 'first',
+  };
+  let reads = 0;
+  const model = durableLanguageModel({
+    specificationVersion: 'v3',
+    provider: 'scripted',
+    modelId: 'pooled',
+    supportedUrls: {},
+    doGenerate: async () => {
+      throw Error('Streaming required');
+    },
+    doStream: async () => ({
+      stream: new ReadableStream<LanguageModelV3StreamPart>(
+        {
+          pull(controller) {
+            if (reads++ === 0) controller.enqueue(shared);
+            else {
+              shared.delta = 'changed';
+              controller.enqueue(finish);
+              controller.close();
+            }
+          },
+        },
+        { highWaterMark: 0 },
+      ),
+    }),
+  });
+  const response = await runWithAgentTurn(f.lease, () =>
+    model.doStream(request),
+  );
+  const reader = response.stream.getReader();
+  const deltas: string[] = [];
+  for (;;) {
+    const next = await reader.read();
+    if (next.done) break;
+    if (next.value.type === 'text-delta') deltas.push(next.value.delta);
+  }
+  expect(deltas).toEqual(['first']);
+});

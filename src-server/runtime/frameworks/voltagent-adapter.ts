@@ -798,8 +798,8 @@ export function toVoltAgentTool(tool: ITool): Tool<any> {
           nativeVoltExecuteWrappers.set(t, { original, wrapped });
           durableVoltExecutors.add(wrapped);
         } catch {
-          // An immutable third-party Tool remains usable, but cannot become a
-          // provenance source. No alternate id source may compensate.
+          // Ordinary calls retain immutable tools. Durable entry rejects an
+          // executor that cannot be wrapped; no alternate id grants a port.
         }
       }
     }
