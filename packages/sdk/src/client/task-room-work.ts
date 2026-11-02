@@ -192,6 +192,7 @@ export async function submitTaskRoomAgentRequest(
     options,
     {
       prompt: input.prompt,
+      clientTurnId: input.operationId,
       target: {
         environment: { kind: 'current' },
         agent: input.executionAgentId

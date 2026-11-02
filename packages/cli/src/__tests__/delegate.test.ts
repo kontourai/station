@@ -171,6 +171,13 @@ describe('station delegate over HTTP', () => {
         requestBodies.push({ pathname: url.pathname, body });
       }
       if (
+        body?.prompt === 'trigger keyed uncertainty' ||
+        body?.message === 'trigger keyed uncertainty'
+      ) {
+        res.destroy();
+        return;
+      }
+      if (
         method === 'POST' &&
         url.pathname === '/api/orchestration/delegations'
       ) {
@@ -808,6 +815,53 @@ describe('station delegate over HTTP', () => {
     vi.restoreAllMocks();
   });
 
+  test.each(['create', 'continue', 'legacy'] as const)(
+    '%s retains its generated request key in JSON after an uncertain send and forwards it on retry',
+    async (kind) => {
+      const { runCli } = await import('../cli.js');
+      const exit = vi
+        .spyOn(process, 'exit')
+        .mockImplementation((() => undefined) as never);
+      const args =
+        kind === 'create'
+          ? ['delegate', '--agent=default', 'trigger keyed uncertainty']
+          : kind === 'legacy'
+            ? [
+                'delegate',
+                'continue',
+                'task:existing',
+                'trigger keyed uncertainty',
+              ]
+            : [
+                'delegate',
+                '--session=conversation:ordinary',
+                'trigger keyed uncertainty',
+              ];
+      await runCli([...args, '--json', `--api-base=${apiBase}`]);
+      expect(exit).toHaveBeenCalledWith(2);
+      expect(consoleError).toHaveBeenCalledTimes(1);
+      const failure = JSON.parse(String(consoleError.mock.calls[0][0]));
+      expect(failure).toMatchObject({
+        success: false,
+        clientTurnId: expect.any(String),
+      });
+      expect(failure.clientTurnId).toBe(requestBodies[0].body.clientTurnId);
+      consoleError.mockClear();
+      await runCli([
+        ...args,
+        '--json',
+        `--client-turn-id=${failure.clientTurnId}`,
+        `--api-base=${apiBase}`,
+      ]);
+      expect(requestBodies).toHaveLength(2);
+      expect(requestBodies[1]).toEqual(requestBodies[0]);
+      expect(consoleError).toHaveBeenCalledTimes(1);
+      expect(
+        JSON.parse(String(consoleError.mock.calls[0][0])).clientTurnId,
+      ).toBe(failure.clientTurnId);
+    },
+  );
+
   test('create dispatches to a Station agent and returns its task handle (AC1)', async () => {
     const { runCli } = await import('../cli.js');
 
@@ -862,6 +916,7 @@ describe('station delegate over HTTP', () => {
         {
           pathname: '/api/orchestration/delegations',
           body: {
+            clientTurnId: expect.any(String),
             prompt: 'Review this revision',
             target: {
               environment: { kind: 'saved', id: 'env-worker' },
@@ -1972,10 +2027,11 @@ Nothing was sent at another approval mode.`);
     ]);
 
     expect(exit).toHaveBeenCalledWith(3);
-    expect(consoleError).toHaveBeenCalledWith(
-      'Error:',
-      'Conversation not found or not authorized',
-    );
+    expect(JSON.parse(String(consoleError.mock.calls[0][0]))).toMatchObject({
+      success: false,
+      error: 'Conversation not found or not authorized',
+      clientTurnId: expect.any(String),
+    });
     expect(requestBodies.map(({ pathname }) => pathname)).toEqual([
       '/api/orchestration/chat/conversation%3Amissing/continue',
     ]);
@@ -1997,10 +2053,11 @@ Nothing was sent at another approval mode.`);
     ]);
 
     expect(exit).toHaveBeenCalledWith(3);
-    expect(consoleError).toHaveBeenCalledWith(
-      'Error:',
-      'Conversation not found or not authorized',
-    );
+    expect(JSON.parse(String(consoleError.mock.calls[0][0]))).toMatchObject({
+      success: false,
+      error: 'Conversation not found or not authorized',
+      clientTurnId: expect.any(String),
+    });
     expect(requestBodies.map(({ pathname }) => pathname)).toEqual([
       '/api/orchestration/chat/conversation%3Aforbidden/continue',
     ]);

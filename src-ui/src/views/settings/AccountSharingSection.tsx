@@ -18,6 +18,7 @@ import { ResponsiveSurfaceActions } from '../../components/ResponsiveDialogSurfa
 import { ErrorState, SkeletonBlock } from '../../components/state';
 import { Toggle } from '../../components/Toggle';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
+import { isLoopbackOrigin } from '../../lib/accountSharingOrigin';
 import { userFacingErrorMessage } from '../../utils/errorText';
 
 /** How often to look again while the Station restarts into a change. */
@@ -71,11 +72,6 @@ function sameChoice(a: AccountSharingChoice, b: AccountSharingChoice) {
   return a.enabled
     ? b.enabled && a.publicOrigin === b.publicOrigin
     : !b.enabled;
-}
-
-function isLoopbackOrigin(origin: string): boolean {
-  const host = new URL(origin).hostname;
-  return ['localhost', '127.0.0.1', '[::1]'].includes(host);
 }
 
 function SharingControls({

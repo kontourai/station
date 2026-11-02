@@ -86,8 +86,6 @@
 
     "packages/sdk/src/unified-search.ts",
 
-    "packages/shared/package.json#/exports/.~1native-relay-link",
-
     "packages/shared/src/__tests__/station-home-archive.test.ts",
 
     "packages/shared/src/__tests__/station-home-recovery-candidate.test.ts",
@@ -658,11 +656,7 @@
 
     "src-server/services/orchestration/sqlite-revision-evidence-persistence.ts",
 
-    "src-server/services/orchestration/sqlite-turn-dedup-persistence.ts",
-
     "src-server/services/orchestration/transcript-search-queries.ts",
-
-    "src-server/services/orchestration/turn-deduplicator.ts",
 
     "src-server/services/orchestration/voice-turn-runs.ts",
 
@@ -787,8 +781,6 @@
     "src-server/services/ssh/native-device-proof-binding-service.ts",
 
     "src-server/services/starter-work/starter-registry.ts",
-
-    "src-server/services/turn-idempotency.ts",
 
     "src-server/services/usage-telemetry-service.ts",
 
@@ -991,10 +983,6 @@
     "packages/contracts/src/usage-export.ts",
 
     "src-server/analytics/usage-export-reader.ts",
-
-    "pnpm-lock.yaml#/packages",
-
-    "pnpm-lock.yaml#/snapshots",
 
     "src-server/services/orchestration/thread-inbox.ts",
 
@@ -1602,7 +1590,19 @@
 
     "src-ui/src/__tests__/ConversationInboxMessages.geometry.test.tsx",
 
-    "src-server/runtime/routes/task-inbox-projection.ts"
+    "src-server/runtime/routes/task-inbox-projection.ts",
+
+    "packages/monument/src/turn-dedup.ts",
+
+    "src-server/services/orchestration/station-turn-dedup-bindings.ts",
+
+    "src-server/runtime/routes/__tests__/send-route-key-inventory.test.ts",
+
+    "src-server/services/orchestration/create-request-claims.ts",
+
+    "src-server/services/orchestration/__tests__/create-request-claims.test.ts",
+
+    "src-server/services/orchestration/__tests__/create-request-claims.process.test.ts"
   ],
 
   "checks": [

@@ -21,6 +21,8 @@ test('foreground chat carries the prompt origin into the authorized executor', a
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
+      clientTurnId: 'fixture-turn-key',
+      conversationId: 'existing-projection-conversation',
       message: 'MCP prompt',
       target: { environment: { kind: 'current' }, agent: 'station' },
       mcpPromptOrigin: issueMcpPromptOrigin(
@@ -42,6 +44,8 @@ test('foreground chat carries the prompt origin into the authorized executor', a
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
+      clientTurnId: 'fixture-turn-key',
+      conversationId: 'existing-projection-conversation',
       message: 'altered',
       target: { environment: { kind: 'current' }, agent: 'station' },
       mcpPromptOrigin: issueMcpPromptOrigin(
