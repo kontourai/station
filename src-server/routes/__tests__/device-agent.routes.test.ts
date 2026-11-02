@@ -2,6 +2,7 @@ import { EventEmitter } from 'node:events';
 import type { MobileDeviceInventory } from '@kontourai/station-contracts/mobile-device';
 import { McpServer } from '@modelcontextprotocol/server';
 import { afterEach, expect, test, vi } from 'vitest';
+import { ZipFile } from 'yazl';
 import { resolveStationControlCallerFromToken } from '../../runtime/mcp/station-control-caller.js';
 import {
   mintStationControlMcpToken,
@@ -12,12 +13,14 @@ import {
   authorizeDeviceAgentCaller,
   mintDeviceAgentGrant,
 } from '../../services/devices/device-agent-authority.js';
+import { DeviceArtifactStaging } from '../../services/devices/device-app-artifacts.js';
 import { DeviceAutomation } from '../../services/devices/device-automation.js';
 import { DeviceSessionService } from '../../services/devices/device-session-service.js';
 import {
   DeviceToolsService,
   deviceControlConflict,
 } from '../../services/devices/device-tools.js';
+import type { DeviceInstallOutcome } from '../../services/devices/hosts/device-app-install.js';
 import {
   claimAgentControl,
   claimHumanControl,
@@ -260,7 +263,34 @@ function harness(
       truncated: true,
     })),
   };
+  const artifacts = new DeviceArtifactStaging();
+  const installApp = vi.fn(
+    async (input: {
+      hostId: string;
+      platform: 'ios' | 'android';
+      digest: string;
+      beforeInstall: () => Promise<boolean>;
+      signal: AbortSignal;
+    }): Promise<DeviceInstallOutcome> => {
+      if (!(await input.beforeInstall()))
+        return { ok: false, code: 'interrupted', effect: 'none' };
+      return {
+        ok: true,
+        digest: input.digest,
+        metadata: {
+          platform: input.platform,
+          abi: 'universal',
+          appId: 'com.example.app',
+          version: '1',
+          build: '1',
+          revision: null,
+        },
+      };
+    },
+  );
   const automation = new DeviceAutomation({
+    artifacts,
+    installApp,
     host,
     sessions,
     surfaces,
@@ -419,6 +449,7 @@ function harness(
   disposals.push(async () => {
     revokeStationControlMcpToken(sessionId);
     for (const extra of extraTokens) revokeStationControlMcpToken(extra);
+    await artifacts.dispose();
     await sessions.dispose();
     await remoteSessions?.dispose();
     await surfaces.dispose();
@@ -437,6 +468,8 @@ function harness(
       }),
     access,
     automation,
+    artifacts,
+    installApp,
     device,
     humanAction: () =>
       humanTools.request(
@@ -1462,4 +1495,100 @@ test('device_capture_to_task exposes Task-capture refusals as MCP errors', async
     code: 'capture-unavailable',
   });
   expect(h.host.capture).not.toHaveBeenCalled();
+});
+
+async function apkFixture(): Promise<Buffer> {
+  const archive = new ZipFile();
+  const chunks: Buffer[] = [];
+  const bytes = new Promise<Buffer>((resolve, reject) => {
+    archive.outputStream.on('data', (chunk: Buffer) => chunks.push(chunk));
+    archive.outputStream.on('end', () => resolve(Buffer.concat(chunks)));
+    archive.outputStream.on('error', reject);
+  });
+  archive.addBuffer(Buffer.from('manifest'), 'AndroidManifest.xml');
+  archive.end();
+  return await bytes;
+}
+
+test('install tool binds staged artifacts to the Project and the selected device host', async () => {
+  const h = harness('sdk-in-process', { operator: true, remote: true });
+  const apk = await apkFixture();
+  const staged = await h.artifacts.stageUpload(
+    'project',
+    apk,
+    'android',
+    async () => true,
+  );
+  const other = await h.artifacts.stageUpload(
+    'another-project',
+    apk,
+    'android',
+    async () => true,
+  );
+  const remote = parsed(await h.run('device_open', { ...h.remoteDevice }));
+  const deviceSessionId = remote.session.sessionId;
+  expect(
+    parsed(
+      await h.run('device_install_app', {
+        deviceSessionId,
+        artifactHandle: other.handle,
+      }),
+    ),
+  ).toMatchObject({ ok: false, effect: 'none' });
+  expect(h.installApp).not.toHaveBeenCalled();
+  expect(
+    parsed(
+      await h.run('device_install_app', {
+        deviceSessionId,
+        artifactHandle: staged.handle,
+      }),
+    ),
+  ).toMatchObject({
+    ok: true,
+    digest: staged.digest,
+    metadata: { appId: 'com.example.app' },
+  });
+  expect(h.installApp).toHaveBeenCalledWith(
+    expect.objectContaining({
+      hostId: h.remoteDevice.hostId,
+      digest: staged.digest,
+    }),
+  );
+});
+
+test('human takeover cancels installation and reports an unknown effect', async () => {
+  const h = harness();
+  const staged = await h.artifacts.stageUpload(
+    'project',
+    await apkFixture(),
+    'android',
+    async () => true,
+  );
+  const deviceSessionId = await h.open();
+  let ready!: () => void;
+  const started = new Promise<void>((resolve) => {
+    ready = resolve;
+  });
+  h.installApp.mockImplementationOnce(async (input) => {
+    expect(await input.beforeInstall()).toBe(true);
+    ready();
+    return await new Promise<never>((_resolve, reject) =>
+      input.signal.addEventListener(
+        'abort',
+        () => reject(new Error('cancelled')),
+        { once: true },
+      ),
+    );
+  });
+  const pending = h.run('device_install_app', {
+    deviceSessionId,
+    artifactHandle: staged.handle,
+  });
+  await started;
+  await h.take(deviceSessionId);
+  expect(parsed(await pending)).toMatchObject({
+    ok: false,
+    code: 'interrupted',
+    effect: 'unknown',
+  });
 });

@@ -16,6 +16,10 @@ import { StringDecoder } from 'node:string_decoder';
 import type { DeviceSshHostFailure } from '@kontourai/station-contracts/mobile-device';
 import { spawnOwnedChild } from '../../infra/process-utils.js';
 import {
+  DEVICE_APP_INSTALL_SCRIPT,
+  type DeviceAppInstallParams,
+} from './device-app-install-program.js';
+import {
   REMOTE_DEVICE_HOST_SCRIPT,
   type RemoteDeviceHostParams,
 } from './ssh-device-remote-script.js';
@@ -165,29 +169,41 @@ export interface SshScriptRun {
  * Run the program once to completion: header, optional payload writer, then
  * stdin closes. Resolves with every event; a transport failure is typed.
  */
-export function runSshDeviceScript(input: {
-  target: SshDeviceTarget;
-  params: RemoteDeviceHostParams;
-  spawn?: SpawnSsh;
-  /** Writes the payload after the header; stdin is closed when it resolves. */
-  payload?: (stdin: Writable) => Promise<void>;
-  timeoutMs: number;
-  /** Aborting kills the ssh child at once (a cancelled install, M3). */
-  signal?: AbortSignal;
-  /**
-   * The most stdout the run may print (default 64 KB, events then keep only
-   * the tail). Past an explicit bound the ssh child is killed and the run
-   * ends `overflow` — a tool's output is never read unbounded (#2442).
-   */
-  maxStdoutBytes?: number;
-  /**
-   * Keep stdin open until the run ends, instead of closing it after the
-   * header (#2442 review M1): the program's `tool` mode takes stdin closing
-   * as "Station gave up" and stops, so killing this ssh child also stops the
-   * run on the host rather than leaving it to finish.
-   */
-  holdStdin?: boolean;
-}): Promise<SshScriptRun> {
+export function runSshDeviceScript(
+  input: (
+    | {
+        params: RemoteDeviceHostParams;
+        program?: never;
+        onInstallReady?: never;
+      }
+    | {
+        params: DeviceAppInstallParams;
+        program: 'device-app-install';
+        onInstallReady: () => Promise<boolean>;
+      }
+  ) & {
+    target: SshDeviceTarget;
+    spawn?: SpawnSsh;
+    /** Writes the payload after the header; stdin is closed when it resolves. */
+    payload?: (stdin: Writable) => Promise<void>;
+    timeoutMs: number;
+    /** Aborting kills the ssh child at once (a cancelled install, M3). */
+    signal?: AbortSignal;
+    /**
+     * The most stdout the run may print (default 64 KB, events then keep only
+     * the tail). Past an explicit bound the ssh child is killed and the run
+     * ends `overflow` — a tool's output is never read unbounded (#2442).
+     */
+    maxStdoutBytes?: number;
+    /**
+     * Keep stdin open until the run ends, instead of closing it after the
+     * header (#2442 review M1): the program's `tool` mode takes stdin closing
+     * as "Station gave up" and stops, so killing this ssh child also stops the
+     * run on the host rather than leaving it to finish.
+     */
+    holdStdin?: boolean;
+  },
+): Promise<SshScriptRun> {
   const spawnSsh = input.spawn ?? spawnSystemSsh;
   return new Promise((resolve) => {
     const events: Record<string, unknown>[] = [];
@@ -227,10 +243,30 @@ export function runSshDeviceScript(input: {
     if (input.signal?.aborted) onAbort();
     input.signal?.addEventListener('abort', onAbort, { once: true });
     const maxStdout = input.maxStdoutBytes;
-    const readEvents = createEventReader(
-      (event) => events.push(event),
-      maxStdout ?? MAX_STDOUT_BYTES,
-    );
+    let readySeen = false;
+    const readEvents = createEventReader((event) => {
+      events.push(event);
+      if (
+        input.program === 'device-app-install' &&
+        event.event === 'app-ready'
+      ) {
+        if (readySeen || !input.onInstallReady) {
+          child.kill('SIGKILL');
+          return;
+        }
+        readySeen = true;
+        void input
+          .onInstallReady()
+          .then((allowed) => {
+            if (!settled && allowed && !input.signal?.aborted)
+              child.stdin?.write('G');
+            else if (!settled) child.stdin?.end();
+          })
+          .catch(() => {
+            if (!settled) child.stdin?.end();
+          });
+      }
+    }, maxStdout ?? MAX_STDOUT_BYTES);
     let stdoutBytes = 0;
     child.stdout?.on('data', (chunk: Buffer) => {
       if (settled) return;
@@ -276,7 +312,11 @@ export function runSshDeviceScript(input: {
     stdin.on('error', () => {
       // The remote end closed early; the exit handler reports why.
     });
-    stdin.write(remoteHeader(input.params));
+    stdin.write(
+      input.program === 'device-app-install'
+        ? `${JSON.stringify({ s: DEVICE_APP_INSTALL_SCRIPT, p: input.params })}\n`
+        : remoteHeader(input.params),
+    );
     void (async () => {
       try {
         if (input.payload) await input.payload(stdin);

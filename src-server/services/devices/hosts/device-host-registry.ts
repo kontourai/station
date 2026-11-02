@@ -39,6 +39,10 @@ import type {
 import { DeviceHostBusyError } from '../device-shares.js';
 import type { DeviceHubConnection } from '../toolchain/device-hub-connection.js';
 import { DEVICE_TOOL_PINS } from '../toolchain/device-tool-pins.js';
+import {
+  type DeviceInstallOutcome,
+  runDeviceAppInstall,
+} from './device-app-install.js';
 import type { DeviceHostStore } from './device-host-store.js';
 import { SshDeviceHub, type SshDeviceHubOptions } from './ssh-device-hub.js';
 import {
@@ -670,6 +674,69 @@ export class DeviceHostRegistry {
         )
           return unavailable;
         return outcome;
+      } finally {
+        this.#sshAbort.delete(abort);
+      }
+    } finally {
+      this.#releaseHostSlot(hostId, 'tool');
+    }
+  }
+
+  /** Run a staged app on its selected host, under the same consent and slot fences as device tools. */
+  async installApp(
+    hostId: string,
+    input: Omit<Parameters<typeof runDeviceAppInstall>[0], 'target' | 'spawn'>,
+  ): Promise<DeviceInstallOutcome> {
+    const unavailable = {
+      ok: false,
+      code: 'host-unavailable',
+      effect: 'none',
+    } as const;
+    const host = this.#o.store.get(hostId);
+    if (
+      this.#closed ||
+      !host ||
+      host.hubEnabled !== true ||
+      input.signal?.aborted
+    )
+      return unavailable;
+    const target = host.sshTarget;
+    const generation = this.#generation(hostId);
+    const deadlineAt = Date.now() + 120_000;
+    const slot = await this.#hostSlot(hostId, 'tool', {
+      signal: input.signal,
+      deadlineAt,
+    });
+    if (slot !== 'granted') return unavailable;
+    try {
+      const current = () => {
+        const now = this.#o.store.get(hostId);
+        return (
+          !this.#closed &&
+          !input.signal?.aborted &&
+          Date.now() < deadlineAt &&
+          this.#generation(hostId) === generation &&
+          now?.sshTarget === target &&
+          now.hubEnabled === true
+        );
+      };
+      if (!current()) return unavailable;
+      const abort = new AbortController();
+      this.#sshAbort.set(abort, hostId);
+      try {
+        return await runDeviceAppInstall({
+          ...input,
+          target: parseSshDeviceTarget(target),
+          signal: input.signal
+            ? AbortSignal.any([input.signal, abort.signal])
+            : abort.signal,
+          beforeInstall: async () =>
+            current() &&
+            (await input.beforeInstall()) &&
+            current() &&
+            !abort.signal.aborted,
+          ...(this.#o.spawn ? { spawn: this.#o.spawn } : {}),
+        });
       } finally {
         this.#sshAbort.delete(abort);
       }

@@ -1203,6 +1203,10 @@
       "exempt": "agent-self",
       "reason": "Computer use inside the calling agent's own turn; the route refuses every non-internal request, and a person drives devices in the UI pane."
     },
+    "device_install_app": {
+      "exempt": "agent-self",
+      "reason": "Installs a Project-scoped staged app during the calling agent's bound turn; people use the Device pane."
+    },
     "device_launch_app": {
       "exempt": "agent-self",
       "reason": "Controls the device in the calling agent's bound turn; people use the Device pane."

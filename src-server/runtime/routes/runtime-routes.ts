@@ -155,6 +155,10 @@ import {
   deviceControlConflict,
 } from '../../services/devices/device-tools.js';
 import { createFfmpegDecoderProvider } from '../../services/devices/h264-jpeg-decoder.js';
+import {
+  runDeviceAppInstall,
+  spawnLocalDeviceInstall,
+} from '../../services/devices/hosts/device-app-install.js';
 import { DeviceHostRegistry } from '../../services/devices/hosts/device-host-registry.js';
 import { RemoteDeviceHostServices } from '../../services/devices/hosts/device-host-services.js';
 import { DeviceHostStore } from '../../services/devices/hosts/device-host-store.js';
@@ -4925,6 +4929,15 @@ export function configureRuntimeRoutes(
     let agentDeviceAutomation: DeviceAutomation | undefined;
     if (agentDeviceSessions && agentDeviceSurfaces && deviceShareAccess) {
       agentDeviceAutomation = new DeviceAutomation({
+        artifacts,
+        installApp: (input) =>
+          input.hostId === LOCAL_DEVICE_HOST_ID
+            ? runDeviceAppInstall({
+                ...input,
+                target: { host: 'localhost' },
+                spawn: spawnLocalDeviceInstall,
+              })
+            : hostRegistry.installApp(input.hostId, input),
         remoteHostIds: () =>
           hostRegistry.summaries().map((host) => host.hostId),
         remoteHost: (hostId) => {

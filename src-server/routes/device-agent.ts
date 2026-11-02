@@ -116,6 +116,32 @@ export function createDeviceAgentRoutes(deps: DeviceAgentRoutesDeps) {
     const id = body.deviceSessionId;
     if (typeof id !== 'string' || !id || id.length > 80)
       return c.json({ ok: false, code: 'invalid-request' });
+    if (operation === 'install-app') {
+      if (!deps.deviceLoopEnabled?.())
+        return c.json({
+          ok: false,
+          code: 'feature_preview_disabled',
+          previewId: 'device-developer-loop',
+        });
+      if (
+        Object.keys(body).some(
+          (key) => !['deviceSessionId', 'artifactHandle'].includes(key),
+        ) ||
+        typeof body.artifactHandle !== 'string' ||
+        !/^[0-9a-f-]{36}$/.test(body.artifactHandle)
+      )
+        return c.json({ ok: false, code: 'invalid-request' });
+      return c.json(
+        await deps.automation.installApp(
+          access,
+          authority,
+          id,
+          body.artifactHandle,
+          () => deps.deviceLoopEnabled?.() === true,
+          c.req.raw.signal,
+        ),
+      );
+    }
     if (
       operation === 'launch-app' ||
       operation === 'terminate-app' ||

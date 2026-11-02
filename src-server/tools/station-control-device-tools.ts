@@ -114,6 +114,12 @@ export function registerDeviceTools(registry: StationControlToolRegistry) {
     async (args) => callDevice('logs', args),
   );
   registry.tool(
+    'device_install_app',
+    'Install a Project-scoped staged artifact on this device host, after checking compatibility and the device lease. The receipt states when the outcome is unknown.',
+    { deviceSessionId, artifactHandle: z.string().uuid() },
+    async (args) => callDevice('install-app', args),
+  );
+  registry.tool(
     'device_launch_app',
     'Launch an installed app and observe it in the foreground on the selected device host.',
     { deviceSessionId, appId: z.string().min(3).max(255) },

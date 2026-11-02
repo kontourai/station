@@ -21,8 +21,13 @@ import {
   deviceAgentMayAccess,
   mintDeviceAgentGrant,
 } from './device-agent-authority.js';
+import type { DeviceArtifactStaging } from './device-app-artifacts.js';
 import type { DeviceSessionService } from './device-session-service.js';
 import type { DeviceToolsService } from './device-tools.js';
+import type {
+  DeviceInstallFile,
+  DeviceInstallOutcome,
+} from './hosts/device-app-install.js';
 
 interface DeviceAutomationHost {
   host: Pick<LocalMobileDeviceHost, 'inventory' | 'capture'>;
@@ -32,6 +37,16 @@ interface DeviceAutomationHost {
 }
 interface DeviceAutomationDeps extends DeviceAutomationHost {
   surfaces: Pick<LiveSurfaceRegistry, 'get'>;
+  artifacts?: DeviceArtifactStaging;
+  installApp?: (input: {
+    hostId: string;
+    platform: 'ios' | 'android';
+    deviceId: string;
+    digest: string;
+    files: DeviceInstallFile[];
+    beforeInstall: () => Promise<boolean>;
+    signal: AbortSignal;
+  }) => Promise<DeviceInstallOutcome>;
   remoteHostIds?: () => readonly string[];
   remoteHost?: (hostId: string) => DeviceAutomationHost | undefined;
 }
@@ -524,6 +539,115 @@ export class DeviceAutomation {
       );
       if (!(await current())) return refused('interrupted');
       return { ok: true as const, logs };
+    });
+  }
+
+  async installApp(
+    access: DeviceAgentAccessDeps,
+    authority: DeviceAgentAuthority,
+    id: string,
+    handle: string,
+    enabled: () => boolean,
+    signal?: AbortSignal,
+  ) {
+    const { artifacts, installApp } = this.deps;
+    if (!artifacts || !installApp) return refused('unsupported');
+    return this.withControl(access, authority, id, async (selected) => {
+      const abort = new AbortController();
+      const combined = signal
+        ? AbortSignal.any([signal, abort.signal])
+        : abort.signal;
+      const stillCurrent = () => {
+        const live = this.sessionServices(id);
+        return (
+          enabled() &&
+          !combined.aborted &&
+          live?.session.surfaceId === selected.session.surfaceId &&
+          live.services.sessions === selected.services.sessions &&
+          live.services.host === selected.services.host &&
+          this.deps.surfaces.get(selected.session.surfaceId) ===
+            selected.entry &&
+          selected.entry.lease.isCurrent(selected.lease.fence, selected.agent)
+            .ok
+        );
+      };
+      const current = async () =>
+        stillCurrent() &&
+        (await selected.entry.authorize(
+          authority.principalId,
+          'input',
+          selected.context,
+        )) &&
+        stillCurrent();
+      const off = selected.entry.lease.onChange(() => {
+        if (
+          !selected.entry.lease.isCurrent(selected.lease.fence, selected.agent)
+            .ok
+        )
+          abort.abort();
+      });
+      let started = false;
+      let result: DeviceInstallOutcome | undefined;
+      try {
+        return await artifacts.withArtifact(
+          authority.projectId,
+          handle,
+          current,
+          async (receipt, payload, artifactCurrent, activeSignal) => {
+            if (receipt.platform !== selected.session.platform)
+              return {
+                ok: false as const,
+                code: 'incompatible-artifact',
+                effect: 'none' as const,
+              };
+            const files =
+              payload.platform === 'ios'
+                ? payload.files
+                : [
+                    {
+                      path: 'Application.apk',
+                      executable: false,
+                      bytes: payload.apk,
+                    },
+                  ];
+            started = true;
+            result = await installApp({
+              hostId: selected.session.hostId,
+              platform: selected.session.platform,
+              deviceId: selected.session.deviceId,
+              digest: receipt.digest,
+              files,
+              signal: activeSignal,
+              beforeInstall: async () =>
+                (await current()) &&
+                (await artifactCurrent()) &&
+                (await current()),
+            });
+            if (!(await current()))
+              return {
+                ok: false as const,
+                code: 'interrupted',
+                effect:
+                  result.ok || result.effect === 'unknown'
+                    ? ('unknown' as const)
+                    : ('none' as const),
+              };
+            return result;
+          },
+          combined,
+        );
+      } catch {
+        return {
+          ok: false as const,
+          code: 'interrupted',
+          effect:
+            started && (!result || result.ok || result.effect === 'unknown')
+              ? ('unknown' as const)
+              : ('none' as const),
+        };
+      } finally {
+        off();
+      }
     });
   }
 
