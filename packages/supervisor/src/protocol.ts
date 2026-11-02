@@ -55,6 +55,7 @@ export const SUPERVISOR_ENV = Object.freeze({
 
 export interface HandoffTimings {
   parkTimeoutMs: number;
+  bootParkTimeoutMs: number;
   readinessTimeoutMs: number;
   drainDeadlineMs: number;
   voiceDrainCapMs: number;
@@ -72,8 +73,15 @@ export interface RestartPolicy {
 }
 
 export const HANDOFF_DEFAULTS: Readonly<HandoffTimings> = Object.freeze({
-  /** A trial generation must report `parked` within this time. */
+  /** A handoff's trial generation must report `parked` within this time. */
   parkTimeoutMs: 30_000,
+  /**
+   * A generation started while none serves (first boot, crash restart,
+   * rollback relaunch) must report `parked` within this time. It loads its
+   * code cold, often on a loaded host, and has no serving generation to fall
+   * back on, so it gets four times the handoff deadline.
+   */
+  bootParkTimeoutMs: 120_000,
   /** A promoted generation must report `ready` within this time. */
   readinessTimeoutMs: 60_000,
   /** The draining generation must exit within this time. */
@@ -96,7 +104,10 @@ export const RESTART_DEFAULTS: Readonly<RestartPolicy> = Object.freeze({
   maxBackoffMs: 30_000,
   /** A generation serving this long resets the backoff. */
   stableAfterMs: 60_000,
-  /** This many crashes within `failureWindowMs` makes the supervisor give up. */
+  /**
+   * This many crashes within `failureWindowMs`, or this many in a row with no
+   * generation serving between them, makes the supervisor give up.
+   */
   maxFailures: 5,
   failureWindowMs: 5 * 60_000,
 });
