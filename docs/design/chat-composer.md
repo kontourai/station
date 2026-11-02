@@ -827,10 +827,12 @@ observes, otherwise the next turn boundary. Its wording says **Steer when safe**
 Claude and Codex retain engine-defined native placement. The composer reads the
 current adapter declaration sent by session snapshots and conversation-open
 responses. A missing declaration is unknown; the client does not infer it from
-provider names. Without it, the mode picker and pending list disclose that
-steering is unavailable, and neither Send-as-steer nor Retry-steering is offered.
-Follow-up Retry remains available. A queued steer whose adapter declares no
-steering is refused with `unsupported-engine` before any handoff.
+provider names. While the Session projection is pending, the mode picker and
+pending list show **Loading steering support…**. Once that read settles without
+a declaration, they disclose that steering is unavailable; neither Send-as-steer
+nor Retry-steering is offered. Follow-up Retry remains available. A durable
+steer already queued keeps waiting while its declaration is unknown. A declared
+placement of `none` refuses it with `unsupported-engine` before any handoff.
 ACP's cancel-and-reprompt extension does not become an additive
 native composer action. Profile observations are not persisted in browser session
 state. After post-tool injection the entry remains claimed until model dispatch,
