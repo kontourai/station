@@ -19,6 +19,13 @@ import {
  * either; this is the client's own guard.
  */
 
+/**
+ * Units the decoder may hold before the viewer counts as behind (about a
+ * second at 30 fps). Behind, it resets and waits for a keyframe rather than
+ * queueing without bound.
+ */
+export const LIVE_SURFACE_DECODE_MAX_PENDING = 30;
+
 /** Whether this page can ask for H.264 at all. */
 export function liveSurfaceH264Capable(
   scope: { isSecureContext?: boolean; VideoDecoder?: unknown } = globalThis,
@@ -26,6 +33,36 @@ export function liveSurfaceH264Capable(
   return (
     scope.isSecureContext === true && typeof scope.VideoDecoder === 'function'
   );
+}
+
+function isLoopbackHost(hostname: string): boolean {
+  return (
+    hostname === 'localhost' ||
+    hostname === '[::1]' ||
+    /^127(\.\d{1,3}){3}$/.test(hostname)
+  );
+}
+
+/**
+ * Whether this viewer asks `apiBase` for H.264: a capable page, talking to a
+ * loopback Station. Relay and other remote paths are not qualified for an
+ * inter-frame stream yet (a slow link turns into keyframe resyncs), so they
+ * keep images until they are.
+ */
+export function liveSurfaceH264Offered(
+  apiBase: string,
+  scope: {
+    isSecureContext?: boolean;
+    VideoDecoder?: unknown;
+    location?: { href: string };
+  } = globalThis,
+): boolean {
+  if (!liveSurfaceH264Capable(scope)) return false;
+  try {
+    return isLoopbackHost(new URL(apiBase, scope.location?.href).hostname);
+  } catch {
+    return false;
+  }
 }
 
 export type LiveSurfaceDecodeOutcome =
@@ -117,6 +154,13 @@ export class LiveSurfaceH264Decoder {
       return 'awaiting-keyframe';
     }
     const decoder = this.decoder!;
+    if (
+      this.inFlight.size >= LIVE_SURFACE_DECODE_MAX_PENDING ||
+      decoder.decodeQueueSize >= LIVE_SURFACE_DECODE_MAX_PENDING
+    ) {
+      this.fail(new Error('the decoder fell behind'));
+      return 'awaiting-keyframe';
+    }
     const timestamp = header.seq;
     this.inFlight.set(timestamp, header);
     try {

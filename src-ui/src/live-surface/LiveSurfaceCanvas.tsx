@@ -17,6 +17,7 @@ import {
   useCallback,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
 } from 'react';
@@ -29,7 +30,7 @@ import {
 } from './liveSurfaceStreamBudget';
 import {
   LiveSurfaceH264Decoder,
-  liveSurfaceH264Capable,
+  liveSurfaceH264Offered,
 } from './liveSurfaceVideoDecoder';
 import {
   type LiveSurfaceFrame,
@@ -186,6 +187,8 @@ export type LiveSurfaceControllerTone = 'you' | 'agent' | 'other' | 'none';
 const LIVE_SURFACE_STALL_MS = 12_000;
 /** A failed H.264 decoder reconnects for a keyframe at most this often. */
 const VIDEO_RESYNC_MIN_INTERVAL_MS = 2_000;
+/** Decoder failures in a row, with no picture between, before images. */
+const VIDEO_FAILURES_BEFORE_IMAGES = 3;
 
 /** Pane diagnostics: what this viewer is drawing, and where it decodes. */
 function codecLabel(codec: LiveSurfaceFrameHeader['codec']): string {
@@ -383,7 +386,12 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
   // H.264 (#4418): asked for only where WebCodecs can decode it. Every
   // access unit goes to the decoder in order (none may be skipped); the
   // decoder paints each picture it produces.
-  const [acceptH264] = useState(() => liveSurfaceH264Capable());
+  const acceptH264 = useMemo(
+    () => liveSurfaceH264Offered(props.apiBase),
+    [props.apiBase],
+  );
+  /** Decoder failures since the last picture. */
+  const videoFailuresRef = useRef(0);
   const videoDecoderRef = useRef<LiveSurfaceH264Decoder | null>(null);
   const lastResyncRef = useRef(Number.NEGATIVE_INFINITY);
   const resyncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -417,7 +425,10 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
   // (or unmount) cancels it rather than reconnecting a healthy stream.
   // biome-ignore lint/correctness/useExhaustiveDependencies: the target props are the change keys.
   useEffect(
-    () => cancelResync,
+    () => () => {
+      cancelResync();
+      videoFailuresRef.current = 0;
+    },
     [props.apiBase, props.surfaceId, props.projectSlug, cancelResync],
   );
   const decodeVideo = useCallback(
@@ -426,13 +437,24 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
       if (!decoder) {
         decoder = new LiveSurfaceH264Decoder({
           onPicture: (picture, header) => {
+            videoFailuresRef.current = 0;
             try {
               paint(picture, header);
             } finally {
               picture.close();
             }
           },
-          onError: resyncVideo,
+          onError: () => {
+            videoFailuresRef.current += 1;
+            if (videoFailuresRef.current < VIDEO_FAILURES_BEFORE_IMAGES) {
+              resyncVideo();
+              return;
+            }
+            // It keeps failing with nothing shown: stop asking for H.264.
+            cancelResync();
+            closeVideoDecoder();
+            surfaceRef.current.declineH264();
+          },
         });
         videoDecoderRef.current = decoder;
       }

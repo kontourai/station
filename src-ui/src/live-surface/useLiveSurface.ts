@@ -397,9 +397,18 @@ export function useLiveSurface(
       }
       if (stopped || generation !== targetGenerationRef.current) return;
       if (response.status === 400 && askH264) {
-        // A host older than `?codec=`: ask again for images (this effect
-        // re-runs without the key), never retry the refused request.
-        setH264DeclinedFor(targetKey);
+        // A host older than `?codec=` refuses the unknown key as
+        // `invalid-request`; it cannot name the key, so that code is the
+        // signal. Ask again for images (this effect re-runs without the
+        // key), never retry the refused request. Any other 400 is not about
+        // the codec and reconnects as before.
+        const envelope = (await response.json().catch(() => {
+          void response.body?.cancel().catch(() => {});
+          return null;
+        })) as { code?: unknown } | null;
+        if (stopped || generation !== targetGenerationRef.current) return;
+        if (envelope?.code === 'invalid-request') setH264DeclinedFor(targetKey);
+        else scheduleReconnect();
         return;
       }
       if (response.status === 404) {

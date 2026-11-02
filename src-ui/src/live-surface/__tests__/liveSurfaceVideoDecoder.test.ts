@@ -3,8 +3,10 @@ import { resolve } from 'node:path';
 import type { LiveSurfaceFrameHeader } from '@kontourai/station-contracts/live-surface';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import {
+  LIVE_SURFACE_DECODE_MAX_PENDING,
   LiveSurfaceH264Decoder,
   liveSurfaceH264Capable,
+  liveSurfaceH264Offered,
 } from '../liveSurfaceVideoDecoder';
 
 // SPS, PPS, IDR and two deltas cut from a recorded Android emulator stream.
@@ -169,5 +171,53 @@ describe('client H.264 decoding (#4418)', () => {
     const second = FakeVideoDecoder.instances[1]!;
     expect(second.configs).toHaveLength(1);
     expect(second.chunks).toEqual([{ type: 'key', timestamp: 3 }]);
+  });
+});
+
+describe('client H.264 bounds (#4418 review)', () => {
+  test('is offered only to a loopback Station', () => {
+    const scope = {
+      isSecureContext: true,
+      VideoDecoder: class {},
+      location: { href: 'http://127.0.0.1:3999/' },
+    };
+    for (const base of [
+      'http://127.0.0.1:3999',
+      'http://localhost:3999',
+      'http://[::1]:3999',
+      '',
+    ])
+      expect(liveSurfaceH264Offered(base, scope), base).toBe(true);
+    for (const base of [
+      'https://station.example.com',
+      'http://100.64.0.7:3999',
+      'http://192.168.1.4:3999',
+    ])
+      expect(liveSurfaceH264Offered(base, scope), base).toBe(false);
+  });
+
+  test('a decoder that stops producing output is reset instead of queueing without bound', async () => {
+    const { decoder, errors } = build();
+    expect(await decoder.decode(header(1, true), sample)).toBe('decoding');
+    for (let seq = 2; seq <= LIVE_SURFACE_DECODE_MAX_PENDING; seq += 1)
+      expect(await decoder.decode(header(seq, false), delta)).toBe('decoding');
+    // The fake never outputs: the next unit finds it a full queue behind.
+    expect(
+      await decoder.decode(
+        header(LIVE_SURFACE_DECODE_MAX_PENDING + 1, false),
+        delta,
+      ),
+    ).toBe('awaiting-keyframe');
+    expect(errors).toHaveLength(1);
+    expect(FakeVideoDecoder.instances[0]!.state).toBe('closed');
+    expect(FakeVideoDecoder.instances[0]!.chunks).toHaveLength(
+      LIVE_SURFACE_DECODE_MAX_PENDING,
+    );
+    expect(
+      await decoder.decode(
+        header(LIVE_SURFACE_DECODE_MAX_PENDING + 2, false),
+        delta,
+      ),
+    ).toBe('awaiting-keyframe');
   });
 });
