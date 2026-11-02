@@ -7,7 +7,10 @@ import {
   sessionReadAuthorityFromRequest,
 } from '@kontourai/station-contracts/tenancy';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { createGateTestRegistry } from '../../../__test-utils__/orchestration-gate-test-harness.js';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
+import { StationAgentAdapter } from '../../../providers/adapters/station-agent-adapter.js';
+import { ApprovalRegistry } from '../../approvals/approval-registry.js';
 import { EnvironmentSecurityService } from '../../ssh/environment-security-service.js';
 import { StationDelegationPersistence } from '../delegation-group-persistence.js';
 import { EventBus } from '../event-bus.js';
@@ -104,6 +107,146 @@ function seedHistoricalTurn(store: EventStore): void {
     finishReason: 'stop',
   });
 }
+
+describe('recorded sealed source Session policy', () => {
+  test('uses saved Session mode across point, list and event-page reads without changing ordinary provider defaults', async () => {
+    const store = createStore();
+    const eventBus = new EventBus();
+    const logger = { debug() {}, warn() {} };
+    const fetchModel = vi.fn<typeof fetch>(async () => {
+      throw new Error('A recorded-mode read must not invoke a model');
+    });
+    const adapter = new StationAgentAdapter({
+      apiBase: 'http://recorded-mode.test',
+      hasAgent: () => true,
+      eventBus,
+      approvalRegistry: new ApprovalRegistry(logger, { eventBus }),
+      fetch: fetchModel,
+    });
+    const service = new OrchestrationService({
+      eventStore: store,
+      eventBus,
+      adapterRegistry: createGateTestRegistry(adapter),
+      logger,
+    });
+    const identity = `sha256:${'a'.repeat(64)}`;
+    const record = (threadId: string, mode: unknown, cursor = false) => {
+      store.upsertSession({
+        provider: 'station-agent',
+        threadId,
+        status: 'ready',
+        createdAt: '2026-10-26T00:00:00.000Z',
+        updatedAt: '2026-10-26T00:00:00.000Z',
+        ...(cursor
+          ? { resumeCursor: { reservedSourceIdentity: identity } }
+          : {}),
+      });
+      store.appendEvent({
+        provider: 'station-agent',
+        threadId,
+        sessionId: threadId,
+        eventId: `${threadId}:start`,
+        method: 'session.started',
+        createdAt: '2026-10-26T00:00:00.000Z',
+        metadata: {
+          userId: 'mode-owner',
+          ...(mode !== undefined ? { reservedSourceExecution: mode } : {}),
+        },
+      });
+    };
+    record('sealed-no-tools', { mode: 'sealed-source-no-tools', identity });
+    record('sealed-input', { mode: 'sealed-source-input', identity });
+    record('malformed-sealed', {
+      mode: 'sealed-source-input',
+      identity: 'not-a-digest',
+    });
+    record('ordinary', undefined);
+    record('cursor-only', undefined, true);
+    // A later unmarked reattach does not erase the first canonical declaration.
+    store.appendEvent({
+      provider: 'station-agent',
+      threadId: 'sealed-input',
+      sessionId: 'sealed-input',
+      eventId: 'sealed-input:reattach',
+      method: 'session.started',
+      createdAt: '2026-10-26T00:00:01.000Z',
+      metadata: { userId: 'mode-owner' },
+    });
+    try {
+      const ordinary = service.durabilityProfileForProvider('station-agent');
+      expect(ordinary).toBeDefined();
+      const listed = await service.listSessionReadModel(
+        INTERNAL_SESSION_READ_SCOPE,
+      );
+      for (const threadId of [
+        'sealed-no-tools',
+        'sealed-input',
+        'malformed-sealed',
+      ]) {
+        const point = await service.readSession(
+          threadId,
+          INTERNAL_SESSION_READ_SCOPE,
+        );
+        const page = await service.readSessionEventPage(threadId, {
+          afterSequence: 0,
+          limit: 20,
+          authority: INTERNAL_SESSION_READ_SCOPE,
+        });
+        for (const summary of [
+          point?.session,
+          page?.session,
+          listed.find((row) => row.threadId === threadId),
+        ]) {
+          expect(summary?.durability).toMatchObject({
+            steerPlacement: { state: 'none' },
+            crashContinuation: { state: 'none' },
+            toolReplay: { state: 'none' },
+            pendingApprovals: { state: 'none' },
+            fork: { state: 'none' },
+          });
+          expect(summary?.durability?.contextCarriage.history).not.toBe(
+            'station-memory',
+          );
+          expect(summary?.durability?.steerPlacement.boundary).toBeUndefined();
+        }
+        expect(await service.steerFidelityForThread(threadId)).toBe('none');
+        expect(
+          service.canSteerAtPostToolBoundary(threadId, 'not-injected'),
+        ).toBe(false);
+        const count = store.countEventsByThread(threadId);
+        expect(() =>
+          service.recordPostToolSteer({
+            threadId,
+            turnId: 'not-injected',
+            clientInputId: 'not-injected',
+            payload: { message: 'must not inject' },
+          }),
+        ).toThrow('do not support post-tool steering');
+        expect(store.countEventsByThread(threadId)).toBe(count);
+        expect(
+          service.conversationInputAdmissionRefusal(threadId)?.reasonCode,
+        ).toBe('sealed_source_admission_required');
+      }
+      for (const threadId of ['ordinary', 'cursor-only']) {
+        const point = await service.readSession(
+          threadId,
+          INTERNAL_SESSION_READ_SCOPE,
+        );
+        expect(point?.session.durability).toEqual(ordinary);
+        expect(
+          service.conversationInputAdmissionRefusal(threadId),
+        ).toBeUndefined();
+      }
+      expect(service.durabilityProfileForProvider('station-agent')).toEqual(
+        ordinary,
+      );
+      expect(fetchModel).not.toHaveBeenCalled();
+    } finally {
+      await service.shutdown();
+      store.close();
+    }
+  });
+});
 
 describe('historical report terminal snapshots', () => {
   test('retains an authenticated original-turn witness after Session deletion and refuses altered identities', async () => {

@@ -32,6 +32,11 @@ import {
  * - `GET  /:surfaceId/frames` — a streaming, length-prefixed binary body of
  *   state and frame records (`LiveSurfaceRecordDecoder` reads it). One
  *   viewer per request; the producer runs while at least one is attached.
+ *   `?codec=h264` (#4418) asks for H.264 access units instead of images.
+ *   It is a request, not a guarantee: a producer that offers no H.264 sends
+ *   images, and the frames' own `codec` says which the viewer got. A host
+ *   older than the key refuses it as an unknown query key (400), and the
+ *   client then asks again without it.
  * - `POST /:surfaceId/input` — a bounded batch of human input carrying the
  *   epoch the viewer last observed. Human input auto-claims the lease.
  * - `GET  /:surfaceId/lease` / `POST /:surfaceId/lease` — read the lease, or
@@ -100,6 +105,9 @@ export interface LiveSurfaceRouteOptions {
  * request names it). It never grants anything by itself.
  */
 const AUTHORIZATION_CONTEXT_QUERY_KEY = 'projectSlug';
+const CODEC_QUERY_KEY = 'codec';
+/** `?agentActions=1` asks for agent action geometry in state records. */
+const AGENT_ACTIONS_QUERY_KEY = 'agentActions';
 
 const STREAM_QUERY_KEYS: readonly (keyof LiveSurfaceStreamParams)[] = [
   'maxFps',
@@ -108,12 +116,25 @@ const STREAM_QUERY_KEYS: readonly (keyof LiveSurfaceStreamParams)[] = [
   'maxHeight',
 ];
 
+/** The frames query keys a refusal may name; anything else is `unknown`. */
+const KNOWN_FRAMES_QUERY_KEYS: ReadonlySet<string> = new Set([
+  ...STREAM_QUERY_KEYS,
+  AUTHORIZATION_CONTEXT_QUERY_KEY,
+  CODEC_QUERY_KEY,
+  AGENT_ACTIONS_QUERY_KEY,
+]);
+
 function failure(
   c: Context,
   code: LiveSurfaceRouteErrorCode,
   status: 400 | 403 | 404 | 413 | 503,
+  /** The query key a frames request was refused for (#4418). */
+  field?: string,
 ) {
-  return c.json({ success: false, code }, status);
+  return c.json(
+    { success: false, code, ...(field === undefined ? {} : { field }) },
+    status,
+  );
 }
 
 export function createLiveSurfaceRoutes(
@@ -204,40 +225,53 @@ export function createLiveSurfaceRoutes(
     const caller = await authorize(c, entry, ['view']);
     if (!caller.ok) return caller.response;
     const human = caller.value;
-    const queryKeys = Object.keys(c.req.queries());
-    if (
-      queryKeys.some(
-        (key) =>
-          (!STREAM_QUERY_KEYS.includes(key as keyof LiveSurfaceStreamParams) &&
-            key !== AUTHORIZATION_CONTEXT_QUERY_KEY &&
-            key !== 'agentActions') ||
-          (c.req.queries(key)?.length ?? 0) > 1,
-      )
-    )
-      return failure(c, 'invalid-request', 400);
-    if (
-      c.req.query('agentActions') !== undefined &&
-      c.req.query('agentActions') !== '1'
-    )
-      return failure(c, 'invalid-request', 400);
+    // A refused frames request names the key it was refused for, so a
+    // client can tell a codec it may not ask for from any other mistake.
+    // Only keys this route knows are echoed; anything else is `unknown`, so
+    // a caller's query text never comes back in a response.
+    const refusedKey = Object.keys(c.req.queries()).find(
+      (key) =>
+        (!STREAM_QUERY_KEYS.includes(key as keyof LiveSurfaceStreamParams) &&
+          key !== AUTHORIZATION_CONTEXT_QUERY_KEY &&
+          key !== CODEC_QUERY_KEY &&
+          key !== AGENT_ACTIONS_QUERY_KEY) ||
+        (c.req.queries(key)?.length ?? 0) > 1,
+    );
+    if (refusedKey !== undefined)
+      return failure(
+        c,
+        'invalid-request',
+        400,
+        KNOWN_FRAMES_QUERY_KEYS.has(refusedKey) ? refusedKey : 'unknown',
+      );
+    const agentActions = c.req.query(AGENT_ACTIONS_QUERY_KEY);
+    if (agentActions !== undefined && agentActions !== '1')
+      return failure(c, 'invalid-request', 400, AGENT_ACTIONS_QUERY_KEY);
     const parsed = parseLiveSurfaceStreamParams({
       maxFps: c.req.query('maxFps'),
       quality: c.req.query('quality'),
       maxWidth: c.req.query('maxWidth'),
       maxHeight: c.req.query('maxHeight'),
     });
-    if (!parsed.ok) return failure(c, 'invalid-request', 400);
+    if (!parsed.ok) return failure(c, 'invalid-request', 400, 'stream-params');
+    const codec = c.req.query(CODEC_QUERY_KEY);
+    if (codec !== undefined && codec !== 'h264')
+      return failure(c, 'invalid-request', 400, CODEC_QUERY_KEY);
 
     const request = c.req.raw;
     const viewer = entry.hub.attach(
       parsed.params,
+      { principal: human.principal, device: human.device },
       {
-        principal: human.principal,
-        device: human.device,
+        ...(agentActions === '1'
+          ? { agentActions: () => options.agentActionsEnabled?.() === true }
+          : {}),
+        codec:
+          codec === 'h264' &&
+          entry.hub.producer.capabilities.codecs.includes('h264')
+            ? 'h264'
+            : 'image',
       },
-      c.req.query('agentActions') === '1'
-        ? { agentActions: () => options.agentActionsEnabled?.() === true }
-        : undefined,
     );
     const abort = new AbortController();
     const end = () => {

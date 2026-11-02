@@ -358,6 +358,8 @@ export const STATION_CONTROL_TOOL_POLICY = {
   device_open: DEVICE_AGENT,
   device_screenshot: DEVICE_AGENT,
   device_capture_to_task: DEVICE_AGENT,
+  device_logs: DEVICE_AGENT,
+  device_record_to_task: DEVICE_AGENT,
   device_snapshot: DEVICE_AGENT,
   device_input: DEVICE_AGENT,
   device_close: DEVICE_AGENT,

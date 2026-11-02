@@ -214,7 +214,11 @@ function transcriptCompletions(store: EventStore, threadId: string) {
 }
 
 describe('the Session inventory lists tool results exactly as the transcript shows them (#4178)', () => {
-  test('agrees with the transcript on 1,000 seeded sessions in the shapes real writers emit', () => {
+  test('agrees with the transcript on 1,000 seeded sessions in the shapes real writers emit', ({
+    skip,
+  }) => {
+    // This override selects the performance case for its separate diagnostic.
+    if (process.env.STATION_UNCACHED_PERFORMANCE_ONLY === '1') skip();
     const store = new EventStore(
       join(tempRoot('station-inventory-differential-'), 'orchestration.sqlite'),
     );
@@ -251,7 +255,15 @@ describe('the Session inventory lists tool results exactly as the transcript sho
     }
   });
 
-  test('one call id carrying 10k events costs one projection and one cursor, however many pages', () => {
+  test('one call id carrying 10k events costs one projection and one cursor, however many pages', ({
+    skip,
+  }) => {
+    // This case asserts cache reuse, not uncached correctness.
+    if (
+      process.env.STATION_DISABLE_EVENT_STORE_CACHES === '1' &&
+      process.env.STATION_UNCACHED_PERFORMANCE_ONLY !== '1'
+    )
+      skip();
     const store = new EventStore(
       join(tempRoot('station-inventory-differential-'), 'orchestration.sqlite'),
     );

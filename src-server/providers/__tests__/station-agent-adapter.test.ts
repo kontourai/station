@@ -1,4 +1,7 @@
-import type { ProviderSendTurnInput } from '@kontourai/station-contracts/provider';
+import {
+  type ProviderSendTurnInput,
+  RESERVED_SOURCE_EXECUTION_METADATA_KEY,
+} from '@kontourai/station-contracts/provider';
 import {
   type CanonicalRuntimeEvent,
   SERVER_EVENTS,
@@ -953,6 +956,75 @@ describe('StationAgentAdapter', () => {
     );
     expect(configured.metadata).not.toHaveProperty('capabilityDelivery');
   });
+
+  test.each([false, true])(
+    'a reserved cursor restricts sends without minting admitted source metadata (caller metadata: %s)',
+    async (withMetadata) => {
+      const fetchMock = vi.fn<typeof fetch>();
+      const adapter = new StationAgentAdapter({
+        apiBase: 'http://127.0.0.1:0',
+        hasAgent: () => true,
+        ...approvalDeps(),
+        fetch: fetchMock,
+      });
+      const identity = `sha256:${'a'.repeat(64)}`;
+      const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+      try {
+        const session = await adapter.startSession({
+          provider: 'station-agent',
+          threadId: 'cursor-restriction',
+          resumeCursor: {
+            agentId: 'reviewer',
+            reservedSourceIdentity: identity,
+          },
+          metadata: {
+            agentId: 'reviewer',
+            ...(withMetadata
+              ? {
+                  [RESERVED_SOURCE_EXECUTION_METADATA_KEY]: {
+                    identity,
+                    mode: 'sealed-source-input',
+                    tools: 'fixed-input-only',
+                    approvals: 'input-only',
+                    continuation: 'unavailable',
+                  },
+                }
+              : {}),
+          },
+        });
+        expect(session.resumeCursor).toMatchObject({
+          reservedSourceIdentity: identity,
+        });
+        const [started, configured] = await nextEvents(iterator, 2);
+        expect(started.method).toBe('session.started');
+        expect(configured.method).toBe('session.configured');
+        for (const event of [started, configured]) {
+          if (
+            event.method !== 'session.started' &&
+            event.method !== 'session.configured'
+          )
+            throw new Error('Expected a Session lifecycle observation.');
+          expect(event.metadata).not.toHaveProperty(
+            RESERVED_SOURCE_EXECUTION_METADATA_KEY,
+          );
+        }
+        await expect(
+          adapter.sendTurn({
+            threadId: session.threadId,
+            input: 'No reserved admission',
+          }),
+        ).rejects.toMatchObject({
+          name: 'SendTurnRefusedError',
+          kind: 'permission_denied',
+          failurePhase: 'refused',
+        });
+        expect(fetchMock).not.toHaveBeenCalled();
+      } finally {
+        await adapter.stopAll();
+        await iterator.return?.();
+      }
+    },
+  );
 
   test.each([undefined, 'station-origin'])(
     'runs a configured Station agent through the canonical resumable task stream (origin %s)',
@@ -3005,4 +3077,96 @@ describe('StationAgentAdapter — inner /chat error frame becomes a classified r
     });
     expect(JSON.stringify(events)).not.toContain('sk-live-SECRET');
   });
+});
+
+test('a retained legacy approval ID cannot resolve or cancel another Session registry wait', async () => {
+  const { eventBus, approvalRegistry } = approvalDeps();
+  const request = {
+    type: 'tool-approval-request',
+    approvalId: 'legacy-approval',
+    toolName: 'repo_write',
+    toolArgs: { path: 'README.md' },
+  };
+  const fetchMock = vi
+    .fn<typeof fetch>()
+    .mockImplementation(async () => sseResponse([request]));
+  const approval = {
+    version: 1 as const,
+    id: 'legacy-approval',
+    toolId: 'tool:call',
+    input: 'input',
+    inputDigest: 'digest',
+    deadline: 9_999_999_999_999,
+    revision: '0' as const,
+    state: 'pending' as const,
+    decisionAt: null,
+  };
+  const adapter = new StationAgentAdapter({
+    apiBase: 'http://127.0.0.1:0',
+    hasAgent: () => true,
+    fetch: fetchMock,
+    approvalRegistry,
+    eventBus,
+    durable: {
+      enabled: () => true,
+      owns: () => true,
+      snapshot: () => ({ state: 'running', settledAt: null }),
+      frame: () => undefined,
+      approval: (_thread, _turn, id) =>
+        id === approval.id ? approval : undefined,
+      approvals: () => [approval],
+      publish: () => true,
+      cancel: async () => {},
+      pause: async () => {},
+      retained: () => false,
+    },
+  });
+  const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+  await adapter.startSession({
+    threadId: 'A',
+    provider: 'station-agent',
+    metadata: { agentId: 'reviewer' },
+  });
+  await adapter.startSession({
+    threadId: 'B',
+    provider: 'station-agent',
+    metadata: { agentId: 'reviewer' },
+  });
+  const answer = approvalRegistry.register(approval.id, {
+    metadata: { conversationId: 'A', source: 'runtime', title: 'repo_write' },
+  });
+  try {
+    await adapter.sendTurn({
+      threadId: 'B',
+      input: 'legacy B',
+      invocationId: 'B-turn',
+    });
+    expect((await nextEvents(iterator, 7)).at(-1)).toMatchObject({
+      method: 'request.opened',
+      threadId: 'B',
+      requestId: approval.id,
+    });
+    await expect(
+      adapter.respondToRequest('B', approval.id, 'accept'),
+    ).rejects.toThrow('not waiting for this Session');
+    expect(approvalRegistry.has(approval.id)).toBe(true);
+    await adapter.stopSession('B');
+    expect(approvalRegistry.has(approval.id)).toBe(true);
+    await nextEvents(iterator, 1);
+    await adapter.sendTurn({
+      threadId: 'A',
+      input: 'legacy A',
+      invocationId: 'A-turn',
+    });
+    expect((await nextEvents(iterator, 3)).at(-1)).toMatchObject({
+      method: 'request.opened',
+      threadId: 'A',
+      requestId: approval.id,
+    });
+    await adapter.respondToRequest('A', approval.id, 'accept');
+    expect(await answer).toBe(true);
+  } finally {
+    approvalRegistry.cancelAll();
+    await adapter.stopAll();
+  }
 });

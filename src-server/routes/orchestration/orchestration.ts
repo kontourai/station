@@ -3069,8 +3069,13 @@ export function createOrchestrationRoutes(
           ) === null
         )
           throw new Error('The requested conversation is unavailable.');
-        queueOnBusyRefusal = () =>
-          queuedFollowUpResponse(
+        queueOnBusyRefusal = () => {
+          const refused = effectfulInboxAdmissionRefusal(
+            c,
+            followUp.conversationId,
+          );
+          if (refused) return refused;
+          return queuedFollowUpResponse(
             c,
             inbox.submit({
               conversationId: followUp.conversationId,
@@ -3095,6 +3100,7 @@ export function createOrchestrationRoutes(
             }),
             followUp,
           );
+        };
         if (inbox.mustQueue(followUp.conversationId)) {
           const held = queueOnBusyRefusal();
           if (held) return held;
@@ -3623,6 +3629,10 @@ export function createOrchestrationRoutes(
       )
         return c.json({ success: false, error: 'Conversation not found' }, 404);
       const body = getBody(c);
+      if (body.kind !== 'display') {
+        const refused = effectfulInboxAdmissionRefusal(c, conversationId);
+        if (refused) return refused;
+      }
       const actor = resolveDispatchActor(deps, c);
       const input = {
         conversationId,
@@ -4098,6 +4108,27 @@ export function createOrchestrationRoutes(
       }
     },
   );
+
+  function effectfulInboxAdmissionRefusal(
+    c: Context,
+    conversationId: string,
+  ): Response | undefined {
+    if (
+      !orchestrationService.canUserReadSession(
+        conversationId,
+        readAuthorityFor(c),
+      )
+    )
+      return c.json({ success: false, error: 'Conversation not found' }, 404);
+    const refusal =
+      orchestrationService.conversationInputAdmissionRefusal(conversationId);
+    return refusal
+      ? c.json(
+          { success: false, code: refusal.reasonCode, error: refusal.reason },
+          409,
+        )
+      : undefined;
+  }
 
   function authorizeDelegationTarget(
     c: Context,

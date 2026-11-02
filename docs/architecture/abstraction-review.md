@@ -233,13 +233,15 @@ this audit did not execute a new container/proxy/phone voice journey.
 ### Live frames and human input share a transport budget
 
 The current live-surface hook opens a frame request per visible viewer.
-Visibility and duplicate-display suppression reduce requests, but there is no
-shared cross-surface frame transport or admission policy reserving room for
-input. [#2760](https://github.com/kontourai/station/issues/2760) tracks that unmet
-[ADR0018 constraint](../adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md), with acceptance at
-the actual browser input path. Finite browser connection pools make contention
-a plausible concern; this audit did not reproduce saturation or measure latency.
-Native and relay transports need separate qualification.
+Visibility and duplicate-display suppression reduce requests, and a per-origin
+admission cap of two frame streams now reserves connections for input. A
+real-browser HTTP/1.1 fixture reproduced the saturation without the cap and
+measured millisecond input with it (see the 2026-11-02 amendment to the
+[ADR0018 constraint](../adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md)).
+There is still no shared cross-surface frame transport, and the cap does not
+cover all three view-scoped event streams open at once;
+[#2760](https://github.com/kontourai/station/issues/2760) tracks both. Native
+and relay transports need separate qualification.
 
 ### Staging must use the candidate's dependency contract
 

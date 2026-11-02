@@ -502,6 +502,32 @@ test('private-case-content-must-not-appear-in-progress', async ({ onTestFinished
     });
   });
 
+  it('retains completed shard totals without claiming cancelled results', () => {
+    const stdout = vi.spyOn(process.stdout, 'write').mockReturnValue(true);
+    const stderr = vi.spyOn(process.stderr, 'write').mockReturnValue(true);
+    const totals =
+      ' Test Files  2 passed (2)\n      Tests  17 passed | 1 skipped (18)\n';
+    try {
+      emitResult({ name: 'ordinary-1-of-8', passed: true, stdout: totals });
+      expect(stdout.mock.calls.flat().join('')).toContain(
+        'Tests  17 passed | 1 skipped (18)',
+      );
+      stdout.mockClear();
+      emitResult({
+        name: 'ordinary-2-of-8',
+        passed: false,
+        cancelled: true,
+        stdout: totals,
+      });
+      expect(stdout.mock.calls.flat().join('')).not.toContain(
+        '[vitest-corpus] ordinary-2-of-8: Tests  17 passed',
+      );
+    } finally {
+      stdout.mockRestore();
+      stderr.mockRestore();
+    }
+  });
+
   it('retains shard identity and separate stream tails in failure output', () => {
     const stdout = vi.spyOn(process.stdout, 'write').mockReturnValue(true);
     const stderr = vi.spyOn(process.stderr, 'write').mockReturnValue(true);

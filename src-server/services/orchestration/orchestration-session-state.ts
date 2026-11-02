@@ -43,6 +43,7 @@ import {
   ENGINE_TURN_FAILED_CODE,
   MODEL_LAUNCH_PLAN_METADATA_KEY,
   MODEL_SELECTION_RECEIPT_METADATA_KEY,
+  RESERVED_SOURCE_EXECUTION_METADATA_KEY,
 } from '@kontourai/station-contracts/provider';
 import { runtimeEventContentText } from '@kontourai/station-contracts/runtime-event-content';
 import {
@@ -84,7 +85,7 @@ import {
 import {
   SESSION_START_INDETERMINATE_CODE,
   SessionStartIndeterminateError,
-} from './session-turn-boundary.js';
+} from './session-turn-boundary-binding.js';
 
 const ATTACHED_SESSION_PROJECT_SLUG_MAX_LENGTH = 512;
 /** archive#1462: bounds the candidate list replayed out of event metadata. */
@@ -536,9 +537,81 @@ export function deriveReadModelSession(options: {
   return nextSession;
 }
 
+/** Only canonical starts carry this declaration; resume cursors are not mode authority. */
+export function reservedSourceExecutionFromStart(
+  event: CanonicalRuntimeEvent | undefined,
+): unknown {
+  return event?.method === 'session.started' &&
+    event.provider === 'station-agent'
+    ? event.metadata?.[RESERVED_SOURCE_EXECUTION_METADATA_KEY]
+    : undefined;
+}
+
+export function reservedSourceDurabilityProfile(
+  declaration: unknown,
+): ProviderDurabilityProfile | undefined {
+  if (declaration === undefined) return undefined;
+  const valid =
+    declaration !== null &&
+    typeof declaration === 'object' &&
+    'mode' in declaration &&
+    (declaration.mode === 'sealed-source-no-tools' ||
+      declaration.mode === 'sealed-source-input') &&
+    'identity' in declaration &&
+    typeof declaration.identity === 'string' &&
+    /^sha256:[a-f0-9]{64}$/.test(declaration.identity);
+  const unavailable = valid
+    ? 'A sealed source Session needs fresh bounded admission; arbitrary continuation is unavailable.'
+    : 'The recorded sealed source declaration is unavailable.';
+  return {
+    steerPlacement: {
+      state: 'none',
+      detail: valid
+        ? 'Steering and queued follow-ups require fresh bounded source admission.'
+        : unavailable,
+    },
+    crashContinuation: {
+      state: 'none',
+      detail:
+        'An interrupted external attempt remains unknown and is not automatically replayed.',
+    },
+    toolReplay: {
+      state: 'none',
+      detail: 'The sealed request does not use native tool replay.',
+    },
+    pendingApprovals: {
+      state: 'none',
+      detail: 'Live fixed-input registration does not survive runtime restart.',
+    },
+    contextCarriage: {
+      state: valid ? 'emulated' : 'none',
+      ...(valid ? { history: 'seed' as const } : {}),
+      detail: unavailable,
+    },
+    fork: { state: 'none', detail: unavailable },
+    compaction: {
+      state: 'none',
+      owner: 'unknown',
+      detail:
+        'The sealed request has no managed conversation-compaction owner.',
+    },
+    partialOutput: {
+      state: 'none',
+      detail:
+        'Interrupted partial output may be unavailable; retained evidence is separately scoped.',
+    },
+    usage: {
+      state: valid ? 'emulated' : 'none',
+      detail:
+        'Retained provider usage and reserved allocation remain distinct; missing usage is unknown.',
+    },
+  };
+}
+
 export function buildOrchestrationSessionSummary(options: {
   readDurabilityProfile?: (
     provider: string | undefined,
+    threadId?: string,
   ) => ProviderDurabilityProfile | undefined;
   persisted?: ProviderSession;
   loaded?: ProviderSession;
@@ -720,7 +793,7 @@ export function buildOrchestrationSessionSummary(options: {
     (id) => !settledRequestIds.has(id),
   );
   const summary: OrchestrationSessionSummary = {
-    durability: options.readDurabilityProfile?.(base.provider),
+    durability: options.readDurabilityProfile?.(base.provider, base.threadId),
     provider: base.provider,
     threadId: base.threadId,
     status: base.status,

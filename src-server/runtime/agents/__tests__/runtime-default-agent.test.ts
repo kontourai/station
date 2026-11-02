@@ -7,6 +7,17 @@ import { EventStore } from '../../../services/orchestration/event-store.js';
 import { MCPService } from '../../../services/plugins/mcp-service.js';
 
 const makeAppTempDir = trackTempDirs();
+const fixtureAgent = () =>
+  ({
+    id: 'default-agent',
+    name: 'Default fixture',
+    model: { modelId: 'fixture' },
+    getMemory: () => null,
+    generateText: async () => ({ text: 'unused' }),
+    streamText: async () => {
+      throw new Error('Unexpected fixture model invocation');
+    },
+  }) satisfies import('../../types.js').IAgent;
 
 import type { ToolDef } from '@kontourai/station-contracts/tool';
 import { describe, expect, test, vi } from 'vitest';
@@ -217,7 +228,7 @@ describe('bootstrapRuntimeDefaultAgent', () => {
       getProjectHomeDir: vi.fn(() => '/tmp/project'),
     } as any;
     const framework = {
-      createTempAgent: vi.fn(async () => ({ id: 'default-agent' })),
+      createTempAgent: vi.fn(async () => fixtureAgent()),
     } as any;
     const logger = {
       info: vi.fn(),
@@ -329,7 +340,9 @@ describe('bootstrapRuntimeDefaultAgent', () => {
       allowed: false,
       reason: expect.stringContaining('no approval channel'),
     });
-    expect(agents).toEqual({ default: { id: 'default-agent' } });
+    expect(agents.default).toBe(
+      await framework.createTempAgent.mock.results[0]?.value,
+    );
     expect(activeAgents.has('default')).toBe(true);
     expect(agentTools.get('default')).toEqual([{ name: 'tool-1' }]);
     expect(memoryAdapters.has('default')).toBe(true);
@@ -352,7 +365,7 @@ describe('bootstrapRuntimeDefaultAgent', () => {
       reviewToolCall,
     } as any;
     const framework = {
-      createTempAgent: vi.fn(async () => ({ id: 'default-agent' })),
+      createTempAgent: vi.fn(async () => fixtureAgent()),
     } as any;
     const agentHooksMap = new Map();
 
@@ -461,7 +474,9 @@ describe('bootstrapRuntimeDefaultAgent — station#1194 external engine binding'
     const agentMetadataMap = new Map();
     const agentHooksMap = new Map([['default', { stale: true } as any]]);
     const createModel = vi.fn(async () => ({ id: 'model-1' }));
-    const framework = { createTempAgent: vi.fn(async () => ({})) } as any;
+    const framework = {
+      createTempAgent: vi.fn(async () => fixtureAgent()),
+    } as any;
     const logger = { info: vi.fn(), warn: vi.fn() } as any;
 
     return {

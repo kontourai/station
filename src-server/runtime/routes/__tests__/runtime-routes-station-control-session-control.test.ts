@@ -23,11 +23,11 @@ import { __resetStationServerSelfAttestationForTests } from '../../../security/s
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../../services/identity/principal-resolver.js';
 import { NotificationService } from '../../../services/notifications/notification-service.js';
 import { EventBus } from '../../../services/orchestration/event-bus.js';
+import { SESSION_LOCAL_PROJECT_ID_METADATA_KEY } from '../../../services/orchestration/session-project-identity.js';
 import {
   createSqliteSessionControlRequestKeys,
   SESSION_CONTROL_REQUEST_KEY_SCHEMA,
-} from '../../../services/orchestration/session-control-request-keys.js';
-import { SESSION_LOCAL_PROJECT_ID_METADATA_KEY } from '../../../services/orchestration/session-project-identity.js';
+} from '../../../services/orchestration/sqlite-session-control-request-keys.js';
 import { STATION_CONTROL_CALLER_TOKEN_HEADER } from '../../../tools/station-control-shared.js';
 import {
   getInternalApiToken,

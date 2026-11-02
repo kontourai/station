@@ -1,5 +1,9 @@
 import crypto from 'node:crypto';
 import {
+  isProviderTurnBoundary,
+  type SessionTurnBoundaryRecord,
+} from '@kontourai/monument/session-boundary';
+import {
   type CanonicalRuntimeEvent,
   isDeferredRetriableTurnError,
   isProviderTriggeredTurn,
@@ -15,11 +19,8 @@ import { errorMessage } from '../../utils/error-message.js';
 import { sleep } from '../../utils/sleep.js';
 import type { EventStore, PersistedRuntimeEvent } from './event-store.js';
 import { TURN_ABORT_SETTLED_REQUEST_STATUS } from './open-requests.js';
+import { reservedSourceExecutionFromStart } from './orchestration-session-state.js';
 import { isInvocationlessRecoveryAbort } from './session-lifecycle-service.js';
-import {
-  isProviderTurnBoundary,
-  type SessionTurnBoundaryRecord,
-} from './session-turn-boundary.js';
 
 /**
  * `request.resolved.response.reason` on the resolution recovery writes for a
@@ -32,6 +33,13 @@ const INTERRUPTED_TURN_REQUEST_REASON = 'turn-interrupted';
 type InterruptedTurnRecoveryLogger = {
   warn(message: string, meta?: Record<string, unknown>): void;
 };
+
+/** The receiver must fence ownership and make retries idempotent before claiming. */
+export type DurableTurnHandoff = (input: {
+  record: SessionTurnBoundaryRecord;
+  turnId: string;
+  signal: AbortSignal;
+}) => Promise<'not-owned' | 'claimed' | 'retry'>;
 
 interface InterruptedTurnRecoveryDeps {
   /**
@@ -63,6 +71,7 @@ interface InterruptedTurnRecoveryDeps {
    * `void`. Narrowing it would silently convert "declined" into "done".
    */
   publishEvent: (event: CanonicalRuntimeEvent) => boolean;
+  recoverDurableTurn?: DurableTurnHandoff;
   logger: InterruptedTurnRecoveryLogger;
 }
 
@@ -497,7 +506,7 @@ export class InterruptedTurnRecovery {
       if (record.state !== 'accepted' && record.state !== 'indeterminate') {
         // Read-only defensive guard: `EventStore.takeInterruptedTurnBoundaries()`
         // only ever fills this list from those two states (see
-        // `session-turn-boundary.ts`'s `reconcileDeadOwners`); skip anything
+        // Monument's `reconcileDeadOwners`); skip anything
         // else rather than resolve a row this method does not understand.
         continue;
       }
@@ -662,11 +671,41 @@ export class InterruptedTurnRecovery {
           }
           continue;
         }
-        const providerTurn = isProviderTurnBoundary(record);
         const startEvent = eventStore.latestEventByMethod(
           record.threadId,
           'session.started',
         );
+        const sealedSource =
+          reservedSourceExecutionFromStart(startEvent?.payload) !== undefined ||
+          reservedSourceExecutionFromStart(
+            eventStore.firstEventByMethod(record.threadId, 'session.started')
+              ?.payload,
+          ) !== undefined;
+        if (
+          ownEnding === undefined &&
+          ownTurnId &&
+          !sealedSource &&
+          this.deps.recoverDurableTurn
+        ) {
+          const handoff = await this.deps.recoverDurableTurn({
+            record: structuredClone(record),
+            turnId: ownTurnId,
+            signal: this.stopSignal.signal,
+          });
+          if (
+            this.stopSignal.signal.aborted ||
+            this.deps.eventStore() !== eventStore ||
+            handoff === 'retry'
+          ) {
+            failed.push(record);
+            continue;
+          }
+          if (handoff === 'claimed') continue;
+          if (handoff !== 'not-owned')
+            throw new Error('Invalid durable turn handoff result');
+          if (movedOn()) continue;
+        }
+        const providerTurn = isProviderTurnBoundary(record);
         const provider = startEvent?.provider;
         const agentSlug =
           typeof (startEvent?.payload as { metadata?: Record<string, unknown> })

@@ -5,6 +5,10 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { isDeepStrictEqual } from 'node:util';
 import type { FlowEvidenceEntry } from '@kontourai/flow';
 import {
+  ORCHESTRATION_SHUTDOWN_EXIT_REASON,
+  type SessionTurnBoundaryTransition,
+} from '@kontourai/monument/session-boundary';
+import {
   type AgentExecutionConfig,
   type AgentSpec,
   isSupportedAgentIconToken,
@@ -90,7 +94,6 @@ import {
   PROVIDER_SESSION_START_FAILED_CODE,
   PROVIDER_SESSION_STARTING_CODE,
   PROVIDER_TURN_IN_PROGRESS_CODE,
-  RESERVED_SOURCE_EXECUTION_METADATA_KEY,
   readApprovalMode,
   readProviderDurabilityProfile,
   SESSION_AGENT_DISPLAY_NAME_MAX_LENGTH,
@@ -221,7 +224,11 @@ import {
 } from '../../runtime/frameworks/runtime-adapter-readiness.js';
 import { revokeStationControlMcpToken } from '../../runtime/mcp/station-control-mcp-token.js';
 import { createNativeOutputDeclarationOperation } from '../../runtime/native-output-declaration.js';
-import type { NativeOutputCallFacts } from '../../runtime/native-output-turn-grant.js';
+import type {
+  DurableNativeOutputFacts,
+  NativeOutputCallFacts,
+  NativeOutputTurnContext,
+} from '../../runtime/native-output-turn-grant.js';
 import {
   createNativeOutputGrantAuthority,
   createNativeOutputRelayCompanion,
@@ -420,6 +427,7 @@ import {
 import { HostImageTurnCapture } from './host-image-turn-capture.js';
 import { InternalStopSuppression } from './internal-stop-suppression.js';
 import {
+  type DurableTurnHandoff,
   type InterruptedTurnMemoryAdapter,
   InterruptedTurnRecovery,
 } from './interrupted-turn-recovery.js';
@@ -453,6 +461,8 @@ import {
   persistReadModelSession,
   type RecoveredSessionStartOptions,
   recoverOrchestrationSessions,
+  reservedSourceDurabilityProfile,
+  reservedSourceExecutionFromStart,
   resolveOrchestrationAdapterForThread,
   startRecoveredOrchestrationSession,
   trackOrchestrationSession,
@@ -537,11 +547,9 @@ import {
 import { SessionTranscriptReads } from './session-transcript-reads.js';
 import {
   createInMemorySessionTurnBoundaryAuthority,
-  ORCHESTRATION_SHUTDOWN_EXIT_REASON,
   runSessionStartWithBoundary,
   type SessionTurnBoundaryAuthority,
-  type SessionTurnBoundaryTransition,
-} from './session-turn-boundary.js';
+} from './session-turn-boundary-binding.js';
 import {
   SkillExperienceRuntime,
   type SkillExperienceSource,
@@ -984,6 +992,7 @@ export type SessionReadScope = SessionReadAuthority | InternalSessionReadScope;
 export type { InterruptedTurnMemoryAdapter };
 
 interface OrchestrationServiceOptions {
+  recoverDurableTurn?: DurableTurnHandoff;
   nativeForkStoredReadVerifier?: import('../../security/native-fork-read-admission.js').NativeForkReadAdmissionDomain['verifyForService'];
   adapterRegistry: IProviderAdapterRegistry;
   monitoringEmitter?: MonitoringEmitter;
@@ -3102,8 +3111,8 @@ export class OrchestrationService {
           this.options.eventStore?.readSessionByThread(id)?.provider;
         return (
           actual !== undefined &&
-          this.durabilityProfileForProvider(actual)?.contextCarriage.history ===
-            'station-memory' &&
+          this.durabilityProfileForSession(actual, id)?.contextCarriage
+            .history === 'station-memory' &&
           this.supportsNativeMemoryContinuity()
         );
       },
@@ -3119,7 +3128,7 @@ export class OrchestrationService {
     });
     this.sessionEventReads = new SessionEventReads({
       readOwnedWork: this.readOwnedWork,
-      readDurabilityProfile: this.durabilityProfileForProvider,
+      readDurabilityProfile: this.durabilityProfileForSession,
       ...(options.eventStore ? { eventStore: options.eventStore } : {}),
       logger: options.logger,
       listSessions: (authority) => this.listSessions(authority),
@@ -3326,7 +3335,7 @@ export class OrchestrationService {
           : undefined;
         const session = buildOrchestrationSessionSummary({
           readOwnedWork: this.readOwnedWork,
-          readDurabilityProfile: this.durabilityProfileForProvider,
+          readDurabilityProfile: this.durabilityProfileForSession,
           persisted,
           loaded,
           events: [...events],
@@ -3474,7 +3483,7 @@ export class OrchestrationService {
     );
     if (options.eventStore) {
       this.conversationHistoryReader = new ConversationHistoryReadService({
-        readDurabilityProfile: this.durabilityProfileForProvider,
+        readDurabilityProfile: this.durabilityProfileForSession,
         eventStore: options.eventStore,
         canReadSession: (threadId, authority) =>
           this.sessionAuthz.canReadSession(threadId, authority),
@@ -3550,9 +3559,10 @@ export class OrchestrationService {
           typeof adapter?.retireSession === 'function'
         );
       },
-      nativeMemoryOwnsTranscriptFor: (provider) =>
-        this.durabilityProfileForProvider(provider)?.contextCarriage.history ===
-          'station-memory' && this.supportsNativeMemoryContinuity(),
+      nativeMemoryOwnsTranscriptFor: (provider, threadId) =>
+        this.durabilityProfileForSession(provider, threadId)?.contextCarriage
+          .history === 'station-memory' &&
+        this.supportsNativeMemoryContinuity(),
       nativeIdentityRequiredFor: (provider) =>
         options.adapterRegistry.get(provider)?.metadata.continuity
           ?.resumeIdentity === 'require-match',
@@ -3781,6 +3791,7 @@ export class OrchestrationService {
         this.options.memoryAdapters?.get(agentSlug),
       // Boolean, NOT void: the module's M4 refusal branch reads it.
       publishEvent: (event) => this.projectAndPublishEvent(event),
+      recoverDurableTurn: options.recoverDurableTurn,
       logger: this.options.logger,
     });
     this.turnProvenance = new TurnProvenanceSidecar({
@@ -3911,6 +3922,7 @@ export class OrchestrationService {
       if (options.credentialProfileRecoveryAdapter) {
         this.credentialRecovery = createCredentialRecoveryModule({
           ledger: recoveryLedger,
+          logger: options.logger,
           adapter: options.credentialProfileRecoveryAdapter,
           dispatchAdapter: recoveryDispatchAdapter,
           restoreSession: async (input) =>
@@ -5299,7 +5311,7 @@ export class OrchestrationService {
           conversationDraftFactsByThread?.get(threadId);
         const summary = buildOrchestrationSessionSummary({
           readOwnedWork: (threadId) => ownedWorkByThread?.get(threadId),
-          readDurabilityProfile: this.durabilityProfileForProvider,
+          readDurabilityProfile: this.durabilityProfileForSession,
           persisted,
           loaded,
           events: events.map((event) => event.payload),
@@ -5769,12 +5781,41 @@ export class OrchestrationService {
         : this.options.adapterRegistry.get(provider)?.metadata,
     );
 
+  readonly durabilityProfileForSession = (
+    provider: string | undefined,
+    threadId?: string,
+  ): ProviderDurabilityProfile | undefined =>
+    (provider === 'station-agent' && threadId
+      ? reservedSourceDurabilityProfile(
+          this.readRecordedReservedSourceMode(threadId),
+        )
+      : undefined) ?? this.durabilityProfileForProvider(provider);
+
+  conversationInputAdmissionRefusal(
+    conversationId: string,
+  ):
+    | { reasonCode: 'sealed_source_admission_required'; reason: string }
+    | undefined {
+    const threadId = this.currentConversationSessionId(conversationId);
+    if (this.readRecordedReservedSourceMode(threadId) === undefined)
+      return undefined;
+    return {
+      reasonCode: 'sealed_source_admission_required',
+      reason:
+        'This sealed source Session needs fresh bounded admission. Use its report or group controls.',
+    };
+  }
+
   recordPostToolSteer(input: {
     threadId: string;
     turnId: string;
     clientInputId: string;
     payload: { message: string; clientOrigin?: ClientOrigin };
   }): void {
+    if (this.readRecordedReservedSourceMode(input.threadId) !== undefined)
+      throw new Error(
+        'Sealed source Sessions do not support post-tool steering.',
+      );
     const store = this.options.eventStore;
     const session =
       this.sessionReadModel.get(input.threadId) ??
@@ -5804,6 +5845,7 @@ export class OrchestrationService {
 
   canSteerAtPostToolBoundary(threadId: string, turnId: string): boolean {
     return (
+      this.readRecordedReservedSourceMode(threadId) === undefined &&
       !this.quarantinedThreads.has(threadId) &&
       !this.isDormantSessionThread(threadId) &&
       !this.ranUnconfinedNowConfined(threadId, turnId)
@@ -5813,6 +5855,10 @@ export class OrchestrationService {
   async steerFidelityForThread(
     threadId: string,
   ): Promise<'native' | 'emulated' | 'none'> {
+    const sealed = reservedSourceDurabilityProfile(
+      this.readRecordedReservedSourceMode(threadId),
+    );
+    if (sealed) return sealed.steerPlacement.state;
     const provider =
       this.threadProviders.get(threadId) ??
       this.sessionReadModel.get(threadId)?.provider ??
@@ -5884,7 +5930,7 @@ export class OrchestrationService {
     return {
       session: buildOrchestrationSessionSummary({
         readOwnedWork: this.readOwnedWork,
-        readDurabilityProfile: this.durabilityProfileForProvider,
+        readDurabilityProfile: this.durabilityProfileForSession,
         persisted,
         loaded,
         events: summaryEvents,
@@ -6403,7 +6449,7 @@ export class OrchestrationService {
     // enumerated, and an internal one costs two map lookups.
     const summary = buildOrchestrationSessionSummary({
       readOwnedWork: this.readOwnedWork,
-      readDurabilityProfile: this.durabilityProfileForProvider,
+      readDurabilityProfile: this.durabilityProfileForSession,
       persisted,
       loaded,
       events,
@@ -6457,7 +6503,7 @@ export class OrchestrationService {
         return unavailable();
       const summary = buildOrchestrationSessionSummary({
         readOwnedWork: this.readOwnedWork,
-        readDurabilityProfile: this.durabilityProfileForProvider,
+        readDurabilityProfile: this.durabilityProfileForSession,
         persisted,
         loaded,
         events:
@@ -7281,7 +7327,7 @@ export class OrchestrationService {
           const provider = (loaded ?? persisted)?.provider;
           const summary = buildOrchestrationSessionSummary({
             readOwnedWork: this.readOwnedWork,
-            readDurabilityProfile: this.durabilityProfileForProvider,
+            readDurabilityProfile: this.durabilityProfileForSession,
             persisted,
             loaded,
             events: eventStore
@@ -11114,8 +11160,13 @@ export class OrchestrationService {
             engineDisplayLabel(engineId) ??
             adapter.metadata?.displayName ??
             'Engine';
-          const durability = readProviderDurabilityProfile(adapter.metadata);
+          const durability = this.durabilityProfileForSession(
+            adapter.provider,
+            command.threadId,
+          );
           if (
+            this.readRecordedReservedSourceMode(command.threadId) !==
+              undefined ||
             !durability ||
             durability.steerPlacement.state === 'none' ||
             !adapter.steerTurn
@@ -12467,6 +12518,77 @@ export class OrchestrationService {
     if (current !== recorded) throw dispatchCwdMovedError(recorded, current);
   }
 
+  /** A continuing native turn obtains fresh authority from current Session policy. */
+  async authorizeDurableStationTurn(input: {
+    threadId: string;
+    turnId: string;
+    userId: string;
+    workspaceRoot?: string;
+  }): Promise<void> {
+    const session = this.options.eventStore?.readSessionByThread(
+      input.threadId,
+    );
+    if (
+      !session ||
+      session.provider !== 'station-agent' ||
+      session.status === 'closed' ||
+      this.quarantinedThreads.has(input.threadId)
+    )
+      throw new Error('The durable turn Session is no longer available.');
+    this.sessionAuthz.hydratePersistedTenantContexts([session]);
+    if (
+      !this.sessionAuthz.canReadSessionForCommand(
+        input.threadId,
+        input.userId,
+        this.sessionAuthz.tenantContextFor(input.threadId),
+      )
+    )
+      throw new Error('The durable turn is no longer authorized.');
+    const workspace = await this.authorizedConversationWorkspace(
+      input.threadId,
+    );
+    const current = workspace?.cwd ?? session.cwd;
+    if (input.workspaceRoot !== undefined && input.workspaceRoot !== current)
+      throw new Error('The durable turn workspace changed.');
+    await this.assertMandatoryTaskContextAtProviderTurn(input.threadId);
+  }
+
+  async recoverDurableNativeOutput(input: {
+    facts: DurableNativeOutputFacts;
+    userId: string;
+    configurationLease: unknown;
+    current: () => boolean;
+  }): Promise<NativeOutputTurnContext> {
+    await this.authorizeDurableStationTurn({
+      threadId: input.facts.threadId,
+      turnId: input.facts.turnId,
+      userId: input.userId,
+      workspaceRoot: input.facts.workspaceRoot,
+    });
+    const grant = this.nativeOutputGrants.issue(
+      { ...input.facts, configurationLease: input.configurationLease },
+      {
+        isCurrent: () =>
+          input.current() &&
+          !this.quarantinedThreads.has(input.facts.threadId) &&
+          this.sessionAuthz.canReadSessionForCommand(
+            input.facts.threadId,
+            input.userId,
+            this.sessionAuthz.tenantContextFor(input.facts.threadId),
+          ),
+      },
+    );
+    if (!grant)
+      throw new Error(
+        'The durable native turn authority could not be recovered.',
+      );
+    return {
+      grant,
+      authority: this.nativeOutputGrants,
+      declarationOperation: this.nativeOutputDeclarations,
+    };
+  }
+
   /** Reauthorize the durable conversation coordinate, never a caller-supplied cwd. */
   async authorizedConversationWorkspace(
     threadId: string,
@@ -13592,7 +13714,17 @@ export class OrchestrationService {
     try {
       for (const delayMs of [...OBSERVED_EVENT_RETRY_DELAYS_MS, undefined]) {
         try {
-          return this.offerOrPublishEvent(attempt);
+          if (retrying && this.options.eventStore) {
+            await this.options.eventStore.waitForPublicationWrite(
+              admitted.threadId,
+              controller.signal,
+            );
+            attempt = renormalize(admitted);
+          }
+          const publish = () => this.offerOrPublishEvent(attempt);
+          return this.options.eventStore
+            ? this.options.eventStore.withImmediateWriteAttempt(publish)
+            : publish();
         } catch (error) {
           if (error instanceof EventStoreIngressError)
             return await this.publishResidualRefusal(attempt, adapter, error);
@@ -13617,8 +13749,8 @@ export class OrchestrationService {
               (this.observedRetryThreads.get(admitted.threadId) ?? 0) + 1,
             );
           }
-          // node:sqlite is synchronous: each failed attempt may already have
-          // blocked the whole process for busy_timeout. Only this sleep yields.
+          // Leave the loop free for room-worker authorization. The next attempt
+          // waits asynchronously for write availability before publishing.
           await new Promise((resolve) => setTimeout(resolve, delayMs));
           if (controller.signal.aborted || !this.isAdapterCurrent(adapter))
             throw error;
@@ -15247,6 +15379,19 @@ export class OrchestrationService {
    * an approval or a turn boundary can never overtake the text that preceded
    * it.
    */
+  /** A journaled native frame needs a persistence receipt before acknowledgement. */
+  publishDurableStationEvent(event: CanonicalRuntimeEvent): boolean {
+    const store = this.options.eventStore;
+    if (!store || event.provider !== 'station-agent') return false;
+    if (store.hasEventId(event.eventId)) return true;
+    const admitted = this.admitEventForPublication(event);
+    if (!admitted || !this.deltaCoalescer.flushThread(event.threadId))
+      return false;
+    return (
+      this.publishCanonicalEvent(admitted) && store.hasEventId(admitted.eventId)
+    );
+  }
+
   private projectAndPublishEvent(event: CanonicalRuntimeEvent): boolean {
     const admitted = this.admitEventForPublication(event);
     if (!admitted) return true;
@@ -16590,7 +16735,7 @@ export class OrchestrationService {
         .map((event) => event.payload);
       const session = buildOrchestrationSessionSummary({
         readOwnedWork: this.readOwnedWork,
-        readDurabilityProfile: this.durabilityProfileForProvider,
+        readDurabilityProfile: this.durabilityProfileForSession,
         persisted,
         loaded,
         events,
@@ -16672,13 +16817,15 @@ export class OrchestrationService {
   }
 
   private readRecordedReservedSourceMode(threadId: string): unknown {
-    const event = this.options.eventStore?.latestEventByMethod(
-      threadId,
-      'session.started',
-    )?.payload;
-    return event?.method === 'session.started'
-      ? event.metadata?.[RESERVED_SOURCE_EXECUTION_METADATA_KEY]
-      : undefined;
+    const store = this.options.eventStore;
+    const latest = reservedSourceExecutionFromStart(
+      store?.latestEventByMethod(threadId, 'session.started')?.payload,
+    );
+    return latest === undefined
+      ? reservedSourceExecutionFromStart(
+          store?.firstEventByMethod(threadId, 'session.started')?.payload,
+        )
+      : latest;
   }
 
   private readLatestSessionStartMetadata(

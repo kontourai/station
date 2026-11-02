@@ -252,7 +252,10 @@ interface ConversationLineageDeps {
     detail: OrchestrationSessionDetail,
   ) => boolean;
   nativeReturnSupported?: (provider: EngineId) => boolean;
-  nativeMemoryOwnsTranscriptFor?: (provider: EngineId) => boolean;
+  nativeMemoryOwnsTranscriptFor?: (
+    provider: EngineId,
+    threadId?: string,
+  ) => boolean;
   nativeIdentityRequiredFor?: (provider: EngineId) => boolean;
   readForkContextDelivery?: (
     threadId: string,
@@ -307,7 +310,10 @@ export class ConversationLineage {
     if (
       boundary &&
       isSummaryContextBoundary(boundary.policy) &&
-      !this.deps.nativeMemoryOwnsTranscriptFor?.(sessionProvider!) &&
+      !this.deps.nativeMemoryOwnsTranscriptFor?.(
+        sessionProvider!,
+        input.threadId,
+      ) &&
       !store?.conversationStartContext(input.threadId)
     )
       throw new ConversationStartContextError(
@@ -317,7 +323,8 @@ export class ConversationLineage {
     if (!store || !marker) return;
     const provider = store.readSessionByThread(input.threadId)?.provider;
     if (
-      (provider && this.deps.nativeMemoryOwnsTranscriptFor?.(provider)) ||
+      (provider &&
+        this.deps.nativeMemoryOwnsTranscriptFor?.(provider, input.threadId)) ||
       (!marker.contextSeed &&
         store.conversationContextBoundaryForSuccessor(input.threadId)
           ?.policy === 'empty-next-cold-start')
@@ -630,7 +637,10 @@ export class ConversationLineage {
     const startSeed = store.conversationStartContext(sessionId);
     if (
       startSeed &&
-      !this.deps.nativeMemoryOwnsTranscriptFor?.(detail.session.provider)
+      !this.deps.nativeMemoryOwnsTranscriptFor?.(
+        detail.session.provider,
+        sessionId,
+      )
     ) {
       const started = [...detail.events]
         .reverse()
@@ -671,7 +681,10 @@ export class ConversationLineage {
       );
     if (
       handoff &&
-      !this.deps.nativeMemoryOwnsTranscriptFor?.(detail.session.provider) &&
+      !this.deps.nativeMemoryOwnsTranscriptFor?.(
+        detail.session.provider,
+        sessionId,
+      ) &&
       (handoff.contextSeed ||
         store.conversationContextBoundaryForSuccessor(sessionId)?.policy !==
           'empty-next-cold-start')
@@ -1336,7 +1349,12 @@ export class ConversationLineage {
         targetSessionId,
       );
     if (boundary && isSummaryContextBoundary(boundary.policy)) {
-      if (this.deps.nativeMemoryOwnsTranscriptFor?.(requested.provider))
+      if (
+        this.deps.nativeMemoryOwnsTranscriptFor?.(
+          requested.provider,
+          targetSessionId,
+        )
+      )
         return {};
       return this.summaryBoundaryContext(targetSessionId, authority);
     }
@@ -1346,7 +1364,12 @@ export class ConversationLineage {
       messages,
       resumeSupported,
     );
-    if (this.deps.nativeMemoryOwnsTranscriptFor?.(requested.provider))
+    if (
+      this.deps.nativeMemoryOwnsTranscriptFor?.(
+        requested.provider,
+        targetSessionId,
+      )
+    )
       return launch;
     const store = this.deps.eventStore!;
     let pin = store.conversationStartContext(targetSessionId);
@@ -1622,7 +1645,8 @@ export class ConversationLineage {
     const provider = store.readSessionByThread(marker.sessionId)?.provider;
     const memoryOwned =
       provider !== undefined &&
-      this.deps.nativeMemoryOwnsTranscriptFor?.(provider) === true;
+      this.deps.nativeMemoryOwnsTranscriptFor?.(provider, marker.sessionId) ===
+        true;
     let nativeResumeIdentity: NativeResumeIdentityStatus | undefined;
     for (const event of store.listEvents(marker.sessionId)) {
       const payload = event.payload;

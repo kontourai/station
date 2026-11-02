@@ -153,6 +153,24 @@ const button = (name: string) => screen.queryByRole('button', { name });
 const posts = () => calls.filter((call) => call.method === 'POST');
 
 describe('UsageLimitBanner (#3157)', () => {
+  test('shows blocked automatic recovery instead of promising automatic resume', async () => {
+    answers.read = () => ({
+      recovery: projection({
+        admission: {
+          state: 'blocked',
+          reason: 'scan-unavailable',
+          retryAt: '2026-09-24T21:01:00.000Z',
+        },
+      }),
+    });
+    renderBanner();
+    await banner();
+    expect((await screen.findByRole('status')).textContent).toContain(
+      'Automatic recovery is paused until recovery checks succeed.',
+    );
+    expect(screen.queryByText('Resumes automatically.')).toBeNull();
+  });
+
   test('shows the reset as a local time and says it will resume when auto-resume is on', async () => {
     renderBanner();
     const element = await banner();

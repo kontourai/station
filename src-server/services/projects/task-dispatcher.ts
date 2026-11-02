@@ -1,4 +1,8 @@
 import type {
+  SessionStartBoundaryClaim,
+  TaskDispatchBoundaryClaim,
+} from '@kontourai/monument/session-boundary';
+import type {
   TaskAssignmentClaimSummary,
   TaskDispatchInput,
   TaskDispatchRecord,
@@ -18,10 +22,6 @@ import {
 } from '../../security/coding-authority.js';
 import { errorMessage } from '../../utils/error-message.js';
 import type { StartOwnerAttribution } from '../orchestration/session-owner-attribution.js';
-import type {
-  SessionStartBoundaryClaim,
-  TaskDispatchBoundaryClaim,
-} from '../orchestration/session-turn-boundary.js';
 
 /**
  * The sole public intent for the remote task-dispatch vertical. Cancellation

@@ -1,6 +1,7 @@
 import { appendFile, mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { LanguageModelV3 } from '@ai-sdk/provider';
+import { durableLanguageModel } from '@kontourai/agent-runtime';
 import type {
   CapabilityEvidence,
   DispatchReceipt,
@@ -1925,13 +1926,16 @@ async function buildFleetPlanContext(
   const shells = buildFleetCandidateShells(resolution.candidates);
   resolution.candidates.forEach((candidate, index) => {
     models[shells[index]!.runtimeId] = guardBoundedApiModel(
-      createFleetInferenceModel({
-        environmentId: candidate.environmentId,
-        environmentLabel: candidate.environmentLabel,
-        apiBase: candidate.apiBase,
-        credential: candidate.credential,
-        modelId: candidate.modelId,
-      }),
+      durableLanguageModel(
+        createFleetInferenceModel({
+          environmentId: candidate.environmentId,
+          environmentLabel: candidate.environmentLabel,
+          apiBase: candidate.apiBase,
+          credential: candidate.credential,
+          modelId: candidate.modelId,
+        }),
+        { layer: 'provider' },
+      ),
     );
   });
   return {

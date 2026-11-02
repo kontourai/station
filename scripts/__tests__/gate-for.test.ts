@@ -55,27 +55,29 @@ function runJson(args: string[]) {
 }
 
 describe('gate-for report', () => {
-  it('shows the linked behavior check before a governed Session edit', () => {
-    const rules = veritasGuidanceRules([
-      'src-server/services/orchestration/session-turn-boundary.ts',
-    ]);
-    const byId = new Map(rules.map((rule) => [rule.id, rule]));
-    expect(byId.get('session-lifecycle-recovery-contract')).toMatchObject({
-      enforcementLevel: 'Require',
-    });
-    // The behavior check the rule links, as an evidence-check id.
-    expect(rules.flatMap((rule) => rule.evidenceCheckIds)).toContain(
-      'session-transition-contract',
-    );
-    expect(
-      byId.get('session-lifecycle-recovery-contract')?.mustDo.length,
-    ).toBeGreaterThan(0);
-    // The rendered briefing carries every selected rule.
-    const guidance = veritasGuidanceForPaths([
-      'src-server/services/orchestration/session-turn-boundary.ts',
-    ]);
-    for (const rule of rules) expect(guidance).toContain(rule.id);
-  });
+  it.each([
+    'src-server/services/orchestration/session-turn-boundary-binding.ts',
+    'packages/monument/src/session-boundary.ts',
+  ])(
+    'shows the linked behavior check before a governed Session edit: %s',
+    (path) => {
+      const rules = veritasGuidanceRules([path]);
+      const byId = new Map(rules.map((rule) => [rule.id, rule]));
+      expect(byId.get('session-lifecycle-recovery-contract')).toMatchObject({
+        enforcementLevel: 'Require',
+      });
+      // The behavior check the rule links, as an evidence-check id.
+      expect(rules.flatMap((rule) => rule.evidenceCheckIds)).toContain(
+        'session-transition-contract',
+      );
+      expect(
+        byId.get('session-lifecycle-recovery-contract')?.mustDo.length,
+      ).toBeGreaterThan(0);
+      // The rendered briefing carries every selected rule.
+      const guidance = veritasGuidanceForPaths([path]);
+      for (const rule of rules) expect(guidance).toContain(rule.id);
+    },
+  );
 
   it('does not invent path guidance for an unrelated file', () => {
     // documentation-source-currentness is a repo-wide Guide, so every path

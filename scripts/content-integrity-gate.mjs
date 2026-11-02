@@ -109,6 +109,8 @@ export const BINARY_EXCLUDES = [
   ':!*.mp4',
   ':!*.wav',
   ':!*.webm',
+  // Raw H.264 elementary streams (live-surface decoder fixtures, #4418).
+  ':!*.h264',
   ':!*.svgz',
   ':!*.class',
   ':!*.dylib',

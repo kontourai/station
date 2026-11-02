@@ -21,6 +21,8 @@ Prefer an intent-shaped Interface over storage-shaped operations. Compose requir
 
 ## Index
 
+The optional [Durable Station Agent](#durable-station-agent) owner sits above the engine-neutral kernel.
+
 | Module | Intent | Primary source |
 | --- | --- | --- |
 | [WalkthroughService](#walkthroughservice) | Import a local recording into an immutable validated manifest and selected frames. | `src-server/services/walkthroughs/walkthrough-service.ts` |
@@ -60,10 +62,10 @@ Prefer an intent-shaped Interface over storage-shaped operations. Compose requir
 | [SessionCommandModule](#sessioncommandmodule) | Execute the closed session-command vocabulary and return an outcome with explicit receipt certainty. | `src-server/services/orchestration/session-command-module.ts` |
 | [CliSessionGroups](#clisessiongroups) | Retain bounded session-group membership while published Flow owns scheduling and joins. | `src-server/services/orchestration/cli-session-group.ts` |
 | [SessionLifecycleModule](#sessionlifecyclemodule) | Mutate one session lifecycle without racing provider turn startup. | `src-server/services/orchestration/session-lifecycle-module.ts` |
-| [SessionTurnBoundaryAuthority](#sessionturnboundaryauthority) | Persist the one-way provider invocation boundary that lifecycle completion must not cross. | `src-server/services/orchestration/session-turn-boundary.ts` |
+| [SessionTurnBoundaryAuthority](#sessionturnboundaryauthority) | Persist the one-way provider invocation boundary that lifecycle completion must not cross. | `packages/monument/src/session-boundary.ts` |
 | [TurnDeduplicator](#turndeduplicator) | Give exactly one owner the right to create a client turn. | `src-server/services/orchestration/turn-deduplicator.ts` |
 | [AdoptionLedger](#adoptionledger) | Own attached-session adoption reservation, legal transitions, and atomic commit. | `src-server/services/orchestration/adoption-ledger.ts` |
-| [RecoveryLedger and private CredentialApplicationFactory/Handle](#recoveryledger-and-private-credentialapplicationfactoryhandle) | Persist recovery dispatch truth and exact credential-application settlement. | `src-server/services/orchestration/recovery-ledger.ts` |
+| [RecoveryLedger and private CredentialApplicationFactory/Handle](#recoveryledger-and-private-credentialapplicationfactoryhandle) | Persist recovery dispatch truth and exact credential-application settlement. | `packages/monument/src/recovery-ledger.ts` |
 | [CredentialRecoveryModule](#credentialrecoverymodule) | Sequence profile staging, replay, settlement, and compensation. | `src-server/services/orchestration/credential-recovery-module.ts` |
 | [ConnectionInspector](#connectioninspector) | Return one bounded, provenance-aware connection inventory. | `src-server/services/connections/connection-inspector.ts` |
 | [SecretBindingAdministration and IntegrationSecretResolver](#secretbindingadministration-and-integrationsecretresolver) | Keep binding metadata authority separate from one child-establishment materialization capability. | `src-server/services/secrets/secret-binding-administration.ts` |
@@ -137,6 +139,32 @@ and where to start reading; it is a pointer, not a reviewed interface contract.
 | `src-server/openapi/` | Builds the checked-in [OpenAPI subset](../reference/openapi.json) from route schemas; the documentation tests compare its output with the file | [Endpoint authorities](../reference/endpoints.md) |
 | `packages/basis-pane/` | First-party Basis Workspace Pane, answer-basis affordance and session inventory views | [Whole Task Basis collection](#whole-task-basis-collection), [README](../../packages/basis-pane/README.md) |
 | `packages/board-pane/` | The Console Board as an in-process Workspace Pane over published contracts | [README](../../packages/board-pane/README.md) |
+
+## Durable Station Agent
+
+The [runtime owner](../../src-server/runtime/agents/durable-agent-owner.ts)
+consumes `@kontourai/agent-runtime` through its root contract and explicit `/internal` host integration entry. Its retained SQLite connection uses shared immutable history chunks, overwritten partial tails, indexed headers and per-turn change cursors. Model prefixes flush at 16 ms, 64 KiB or 128 parts; foreground projection transactions flush at 16 ms, 64 KiB or 1024 frames. Each frame keeps its identity. Owner checks and dispatch grants remain transactional. It is bound during
+[runtime initialization](../../src-server/runtime/bootstrap/runtime-initialize.ts)
+behind the off-by-default **Crash-durable Station Agent** preview. The private
+SQLite journal owns the conversation fence, tool/model receipts, approval
+revision and deadline, cancellation request, terminal timestamp and transport
+frames. Station retains current Session authorization and native output authority. The frame ceiling is 1,048,576 per turn, above the default 200-step/400-chunk workload. New turns keep provider chunk boundaries; recovery retains the layout recorded by the original turn.
+
+[Recovery composition](../../src-server/runtime/agents/durable-agent-recovery.ts)
+waits for the original agent and Session, claims only a proven-dead owner, then
+re-enters the actual framework loop. Completed tapes replay, unsafe interrupted
+tools surface indeterminate results, and uncertain model dispatch never resends
+automatically. [Foreground handoff](../../src-server/runtime/agents/durable-agent-lifecycle.ts)
+retains delivery and cleanup across disconnect; explicit Stop cancels. Stable
+frame and invocation identities let publication reconcile after settlement.
+
+The native conformance suite is
+`src-server/runtime/agents/__tests__/durable-agent-conformance.test.ts`; the
+route-level disconnect control is
+`src-server/routes/chat/__tests__/chat-primary-stream.durable-disconnect.test.ts`.
+These use real framework loops and local SQLite with scripted model transport.
+See the [package contract](../../packages/agent-runtime/README.md) for supported
+forms and the separate provider, performance and release boundaries.
 
 ## Local speech and media tools
 
@@ -1813,7 +1841,7 @@ input answers the steer as `session_busy`, never as a start.
 **Composition and evidence.** The
 [route](../../src-server/routes/orchestration/session-agent-control.ts) checks
 the caller's scope and keys each request in the durable
-[request-key table](../../src-server/services/orchestration/session-control-request-keys.ts)
+[request-key table](../../src-server/services/orchestration/sqlite-session-control-request-keys.ts)
 (owned by `EventStore`, with the claim, quota and retention rules in
 [`@kontourai/monument`](../../packages/monument/CONTEXT.md)'s request-key commands)
 before it reaches this module. `wait_session` observes
@@ -3241,7 +3269,7 @@ they do not qualify live providers, devices or installed releases.
 
 ## SessionTurnBoundaryAuthority
 
-This owner records when a provider call may have crossed into an external effect. A restart must not turn an unknown outcome into permission to replay. The [opaque claim protocol](../../src-server/services/orchestration/session-turn-boundary.ts), [SQLite composition](../../src-server/services/orchestration/sqlite-session-turn-boundary.ts) and Monument share that responsibility.
+This owner records when a provider call may have crossed into an external effect. A restart must not turn an unknown outcome into permission to replay. The [Monument authority](../../packages/monument/src/session-boundary.ts) owns the claim protocol; Station supplies the [event and provider binding](../../src-server/services/orchestration/session-turn-boundary-binding.ts) and [SQLite composition](../../src-server/services/orchestration/sqlite-session-turn-boundary.ts).
 
 **Interface.** Legacy `claim` retains prepared/invoking/accepted behavior. Production sends explicitly reserve a boundary, capture their final immutable input, and atomically begin the boundary and any independently owned linked dedup claim. The private claim retains the full begun records, including purpose, creation sequence, complete owners, revisions, intent and submitted digest. Acceptance latches the provider response and revision before its first attempt and uses `turnBoundary.acceptInvocation`; it never rebuilds custody from a UUID. Missing, stale, ambiguous or unavailable acknowledgement preserves the no-replay fence. Explicit authorized resume uses the same protocol and stored bytes. Cancellation and definitive refusal remain distinct trusted settlement operations; the first acknowledged refusal preserves its actionable diagnosis, while a later same-key send reads the retained settled outcome.
 
@@ -3373,13 +3401,13 @@ Adopting a discovered read-only engine session may fork a provider child before 
 
 ## RecoveryLedger and private CredentialApplicationFactory/Handle
 
-Recovery must distinguish a requested retry, an observed provider turn, and an adopted credential profile. The [recovery ledger](../../src-server/services/orchestration/recovery-ledger.ts) owns dispatch state; the [credential application protocol](../../src-server/services/orchestration/credential-application-ledger.ts) owns the separate profile mutation and its acknowledgement.
+Recovery must distinguish a requested retry, an observed provider turn, and an adopted credential profile. The [recovery ledger](../../packages/monument/src/recovery-ledger.ts) owns dispatch state; the [credential application protocol](../../src-server/services/orchestration/credential-application-ledger.ts) owns the separate profile mutation and its acknowledgement.
 
 **Interface.** `RecoveryLedger` owns recovery arm, immutable projection, due/profile claim (plus the user's immediate claim of a waiting usage-limit stop; the user's per-stop resume choice is a separate table, [usage-limit-resume-choices.ts](../../src-server/services/orchestration/usage-limit-resume-choices.ts), which `SessionRecoveryCoordinator` reads in place of the setting when the resume is due), observed provider correlation, terminal/cancel, compensation, and startup reconciliation. A `RecoveryClaim` closes over one dispatch attempt and can replay with correlation, release only before invocation, accept provider evidence, become indeterminate, and prepare a credential application. `prepareCredential` passes the claim-local opaque application key to private `CredentialProfileRecoveryAdapter.stage`; its `ConnectionService` Implementation calls `CredentialApplicationFactory.start` and returns a state-bound `CredentialApplicationHandle` for reserve/stage/settle/ack. This is deliberate dual composition: RecoveryLedger owns dispatch truth while Factory/Handle owns exact credential evidence. The correlation key crosses only the server-owned recovery/connection composition; it is removed from snapshots, route projections, and configuration output.
 
-**Behavior.** A prepared claim is releasable only before external invocation. After invocation, only durable provider acceptance can produce success; observed or unknown provider work is indeterminate and is never silently retried. Startup reconciliation fences abandoned prepared work and returns a typed scan: `available` with the records it observed or changed, or `unavailable` when the coordinator read failed. Only an `available` empty scan proves that storage has no remaining obligations. Boot-time interrupted-turn consumption retries a record whose banner write, publish or row close failed, up to three more times at 250, 500 and 1000 ms, then warns with the unrecovered boundary ids and leaves their rows for the next boot; Orchestration shutdown stops it, ending a backoff early, and logs that distinctly (#3562). For the credential scans, rows fenced before a mid-scan failure stay durable and are read again by the next scan; the due scan selects only still-prepared rows, so a due row fenced before the failure is not returned again. The due-path `SessionRecoveryCoordinator` sweep records nothing from an unavailable scan and has no in-process retry. Credential application is linked before profile mutation, has exact settlement and acknowledgement, and keeps unacknowledged evidence through restart. The private store retains at most 64 unacknowledged applications, while preserving terminal capacity for an already staged attempt. Claims, startup handles, immutable snapshots, and exact compare-and-set results prevent foreign settlement. Linked obligations receive scoped work; they never fall through to broad cleanup. An unlinked legacy prepared row is conservatively quarantined; it never authorizes a broad rollback. A still-waiting intent (armed, never claimed) can be retired without a dispatch as `manual` or `canceled`, with an `outcomeReason` the projection carries (#3157). Shutdown fences every pending intent except a usage-limit one that only waits for its reset or was left to the user because automatic resume was off; those hold no dispatch, and a restart rebuilds the waiting timer. The startup source-terminal repair and a per-intent `cancelIfSourceTerminated` share one rule (a shutdown cancel request, or a durable terminal event on the source turn). `SessionRecoveryCoordinator` arms timers at startup even when the bulk repair is unavailable, and only reports it; each timer applies the same rule to its own intent before it claims, cancels the intent if its source ended, and re-arms itself every 60 seconds while that check cannot be read. The recovery claim's compare-and-set carries the same rule, so a source that ends after the check is still never resumed. Only usage-limit intents are gated: when one is due, `SessionRecoveryCoordinator` reads the `usageLimitAutoResume` setting and retires the intent if a newer turn started in the conversation, a request is open, or the Session closed; a newer turn also retires one left to the user. Ordinary timed recovery is unchanged.
+**Behavior.** A prepared claim is releasable only before external invocation. After invocation, only durable provider acceptance can produce success; observed or unknown provider work is indeterminate and is never silently retried. Startup reconciliation fences abandoned prepared work and returns a typed scan: `available` with the records it observed or changed, or `unavailable` when the coordinator read failed. Only an `available` empty scan proves that storage has no remaining obligations. Boot-time interrupted-turn consumption retries a record whose banner write, publish or row close failed, up to three more times at 250, 500 and 1000 ms, then warns with the unrecovered boundary ids and leaves their rows for the next boot; Orchestration shutdown stops it, ending a backoff early, and logs that distinctly (#3562). For the credential scans, rows fenced before a mid-scan failure stay durable and are read again by the next scan. The due scan returns rows successfully fenced before a later failure along with its unavailable result; `SessionRecoveryCoordinator` records those outcomes and retries the remainder every 60 seconds until the scan is readable or the coordinator stops. A write whose result is lost before it can be returned remains a separate uncertainty. Credential application is linked before profile mutation, has exact settlement and acknowledgement, and keeps unacknowledged evidence through restart. The private store retains at most 64 unacknowledged applications, while preserving terminal capacity for an already staged attempt. Claims, startup handles, immutable snapshots, and exact compare-and-set results prevent foreign settlement. Linked obligations receive scoped work; they never fall through to broad cleanup. An unlinked legacy prepared row is conservatively quarantined; it never authorizes a broad rollback. A still-waiting intent (armed, never claimed) can be retired without a dispatch as `manual` or `canceled`, with an `outcomeReason` the projection carries (#3157). Shutdown fences every pending intent except a usage-limit one that only waits for its reset or was left to the user because automatic resume was off; those hold no dispatch, and a restart rebuilds the waiting timer. The startup source-terminal repair and a per-intent `cancelIfSourceTerminated` share one rule (a shutdown cancel request, or a durable terminal event on the source turn). `SessionRecoveryCoordinator` arms timers at startup even when the bulk repair is unavailable, and only reports it; each timer applies the same rule to its own intent before it claims, cancels the intent if its source ended, and re-arms itself every 60 seconds while that check cannot be read. The recovery claim's compare-and-set carries the same rule, so a source that ends after the check is still never resumed. Only usage-limit intents are gated: when one is due, `SessionRecoveryCoordinator` reads the `usageLimitAutoResume` setting and retires the intent if a newer turn started in the conversation, a request is open, or the Session closed; a newer turn also retires one left to the user. Ordinary timed recovery is unchanged.
 
-**Code and evidence.** `EventStore` composes the private RecoveryLedger and CredentialApplicationFactory/Handle Implementations over SQLite at runtime startup. `SessionRecoveryCoordinator` uses ordinary recovery claims; `CredentialRecoveryModule` receives opaque startup/claim capabilities and the concrete credential Adapter. Real SQLite proof is in `recovery-ledger.test.ts`, `credential-application-ledger.test.ts`, `credential-recovery-module.test.ts`, and `session-recovery-coordinator.test.ts` under `src-server/services/orchestration/__tests__/`. **Do not reintroduce:** `RecoveryDispatchSettlement`, process-local correlation maps, raw attempt IDs, public storage reopen operations, or automatic retry of indeterminate work.
+**Code and evidence.** `EventStore` binds Monument's recovery commands to the existing SQLite table, supplies the event-terminal predicate and composes the private CredentialApplicationFactory/Handle at runtime startup. Shared recovery conformance exercises memory, SQLite and Station's migrated table, including simulated commit and acknowledgement faults; that is not physical power-loss evidence. `SessionRecoveryCoordinator` uses ordinary recovery claims; `CredentialRecoveryModule` receives opaque startup/claim capabilities and the concrete credential Adapter. Real SQLite proof is in `recovery-ledger.test.ts`, `credential-application-ledger.test.ts`, `credential-recovery-module.test.ts`, and `session-recovery-coordinator.test.ts` under `src-server/services/orchestration/__tests__/`. **Do not reintroduce:** `RecoveryDispatchSettlement`, process-local correlation maps, raw attempt IDs, public storage reopen operations, or automatic retry of indeterminate work.
 
 ## CredentialRecoveryModule
 
@@ -3387,7 +3415,7 @@ An automatic profile change is a compensation protocol, not a switch followed by
 
 **Interface.** `recover`, `complete`, `abandon`, and `reconcile` form one compensation protocol for credential-profile recovery. Each returns a total recovery or reconciliation outcome rather than making callers infer stage/commit/rollback order.
 
-**Behavior.** A recovery call waits for the shared startup reconciliation attempt before staging. The caller currently does not require that attempt’s result to be `reconciled`; an `indeterminate` result, or `unavailable` when a durable obligation scan could not be read, leaves the startup pass eligible for another attempt rather than acting as a global staging barrier. Only a `reconciled` result latches the startup pass. An unavailable scan, like a visible linked receipt, suppresses the identity-free orphan sweep while independent scoped compensation still drains. `unavailable` stage truth alone permits ordinary recovery fallback; a staged or indeterminate attempt remains exact compensation work. Candidate session restore or quarantine happens independently of registry cleanup. Commit, rollback, inspect, and acknowledgement are exact, typed facts; cleanup failure keeps durable authority for later scoped retry. A live completion acts only through its original claim; bulk prepared reconciliation runs only in the startup pass, retried by later callers until it reconciles.
+**Behavior.** A recovery call waits for shared startup reconciliation and stages only when its result is `reconciled`. An `indeterminate` result or an unavailable durable scan blocks staging across connections, because an unreadable or unresolved obligation cannot prove that a different connection is safe. The coordinator backs off refused automatic recovery from 60 seconds to a 10-minute cap; only a `reconciled` result latches the startup pass. The module warns once per readiness outage and again when it recovers. Refused automatic attempts emit `station.recovery.admission_refused` with a bounded reason. Session recovery projections expose a blocked admission reason and next retry time, while preserving the durable intent outcome; the existing usage-limit banner displays that pause. An unavailable scan, like a visible linked receipt, suppresses the identity-free orphan sweep while independent scoped compensation still drains. `unavailable` stage truth alone permits ordinary recovery fallback; a staged or indeterminate attempt remains exact compensation work. Candidate session restore or quarantine happens independently of registry cleanup. Commit, rollback, inspect, and acknowledgement are exact, typed facts; cleanup failure keeps durable authority for later scoped retry. A live completion acts only through its original claim; bulk prepared reconciliation runs only in the startup pass, retried by later callers until it reconciles.
 
 **Code and evidence.** `OrchestrationService` composes RecoveryLedger, `RecoveryDispatchAdapter`, credential profile Adapter, session restore/quarantine functions, and clock. `SessionRecoveryCoordinator` routes profile recovery to it. Real lifecycle, compensation, two-instance, and provider-truth coverage is in `src-server/services/orchestration/__tests__/credential-recovery-module.test.ts` and `session-recovery-coordinator.test.ts`. **Do not reintroduce:** credential callbacks on the coordinator, profile policy in a provider Adapter, broad rollback for linked work, or ad-hoc restart maps.
 
@@ -6268,7 +6296,15 @@ view/input/control decisions; absent authority fails closed.
 
 **State and ordering.** `surface-hub.ts` fans one producer out to viewers with
 one pending frame per viewer, latest-frame replacement, acknowledgments and
-adaptive delivery. Capture starts with the first viewer and stops at zero;
+adaptive delivery. Those rules are for images. An `h264` viewer (#4418) takes
+access units in order from a bounded queue (32 units or 4 MiB), starts at a
+keyframe, and on overflow drops the queue and waits for the next one. It never
+receives a delta before a keyframe. The hub asks the producer for a keyframe
+(at most every 500 ms hub-wide; a request inside that window is deferred, not
+dropped) and tells it which encodings its viewers take. A viewer that overflows
+three times within 10 s, or receives a keyframe larger than the queue bound,
+is switched to images for the rest of its stream, so one slow viewer cannot
+keep forcing keyframes on every viewer. Capture starts with the first viewer and stops at zero;
 session lifetime remains with its Browser/Device owner. `control-lease.ts`
 allows one controller: current-epoch human input can preempt an Agent, while
 an Agent cannot preempt a live human. A person's `keep-alive` lease request
@@ -6294,8 +6330,15 @@ reports cleanup failure instead of treating a timed-out wait as success.
 browser generation to `ChromiumScreencastProducer` and its profile authorizer.
 `DeviceSessionService` binds `DeviceLiveSurfaceProducer` to host-qualified
 simulator/emulator sessions and device-share authorization. Device video and
-input have separate liveness: iOS uses MJPEG; Android uses server-side H.264
-decoding or a labelled PNG-poll fallback. A successful Device dispatch means
+input have separate liveness: iOS uses MJPEG. Android passes H.264 access
+units to viewers that decode them (parameter sets prepended to each IDR,
+forgotten on a new encoder session). Every Android frame (H.264 unit, ffmpeg
+JPEG, polled PNG) declares one size, the encoded picture (the SPS size once
+known, even when the encoder downscales below the screenshot's size) fitted
+to the stream params, whatever resolution its body has; viewers draw it
+scaled to that box, so a tap from any viewer lands on the same device point. Server-side ffmpeg
+decoding runs only while an image viewer is attached; otherwise image viewers
+get a labelled PNG-poll fallback. A successful Device dispatch means
 the hub socket accepted bytes, not that the application applied them. The
 shared live-surface Agent grant path admits both Browser and Device tools through
 independently minted, in-process grants. Device grants recheck the bound caller,
@@ -6303,22 +6346,49 @@ operator opt-in, host/device identity and current Project/device shares; a bare
 principal or client-supplied object cannot authorize a surface.
 
 `routes/live-surface.ts` serves one authenticated frame response per viewer and
-separate input/lease requests. It rechecks stream authorization; a transient
+separate input/lease requests. `?codec=h264` asks for access units; a producer
+without them sends images. A refused frames request names the key it was
+refused for (`field`): a key the route knows, `stream-params`, or `unknown`,
+never the caller's own query text. It rechecks stream authorization; a transient
 busy authorizer is distinct from denial and retains a prior allow only within
 a bounded grace. `useLiveSurface.ts` suspends hidden viewers, reconnects, and
-coalesces input through one in-flight POST. `LiveSurfaceCanvas.tsx` is used by
-the Browser pane, Device pane and float-over-chat. Shown-source tracking avoids
+coalesces input through one in-flight POST. It opens a frame stream only with a
+slot from `liveSurfaceStreamAdmission.ts`: two per origin, shared across tabs
+through Web Locks (per page where Web Locks is missing), so input and lease
+requests keep a connection; a viewer past the cap reads `queued`. A viewer
+asks for H.264 only from a loopback Station, in a secure context with
+WebCodecs, and falls back to images when the browser refuses the profile, the
+host refuses the codec (400 `invalid-request` naming `codec`, or naming no key,
+which is all a host older than the key can send), or the hub switches the
+viewer to images. The page remembers each such decline per target for its
+session (`liveSurfaceH264Declines`), so a reconnect or reopened pane asks for
+images instead of falling behind again.
+`liveSurfaceVideoDecoder.ts` configures from the keyframe's SPS, decodes in
+order, resets on error, and resets when 30 units are pending; the canvas then
+reconnects for a keyframe (at most every 2 s, deferring rather than dropping a
+request), and after three failures with no picture between them switches the
+viewer to images.
+`LiveSurfaceCanvas.tsx` is used by the Browser pane, Device pane and
+float-over-chat, and shows the codec it draws. When the origin, surface ID or
+Project context changes, the viewer discards queued input and ignores
+responses from the previous target. This does not yet bind the queue to a
+credential generation.
+Shown-source tracking avoids
 duplicating the same pane in its floater, but there is no single multiplexed
-frame transport across all visible viewers. The input-slot requirement in
-[ADR 0018](../adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md)
-is an unqualified design constraint, not a measured production starvation
-finding or a guaranteed latency bound.
+frame transport across all visible viewers. The admission cap meets
+[ADR 0018](../adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md)'s
+input-slot requirement over HTTP/1.1 when at most one view-scoped event stream
+is open; see its 2026-11-02 amendment for the measurement and the case it
+leaves open.
 
 **Evidence and limits.** `services/live-surface/__tests__/registry.test.ts`,
 `control-lease.test.ts`, `surface-hub.test.ts`,
 `routes/__tests__/live-surface.routes.test.ts`,
 `runtime-routes-live-surface.test.ts` and `LiveSurfaceCanvas.test.tsx` exercise
-synthetic producers, authorization, fencing and viewer lifecycle. Device
+synthetic producers, authorization, fencing and viewer lifecycle.
+`liveSurfaceInputHeadroom.browser.test.ts` measures input under frame load in
+a real browser over HTTP/1.1, and `liveSurfaceVideoDecoder.browser.test.ts`
+decodes a recorded emulator stream with the browser's WebCodecs. Device
 producer and session-route fixtures remain distinct from physical application
 control. Do not infer input effect, device/app identity, relay throughput or
 native platform parity from a decoded frame or an accepted socket write.
@@ -7083,6 +7153,11 @@ publication retains the home lock and checks the Task and device fence. Browser
 and device Screens use the same store, limits and authorized content route.
 The frame's commit identifies the observed workspace, not the installed build
 or foreground application; see [device provenance](../guides/mobile-device-workspace.md#capture-a-device-screen-to-a-task).
+
+The same registrar exposes `device_record_to_task` and `device_logs`. Device
+automation claims the input lease for each operation, refuses a human-held
+lease, and rechecks authority before publication. Recordings use the bounded
+Task clip store; logs run on the selected host through fixed tool vectors.
 
 Evidence owners are
 [Timeline component tests](../../src-ui/src/views/task-workspace/__tests__/TaskOverviewTimeline.test.tsx)

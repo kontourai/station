@@ -1,19 +1,30 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
+const { MockLanguageModelV3 } = await vi.hoisted(() => import('ai/test'));
+
 const chatModel = vi.hoisted(() =>
-  vi.fn((modelId: string) => ({ kind: 'openai-compat-model', modelId })),
+  vi.fn(
+    (modelId: string) =>
+      new MockLanguageModelV3({ modelId, provider: 'openai-compat' }),
+  ),
 );
 const createOpenAICompatible = vi.hoisted(() =>
   vi.fn((..._args: unknown[]) => ({ chatModel })),
 );
 const anthropicLanguageModel = vi.hoisted(() =>
-  vi.fn((modelId: string) => ({ kind: 'anthropic-model', modelId })),
+  vi.fn(
+    (modelId: string) =>
+      new MockLanguageModelV3({ modelId, provider: 'anthropic' }),
+  ),
 );
 const createAnthropic = vi.hoisted(() =>
   vi.fn((..._args: unknown[]) => ({ languageModel: anthropicLanguageModel })),
 );
 const googleLanguageModel = vi.hoisted(() =>
-  vi.fn((modelId: string) => ({ kind: 'google-model', modelId })),
+  vi.fn(
+    (modelId: string) =>
+      new MockLanguageModelV3({ modelId, provider: 'google' }),
+  ),
 );
 const createGoogleGenerativeAI = vi.hoisted(() =>
   vi.fn((..._args: unknown[]) => ({ languageModel: googleLanguageModel })),
@@ -22,10 +33,6 @@ vi.mock('@ai-sdk/openai-compatible', () => ({ createOpenAICompatible }));
 vi.mock('@ai-sdk/anthropic', () => ({ createAnthropic }));
 vi.mock('@ai-sdk/google', () => ({ createGoogleGenerativeAI }));
 vi.mock('@ai-sdk/amazon-bedrock', () => ({ createAmazonBedrock: vi.fn() }));
-vi.mock('@strands-agents/sdk', () => ({ BedrockModel: class {} }));
-vi.mock('@strands-agents/sdk/models/vercel', () => ({
-  VercelModel: class {},
-}));
 vi.mock('../../../providers/llm/bedrock.js', () => ({
   createBedrockProvider: vi.fn(),
 }));

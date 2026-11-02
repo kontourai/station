@@ -38,7 +38,7 @@ export function ownFields(
 }
 // Zod 4.6.5 adds this non-wire descriptor to its finalized JSON Schema.
 // Shape admission is not producer authentication; none of these functions run.
-function schemaData(value: unknown): Record<string, unknown> {
+export function schemaData(value: unknown): Record<string, unknown> {
   if (
     !value ||
     typeof value !== 'object' ||

@@ -1,6 +1,7 @@
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import type { KernelCommand, OwnerIdentity } from '@kontourai/monument';
+import type { SessionTurnBoundaryRecord } from '@kontourai/monument/session-boundary';
 import {
   openSqliteKernelStorage,
   type SqliteKernelDatabase,
@@ -14,12 +15,8 @@ import {
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { afterEach, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
-
 import type { EventStore } from '../event-store.js';
-import type {
-  SessionTurnBoundaryCoordinator,
-  SessionTurnBoundaryRecord,
-} from '../session-turn-boundary.js';
+import type { SessionTurnBoundaryCoordinator } from '../session-turn-boundary-binding.js';
 import { createSqliteSessionTurnBoundaryCoordinator } from '../sqlite-session-turn-boundary.js';
 import { legacyTurnBoundaryCoordinator } from './fixtures/legacy-turn-boundary.js';
 import {

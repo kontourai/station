@@ -15,8 +15,9 @@ Its versioning is experimental until a second consumer exists.
 
 The kernel is the lower layer. The private experimental
 [`@kontourai/agent-runtime`](../agent-runtime/README.md) package now consumes its
-public contracts for model-only Cut 0/1 of #3573. Durable tools, approvals and
-Station chat/boot adoption remain later work. This Station-owned workspace
+public contracts for the model journal and agent-turn journal of #3573.
+Station adopts tool replay safety, approvals and fenced recovery behind its
+off-by-default Crash-durable Station Agent preview. This Station-owned workspace
 consumer does not qualify a second independent product or a Tier 2 extraction.
 The kernel takes no model dependency; the upper package binds the existing
 native framework loops.
@@ -42,7 +43,9 @@ Control route and delegated-result service supply those ports and retain their
 existing durable request-key and consumption rows. This sequence is not a
 storage command and creates no new state or inbox. The separate `steerReceipts`
 commands own the no-reclaim/confirmation decisions over receipt rows. The
-recovery-ledger core remains open extraction work in #3565.
+recovery ledger's claim and reconciliation protocol and storage commands are
+in the package. Station supplies its existing table and event-terminal facts;
+the shared adapter conformance uses simulated faults, not physical power loss.
 
 Each storage operation is one command, executed as one atomic transaction by an
 adapter. The decision for a command is a pure function of the records it
@@ -115,7 +118,7 @@ names the package under any escape or case, refuses a module reference it
 cannot read. `scripts/monument-import-boundary-gate.mjs`
 enforces this in
 `ci:fast` and in `verify:static`. Station consumes the package only through
-its public entry points: `.`, `./sqlite`, `./adapter` and `./testing`.
+its public entry points: `.`, `./sqlite`, `./adapter`, `./testing`, `./session-control`, `./recovery` and `./session-boundary`.
 
 **Threat model** (owner decision): the gate stops *accidental* coupling
 between Station and Monument internals, the kind real code and agents

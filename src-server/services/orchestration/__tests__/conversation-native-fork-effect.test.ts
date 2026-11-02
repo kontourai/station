@@ -34,7 +34,7 @@ import { ConversationTurnActivityProjection } from '../conversation-turn-activit
 import { EventBus } from '../event-bus.js';
 import { EventStore } from '../event-store.js';
 import { OrchestrationService } from '../orchestration-service.js';
-import { runSessionStartWithBoundary } from '../session-turn-boundary.js';
+import { runSessionStartWithBoundary } from '../session-turn-boundary-binding.js';
 
 const NOW = '2030-01-01T00:00:00.000Z';
 const SOURCE_KEY = 'a'.repeat(64);

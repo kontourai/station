@@ -20,7 +20,7 @@ import { EventBus } from '../../services/orchestration/event-bus.js';
 import {
   createInMemorySessionTurnBoundaryAuthority,
   runSessionStartWithBoundary,
-} from '../../services/orchestration/session-turn-boundary.js';
+} from '../../services/orchestration/session-turn-boundary-binding.js';
 import {
   createEngineMcpOAuthResolver,
   ENGINE_OAUTH_PROXY_PATH,

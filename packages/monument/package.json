@@ -12,6 +12,9 @@
   "exports": {
     ".": "./src/index.ts",
     "./sqlite": "./src/sqlite.ts",
+    "./session-control": "./src/session-control.ts",
+    "./recovery": "./src/recovery-ledger.ts",
+    "./session-boundary": "./src/session-boundary.ts",
     "./adapter": "./src/adapter.ts",
     "./testing": "./src/testing/index.ts"
   },
@@ -51,6 +54,18 @@
       "./sqlite": {
         "types": "./dist/sqlite.d.ts",
         "default": "./dist/sqlite.js"
+      },
+      "./session-control": {
+        "types": "./dist/session-control.d.ts",
+        "default": "./dist/session-control.js"
+      },
+      "./recovery": {
+        "types": "./dist/recovery-ledger.d.ts",
+        "default": "./dist/recovery-ledger.js"
+      },
+      "./session-boundary": {
+        "types": "./dist/session-boundary.d.ts",
+        "default": "./dist/session-boundary.js"
       },
       "./adapter": {
         "types": "./dist/adapter.d.ts",

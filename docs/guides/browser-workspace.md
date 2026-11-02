@@ -278,7 +278,8 @@ commit. The duration is 1–30,000 ms and the encoded-video limit is at most
 16 MiB. FFmpeg and the **Walkthroughs** preview are required. The caller,
 Browser, Task and workspace are rechecked before publication. The returned
 Walkthrough ID and commit identify the retained clip, not proof that the page
-was built from the commit.
+was built from the commit. If no fresh image arrives, the clip uses the last
+image cached when recording began; that image may predate the clip.
 
 Cancelling the tool call, closing its Browser or stopping Station cancels an
 in-progress recording and removes its staged files. No clip is published.
@@ -402,12 +403,16 @@ platform interaction require their own receipts.
 
 The [shared live-surface module](../architecture/module-map.md#shared-live-surface)
 also serves Device sessions. Frames use binary fetch streams rather than SSE
-replay. The current viewer opens one stream per visible viewer; the single
-multiplexed stream and saturated-pool input-latency requirement in
-[ADR 0018](../adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md)
-remain unqualified design constraints. Native transports and relays have their
-own limits; no fixed frame rate or immediate input guarantee follows from the
-shared canvas.
+replay. Each visible viewer opens its own stream, and the tabs of one browser
+hold at most two per origin (shared through Web Locks) so input always has a
+connection. A third visible pane waits,
+saying so, until one is hidden or closed. Over HTTP/1.1 in a real browser that
+kept taps and lease claims arriving within milliseconds while the streams
+stayed open (the measurement and its limits are in
+[ADR 0018](../adr/0018-sse-is-the-realtime-transport-because-resume-rides-last-event-id.md)'s
+2026-11-02 amendment). The single multiplexed stream is not built. Native
+transports and relays have their own limits and were not qualified; no fixed
+frame rate follows from the shared canvas.
 
 Source and fixture evidence lives in the
 [BrowserSessionService module](../architecture/module-map.md#browsersessionservice).
