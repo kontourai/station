@@ -320,6 +320,35 @@ function harness(
 }
 
 describe('Browser pane: network diagnostics', () => {
+  test.each([false, true])(
+    'an agent cannot use the human element picker (evaluation permission: %s)',
+    async (browserEvaluate) => {
+      const h = harness({ browserEvaluate });
+      try {
+        const { browserSessionId: id, generation } = await h.open();
+        h.setNetworkPreview(true);
+        const body = { x: 1, y: 1, generation, screenshot: false };
+        const response = await h.browser('POST', `/sessions/${id}/pick`, {
+          agent: true,
+          body,
+        });
+        expect(response.status).toBe(403);
+        expect(h.fake.sent.map((item) => item.method)).not.toContain(
+          'Page.getFrameTree',
+        );
+        // The same person's request reaches CDP; this fixture lacks frame data.
+        expect(
+          (await h.browser('POST', `/sessions/${id}/pick`, { body })).status,
+        ).toBe(409);
+        expect(h.fake.sent.map((item) => item.method)).toContain(
+          'Page.getFrameTree',
+        );
+      } finally {
+        await h.binder.dispose();
+        await h.sessions.shutdown();
+      }
+    },
+  );
   test('requires preview and viewing authority, captures redacted metadata and stops when disabled', async () => {
     const h = harness();
     try {

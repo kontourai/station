@@ -781,6 +781,8 @@ export function createBrowserRoutes(deps: BrowserRoutesDeps) {
     );
     if (found.status !== 200) return c.json(refuse(found.status), found.status);
     if (!deps.isRequestPrincipalCurrent(c.req.raw)) return c.json(denied, 403);
+    if (!deps.isAgentRequest || deps.isAgentRequest(c.req.raw))
+      return c.json(denied, 403);
     if (!deps.networkPreviewEnabled?.())
       return c.json(
         {

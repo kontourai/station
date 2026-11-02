@@ -1,5 +1,6 @@
 import type { BrowserSessionView } from '@kontourai/station-contracts/workspace-browser-pane';
 import { type RefObject, useEffect, useRef, useState } from 'react';
+import { sha256Hex } from '../../utils/sha256';
 import { BrowserAnnotation } from './BrowserAnnotation';
 import type { BrowserPaneApi } from './browserPaneApi';
 import { useBrowserArtifactIntake } from './useBrowserArtifactIntake';
@@ -53,6 +54,8 @@ export function BrowserAnnotationFlow({
                 { type: 'image/png' },
               )
             : await api.screenshot(record.browserSessionId);
+          const capturedAt =
+            annotation.picked?.capturedAt ?? new Date().toISOString();
           const current = await api.sessionSummary(record.browserSessionId);
           if (
             current.state !== 'live' ||
@@ -64,12 +67,24 @@ export function BrowserAnnotationFlow({
             throw new Error(
               'The page changed before the annotation could be attached.',
             );
+          if (!mounted.current) return;
+          const sourceImageDigest = `sha256:${await sha256Hex(new Uint8Array(await blob.arrayBuffer()))}`;
+          if (
+            data &&
+            annotation.picked?.digest &&
+            sourceImageDigest !== `sha256:${annotation.picked.digest}`
+          )
+            throw new Error(
+              'The selected image did not match its capture digest.',
+            );
           const description = {
             kind: 'browser-annotation',
             browserSessionId: record.browserSessionId,
             generation: record.generation,
             viewport: record.viewport,
             url: record.url,
+            capturedAt,
+            sourceImageDigest,
             imageKind: data
               ? 'target-element-crop'
               : 'target-viewport-screenshot',
