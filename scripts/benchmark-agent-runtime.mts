@@ -108,6 +108,7 @@ async function run(
     metadata: {},
   });
   const owner = stationAgentRuntimeOwner(dir.path);
+  let paused = false;
   const observability = createVoltAgentObservability({
     serviceName: 'agent-runtime-benchmark',
   });
@@ -333,6 +334,7 @@ async function run(
       ? owner.read('conversation', 'turn')?.turn.state
       : undefined;
     walPeakBytes = Math.max(walPeakBytes, diskBytes(`${journalPath}-wal`));
+    paused = true;
     await owner.pause();
     const journalBytes = diskBytes(journalPath);
     let bodiesBytes = 0;
@@ -369,6 +371,15 @@ async function run(
       }
     }
     const onDiskBytes = diskBytes(dir.path);
+    const journalBudgetBytes = 128 * 1024 + steps * 512 * 1024 + 2 * textBytes;
+    const bodyBudgetBytes = steps * 128 * 1024 + 2 * textBytes;
+    if (
+      durable &&
+      (journalBytes > journalBudgetBytes || bodiesBytes > bodyBudgetBytes)
+    )
+      throw new Error(
+        `Benchmark storage budget exceeded: ${JSON.stringify({ journalBytes, journalBudgetBytes, bodiesBytes, bodyBudgetBytes })}`,
+      );
     if (
       calls !== steps ||
       tools !== steps - 1 ||
@@ -384,6 +395,8 @@ async function run(
       );
     const traceCount = (await observability.getStorage().listTraces(10_000))
       .length;
+    if (traceCount < 1)
+      throw new Error('Benchmark observability is not active');
     const sorted = commits.sort((a, b) => a - b);
     const percentile = (q: number) =>
       sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * q))] ??
@@ -416,6 +429,9 @@ async function run(
         frames,
         walPeakBytes,
         ratio: onDiskBytes / textBytes,
+        journalRatio: journalBytes / textBytes,
+        journalBudgetBytes,
+        bodyBudgetBytes,
       },
       eventLoopDelayMs: {
         p50: delay.percentile(50) / 1e6,
@@ -432,8 +448,11 @@ async function run(
       traceCount,
     };
   } finally {
-    await owner.pause();
-    await observability.shutdown();
+    try {
+      if (!paused) await owner.pause();
+    } finally {
+      await observability.shutdown();
+    }
   }
 }
 const environment = {
