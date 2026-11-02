@@ -19,6 +19,7 @@ import {
 import { canonicalJson, type ModelRuntime } from '@kontourai/relay';
 import { sessionReadAuthorityFromRequest } from '@kontourai/station-contracts/tenancy';
 import type { reservedStationTurnResult } from '../../runtime/conversation/reserved-station-turn.js';
+import { outsideStationServerScope } from '../../security/station-server-scope.js';
 import type { DelegatedTaskHandle } from '../../tools/station-control-delegation.js';
 import type { EnvironmentSecurityService } from '../ssh/environment-security-service.js';
 import { HomeWriterOwner } from '../ssh/home-writer-owner.js';
@@ -119,9 +120,11 @@ export class StationReportGroupExecution {
     if (this.#claimed.has(handle)) refuse();
     this.#claimed.add(handle);
     const deadline = new AbortController();
-    const timer = setTimeout(
-      () => deadline.abort(),
-      Math.max(1, input.deadlineAt - Date.now()),
+    const timer = outsideStationServerScope(() =>
+      setTimeout(
+        () => deadline.abort(),
+        Math.max(1, input.deadlineAt - Date.now()),
+      ),
     );
     const signal = AbortSignal.any([context.req.raw.signal, deadline.signal]);
     try {

@@ -45,6 +45,7 @@ import type { SealedProviderPreparation } from '../../runtime/conversation/seale
 import { createReportInputRuntime } from '../../runtime/mcp/report-input-runtime.js';
 import { resolveClientOriginForRequest } from '../../security/runtime-request-security.js';
 import { stationControlRequestAuthority } from '../../security/station-control-request-authority.js';
+import { outsideStationServerScope } from '../../security/station-server-scope.js';
 import {
   type DelegatedTaskHandle,
   delegateTask,
@@ -1388,7 +1389,9 @@ export class PortableGroupPreparation {
     )
       refuse();
     const result = reservedStationTurnResult(port);
-    void result.catch(() => {});
+    outsideStationServerScope(() => {
+      void result.catch(() => {});
+    });
     return {
       task,
       result,

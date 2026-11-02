@@ -107,6 +107,10 @@ an observed tool boundary, otherwise the next turn. If a handoff may already
 have reached an engine, **May have been sent** stays visible. **Review and resend**
 restores the text into an empty composer; sending again is your explicit choice.
 Display-only notes appear immediately without sending anything to an engine.
+Report-member Sessions with a sealed-source policy require their bounded report
+controls for another turn. Generic Steer or Queue is refused; a saved message or
+an interrupted turn is not permission to repeat a paid attempt. See the
+[Session input restrictions](../reference/session-api.md#submit-steer-follow-up-or-display-input).
 
 ## Delegated work and session groups
 

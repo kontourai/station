@@ -6,6 +6,11 @@ as Codex or Claude Code that runs its own loop. They appear under **Connections*
 **Models** and **Engines** tabs, each with one clear readiness label and one next action.
 
 For the precise vocabulary used below, see [docs/glossary.md](../glossary.md).
+Connection readiness does not grant every Session the same continuation policy.
+Sealed report-member Sessions use their recorded source policy even when their
+engine also serves ordinary managed chats. See the
+[Session input restrictions](../reference/session-api.md#submit-steer-follow-up-or-display-input)
+before treating a queued message or interrupted turn as a new paid request.
 
 ---
 

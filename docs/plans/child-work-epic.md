@@ -7,10 +7,38 @@ normally before publication. Open one PR when the combined work is ready.
 
 ## Current delivery state
 
-**NOT_READY.** The branch has no push or PR. Main is integrated through
-`db857573504` by normal merge `fcd4b8b68ef`. Master consolidation #3991 remains
-separately owned. Group advertisement and continuation-finalizer qualification
-guards remain false.
+**NOT_READY.** At source `2acac1b303d`, the branch has no push or PR. Main is
+integrated through `b34f357f1e8` by normal merge `13178ca95e2`. Master consolidation
+#3991 remains separately owned. Group advertisement and continuation-finalizer
+qualification guards remain false; supported groups remain an open requirement.
+
+The current backend refuses fresh sealed Steer and Queue work before Inbox
+admission, preserves accepted retries, and gives legacy queued work a visible
+no-effect refusal. Typed refusal results survive the public HTTP boundary as
+409. A real Task-question producer reaches the runtime-created Inbox in the
+controlled fixture. The four-file selection passes 183 cases; types and read-only
+lint pass. Removing runtime submission/placement wiring fails two intended
+controls, and restoring it passes all 20 composition cases. Restoring the old
+HTTP fallbacks fails three controls; the repaired route suite passes all 65.
+These fixtures do not establish live-provider or complete initialized-runtime
+acceptance. The generic composer explanation and four light/dark viewport
+captures remain required after integration of #4457.
+
+Request-owned host witnesses now share capture across a response and its work,
+while every consumer still checks current authority. The original response
+witness is retained across effects. Capture and post-work reauthorization
+mutants fail their intended controls. The restored custody and cold-start
+selection passes 50 cases at `196df19eecb`; the boot fixture isolates all four
+external transcript roots. Successful initialized storage/recovery remains open.
+
+A valid worker-profile diagnostic at `2acac1b303d` passes both original callers
+with their unchanged 120-second product deadlines and assertions. The direct
+journey has little margin. This is diagnostic evidence, not final unprofiled
+acceptance: the preceding unprofiled run at `b0fad8bd27e` failed both deadlines.
+The invalid first profiling attempt collided with existing test spies and is
+excluded from product and timing evidence. All temporary instrumentation was
+restored byte-for-byte. No durability sync or guard was removed. The earlier
+receipts below remain bound to their own revisions.
 
 At `fafcd375ee2`, route currency gained an optional synchronous credential-route
 assessment implemented by `EnvironmentSecurityService`. It reads the operator
@@ -111,14 +139,16 @@ uncertainty and release failure after a settled recovery remain unproven; these
 controls do not establish boot/auth, cross-process, native or live-provider
 qualification.
 
-Readiness remains failed on stale semantic documentation and capture reviews.
-An archived profiling source was preserved byte-for-byte under a non-test suffix,
-and the raw-temp fixture now uses the standard tracker. Verification proceeds
-past those issues but still refuses an unreviewed provider-specific durability
-decision in `orchestration-service.ts`; that separately owned #3991 code is
-unchanged. Device qualification is NOT_ADMITTED: `device_list` reports Agent
-device access disabled and returned no inventory. Enabling it applies to a later
-agent session; there is no current device-availability claim.
+Readiness at `2acac1b303d` fails documentation freshness: 129 review leads and
+seven captures require review. Governance, lint and hygiene checks pass. Its
+optional provider-policy warning contains one inherited Claude decision and two
+child-work protocol guards: the Session provider/metadata association and the
+canonical report-question provider check. Both guards stay; their narrow review
+records and negative binding controls remain open. The warning is not wholly
+inherited from #3991. An archived profiling source remains preserved under a
+non-test suffix, and raw-temp fixtures use the standard tracker. The last device
+qualification was NOT_ADMITTED because Agent device access was disabled; there
+is no current physical-device availability or acceptance claim.
 
 Remaining work includes the full-caller deadline, complete boot/auth and storage
 teardown qualification, the full group matrix, semantic documentation catch-up,

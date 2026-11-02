@@ -1,4 +1,5 @@
 // UNWIRED #91: boot custody, private issuance and managed transport composition remain required.
+
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { createHash } from 'node:crypto';
 import type { FlowDurableStepClaim } from '@kontourai/flow';
@@ -25,6 +26,7 @@ import {
   projectDelegationGroupV2,
 } from '@kontourai/flow-agents/delegation-group-v2';
 import { canonicalJson } from '@kontourai/relay';
+import { outsideStationServerScope } from '../../security/station-server-scope.js';
 import type {
   HomeWriterLease,
   HomeWriterOwner,
@@ -269,7 +271,9 @@ async function sendReservedWire(
       redirect: 'error',
       signal,
     });
-    void Promise.resolve(response).catch(() => {});
+    outsideStationServerScope(() => {
+      void Promise.resolve(response).catch(() => {});
+    });
     return { response, intent: identity };
   };
   return flowLaunch ? flowLaunch(launch) : launch();

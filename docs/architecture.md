@@ -317,6 +317,15 @@ execution and recovery. A persisted definition, saved setting or observed
 engine process is not proof of a successful turn. Monitoring describes
 execution; it does not replace its durable outcome.
 
+A report-member Session can instead carry a recorded sealed-source policy.
+Its canonical start binds that policy; a provider name or resume cursor does not
+supply fresh source authority. Generic Steer and Queue cannot launch another
+paid source attempt. Report controls retain separate invocation, terminal and
+accounting evidence, and an interruption is not confirmed provider termination.
+See [sealed-source Sessions](contexts/agent-runtime/CONTEXT.md#sealed-source-sessions)
+and the [report API](reference/api.md#report-groups) for the remaining full-group
+qualification requirements.
+
 <a id="acp-agent-communication-protocol"></a>
 
 ## ACP (Agent Client Protocol)

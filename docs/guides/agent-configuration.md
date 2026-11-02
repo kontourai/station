@@ -243,7 +243,11 @@ its identity and absolute deadline and needs an explicit answer. New durable wai
 unsafe tools return an indeterminate result; only declared safe tools retry.
 A model request that might have been dispatched is never automatically resent.
 The preview refuses unsupported non-text inputs. External engines keep their
-existing lifecycle. See the [runtime contract](../../packages/agent-runtime/README.md).
+existing lifecycle. Sealed report-member Sessions are a separate recorded policy:
+they do not use this managed journal or admit generic Steer/Queue as another paid
+source turn. Use their bounded report controls and inspect retained outcomes;
+an interrupted UI turn is not confirmed provider termination or a refund.
+See the [runtime contract](../../packages/agent-runtime/README.md).
 
 Read health through the Agent health endpoint. This guide does not promise a
 periodic `agent-health` event. The model-resolution owner is
@@ -262,8 +266,11 @@ On a personal Station, open **Agents → Inspect an Ensemble → Run an advisory
 report group**. These operations require current local-grant operator
 authority. An ordinary browser-bootstrap session alone is insufficient; the
 server refuses unavailable authority or provider qualification. Saved Agent
-configuration does not prove provider access. Flow-backed topology and
-continuation remain unavailable on this report surface.
+configuration does not prove provider access. Flow-backed selectors and bounded
+continuation controls are mounted as candidate surfaces, described below; they
+do not establish full supported-group acceptance. Group capability advertisement
+and the continuation finalizer remain disabled pending the required combined
+qualification.
 
 1. Enter the configured **Project ID** and optional **Resource ID** whose source
    should be inspected.

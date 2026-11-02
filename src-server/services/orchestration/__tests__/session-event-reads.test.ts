@@ -2,12 +2,13 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
+import { STEERING_ENGINE_DURABILITY } from '@kontourai/station-contracts/engine-capability-matrix';
 import {
   INTERNAL_SESSION_READ_SCOPE,
   sessionReadAuthorityFromRequest,
 } from '@kontourai/station-contracts/tenancy';
 import { afterEach, describe, expect, test, vi } from 'vitest';
-import { createGateTestRegistry } from '../../../__test-utils__/orchestration-gate-test-harness.js';
+import { GateTestAdapter } from '../../../__test-utils__/orchestration-gate-test-harness.js';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { StationAgentAdapter } from '../../../providers/adapters/station-agent-adapter.js';
 import { ApprovalRegistry } from '../../approvals/approval-registry.js';
@@ -123,16 +124,32 @@ describe('recorded sealed source Session policy', () => {
       approvalRegistry: new ApprovalRegistry(logger, { eventBus }),
       fetch: fetchModel,
     });
+    const external = new GateTestAdapter();
+    external.metadata.durability = STEERING_ENGINE_DURABILITY;
     const service = new OrchestrationService({
       eventStore: store,
       eventBus,
-      adapterRegistry: createGateTestRegistry(adapter),
+      adapterRegistry: {
+        register() {},
+        get: (provider) =>
+          provider === adapter.provider
+            ? adapter
+            : provider === external.provider
+              ? external
+              : undefined,
+        list: () => [adapter, external],
+      },
       logger,
     });
     const identity = `sha256:${'a'.repeat(64)}`;
-    const record = (threadId: string, mode: unknown, cursor = false) => {
+    const record = (
+      threadId: string,
+      mode: unknown,
+      cursor = false,
+      provider: 'station-agent' | 'claude' = 'station-agent',
+    ) => {
       store.upsertSession({
-        provider: 'station-agent',
+        provider,
         threadId,
         status: 'ready',
         createdAt: '2026-10-26T00:00:00.000Z',
@@ -142,7 +159,7 @@ describe('recorded sealed source Session policy', () => {
           : {}),
       });
       store.appendEvent({
-        provider: 'station-agent',
+        provider,
         threadId,
         sessionId: threadId,
         eventId: `${threadId}:start`,
@@ -162,6 +179,33 @@ describe('recorded sealed source Session policy', () => {
     });
     record('ordinary', undefined);
     record('cursor-only', undefined, true);
+    record('external-ordinary', undefined, false, 'claude');
+    record(
+      'external-shaped',
+      { mode: 'sealed-source-input', identity },
+      false,
+      'claude',
+    );
+    record('external-historical-station', {
+      mode: 'sealed-source-input',
+      identity,
+    });
+    store.upsertSession({
+      provider: 'claude',
+      threadId: 'external-historical-station',
+      status: 'ready',
+      createdAt: '2026-10-26T00:00:00.000Z',
+      updatedAt: '2026-10-26T00:00:01.000Z',
+    });
+    store.appendEvent({
+      provider: 'claude',
+      threadId: 'external-historical-station',
+      sessionId: 'external-historical-station',
+      eventId: 'external-historical-station:reattach',
+      method: 'session.started',
+      createdAt: '2026-10-26T00:00:01.000Z',
+      metadata: { userId: 'mode-owner' },
+    });
     // A later unmarked reattach does not erase the first canonical declaration.
     store.appendEvent({
       provider: 'station-agent',
@@ -236,6 +280,63 @@ describe('recorded sealed source Session policy', () => {
         expect(
           service.conversationInputAdmissionRefusal(threadId),
         ).toBeUndefined();
+      }
+      for (const threadId of [
+        'external-ordinary',
+        'external-shaped',
+        'external-historical-station',
+      ]) {
+        const point = await service.readSession(
+          threadId,
+          INTERNAL_SESSION_READ_SCOPE,
+        );
+        const page = await service.readSessionEventPage(threadId, {
+          afterSequence: 0,
+          limit: 20,
+          authority: INTERNAL_SESSION_READ_SCOPE,
+        });
+        for (const summary of [
+          point?.session,
+          page?.session,
+          listed.find((row) => row.threadId === threadId),
+        ]) {
+          expect(summary?.provider).toBe('claude');
+          expect(summary?.durability).toEqual(STEERING_ENGINE_DURABILITY);
+        }
+      }
+      const latest = vi.spyOn(store, 'latestEventByMethod');
+      const first = vi.spyOn(store, 'firstEventByMethod');
+      try {
+        expect(
+          service.durabilityProfileForSession('station-agent', 'sealed-input')
+            ?.steerPlacement.state,
+        ).toBe('none');
+        expect(latest).toHaveBeenCalledWith('sealed-input', 'session.started');
+        expect(first).toHaveBeenCalledWith('sealed-input', 'session.started');
+        for (const threadId of [
+          'external-ordinary',
+          'external-shaped',
+          'external-historical-station',
+        ]) {
+          latest.mockClear();
+          first.mockClear();
+          const current = store.readSessionByThread(threadId);
+          expect(current?.provider).toBe('claude');
+          expect(
+            service.durabilityProfileForSession(current?.provider, threadId),
+          ).toEqual(STEERING_ENGINE_DURABILITY);
+          expect(
+            latest,
+            'non-Station profile lookup must not query the Station metadata namespace',
+          ).not.toHaveBeenCalled();
+          expect(
+            first,
+            'non-Station profile lookup must not query the Station metadata namespace',
+          ).not.toHaveBeenCalled();
+        }
+      } finally {
+        latest.mockRestore();
+        first.mockRestore();
       }
       expect(service.durabilityProfileForProvider('station-agent')).toEqual(
         ordinary,

@@ -35,8 +35,12 @@ and [delivery guide](docs/conformance/tool-policy-delivery.md) own those
 limits. Delivery of an MCP server does not grant Station control over every
 tool the external engine can execute.
 
-Session lifecycle includes `idle`: a turn finished, but the same Session can
-accept another. `completed` is an explicit terminal close. `failed` and
+Session lifecycle includes `idle`: a turn finished, but ordinary continuation
+still requires current admission. Sealed report-member Sessions require fresh
+bounded source admission instead of generic Steer or Queue; their engine name
+does not imply the ordinary managed-journal policy. See the
+[Session input contract](docs/reference/session-api.md#submit-steer-follow-up-or-display-input).
+`completed` is an explicit terminal close. `failed` and
 `canceled` are stopped outcomes with different restart rules. Read the
 [transition contract](packages/contracts/src/session-lifecycle.ts) instead of
 maintaining another list of terminal states.

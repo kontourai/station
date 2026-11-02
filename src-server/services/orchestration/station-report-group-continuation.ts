@@ -24,6 +24,7 @@ import type {
 } from '@kontourai/station-contracts/report-group';
 import { sessionReadAuthorityFromRequest } from '@kontourai/station-contracts/tenancy';
 import { z } from 'zod/v3';
+import { outsideStationServerScope } from '../../security/station-server-scope.js';
 import type { EnvironmentSecurityService } from '../ssh/environment-security-service.js';
 import { HomeWriterOwner } from '../ssh/home-writer-owner.js';
 import type {
@@ -310,9 +311,11 @@ export class StationReportGroupContinuation {
     if (prior) return { replayed: true, projection: prior };
     if (Date.now() >= loaded.intent.deadlineAt) refuse();
     const deadline = new AbortController();
-    const timer = setTimeout(
-      () => deadline.abort(),
-      Math.max(1, loaded.intent.deadlineAt - Date.now()),
+    const timer = outsideStationServerScope(() =>
+      setTimeout(
+        () => deadline.abort(),
+        Math.max(1, loaded.intent.deadlineAt - Date.now()),
+      ),
     );
     executionSignal = AbortSignal.any([
       context.req.raw.signal,

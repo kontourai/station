@@ -2,6 +2,11 @@ import { DELEGATION_GROUP_LIMITS } from '@kontourai/station-contracts/delegation
 import { type Context, Hono } from 'hono';
 import { z } from 'zod/v3';
 import { readBoundedRequestBody } from '../../security/bounded-request-body.js';
+import { stationControlRequestAuthority } from '../../security/station-control-request-authority.js';
+import {
+  outsideStationServerScope,
+  runAsStationServer,
+} from '../../security/station-server-scope.js';
 import { PortableGroupBudgetInsufficient } from '../../services/orchestration/portable-group-preparation.js';
 import type { DelegationGroupRuntime } from '../../services/orchestration/portable-group-runtime.js';
 import { parseStationReportGroupInput } from '../../services/orchestration/station-report-group-input.js';
@@ -34,7 +39,12 @@ export function createDelegationGroupRoutes(
       return context.json({ success: false, code: 'group_unavailable' }, 503);
     try {
       const current = await runtime.authorizeResponse(context);
-      const data = await body(runtime);
+      const authority = stationControlRequestAuthority(context.req.raw);
+      const work = () => body(runtime);
+      const data =
+        authority?.kind === 'caller' || authority?.kind === 'caller-less'
+          ? await outsideStationServerScope(work)
+          : await runAsStationServer(work);
       current();
       if (
         Buffer.byteLength(JSON.stringify(data)) >

@@ -2,12 +2,14 @@ import assert from 'node:assert/strict';
 import { randomBytes } from 'node:crypto';
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { FileAuthorizationLedger } from '@kontourai/dispatch';
 import { DelegationRoundsTransactionUncertainError } from '@kontourai/flow-agents/delegation-group-rounds';
 import { SERVER_EVENTS } from '@kontourai/station-contracts/runtime-events';
 import {
   createReportGroup,
   narrowReportGroupAfterInput,
   readReportGroupContextCheckpoint,
+  syncReportGroupAfterInput,
 } from '@kontourai/station-sdk/client';
 import { prepareFileMutationOwner } from '@kontourai/station-shared/lifecycle-events';
 import { Hono } from 'hono';
@@ -32,6 +34,7 @@ import { EventBus } from '../event-bus.js';
 import { EventStore } from '../event-store.js';
 import { OrchestrationService } from '../orchestration-service.js';
 import { createSessionAgentResolver } from '../session-agent-resolution.js';
+import { StationReportPreparationUnavailable } from '../station-report-group-input.js';
 import { StationReportGroupRuntime } from '../station-report-group-runtime.js';
 import { StationReportRetainedTurns } from '../station-report-retained-turn.js';
 import { createReportFlow } from './delegation-source-fixtures/flow.js';
@@ -41,7 +44,10 @@ import {
   setup,
 } from './delegation-source-fixtures/report.js';
 import { useAdvancingHistoricalClock } from './delegation-source-fixtures/report-clock.js';
-import { controlledInputStream } from './delegation-source-fixtures/streamed-text.js';
+import {
+  controlledInputStream,
+  controlledTextStream,
+} from './delegation-source-fixtures/streamed-text.js';
 
 test.each([
   'owned-commit',
@@ -56,6 +62,7 @@ test.each([
   'checkpoint-contention',
   'request-witness-cost',
   'response-original-witness',
+  'question-provider-binding',
 ] as const)(
   'input renewal keeps real caller custody: %s',
   async (scenario) => {
@@ -911,6 +918,134 @@ test.each([
     }
     const narrowed = await narrowing;
     assert.equal(narrowed.replayed, false);
+    if (scenario === 'question-provider-binding') {
+      const checkpoint = await readReportGroupContextCheckpoint(
+        'http://renewal-control.test',
+        created.group.groupId,
+        { seatId: 'left', expectedRevision: narrowed.group.revision },
+        options,
+      );
+      const command = {
+        operationKey: 'provider-bound-answer-sync',
+        seatId: 'left',
+        expectedRevision: checkpoint.revision,
+        flowHead: checkpoint.flowHead,
+        renewalOperationKey: 'finish-input',
+      };
+      const persistence = new StationDelegationPersistence(
+        join(h.f.home, 'report-groups'),
+      );
+      const before = await persistence.readReportExecution(
+        created.group.groupId,
+        created.group.groupId,
+        () => undefined,
+      );
+      assert.equal(before.authority?.epochs.length, 2);
+      const reservation = vi.spyOn(
+        FileAuthorizationLedger.prototype,
+        'reserve',
+      );
+      const paidSync = vi.spyOn(runtime, 'sync');
+      let syncFailure: unknown;
+      const syncAfterInput = runtime.syncAfterInput.bind(runtime);
+      const responseFailure = vi
+        .spyOn(runtime, 'syncAfterInput')
+        .mockImplementation(async (...args) => {
+          try {
+            return await syncAfterInput(...args);
+          } catch (error) {
+            syncFailure = error;
+            throw error;
+          }
+        });
+      let providerFaultApplied = false;
+      const read = orchestration.readSessionEventById.bind(orchestration);
+      const fault = vi
+        .spyOn(orchestration, 'readSessionEventById')
+        .mockImplementation((...args) => {
+          const event = read(...args);
+          if (
+            !providerFaultApplied &&
+            args[0] === opened.threadId &&
+            args[1] === opened.eventId
+          ) {
+            assert.ok(event?.method === 'request.opened');
+            assert.equal(event.provider, 'station-agent');
+            assert.equal(event.eventId, opened.eventId);
+            assert.equal(event.requestId, opened.requestId);
+            providerFaultApplied = true;
+            return { ...event, provider: 'claude' as const };
+          }
+          return event;
+        });
+      onTestFinished(() => {
+        fault.mockRestore();
+        responseFailure.mockRestore();
+        paidSync.mockRestore();
+        reservation.mockRestore();
+      });
+      h.rawFetch.mockImplementation(async (_url, init) => {
+        const wire = JSON.parse(String(init?.body));
+        const prompt = JSON.parse(wire.messages[0].content[0].text);
+        assert.ok(prompt.brief.startsWith('Receive context only.'));
+        return controlledTextStream(
+          'anthropic',
+          'claude-sonnet-4-6',
+          prompt.brief.split('Reply exactly ')[1],
+          {
+            input_tokens: 4,
+            output_tokens: 2,
+            cache_read_input_tokens: 0,
+            cache_creation_input_tokens: 0,
+          },
+        );
+      });
+      const sync = () =>
+        syncReportGroupAfterInput(
+          'http://renewal-control.test',
+          created.group.groupId,
+          command,
+          options,
+        );
+      try {
+        await assert.rejects(
+          sync(),
+          (error: unknown) =>
+            error instanceof Error && 'status' in error && error.status === 503,
+        );
+        assert.equal(
+          providerFaultApplied,
+          true,
+          'the exact canonical question provider must be changed',
+        );
+        assert.ok(syncFailure instanceof StationReportPreparationUnavailable);
+        assert.equal(syncFailure.code, 'group_preparation_unavailable');
+        assert.equal(
+          paidSync.mock.calls.length,
+          0,
+          'provider authentication must refuse before entering paid sync',
+        );
+        assert.equal(reservation.mock.calls.length, 0);
+        assert.equal(h.rawFetch.mock.calls.length, 1);
+        assert.equal(starts.mock.calls.length, 1);
+        const after = await persistence.readReportExecution(
+          created.group.groupId,
+          created.group.groupId,
+          () => undefined,
+        );
+        assert.deepEqual(after.authority, before.authority);
+        assert.deepEqual(after.group, before.group);
+      } finally {
+        fault.mockRestore();
+      }
+      const synced = await sync();
+      assert.equal(synced.group.contextSyncs?.at(-1)?.state, 'acknowledged');
+      assert.equal(paidSync.mock.calls.length, 1);
+      assert.equal(reservation.mock.calls.length, 1);
+      assert.equal(h.rawFetch.mock.calls.length, 2);
+      assert.equal(relay.mock.calls.length, 0);
+      return;
+    }
     assert.ok(observed.some((entry) => entry.domain === 'authority'));
     assert.ok(observed.some((entry) => entry.domain === 'group'));
     assert.ok(

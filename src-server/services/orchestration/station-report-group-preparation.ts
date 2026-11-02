@@ -48,6 +48,7 @@ import {
   resolveClientOriginForRequest,
   runtimeRequestPrincipalMayAccessHttpRoute,
 } from '../../security/runtime-request-security.js';
+import { outsideStationServerScope } from '../../security/station-server-scope.js';
 import {
   type DelegatedTaskHandle,
   delegateTask,
@@ -1129,7 +1130,9 @@ export class StationReportGroupPreparation {
       }),
     );
     const result = reservedStationTurnResult(port);
-    void result.catch(() => {});
+    outsideStationServerScope(() => {
+      void result.catch(() => {});
+    });
     return {
       task,
       result,

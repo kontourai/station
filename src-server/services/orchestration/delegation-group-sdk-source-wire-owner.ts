@@ -25,6 +25,7 @@ import {
   isSealedProviderPreparation,
   type SealedProviderPreparation,
 } from '../../runtime/conversation/sealed-provider-preparation.js';
+import { outsideStationServerScope } from '../../security/station-server-scope.js';
 import {
   type FinalWire,
   snapshotFinalWire,
@@ -51,7 +52,9 @@ function deferred<T>() {
     resolve = yes;
     reject = no;
   });
-  void promise.catch(() => {});
+  outsideStationServerScope(() => {
+    void promise.catch(() => {});
+  });
   return { promise, resolve, reject };
 }
 type OptionsBase = Readonly<{
@@ -159,14 +162,16 @@ async function cancelRefusedBody(s: State): Promise<void> {
   if (!body) return;
   const reader = body.getReader();
   const terminal = { closed: false, errored: false };
-  void reader.closed.then(
-    () => {
-      terminal.closed = true;
-    },
-    () => {
-      terminal.errored = true;
-    },
-  );
+  outsideStationServerScope(() => {
+    void reader.closed.then(
+      () => {
+        terminal.closed = true;
+      },
+      () => {
+        terminal.errored = true;
+      },
+    );
+  });
   try {
     await Promise.resolve();
     if (terminal.errored) return;
@@ -200,19 +205,21 @@ function retireRefusedBody(s: State, retry = false): void {
     s.cleanupFailure = deferred<never>();
   }
   s.bodyRetirement = 'pending';
-  void cancelRefusedBody(s).then(
-    () => {
-      s.bodyRetirement = 'retired';
-      s.bodyCancelFailure = undefined;
-      finishDisposal(s);
-    },
-    () => {
-      s.bodyRetirement = 'failed';
-      s.cleanupFailure.reject(
-        new SdkSourceRefusal('sdk_body_cleanup_unconfirmed'),
-      );
-    },
-  );
+  outsideStationServerScope(() => {
+    void cancelRefusedBody(s).then(
+      () => {
+        s.bodyRetirement = 'retired';
+        s.bodyCancelFailure = undefined;
+        finishDisposal(s);
+      },
+      () => {
+        s.bodyRetirement = 'failed';
+        s.cleanupFailure.reject(
+          new SdkSourceRefusal('sdk_body_cleanup_unconfirmed'),
+        );
+      },
+    );
+  });
 }
 /** Boot-only raw fetch and qualified contract dependencies. No route DTO, source grant issuer,
  * caller validation callback, provider options object, or global fetch/config mutation. */
@@ -421,11 +428,16 @@ export function beginSdkSourceWire(owner: object, leaseToken: object): object {
     abandoned: false,
     settled: false,
     release: false,
-    deadline: setTimeout(() => disposeSdkSourceWire(owner, handle), 10000),
+    deadline: outsideStationServerScope(() =>
+      setTimeout(() => disposeSdkSourceWire(owner, handle), 10000),
+    ),
   };
-  void s.result.catch(() => {});
+  outsideStationServerScope(() => {
+    void s.result.catch(() => {});
+  });
   handles.set(handle, s);
-  s.abortListener = () => disposeSdkSourceWire(owner, handle);
+  s.abortListener = () =>
+    outsideStationServerScope(() => disposeSdkSourceWire(owner, handle));
   o.signal.addEventListener('abort', s.abortListener, { once: true });
   const signal = AbortSignal.any([o.signal, controller.signal]);
   const interceptor: typeof fetch = async (input, init) => {
@@ -672,8 +684,10 @@ export function beginSdkSourceWire(owner: object, leaseToken: object): object {
         o.signal.removeEventListener('abort', s.abortListener);
       finishDisposal(s);
     });
-  void s.result.catch((error) => {
-    captured.reject(error);
+  outsideStationServerScope(() => {
+    void s.result.catch((error) => {
+      captured.reject(error);
+    });
   });
   return handle;
 }
@@ -792,7 +806,10 @@ export function enterFinalFetch(
         throw error;
       },
     );
-    void s.rawResponse.catch(() => {});
+    const rawResponse = s.rawResponse;
+    outsideStationServerScope(() => {
+      void rawResponse.catch(() => {});
+    });
     s.release = true;
     finishDisposal(s);
     return s.rawResponse;

@@ -171,8 +171,13 @@ Runtime Inbox composition supplies a fresh-submission refusal for these Sessions
 before the central delivery owner writes an effectful row. Display notes bypass
 that gate; accepted retries remain reads and reactivated refused or unplaced
 cancelled rows are checked again. This central-owner rule does not qualify every
-public retry path: existing producer prechecks still apply. No queued intent
-supplies the fresh branded SDK admission needed for another sealed turn.
+public retry path: existing producer prechecks still apply. Typed admission
+refusals returned by the central Inbox also reach public callers as HTTP409;
+untyped denial keeps the existing fallback. Runtime placement rechecks sealed
+admission before consumer-specific policies for legacy queued work. Busy steering
+with no declared support still refuses as `unsupported-engine` before that
+placement check. No queued intent supplies the fresh branded SDK admission
+needed for another sealed turn.
 
 The native conformance suite is
 `src-server/runtime/agents/__tests__/durable-agent-conformance.test.ts`; the
@@ -2530,8 +2535,10 @@ execution inspections now acquire their own short home scopes before domain lock
 A fresh runtime finalizes the retained empty-work cancellation and replays it without
 another authority-cancellation write. Active interruption writers and confirmation
 with launched attempts remain unqualified.
-Continuation-parent borrowing and the other controller constructions remain open;
-group/finalizer flags stay disabled. Legacy compositions without the runtime
+Runtime publication now also encloses input narrowing, report continuation and
+accounting recovery. Those paths use scoped Home custody and retained cleanup;
+this does not establish all-writer or combined supported-group qualification.
+Group/finalizer flags stay disabled. Legacy compositions without the runtime
 participant do not establish these ownership guarantees.
 
 

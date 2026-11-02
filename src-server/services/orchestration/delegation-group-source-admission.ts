@@ -47,6 +47,7 @@ import {
   runtimeRequestPrincipalMayAccessHttpRoute,
 } from '../../security/runtime-request-security.js';
 import { stationControlRequestAuthority } from '../../security/station-control-request-authority.js';
+import { outsideStationServerScope } from '../../security/station-server-scope.js';
 import { STATION_CONTROL_CALLER_TOKEN_HEADER } from '../../tools/station-control-shared.js';
 import { execGit } from '../../utils/git-exec.js';
 import {
@@ -720,13 +721,15 @@ export class LocalSourceAdmissionOwner {
     const sdk = state.sdk;
     sdk.cleanupQueued = true;
     disposeSdkSourceWire(sdk.owner, sdk.handle);
-    void sdkDisposalPromise(sdk.owner, sdk.handle).then(() => {
-      if (this.#snapshots.get(capability) !== state) return;
-      for (const [key, prepared] of this.#sdkPrepared)
-        if (prepared.state === state) this.#sdkPrepared.delete(key);
-      sdkLeases.delete(sdk.lease);
-      this.#snapshots.delete(capability);
-      state.serialization = '';
+    outsideStationServerScope(() => {
+      void sdkDisposalPromise(sdk.owner, sdk.handle).then(() => {
+        if (this.#snapshots.get(capability) !== state) return;
+        for (const [key, prepared] of this.#sdkPrepared)
+          if (prepared.state === state) this.#sdkPrepared.delete(key);
+        sdkLeases.delete(sdk.lease);
+        this.#snapshots.delete(capability);
+        state.serialization = '';
+      });
     });
   }
   #reapSnapshots() {
@@ -1931,8 +1934,10 @@ export class LocalSourceAdmissionOwner {
         used: false,
       };
       this.#sdkPrepared.set(preparedCapability, prepared);
-      void sdkDisposalPromise(owner, handle).then(() => {
-        this.#retireSdk(capability, state);
+      outsideStationServerScope(() => {
+        void sdkDisposalPromise(owner, handle).then(() => {
+          this.#retireSdk(capability, state);
+        });
       });
       return Object.freeze({
         capability: preparedCapability,
@@ -2297,7 +2302,9 @@ type PreparedState = {
 };
 function requireSync(value: unknown): void {
   if (value !== undefined) {
-    void Promise.resolve(value).catch(() => {});
+    outsideStationServerScope(() => {
+      void Promise.resolve(value).catch(() => {});
+    });
     refuse('final_wire_port_must_be_synchronous');
   }
 }

@@ -69,8 +69,11 @@ Basis read re-checks access for each new chip. Pending or failed, it stays
 During an authorized active-turn continuation wait, the composer accepts and
 preserves a draft. While this tab sees the turn in flight (a chat reopened
 mid-turn), Send steers or queues into that turn as it does in the tab that
-started it. A wait with no turn in flight here keeps Send blocked behind Check
-again until continuation is writable.
+started it, subject to the Session's declared input admission. Sealed report-member
+Sessions refuse generic Steer and Queue; bounded report controls must obtain new
+source admission. Display notes remain separate, and a retained or uncertain
+message cannot authorize paid replay. A wait with no turn in flight here keeps
+Send blocked behind Check again until continuation is writable.
 The shared popover shell opens toward the roomier viewport edge, including when
 the dock is maximized. Slash commands, `/model` and `@` file results all open
 through one anchored popup outside the composer, so no composer clipping can cut

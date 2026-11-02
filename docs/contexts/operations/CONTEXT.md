@@ -93,6 +93,10 @@ _Avoid_: source doc unless it is intended for review
 - Knowledge namespaces shape agent context inside projects.
 - Automations produce scheduled runs, job logs, notifications, and receipts; a targeted run also produces a turn in its conversation.
 - Check-backs and targeted automations hand their turn to the same conversation inbox.
+  That route is not new execution authority: sealed report-member Sessions
+  refuse fresh effectful submissions before an Inbox row. Retained legacy work
+  is also checked before placement; a refused wake does not undo its originating
+  Task record or grant permission to resend a paid request.
 - Terminal processes can support agent work but are not evidence unless captured as command evidence.
 - Telemetry describes operations; verification lanes check their declared scope.
 - Generated artifacts may support receipts but usually should not be edited like source.

@@ -1,4 +1,5 @@
 import { reportGroupStreamCursor } from '@kontourai/station-contracts/report-group';
+import { outsideStationServerScope } from '../../security/station-server-scope.js';
 
 /** Byte budgets include the public envelope, cursors and explicit omissions. */
 export function pageByBytes<T, C extends string | number, P>(input: {
@@ -52,7 +53,10 @@ export async function awaitWithAbort<T>(
   if (signal.aborted) throw signal.reason ?? new Error('group_stream_aborted');
   let onAbort: (() => void) | undefined;
   const cancelled = new Promise<never>((_resolve, reject) => {
-    onAbort = () => reject(signal.reason ?? new Error('group_stream_aborted'));
+    onAbort = () =>
+      outsideStationServerScope(() =>
+        reject(signal.reason ?? new Error('group_stream_aborted')),
+      );
     signal.addEventListener('abort', onAbort, { once: true });
     if (signal.aborted) onAbort();
   });
@@ -80,96 +84,104 @@ export function watchGroupPages<T>(options: {
   fingerprint(page: T): string;
   hasMore(page: T): boolean;
 }): GroupPageIterator<T> {
-  const lifetime = new AbortController();
-  let pending = true;
-  let wake: (() => void) | undefined;
-  let unsubscribe: (() => void) | undefined;
-  let deadline: ReturnType<typeof setTimeout> | undefined;
-  let refresh: ReturnType<typeof setInterval> | undefined;
-  const stop = () => {
-    if (lifetime.signal.aborted) return;
-    lifetime.abort(new Error('group_stream_stopped'));
-    options.signal.removeEventListener('abort', stop);
-    if (deadline) clearTimeout(deadline);
-    if (refresh) clearInterval(refresh);
-    unsubscribe?.();
-    unsubscribe = undefined;
-    wake?.();
-    wake = undefined;
-  };
-  const notify = () => {
-    pending = true;
-    wake?.();
-  };
-  options.signal.addEventListener('abort', stop, { once: true });
-  if (options.signal.aborted) stop();
-  if (!lifetime.signal.aborted) {
-    try {
-      unsubscribe = options.subscribe((hint) => {
-        if (options.relevant(hint)) notify();
-      });
-      if (lifetime.signal.aborted) {
-        unsubscribe();
-        unsubscribe = undefined;
-      } else deadline = setTimeout(stop, options.lifetimeMs);
-      if (!lifetime.signal.aborted)
-        refresh = setInterval(notify, options.refreshMs);
-    } catch (error) {
-      stop();
-      throw error;
-    }
-  }
-  const iterator = (async function* () {
-    let fingerprint: string | undefined;
-    try {
-      while (!lifetime.signal.aborted) {
-        pending = false;
-        const page = await awaitWithAbort(
-          Promise.resolve().then(() => {
-            if (lifetime.signal.aborted) throw lifetime.signal.reason;
-            return options.read(lifetime.signal);
-          }),
-          lifetime.signal,
-        );
+  return outsideStationServerScope(() => {
+    const lifetime = new AbortController();
+    let pending = true;
+    let wake: (() => void) | undefined;
+    let unsubscribe: (() => void) | undefined;
+    let deadline: ReturnType<typeof setTimeout> | undefined;
+    let refresh: ReturnType<typeof setInterval> | undefined;
+    const stop = () =>
+      outsideStationServerScope(() => {
         if (lifetime.signal.aborted) return;
-        const next = options.fingerprint(page);
-        if (next !== fingerprint) {
-          fingerprint = next;
-          yield page;
-        }
-        if (options.hasMore(page) || pending) continue;
-        await awaitWithAbort(
-          new Promise<void>((resolve) => {
-            wake = () => {
-              wake = undefined;
-              resolve();
-            };
-            if (pending || lifetime.signal.aborted) wake();
+        lifetime.abort(new Error('group_stream_stopped'));
+        options.signal.removeEventListener('abort', stop);
+        if (deadline) clearTimeout(deadline);
+        if (refresh) clearInterval(refresh);
+        unsubscribe?.();
+        unsubscribe = undefined;
+        wake?.();
+        wake = undefined;
+      });
+    const notify = () =>
+      outsideStationServerScope(() => {
+        pending = true;
+        wake?.();
+      });
+    options.signal.addEventListener('abort', stop, { once: true });
+    if (options.signal.aborted) stop();
+    if (!lifetime.signal.aborted) {
+      try {
+        unsubscribe = options.subscribe((hint) =>
+          outsideStationServerScope(() => {
+            if (options.relevant(hint)) notify();
           }),
-          lifetime.signal,
         );
+        if (lifetime.signal.aborted) {
+          unsubscribe();
+          unsubscribe = undefined;
+        } else deadline = setTimeout(stop, options.lifetimeMs);
+        if (!lifetime.signal.aborted)
+          refresh = setInterval(notify, options.refreshMs);
+      } catch (error) {
+        stop();
+        throw error;
       }
-    } catch (error) {
-      if (!lifetime.signal.aborted) throw error;
-    } finally {
-      stop();
     }
-  })();
-  return {
-    signal: lifetime.signal,
-    [Symbol.asyncIterator]() {
-      return this;
-    },
-    next: () => iterator.next(),
-    return: () => {
-      stop();
-      return iterator.return();
-    },
-    throw: (error?: unknown) => {
-      stop();
-      return iterator.throw(error);
-    },
-  };
+    const iterator = (async function* () {
+      let fingerprint: string | undefined;
+      try {
+        while (!lifetime.signal.aborted) {
+          pending = false;
+          const page = await awaitWithAbort(
+            Promise.resolve().then(() => {
+              if (lifetime.signal.aborted) throw lifetime.signal.reason;
+              return options.read(lifetime.signal);
+            }),
+            lifetime.signal,
+          );
+          if (lifetime.signal.aborted) return;
+          const next = options.fingerprint(page);
+          if (next !== fingerprint) {
+            fingerprint = next;
+            yield page;
+          }
+          if (options.hasMore(page) || pending) continue;
+          await awaitWithAbort(
+            new Promise<void>((resolve) => {
+              wake = () => {
+                wake = undefined;
+                resolve();
+              };
+              if (pending || lifetime.signal.aborted) wake();
+            }),
+            lifetime.signal,
+          );
+        }
+      } catch (error) {
+        if (!lifetime.signal.aborted) throw error;
+      } finally {
+        stop();
+      }
+    })();
+    return {
+      signal: lifetime.signal,
+      [Symbol.asyncIterator]() {
+        return this;
+      },
+      next: () => outsideStationServerScope(() => iterator.next()),
+      return: () =>
+        outsideStationServerScope(() => {
+          stop();
+          return iterator.return();
+        }),
+      throw: (error?: unknown) =>
+        outsideStationServerScope(() => {
+          stop();
+          return iterator.throw(error);
+        }),
+    };
+  });
 }
 
 export type GroupStreamCursorDomain =
@@ -225,15 +237,18 @@ export function createGroupStreamLifetime(
   parent: AbortSignal,
   lifetimeMs: number,
 ): { signal: AbortSignal; stop(): void } {
-  const controller = new AbortController();
-  const stop = () => {
-    if (controller.signal.aborted) return;
-    controller.abort(new Error('group_stream_stopped'));
-    clearTimeout(timer);
-    parent.removeEventListener('abort', stop);
-  };
-  const timer = setTimeout(stop, lifetimeMs);
-  parent.addEventListener('abort', stop, { once: true });
-  if (parent.aborted) stop();
-  return { signal: controller.signal, stop };
+  return outsideStationServerScope(() => {
+    const controller = new AbortController();
+    const stop = () =>
+      outsideStationServerScope(() => {
+        if (controller.signal.aborted) return;
+        controller.abort(new Error('group_stream_stopped'));
+        clearTimeout(timer);
+        parent.removeEventListener('abort', stop);
+      });
+    const timer = setTimeout(stop, lifetimeMs);
+    parent.addEventListener('abort', stop, { once: true });
+    if (parent.aborted) stop();
+    return { signal: controller.signal, stop };
+  });
 }

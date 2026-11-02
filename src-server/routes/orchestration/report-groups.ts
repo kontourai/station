@@ -8,6 +8,10 @@ import { type Context, Hono } from 'hono';
 import { z } from 'zod/v3';
 import { readBoundedRequestBody } from '../../security/bounded-request-body.js';
 import {
+  outsideStationServerScope,
+  runAsStationServer,
+} from '../../security/station-server-scope.js';
+import {
   awaitWithAbort,
   createGroupStreamLifetime,
   encodeGroupStreamCursor,
@@ -81,7 +85,7 @@ export function createReportGroupRoutes(
       const run = async () => {
         const context = runtime.bindRequest(c);
         const current = await runtime.authorizeResponse(context);
-        const data = await work(runtime, context);
+        const data = await runAsStationServer(() => work(runtime, context));
         return runtime.withResponseCurrent(context, current, () => {
           if (Buffer.byteLength(JSON.stringify(data)) > 262_000)
             return c.json(
@@ -157,95 +161,106 @@ export function createReportGroupRoutes(
       );
     }),
   );
-  app.get('/:groupId/events/stream', async (c) => {
-    c.header('Cache-Control', 'no-store');
-    if (!runtime)
-      return c.json({ success: false, code: 'report_groups_unavailable' }, 503);
-    const lifetime = createGroupStreamLifetime(c.req.raw.signal, 60_000);
-    try {
-      const current = await runtime.authorizeResponse(c);
-      const groupId = id.parse(c.req.param('groupId'));
-      const query = z
-        .object({ afterRevision: cursor.optional() })
-        .strict()
-        .parse(c.req.query());
-      const domain = { kind: 'report' as const, groupId };
-      let after = readGroupStreamCursor(
-        domain,
-        query.afterRevision,
-        c.req.header('Last-Event-ID'),
-      );
-      await awaitWithAbort(runtime.events(c, groupId, after), lifetime.signal);
-      current();
-      return streamSSE(c, async (stream) => {
-        const stop = () => {
-          lifetime.stop();
-          stream.abort();
-        };
-        stream.onAbort(lifetime.stop);
-        lifetime.signal.addEventListener('abort', stop, { once: true });
-        const pages = watchGroupPages({
-          signal: lifetime.signal,
-          lifetimeMs: 60_000,
-          refreshMs: 1000,
-          subscribe: () => () => {},
-          relevant: () => false,
-          read: async () => {
-            const page = await runtime.events(c, groupId, after);
-            after = page.nextRevision;
-            return page;
+  app.get('/:groupId/events/stream', (c) =>
+    outsideStationServerScope(async () => {
+      c.header('Cache-Control', 'no-store');
+      if (!runtime)
+        return c.json(
+          { success: false, code: 'report_groups_unavailable' },
+          503,
+        );
+      const lifetime = createGroupStreamLifetime(c.req.raw.signal, 60_000);
+      try {
+        const current = await runtime.authorizeResponse(c);
+        const groupId = id.parse(c.req.param('groupId'));
+        const query = z
+          .object({ afterRevision: cursor.optional() })
+          .strict()
+          .parse(c.req.query());
+        const domain = { kind: 'report' as const, groupId };
+        let after = readGroupStreamCursor(
+          domain,
+          query.afterRevision,
+          c.req.header('Last-Event-ID'),
+        );
+        await awaitWithAbort(
+          runtime.events(c, groupId, after),
+          lifetime.signal,
+        );
+        current();
+        return streamSSE(c, (stream) =>
+          outsideStationServerScope(async () => {
+            const stop = () =>
+              outsideStationServerScope(() => {
+                lifetime.stop();
+                stream.abort();
+              });
+            stream.onAbort(lifetime.stop);
+            lifetime.signal.addEventListener('abort', stop, { once: true });
+            const pages = watchGroupPages({
+              signal: lifetime.signal,
+              lifetimeMs: 60_000,
+              refreshMs: 1000,
+              subscribe: () => () => {},
+              relevant: () => false,
+              read: async () => {
+                const page = await runtime.events(c, groupId, after);
+                after = page.nextRevision;
+                return page;
+              },
+              fingerprint: (page) =>
+                JSON.stringify([
+                  page.revision,
+                  page.nextRevision,
+                  page.events,
+                  page.unavailable,
+                ]),
+              hasMore: (page) => page.hasMore,
+            });
+            try {
+              for await (const page of pages) {
+                const data = JSON.stringify(page);
+                if (Buffer.byteLength(data) > 262_000)
+                  throw new Error('report_page_too_large');
+                current();
+                await awaitWithAbort(
+                  stream.writeSSE({
+                    event: 'report-group-events',
+                    id: encodeGroupStreamCursor(domain, page.nextRevision),
+                    data,
+                  }),
+                  lifetime.signal,
+                );
+              }
+            } catch {
+              if (!lifetime.signal.aborted)
+                await awaitWithAbort(
+                  stream.writeSSE({ event: 'unavailable', data: '{}' }),
+                  lifetime.signal,
+                ).catch(() => {});
+            } finally {
+              await pages.return?.();
+              lifetime.signal.removeEventListener('abort', stop);
+              stop();
+            }
+          }),
+        );
+      } catch (error) {
+        lifetime.stop();
+        const invalid =
+          error instanceof z.ZodError ||
+          (error instanceof Error &&
+            error.message === 'group_stream_cursor_invalid');
+        return c.json(
+          {
+            success: false,
+            code: invalid ? 'report_group_invalid' : 'report_group_unavailable',
           },
-          fingerprint: (page) =>
-            JSON.stringify([
-              page.revision,
-              page.nextRevision,
-              page.events,
-              page.unavailable,
-            ]),
-          hasMore: (page) => page.hasMore,
-        });
-        try {
-          for await (const page of pages) {
-            const data = JSON.stringify(page);
-            if (Buffer.byteLength(data) > 262_000)
-              throw new Error('report_page_too_large');
-            current();
-            await awaitWithAbort(
-              stream.writeSSE({
-                event: 'report-group-events',
-                id: encodeGroupStreamCursor(domain, page.nextRevision),
-                data,
-              }),
-              lifetime.signal,
-            );
-          }
-        } catch {
-          if (!lifetime.signal.aborted)
-            await awaitWithAbort(
-              stream.writeSSE({ event: 'unavailable', data: '{}' }),
-              lifetime.signal,
-            ).catch(() => {});
-        } finally {
-          await pages.return?.();
-          lifetime.signal.removeEventListener('abort', stop);
-          stop();
-        }
-      });
-    } catch (error) {
-      lifetime.stop();
-      const invalid =
-        error instanceof z.ZodError ||
-        (error instanceof Error &&
-          error.message === 'group_stream_cursor_invalid');
-      return c.json(
-        {
-          success: false,
-          code: invalid ? 'report_group_invalid' : 'report_group_unavailable',
-        },
-        invalid ? 400 : 503,
-      );
-    }
-  });
+          invalid ? 400 : 503,
+        );
+      }
+    }),
+  );
   app.post('/:groupId/members/:seatId/context-checkpoint', (c) =>
     respond(c, async (owner, context) => {
       noQuery(c);
