@@ -636,7 +636,9 @@
 
     "src-server/services/automation/repair-controller.ts",
 
-    "src-server/services/terminal/terminal-tickets.ts"
+    "src-server/services/terminal/terminal-tickets.ts",
+
+    "src-server/runtime/routes/task-inbox-projection.ts"
   ],
 
   "checks": [
