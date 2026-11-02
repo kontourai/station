@@ -13,6 +13,7 @@ import {
   type RowCells,
   type Scrollbar,
 } from '../engine/frame';
+import { ensureContrast, mix } from '../theme';
 
 export interface TerminalTheme {
   foreground: number;
@@ -112,11 +113,22 @@ export interface CellPaint {
   hyperlink: boolean;
 }
 
-function mix(a: number, b: number, t: number): number {
-  const ch = (c: number, shift: number) => (c >> shift) & 0xff;
-  const lerp = (shift: number) =>
-    Math.round(ch(a, shift) * (1 - t) + ch(b, shift) * t) << shift;
-  return lerp(16) | lerp(8) | lerp(0);
+/**
+ * Text over a background of its own (an explicit colour, inverse or the
+ * selection) is held to 4.5:1 against that background. The theme already
+ * holds the palette to the terminal surface, which is the wrong reference
+ * here: white on blue, or black on green, would otherwise lose its text.
+ */
+const legible = new Map<number, number>();
+function legibleOn(fg: number, bg: number): number {
+  const key = fg * 0x1000000 + bg;
+  let color = legible.get(key);
+  if (color === undefined) {
+    if (legible.size >= 4096) legible.clear();
+    color = ensureContrast(fg, bg, 4.5);
+    legible.set(key, color);
+  }
+  return color;
 }
 
 /** Resolves what one cell paints: colours after inverse, faint and selection. */
@@ -142,6 +154,7 @@ export function cellPaint(
     bg = theme.selectionBackground;
     if (theme.selectionForeground !== null) fg = theme.selectionForeground;
   }
+  if (bg !== null && !(attr & Attr.FAINT)) fg = legibleOn(fg, bg);
   const cp = row.codepoints[x]!;
   const invisible = (attr & Attr.INVISIBLE) !== 0;
   return {

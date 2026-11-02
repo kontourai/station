@@ -1,6 +1,7 @@
 .station-terminal {
   position: relative;
   display: flex;
+  flex: 1 1 auto;
   flex-direction: column;
   min-height: 0;
   height: 100%;
@@ -27,9 +28,14 @@
   touch-action: none;
 }
 
-.station-terminal__grid:focus-within {
-  outline: 2px solid var(--k-focus);
-  outline-offset: -2px;
+/* Drawn above the canvas and inside the inset, so no glyph covers it and it
+   covers no glyph. */
+.station-terminal__body:has(.station-terminal__grid:focus-within)::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border: 2px solid var(--k-focus);
+  pointer-events: none;
 }
 
 /* Out of flow: the container alone sizes the grid, so the terminal follows

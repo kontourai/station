@@ -328,6 +328,50 @@ test('phone tool picker switches through canonical history and preserves the cha
   expect(harness.chatMounts).toBe(1);
 });
 
+test('a phone stack re-fits to the window when the chrome above it settles', () => {
+  harness.isMobile = true;
+  const observed: { measure: () => void; target: Element }[] = [];
+  vi.stubGlobal(
+    'ResizeObserver',
+    class {
+      constructor(private readonly measure: () => void) {}
+      observe(target: Element) {
+        observed.push({ measure: this.measure, target });
+      }
+      unobserve() {}
+      disconnect() {}
+    },
+  );
+  let top = 189;
+  const rect = vi
+    .spyOn(HTMLElement.prototype, 'getBoundingClientRect')
+    .mockImplementation(function (this: HTMLElement) {
+      return DOMRect.fromRect({
+        y: this.classList.contains('coding-workbench') ? top : 0,
+        width: 390,
+        height: 0,
+      });
+    });
+  try {
+    renderStack();
+    const stack =
+      window.document.querySelector<HTMLElement>('.coding-workbench')!;
+    const first = Number.parseFloat(stack.style.height);
+    expect(first).toBeGreaterThan(0);
+    // The shell above finishes its layout: the stack moves up and its host
+    // box grows, with the visual viewport unchanged.
+    top = 53;
+    act(() => {
+      for (const { measure, target } of observed)
+        if (target === stack.parentElement) measure();
+    });
+    expect(Number.parseFloat(stack.style.height)).toBe(first + 136);
+  } finally {
+    rect.mockRestore();
+    vi.unstubAllGlobals();
+  }
+});
+
 test('dismissing the phone tool sheet leaves the active tool unchanged', async () => {
   harness.isMobile = true;
   renderStack();

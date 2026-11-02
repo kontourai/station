@@ -105,15 +105,20 @@ export function ensureContrast(
   minimum: number,
 ): number {
   if (contrast(fg, bg) >= minimum) return fg;
-  const target = luminance(bg) > 0.5 ? 0x000000 : 0xffffff;
-  for (let t = 0.1; t <= 1; t += 0.1) {
-    const mixed = mix(fg, target, t);
-    if (contrast(mixed, bg) >= minimum) return mixed;
+  // Toward the extreme farther from the background first; a mid-tone
+  // background can leave only the other one reaching the minimum.
+  const [first, second] =
+    luminance(bg) > 0.5 ? [0x000000, 0xffffff] : [0xffffff, 0x000000];
+  for (const target of [first, second]) {
+    for (let t = 0.1; t <= 1; t += 0.1) {
+      const mixed = mix(fg, target, t);
+      if (contrast(mixed, bg) >= minimum) return mixed;
+    }
   }
-  return target;
+  return contrast(first, bg) >= contrast(second, bg) ? first : second;
 }
 
-function mix(a: number, b: number, t: number): number {
+export function mix(a: number, b: number, t: number): number {
   const lerp = (shift: number) =>
     Math.round(((a >> shift) & 0xff) * (1 - t) + ((b >> shift) & 0xff) * t) <<
     shift;

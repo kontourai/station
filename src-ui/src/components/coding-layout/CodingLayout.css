@@ -1,4 +1,5 @@
 .coding-layout__terminal {
+  flex: 1 1 auto;
   min-height: 100%;
   overflow: hidden;
   display: flex;
@@ -61,7 +62,9 @@
 }
 
 .coding-layout__terminal-body {
+  display: flex;
   flex: 1;
+  flex-direction: column;
   min-height: 0;
   overflow: hidden;
 }

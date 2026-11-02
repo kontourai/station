@@ -1,10 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import {
+  Attr,
   DEFAULT_COLOR,
   type Frame,
   type RowCells,
 } from '../../terminal-view/engine/frame';
-import { ScreenModel } from '../../terminal-view/render/screen-model';
+import {
+  cellPaint,
+  ScreenModel,
+  type TerminalTheme,
+} from '../../terminal-view/render/screen-model';
+import { contrast } from '../../terminal-view/theme';
 
 function row(id: string, y: number, text: string): RowCells {
   const n = 4;
@@ -78,5 +84,51 @@ describe('ScreenModel', () => {
     model.apply(frame(['a', 'b'], [row('a', 0, 'x'), row('b', 1, 'y')], true));
     model.apply(frame(['a', 'b'], [row('b', 1, 'z')]));
     expect([...model.changed]).toEqual([1]);
+  });
+});
+
+describe('cellPaint', () => {
+  const light: TerminalTheme = {
+    foreground: 0x24292f,
+    background: 0xffffff,
+    cursor: 0x0969da,
+    cursorText: 0xffffff,
+    selectionBackground: 0xcce1ff,
+    selectionForeground: null,
+    ansi: [],
+    scheme: 'light',
+  };
+  const colors = {
+    background: light.background,
+    foreground: light.foreground,
+    cursor: null,
+    palette: new Uint32Array(256),
+  };
+  const cell = (fg: number, bg: number, attr = 0) => {
+    const r = row('r', 0, 'a');
+    r.fg[0] = fg;
+    r.bg[0] = bg;
+    r.attrs[0] = attr;
+    return cellPaint(r, 0, colors, light);
+  };
+
+  // A Powerline segment on light: palette white, darkened for the white
+  // surface, drawn on palette blue.
+  it('holds text on its own background to 4.5:1', () => {
+    const paint = cell(0x6e7781, 0x0969da);
+    expect(paint.bg).toBe(0x0969da);
+    expect(contrast(paint.fg, 0x0969da)).toBeGreaterThanOrEqual(4.5);
+  });
+
+  it('holds inverse text to 4.5:1 against the colour it inverts onto', () => {
+    const paint = cell(0x2da44e, DEFAULT_COLOR, Attr.INVERSE);
+    expect(paint.bg).toBe(0x2da44e);
+    expect(contrast(paint.fg, 0x2da44e)).toBeGreaterThanOrEqual(4.5);
+  });
+
+  it('leaves text on the terminal surface and faint text alone', () => {
+    expect(cell(0x6e7781, DEFAULT_COLOR).fg).toBe(0x6e7781);
+    const faint = cell(0x6e7781, 0x0969da, Attr.FAINT);
+    expect(contrast(faint.fg, 0x0969da)).toBeLessThan(4.5);
   });
 });

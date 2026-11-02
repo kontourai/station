@@ -344,16 +344,30 @@ export function CodingWorkbench({
   const rootRef = useRef<HTMLDivElement>(null);
   const [fittedHeight, setFittedHeight] = useState<number | null>(null);
   useLayoutEffect(() => {
-    if (!isMobile || !rootRef.current) {
+    const root = rootRef.current;
+    if (!isMobile || !root) {
       setFittedHeight(null);
       return;
     }
-    const top = rootRef.current.getBoundingClientRect().top;
-    const available = Math.max(
-      0,
-      visualViewport.offsetTop + visualViewport.height - top,
-    );
-    setFittedHeight((current) => (current === available ? current : available));
+    const measure = () => {
+      const top = root.getBoundingClientRect().top;
+      const available = Math.max(
+        0,
+        visualViewport.offsetTop + visualViewport.height - top,
+      );
+      setFittedHeight((current) =>
+        current === available ? current : available,
+      );
+    };
+    measure();
+    // Chrome above the stack can settle after the first measure (the page
+    // shell finishing its own layout); the host box resizes when it does, and
+    // a top measured before that left the stack short of the window.
+    const host = root.parentElement;
+    if (!host || typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(host);
+    return () => observer.disconnect();
   }, [isMobile, visualViewport.height, visualViewport.offsetTop]);
   const [chatTitle, setChatTitle] = useState('Chat');
   const chatPageRef = useRef<HTMLElement>(null);
