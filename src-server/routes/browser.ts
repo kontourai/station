@@ -1010,7 +1010,9 @@ export function createBrowserRoutes(deps: BrowserRoutesDeps) {
       ? deps.resolveProject(slug)
       : undefined;
     const actor = project
-      ? await deps.authorizeProject(c.req.raw, project.id, 'view')
+      ? await deps.authorizeProject(c.req.raw, project.id, 'view', {
+          allowOperatorDeviceView: true,
+        })
       : undefined;
     if (!project || !actor) return c.json(denied, 403);
     if (!deps.isRequestPrincipalCurrent(c.req.raw)) return c.json(denied, 403);

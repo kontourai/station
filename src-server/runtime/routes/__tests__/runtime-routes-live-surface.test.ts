@@ -273,6 +273,15 @@ describe('live surface routes in the runtime composition', () => {
         REMOTE,
       );
       expect(ownResponse.status, JSON.stringify(h.errors.mock.calls)).toBe(200);
+      expect(
+        (
+          await h.app.request(
+            '/api/browser/projects/alpha/settings',
+            { headers: headers(h.device.credential) },
+            REMOTE,
+          )
+        ).status,
+      ).toBe(200);
       const frames = await h.app.request(
         `/api/live-surfaces/${encodeURIComponent(SURFACE)}/frames`,
         { headers: headers(h.device.credential) },
