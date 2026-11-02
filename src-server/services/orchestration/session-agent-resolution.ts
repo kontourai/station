@@ -27,10 +27,12 @@
  * fail-closed authored-spec gate at session start for every
  * delivery-capable provider.
  */
+
 import {
   type AgentSpec,
   BUILTIN_STATION_AGENT_MCP_SERVER_IDS,
 } from '@kontourai/station-contracts/agent';
+import { STATION_AGENT_DISPLAY_NAME } from '@kontourai/station-contracts/agent-identity';
 import {
   ENGINE_CAPABILITY_MATRICES,
   sessionDeliveryChannels,
@@ -108,7 +110,7 @@ type ResolveSessionAgent = (
 export function builtinStationAgentSpec(slug: string): AgentSpec | null {
   if (slug !== 'station') return null;
   return {
-    name: 'Station',
+    name: STATION_AGENT_DISPLAY_NAME,
     prompt: STATION_CAPABILITY_DISCOVERY_GUIDANCE,
     // archive#1547: `station-docs` sits beside `station-control` here, and the
     // pairing is deliberate rather than symmetrical. `station-control` is the

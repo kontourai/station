@@ -70,6 +70,12 @@ export const NOTIFICATION_SOUND_VALUES = [
   'none',
 ] as const satisfies readonly NotificationSound[];
 
+/**
+ * #4405 (A36): the inbox scope that follows the project page on screen, and
+ * shows all work anywhere else.
+ */
+export const INBOX_SCOPE_CURRENT_PROJECT = 'current-project';
+
 export interface InboxSectionsState {
   snoozed: boolean;
   earlier: boolean;
@@ -284,8 +290,16 @@ export type ColorThemeId = (typeof COLOR_THEME_IDS)[number];
  */
 export const COLOR_THEME_ID_PATTERN = '^[a-z][a-z0-9-]{0,47}$';
 
+/**
+ * The appearance mode a person chose. `system` follows the device's
+ * `prefers-color-scheme` and is the default (#4407). It is never stored:
+ * choosing it clears a saved light/dark choice, so an older client or server,
+ * which knows only light and dark, reads it as "no choice".
+ */
+export type ThemePreference = 'light' | 'dark' | 'system';
+
 export interface DeviceSettings {
-  theme: 'light' | 'dark';
+  theme: ThemePreference;
   accentColor: string | null;
   /**
    * The color-theme family. Values arrive from storage, imports and the
@@ -313,6 +327,10 @@ export interface DeviceSettings {
   chatDockWidth: number;
   diffStyle: 'unified' | 'split';
   diffWrap: boolean;
+  /**
+   * `'all'` (the default), a Station or project key, or
+   * `INBOX_SCOPE_CURRENT_PROJECT` (the project page on screen, else all work).
+   */
   inboxScope: string;
   inboxOpen: boolean;
   inboxSections: InboxSectionsState;
@@ -684,14 +702,13 @@ export const DEVICE_SETTINGS_REGISTRY = [
   defineDeviceSetting({
     key: 'theme',
     scope: 'account',
-    descriptor: { kind: 'enum', values: ['light', 'dark'] },
+    descriptor: { kind: 'enum', values: ['light', 'dark', 'system'] },
     label: 'Theme',
-    help: 'The interface renders in this color scheme in your interface.',
-    description: 'Light or dark interface theme.',
+    help: 'The interface renders light, dark, or follows this device’s appearance.',
+    description: 'Light, dark, or System (follows the device) interface theme.',
     priorStorageKey: 'theme',
-    // Confirmed against index.css: no `data-theme` attribute resolves the
-    // dark skin (ThemeToggle.tsx's own in-code default already agreed).
-    defaultValue: 'dark',
+    // #4407: unset follows the device. A saved light or dark choice is kept.
+    defaultValue: 'system',
   }),
   defineDeviceSetting({
     key: 'accentColor',
@@ -833,6 +850,9 @@ export const DEVICE_SETTINGS_REGISTRY = [
     label: 'Inbox scope',
     help: 'Limit the inbox to one project or Station on this device.',
     description: 'Selected project or Station filter for the inbox.',
+    // Unchosen, the inbox shows all work, so the conversation you open is
+    // always in it. `INBOX_SCOPE_CURRENT_PROJECT` (#4405 A36) is a choice that
+    // follows the project page you are on.
     defaultValue: 'all',
   }),
   defineDeviceSetting({

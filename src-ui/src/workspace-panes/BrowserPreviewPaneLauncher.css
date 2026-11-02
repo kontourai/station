@@ -16,7 +16,7 @@
   display: flex;
   flex: 1 1 14rem;
   flex-direction: column;
-  font-size: var(--text-sm);
+  font-size: var(--k-text-sm);
   gap: var(--space-1, 4px);
   min-width: 0;
 }
@@ -37,7 +37,7 @@
 
 .browser-launcher__note {
   flex: 1 0 100%;
-  font-size: var(--text-sm);
+  font-size: var(--k-text-sm);
   margin: 0;
 }
 

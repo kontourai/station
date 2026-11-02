@@ -73,7 +73,7 @@
 .sidebar__account {
   border: 1px solid var(--k-line);
   border-radius: 50%;
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
   font-weight: 600;
 }
 .sidebar--collapsed .sidebar__footer-meta {

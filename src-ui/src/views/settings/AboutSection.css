@@ -89,7 +89,7 @@
   padding: var(--k-space-3);
   overflow: auto;
   font-family: var(--k-font-mono);
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   color: var(--k-text);

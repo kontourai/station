@@ -1,8 +1,10 @@
+import { INBOX_SCOPE_CURRENT_PROJECT } from '@kontourai/station-contracts/device-settings';
 import { useMemo, useSyncExternalStore } from 'react';
 import {
   useDeviceSettings,
   useDeviceSettingsActions,
 } from '../../contexts/DeviceSettingsContext';
+import { navigationStore } from '../../contexts/navigation-store';
 import {
   readSnoozes,
   snoozesVersion,
@@ -26,9 +28,16 @@ export function useInboxScope(
   );
   const { inboxScope } = useDeviceSettings();
   const { setDeviceSetting } = useDeviceSettingsActions();
+  // #4405 (A36): the project page on screen, for the default scope.
+  const routeProject = useSyncExternalStore(
+    navigationStore.subscribe,
+    () => navigationStore.getSnapshot().selectedProject,
+    () => null,
+  );
   // biome-ignore lint/correctness/useExhaustiveDependencies: snooze version invalidates the persisted map read
   return useMemo(() => {
     const options = new Map([
+      [INBOX_SCOPE_CURRENT_PROJECT, 'Current project'],
       ['all', 'All work'],
       ['station:local', 'This Station'],
     ]);
@@ -65,11 +74,19 @@ export function useInboxScope(
     // not silently change the user's filter or pretend another Station is it.
     if (!options.has(inboxScope))
       options.set(inboxScope, 'Saved scope (unavailable)');
+    // The default follows the project page on screen; anywhere else it is
+    // all work. Only this Station's projects have pages here.
+    const scope =
+      inboxScope !== INBOX_SCOPE_CURRENT_PROJECT
+        ? inboxScope
+        : routeProject
+          ? `project:${JSON.stringify(['station:local', routeProject])}`
+          : 'all';
     const matches = (item: HomeWorkItem) =>
-      inboxScope === 'all' ||
-      (inboxScope.startsWith('project:')
-        ? projectKey(item) === inboxScope
-        : stationById.get(item.id) === inboxScope);
+      scope === 'all' ||
+      (scope.startsWith('project:')
+        ? projectKey(item) === scope
+        : stationById.get(item.id) === scope);
     const filtered = items.filter(matches);
     const snoozed = readSnoozes(now);
     const hiddenAttention = visible.filter(
@@ -85,7 +102,16 @@ export function useInboxScope(
       hiddenAttention,
       onChange: (value: string) => setDeviceSetting('inboxScope', value),
     };
-  }, [items, visible, now, facts, inboxScope, setDeviceSetting, version]);
+  }, [
+    items,
+    visible,
+    now,
+    facts,
+    inboxScope,
+    routeProject,
+    setDeviceSetting,
+    version,
+  ]);
 }
 
 export function InboxScopeFilter({

@@ -1,4 +1,7 @@
-import type { DeviceSettings } from '@kontourai/station-contracts/device-settings';
+import type {
+  DeviceSettings,
+  ThemePreference,
+} from '@kontourai/station-contracts/device-settings';
 import { useCallback, useRef, useSyncExternalStore } from 'react';
 import { Button } from '../components/Button';
 import { CheckGlyph } from '../components/icons/Glyph';
@@ -16,6 +19,7 @@ import {
   useKeyboardShortcut,
   useShortcutDisplay,
 } from '../hooks/useKeyboardShortcut';
+import { useResolvedThemeMode } from '../hooks/useResolvedThemeMode';
 import { useLocale } from '../i18n/LocaleContext';
 import {
   COLOR_THEME_ACCENT_ATTRIBUTE,
@@ -141,12 +145,18 @@ function ThemeThumbnail({ swatch }: { swatch: ColorThemeSwatch }) {
   );
 }
 
+const MODE_OPTIONS: readonly { value: ThemePreference; label: string }[] = [
+  { value: 'system', label: 'System' },
+  { value: 'light', label: 'Light' },
+  { value: 'dark', label: 'Dark' },
+];
+
 function ModeControl({
-  mode,
+  preference,
   onChange,
 }: {
-  mode: ColorThemeMode;
-  onChange: (mode: ColorThemeMode) => void;
+  preference: ThemePreference;
+  onChange: (preference: ThemePreference) => void;
 }) {
   const shortcut = useShortcutDisplay('theme.toggle');
   // A shortcut the person unbound is registered but disabled; it has no
@@ -165,20 +175,20 @@ function ModeControl({
         role="radiogroup"
         aria-label="Mode"
       >
-        {(['light', 'dark'] as const).map((value) => (
+        {MODE_OPTIONS.map(({ value, label }) => (
           <label
             key={value}
-            className={`appearance-mode__option${mode === value ? ' is-selected' : ''}`}
+            className={`appearance-mode__option${preference === value ? ' is-selected' : ''}`}
           >
             <input
               type="radio"
               className="appearance__radio"
               name="appearance-mode"
               value={value}
-              checked={mode === value}
+              checked={preference === value}
               onChange={() => onChange(value)}
             />
-            {value === 'light' ? 'Light' : 'Dark'}
+            {label}
           </label>
         ))}
       </div>
@@ -252,7 +262,13 @@ export function AppearancePage() {
   const settings = useDeviceSettings();
   const { setDeviceSetting, setDeviceSettings } = useDeviceSettingsActions();
   const { locale } = useLocale();
-  const mode: ColorThemeMode = settings.theme === 'light' ? 'light' : 'dark';
+  // The mode on screen (System resolves against the device) drives the
+  // gallery; the preference drives the Mode choice (#4407).
+  const mode: ColorThemeMode = useResolvedThemeMode();
+  const preference: ThemePreference =
+    settings.theme === 'light' || settings.theme === 'dark'
+      ? settings.theme
+      : 'system';
   const resolved = resolveColorThemeSelection(settings);
   const selectedOption =
     COLOR_THEME_OPTIONS.find((option) => option.id === resolved.id) ??
@@ -293,7 +309,7 @@ export function AppearancePage() {
   };
 
   const setMode = useCallback(
-    (next: ColorThemeMode) => setDeviceSetting('theme', next),
+    (next: ThemePreference) => setDeviceSetting('theme', next),
     [setDeviceSetting],
   );
   // The same shortcut, id and handler shape as the Settings ThemeToggle, so
@@ -364,8 +380,8 @@ export function AppearancePage() {
       <PageSection className="appearance__section">
         <PageRow
           title="Mode"
-          description="Every theme has a light and a dark version."
-          control={<ModeControl mode={mode} onChange={setMode} />}
+          description="Every theme has a light and a dark version. System follows this device."
+          control={<ModeControl preference={preference} onChange={setMode} />}
         />
       </PageSection>
 

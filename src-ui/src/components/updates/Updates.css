@@ -28,7 +28,7 @@
 }
 .updates-control small {
   display: block;
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
 }
 .updates-control--collapsed {
   position: relative;

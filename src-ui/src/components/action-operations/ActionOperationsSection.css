@@ -44,7 +44,7 @@
 .action-operations__body span,
 .action-operations__state {
   color: var(--text-muted);
-  font-size: var(--text-sm);
+  font-size: var(--k-text-sm);
 }
 
 .action-operations__group {

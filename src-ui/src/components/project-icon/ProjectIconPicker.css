@@ -31,12 +31,12 @@
 
 .project-icon-picker__header strong {
   color: var(--text-primary);
-  font-size: var(--text-sm);
+  font-size: var(--k-text-sm);
 }
 
 .project-icon-picker__header span {
   color: var(--text-secondary);
-  font-size: var(--text-xs);
+  font-size: var(--k-text-sm);
 }
 
 .project-icon-picker__artwork-list {
@@ -62,7 +62,7 @@
   background: var(--bg-primary);
   color: var(--text-secondary);
   font: inherit;
-  font-size: var(--text-xs);
+  font-size: var(--k-text-sm);
   cursor: pointer;
 }
 
@@ -110,5 +110,5 @@
 .project-icon-picker__error {
   margin: 0;
   color: var(--error-text);
-  font-size: var(--text-xs);
+  font-size: var(--k-text-sm);
 }

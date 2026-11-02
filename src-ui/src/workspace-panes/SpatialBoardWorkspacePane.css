@@ -194,7 +194,7 @@
 .spatial-board__pin-eyebrow {
   min-width: 0;
   color: var(--text-muted);
-  font-size: var(--text-sm);
+  font-size: var(--k-text-sm);
 }
 
 .spatial-board__pin-title {

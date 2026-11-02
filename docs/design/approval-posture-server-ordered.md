@@ -403,6 +403,12 @@ A session spawned before this change has nothing recorded.
   - `queuedApprovalMode`;
   - `lastAppliedApprovalMode`;
   - `approvalEscalationRejected`.
+- **The applied report survives a reload (#4433).** `lastAppliedApprovalMode`
+  is folded live from `session.configured` and `turn.started` metadata. The
+  session summary also carries it as `appliedApprovalMode`, the newest such
+  report, and a snapshot fills the chat from it when the chat holds no newer
+  report and no failed takeover. A reloaded or resynced chat therefore shows
+  the mode the engine reported, not the inherited Default.
 - **Sources of the fold.** The posture is folded from three places:
   `session.approval-mode-set` events, which are ordered by the SSE `id`; the
   command result; and the result a send reports.

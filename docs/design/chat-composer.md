@@ -136,8 +136,9 @@ of the chat on screen, in any dock region or placement (full screen on a phone):
   and the composer scroll together. Otherwise the composer stays pinned and, in
   a short dock, a plain New chat's text box shrinks toward one line.
 - **Header.** The dock's title slot (and the phone header) reads **New chat**,
-  **New Task** or **Fork from here**, and the header's project controls stand
-  down so the draft's Project chip is the one destination.
+  **New Task** or **Fork from here** (**Regenerate** or **Edit and resend**
+  for a fork a message action started), and the header's project controls
+  stand down so the draft's Project chip is the one destination.
 - **Leaving.** Escape, Back, **Cancel return** or Cancel fork dismisses the
   draft and hands back its text; on a phone this restores the dock size the
   draft replaced. Start (and a fork's open) closes it as started before
@@ -279,8 +280,19 @@ that Project. Project Room messages remain shared discussion; only an explicit
 **Bring an Agent** request starts Agent work from the Room.
 A project with no folder can still be chosen and runs where the server puts it:
 the home folder, an ACP connection folder or private workspace, or a private
-workspace for a confined Codex session. The Project control draws its chosen
-icon, or a 12px accent dot when none is displayable. The project menu states the
+workspace for a confined Codex session. A No project chat runs in its own
+scratch folder, `<Station home>/scratch/<conversation>` (#4389), unless
+`AppConfig.noProjectChatFolder` is `home`; the server reads that once, at the
+conversation's first start, and a conversation that already recorded a folder
+keeps it. The scratch folder is prepared with the same safeguards as the
+managed engine workspaces, and the Codex adapter keeps it rather than making a
+second one, so a no-project Codex chat has one private folder. With the
+`home` choice a confined Codex chat is still unbound and gets its private
+workspace (#4448); other engines, and Codex on the host, run in home. The chip
+says "Runs in a private folder Station makes for this chat" for the scratch
+case, and the session card names any Station-made folder "Chat workspace"
+(`cwdManagedWorkspace`). The Project control draws its chosen icon, or a
+12px accent dot when none is displayable. The project menu states the
 server-resolved run location from `GET /api/projects/run-locations`; the
 Project catalogue and boot do not wait on folder checks. Until the separate
 read answers, the stored folder is shown. A manifest-bound Project names its
@@ -444,8 +456,9 @@ that cannot take another message (`terminalSession`) offers Send again to no
 caller. A failed retry from the picker keeps the last answer for that
 conversation. Not gated: the app-wide New chat entry points (toolbar,
 shortcut, inbox, task switcher), because the answer is per conversation, and
-Fork from turn, which posts `POST /agents/:slug/conversations/:id/fork`, a
-route the answer does not cover. The client does not re-derive scopes; when
+Fork from turn (and Regenerate and Edit and resend, which fork the same way),
+which posts `POST /agents/:slug/conversations/:id/fork`, a route the answer
+does not cover. The client does not re-derive scopes; when
 the server sent no answer, everything shows and the server still enforces.
 The answer is as of the last open read, so a scope changed mid-session shows
 on the next one. The agent-turn
@@ -1107,7 +1120,9 @@ picker offers **New Task from this** even with an empty Task catalog.
 
 Chat actions retains conversation history, background tasks, connection
 management where needed, and chat settings. Its geometry action is **Full screen**
-or **Exit full screen**. Collapse stays on the header control. No resize or
+or **Exit full screen**; the open phone bar also shows the same switch as a
+44px **Full screen chat** / **Restore chat size** control (#4391). Collapse
+stays on the header control. No resize or
 navigation action requires a gesture.
 
 Mobile message rows prioritize the authored text and essential live approval or

@@ -10,11 +10,13 @@
   --font-mono:
     "JetBrains Mono", "SF Mono", "Fira Code", "Cascadia Code", monospace;
 
-  /* Font size scale */
+  /* Font size scale. Controls and labels are at least 12px; 11px is only for
+     secondary metadata such as timestamps and counts (#4403). `--text-micro`
+     sizes the decorative loading dots, not text. */
   --text-micro: 8px;
-  --text-2xs: 9px;
-  --text-xs: 10px;
-  --text-sm: 11px;
+  --text-2xs: 11px;
+  --text-xs: 12px;
+  --text-sm: 12px;
   --text-base: 12px;
   --text-md: 13px;
   --text-lg: 14px;

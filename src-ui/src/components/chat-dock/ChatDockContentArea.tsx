@@ -2,7 +2,10 @@ import type { OrchestrationSessionSummary } from '@kontourai/station-sdk';
 import { type ComponentProps, memo } from 'react';
 import type { AgentData } from '../../contexts/AgentsContext';
 import type { ChatSession, FileAttachment } from '../../types';
-import type { ForkTurnSource } from '../chat/fork-turn-source';
+import type {
+  ForkTurnSource,
+  MessageResendRequest,
+} from '../chat/fork-turn-source';
 import { LazyBoundary, LazyBoundaryError } from '../LazyBoundary';
 import { NewChatAction } from '../NewChatAction';
 import { Empty, SkeletonList } from '../state';
@@ -88,6 +91,7 @@ interface ChatDockContentAreaProps {
     model?: string,
   ) => void;
   onForkFromTurn?: (source: ForkTurnSource) => void;
+  onResendFromMessage?: (request: MessageResendRequest) => void;
   /** Starts a new chat from the empty state (#800). */
   onNewChat: (
     initialMessage?: string,
@@ -141,6 +145,7 @@ function ChatDockContentAreaImpl({
   onFocusSession,
   onOpenConversation,
   onForkFromTurn,
+  onResendFromMessage,
   onNewChat,
   onRetryConversationOpen,
   onOpenBackgroundTasks,
@@ -263,6 +268,7 @@ function ChatDockContentAreaImpl({
               onNewChat={onNewChat}
               onRetryConversationOpen={onRetryConversationOpen}
               onForkFromTurn={onForkFromTurn}
+              onResendFromMessage={onResendFromMessage}
             />
           ) : (
             // #800: this instructed the user to click "New", which renders as a

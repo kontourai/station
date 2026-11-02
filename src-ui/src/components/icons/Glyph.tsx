@@ -36,6 +36,14 @@ export const ArchiveGlyph = /* @__PURE__ */ glyph(
   'M2.5 5.5h11v8h-11v-8ZM2 2.5h12v3H2v-3Zm4 6h4',
 );
 export const ArrowDownGlyph = /* @__PURE__ */ glyph('M3 5.5l5 5 5-5');
+/** Corners pointing out — grow a surface to full screen (#4391). */
+export const ExpandGlyph = /* @__PURE__ */ glyph(
+  'M2.5 6V2.5H6M10 2.5h3.5V6M13.5 10v3.5H10M6 13.5H2.5V10',
+);
+/** Corners pointing in — return a full-screen surface to its peek size. */
+export const RestoreGlyph = /* @__PURE__ */ glyph(
+  'M6 2.5V6H2.5M13.5 6H10V2.5M10 13.5V10h3.5M2.5 10H6v3.5',
+);
 export const ArrowLeftGlyph = /* @__PURE__ */ glyph('M10.5 3 5.5 8l5 5');
 export const ArrowRightGlyph = /* @__PURE__ */ glyph('M5.5 3l5 5-5 5');
 export const ArrowUpGlyph = /* @__PURE__ */ glyph('M3 10l5-5 5 5');

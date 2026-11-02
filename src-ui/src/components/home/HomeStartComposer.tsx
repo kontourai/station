@@ -7,6 +7,7 @@ import React, {
 } from 'react';
 import { useAgents } from '../../contexts/AgentsContext';
 import { useAuthorityPersistence } from '../../contexts/AuthorityPersistenceContext';
+import { useConfig } from '../../contexts/ConfigContext';
 import { useNavigation } from '../../contexts/NavigationContext';
 import {
   useScopedProjectRunLocationsQuery,
@@ -490,12 +491,15 @@ export function HomeStartComposer({
   // The sidebar's colours, from the one project list it shows.
   const accents = useProjectAccents();
   const icons = useProjectIcons();
+  // #4389: where a No project chat runs on this Station.
+  const noProjectChatFolder = useConfig()?.noProjectChatFolder ?? 'private';
   const option = viewModel.currentContextOption;
   const isGlobal = context === GLOBAL_CONTEXT;
   const workspaceHint = resolveNewChatWorkspaceHint({
     agent,
     project: viewModel.selectedProject,
     acpConnections,
+    noProjectChatFolder: isGlobal ? noProjectChatFolder : undefined,
   });
   const projectChip: StartProjectChip = contextPending
     ? { status: 'loading' }

@@ -1,5 +1,6 @@
 import type { AgentId } from '@kontourai/station-contracts/agent-identity';
 import { isStationAgentIdentity } from '@kontourai/station-contracts/agent-identity';
+import type { NoProjectChatFolder } from '@kontourai/station-contracts/config';
 import type { ProjectRunLocations } from '@kontourai/station-contracts/project';
 import {
   type ProjectChatDefaultsView,
@@ -60,8 +61,10 @@ export const NO_PROJECT_LABEL = 'No project';
  * The precedence below is a mirror of the server's, not a second opinion:
  * `orchestration-service.ts`'s `resolveStartSessionCwd` turns a project's
  * `workingDirectory` into the session's `cwd`. With none, a non-ACP engine
- * gets the home folder there (`project_without_directory` /
- * `unbound_chat`), while ACP is left to `acp-adapter.ts`, which resolves
+ * gets the home folder there for a Project with no folder
+ * (`project_without_directory`) and, for a chat with no Project, a private
+ * scratch folder unless the Station chose home (#4389,
+ * `no-project-chat-folder.ts`), while ACP is left to `acp-adapter.ts`, which resolves
  * `input.cwd || connectionCwd`, else a private Station-managed workspace
  * for the session (`managed-acp-workspace.ts`, archive#1403) — never home.
  * So a project directory outranks a connection default (verified live:
@@ -239,10 +242,16 @@ export function resolveNewChatWorkspaceHint({
   agent,
   project,
   acpConnections,
+  noProjectChatFolder,
 }: {
   agent: AgentData | undefined;
   project: ProjectMetadata | undefined;
   acpConnections: ACPSelectionConnection[];
+  /**
+   * #4389: set only when the start is a No project chat: this Station's
+   * `AppConfig.noProjectChatFolder`, `'private'` when it stores none.
+   */
+  noProjectChatFolder?: NoProjectChatFolder;
 }): NewChatWorkspaceHint {
   if (project?.runsAt?.kind === 'unavailable') {
     return { kind: 'unavailable', reason: project.runsAt.reason };
@@ -268,6 +277,12 @@ export function resolveNewChatWorkspaceHint({
   // The server leaves an ACP engine's fallback to its adapter, which makes a
   // private workspace rather than using home.
   if (agent?.engineConnectionType === 'acp') return { kind: 'managed' };
+  // #4389: a chat with no Project gets its own private folder too, unless
+  // this Station chose the home folder (`AppConfig.noProjectChatFolder`).
+  // Only a caller starting a No project chat passes this; a Project with no
+  // folder still runs in the home folder.
+  if (noProjectChatFolder && noProjectChatFolder !== 'home')
+    return { kind: 'managed' };
 
   return { kind: 'home' };
 }

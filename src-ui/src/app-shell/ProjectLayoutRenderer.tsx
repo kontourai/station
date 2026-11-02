@@ -477,6 +477,15 @@ export function LayoutStackHost({
   const [hostPersistence, setHostPersistence] = useState<
     'owned' | 'contended' | 'unavailable'
   >('owned');
+  const hostTakeOver = useRef<(() => void) | null>(null);
+  const onHostPersistenceChange = useCallback(
+    (status: 'owned' | 'contended' | 'unavailable', takeOver: () => void) => {
+      hostTakeOver.current = takeOver;
+      setHostPersistence(status);
+    },
+    [],
+  );
+  const useHostHere = useCallback(() => hostTakeOver.current?.(), []);
   /**
    * The Diff rail icon's changed-file count, when the layout already knows
    * it: the git status the Coding panes (the branch toolbar, the Diff) read
@@ -1215,6 +1224,7 @@ export function LayoutStackHost({
       badges={railBadges}
       popOut={popOut}
       persistence={document ? hostPersistence : 'owned'}
+      onUseHere={useHostHere}
       closable={(instance) =>
         !drillInInstances.some(
           (builtIn) => builtIn.instanceId === instance.instanceId,
@@ -1235,7 +1245,7 @@ export function LayoutStackHost({
           // save notice, no pane-actions chrome — the stack's breadcrumb, rail
           // and ⋯ carry what the reader needs (`CodingWorkbench`).
           presentation="chromeless"
-          onPersistenceStatusChange={setHostPersistence}
+          onPersistenceStatusChange={onHostPersistenceChange}
           onDocumentChange={handleHostDocumentChange}
           onOpenCatalog={requestCatalog}
           onOpenActionChange={captureHostOpen}

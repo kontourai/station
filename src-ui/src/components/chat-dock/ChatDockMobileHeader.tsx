@@ -8,10 +8,12 @@ import type { ProjectMetadata } from '../../contexts/ProjectsContext';
 import { Button } from '../Button';
 import {
   ArrowDownGlyph,
+  ExpandGlyph,
   FolderGlyph,
   InboxGlyph,
   MenuGlyph,
   NewChatGlyph,
+  RestoreGlyph,
 } from '../icons/Glyph';
 import { LazyBoundary } from '../LazyBoundary';
 import '../NewChatAction.css';
@@ -114,8 +116,23 @@ export interface ChatDockMobileDockToggle {
   onCollapse: () => void;
 }
 
+/**
+ * #4391: the visible full-screen/peek switch of an open dock. Full screen is
+ * where a phone chat lives; the peek (Half) is the deliberate smaller state,
+ * so both directions are one tap in the bar rather than a sheet row.
+ */
+export interface ChatDockMobileExtentToggle {
+  maximized: boolean;
+  onToggle: () => void;
+}
+
 interface ChatDockMobileHeaderProps {
   inboxActive?: boolean;
+  /**
+   * #4404 (A44): whether there is a chat to go back to. Without one the bar
+   * offers New chat, not a pressed "Back to chat" or chat actions.
+   */
+  hasConversation?: boolean;
   showDrawerToggle: boolean;
   showConnection: boolean;
   sessionTitle: string;
@@ -132,6 +149,7 @@ interface ChatDockMobileHeaderProps {
   onDragPointerDown: (event: ReactPointerEvent<HTMLElement>) => void;
   onDragClickCapture: (event: ReactMouseEvent<HTMLElement>) => void;
   dockToggle: ChatDockMobileDockToggle | null;
+  extentToggle?: ChatDockMobileExtentToggle | null;
   onNewChat: () => void;
   overflow: ChatDockMobileOverflowActions;
 }
@@ -139,6 +157,7 @@ interface ChatDockMobileHeaderProps {
 /** Project and conversation context stay directly operable; secondary actions use the sheet. */
 export function ChatDockMobileHeader({
   inboxActive = false,
+  hasConversation = true,
   showDrawerToggle,
   showConnection,
   sessionTitle,
@@ -155,6 +174,7 @@ export function ChatDockMobileHeader({
   onDragPointerDown,
   onDragClickCapture,
   dockToggle,
+  extentToggle = null,
   onNewChat,
   overflow,
 }: ChatDockMobileHeaderProps) {
@@ -212,6 +232,22 @@ export function ChatDockMobileHeader({
             <ArrowDownGlyph />
           </button>
         ) : null}
+        {extentToggle && (
+          <button
+            type="button"
+            className="app-toolbar__icon-btn chat-dock__mobile-header-icon chat-dock__mobile-extent"
+            aria-label={
+              extentToggle.maximized ? 'Restore chat size' : 'Full screen chat'
+            }
+            title={
+              extentToggle.maximized ? 'Restore chat size' : 'Full screen chat'
+            }
+            data-no-dock-drag=""
+            onClick={extentToggle.onToggle}
+          >
+            {extentToggle.maximized ? <RestoreGlyph /> : <ExpandGlyph />}
+          </button>
+        )}
         {projectSwitcher && !agentIdentity && (
           <button
             ref={projectTriggerRef}
@@ -260,18 +296,20 @@ export function ChatDockMobileHeader({
         />
       )}
       <div className="chat-dock__mobile-identity" data-dock-drag-passthrough="">
-        <Button
-          ref={inboxTriggerRef}
-          variant="ghost"
-          className="app-toolbar__icon-btn chat-dock__mobile-header-icon"
-          aria-label={inboxActive ? 'Back to chat' : 'Inbox'}
-          title={inboxActive ? 'Back to chat' : 'Inbox'}
-          aria-pressed={inboxActive}
-          data-no-dock-drag=""
-          onClick={onToggleInbox}
-        >
-          <InboxGlyph />
-        </Button>
+        {hasConversation || !inboxActive ? (
+          <Button
+            ref={inboxTriggerRef}
+            variant="ghost"
+            className="app-toolbar__icon-btn chat-dock__mobile-header-icon"
+            aria-label={inboxActive ? 'Back to chat' : 'Inbox'}
+            title={inboxActive ? 'Back to chat' : 'Inbox'}
+            aria-pressed={inboxActive}
+            data-no-dock-drag=""
+            onClick={onToggleInbox}
+          >
+            <InboxGlyph />
+          </Button>
+        ) : null}
         <span className="chat-dock__mobile-identity-lines">
           <span
             className="chat-dock__mobile-title chat-dock__mobile-title-text"
@@ -291,33 +329,37 @@ export function ChatDockMobileHeader({
         </span>
       </div>
       <div className="chat-dock__mobile-actions">
-        <button
-          ref={chatActionsTriggerRef}
-          type="button"
-          className="app-toolbar__icon-btn chat-dock__mobile-header-icon chat-dock__mobile-overflow-trigger"
-          aria-haspopup="dialog"
-          aria-expanded={isOverflowOpen}
-          aria-label="Chat actions"
-          aria-describedby={activitySummary ? activityDescriptionId : undefined}
-          title={
-            activitySummary ? `Chat actions — ${activitySummary}` : undefined
-          }
-          data-no-dock-drag=""
-          onClick={() => setIsOverflowOpen((open) => !open)}
-        >
-          <span aria-hidden="true">⋯</span>
-          {activitySummary && (
-            <>
-              <span
-                className="chat-dock__mobile-activity-dot"
-                aria-hidden="true"
-              />
-              <span id={activityDescriptionId} className="sr-only">
-                {activitySummary}
-              </span>
-            </>
-          )}
-        </button>
+        {hasConversation || showConnection ? (
+          <button
+            ref={chatActionsTriggerRef}
+            type="button"
+            className="app-toolbar__icon-btn chat-dock__mobile-header-icon chat-dock__mobile-overflow-trigger"
+            aria-haspopup="dialog"
+            aria-expanded={isOverflowOpen}
+            aria-label="Chat actions"
+            aria-describedby={
+              activitySummary ? activityDescriptionId : undefined
+            }
+            title={
+              activitySummary ? `Chat actions — ${activitySummary}` : undefined
+            }
+            data-no-dock-drag=""
+            onClick={() => setIsOverflowOpen((open) => !open)}
+          >
+            <span aria-hidden="true">⋯</span>
+            {activitySummary && (
+              <>
+                <span
+                  className="chat-dock__mobile-activity-dot"
+                  aria-hidden="true"
+                />
+                <span id={activityDescriptionId} className="sr-only">
+                  {activitySummary}
+                </span>
+              </>
+            )}
+          </button>
+        ) : null}
         <button
           type="button"
           className="app-toolbar__icon-btn new-chat-action new-chat-action--icon chat-dock__mobile-header-icon chat-dock__mobile-new"

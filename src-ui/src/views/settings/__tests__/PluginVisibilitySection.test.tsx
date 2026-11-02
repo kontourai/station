@@ -77,8 +77,13 @@ test('the section renders nothing at all when the route refuses this caller', ()
 });
 
 test('the operator has no grant row: they see everything by derivation', () => {
-  render(<PluginVisibilitySection />);
+  const { container } = render(<PluginVisibilitySection />);
   expect(screen.getByText('Collaborator')).toBeTruthy();
+  // #4402: the raw principal id is not shown as copy, only kept on hover.
+  expect(container.textContent).not.toContain('human:device:laptop');
+  expect(screen.getByText('Collaborator').getAttribute('title')).toBe(
+    'human:device:laptop',
+  );
   // The operator's own row is filtered out. Rendering it with an empty set of
   // toggles would show a grant record that does not exist and invite an
   // operator to "grant themselves" a plugin they already see.
