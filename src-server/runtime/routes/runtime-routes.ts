@@ -8103,7 +8103,7 @@ export function configureRuntimeRoutes(
     const browserArtifactsPreview = context.featurePreviews.bind({
       id: 'browser-artifacts',
       label: 'Browser artifacts',
-      description: 'Try Browser network diagnostics.',
+      description: 'Try Browser annotations and network diagnostics.',
     });
     const browserArtifactsEnabled = () =>
       browserArtifactsPreview.select({
