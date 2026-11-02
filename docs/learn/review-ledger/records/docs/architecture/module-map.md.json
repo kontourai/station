@@ -1576,7 +1576,9 @@
 
     "src-ui/src/components/chat/ConversationInboxMessages.css",
 
-    "src-ui/src/__tests__/ConversationInboxMessages.geometry.test.tsx"
+    "src-ui/src/__tests__/ConversationInboxMessages.geometry.test.tsx",
+
+    "src-server/services/orchestration/__tests__/ownership-cascade-gaps.test.ts"
   ],
 
   "checks": [
