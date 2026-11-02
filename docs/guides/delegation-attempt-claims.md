@@ -8,22 +8,20 @@ All delegation creates require `clientTurnId`. The separate
 [CreateRequestClaims owner](../../src-server/services/orchestration/create-request-claims.ts)
 binds authenticated user/tenant/principal and verified calling Session to the
 request kind, key and input. Each intended request needs a unique key. Completed
-receipts replay for seven wall-clock days, then expire. A dead unmarked claim
-with no Session can be reclaimed; a durable starting mark without confirmation
-is indeterminate. A pre-start refusal releases its request claim even when the
-target Session already exists; typed rejected starts also release the claim.
-Unconfirmed starting claims expire seven days after their first mark, and legacy
-starting claims receive a durable window on migration. Expiry leaves a compact
-indeterminate receipt: the original key keeps its Session reference and never
-executes again, while its active-request slot and pending-byte reservation are
-freed. A deliberate new key is permitted for a separate request after expiry and
-may duplicate the original effect. Expiry never authorizes automatic retry. The
-expired receipts retain input proof indefinitely within the ledger byte budget;
-see the API limits for capacity pressure. Inspect the reserved conversationId with `get_session` or the
-Session API; Station cannot automatically reconcile an absent Session. Admission reserves
-receipt bytes before effects; 1,024 records or the 4 MiB budget produce a typed
-HTTP 429. The [API reference](../reference/api.md) explains the 3 KiB receipt
-bound, migration and clock limits. This general contract preserves the peer
+receipts replay for seven wall-clock days, then expire. Dead unmarked requests
+reclaim immediately, including resumed Sessions. A starting mark without confirmed
+acceptance is indeterminate within its seven-day window. At expiry, the same key
+can reclaim only when no durable Session start record exists. Otherwise a compact
+tombstone keeps refusing it with its original Session reference.
+
+Tombstones are pruned oldest first only under admission capacity pressure; they
+count toward the 1,024-record and 4 MiB bounds. If pruning cannot make room, a typed
+HTTP 429 starts nothing. A pruned key loses protection, so neither absence nor
+expiry authorizes automatic retry. Inspect the original Session before any
+deliberate separate new request, which may duplicate existing work. The
+[API reference](../reference/api.md) owns the precise starting/refusal rules,
+3 KiB pending receipt reservation and clock limits. The general create store is
+new in this change and has no deployed-format migration. It preserves the peer
 identity, lookup authority and opt-in `attemptId` protocol below. The SDK uses an
 existing `attemptId` as its default key; retain it with the original input.
 

@@ -1,4 +1,3 @@
-import { createHash } from 'node:crypto';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { agentId } from '@kontourai/station-contracts/agent-identity';
@@ -23,7 +22,7 @@ const input = () => ({
   authority: sessionReadAuthorityFromRequest('operator', undefined, undefined),
   requestKey: 'request-1',
   intent: { message: 'hello' },
-  sessionExists: () => false,
+  hasSessionStartRecord: () => false,
 });
 const handle = (sessionId: string): ForegroundMessageHandle => ({
   conversationId: sessionId,
@@ -44,7 +43,7 @@ function setup() {
   const home = temp('create-claims-');
   return {
     home,
-    file: join(home, 'delegation-create-claims.json'),
+    file: join(home, 'create-request-claims.json'),
     claims: new CreateRequestClaims(home),
   };
 }
@@ -56,9 +55,6 @@ test('completed receipts replay for seven days, then expire without removing unr
   const { home, file, claims } = setup();
   const effect = vi.fn(async (id: string) => handle(id));
   const first = await claims.run(input(), effect);
-  const legacy = JSON.parse(readFileSync(file, 'utf8'));
-  legacy.version = 2;
-  writeFileSync(file, JSON.stringify(legacy));
   vi.setSystemTime(new Date('2026-11-02T00:00:00Z'));
   await expect(
     claims.run({ ...input(), requestKey: 'unresolved' }, async (id) => {
@@ -156,7 +152,7 @@ describe.each([false, true])(
           {
             ...input(),
             sessionId: existing ? 'resumed-session' : undefined,
-            sessionExists: () => existing,
+            hasSessionStartRecord: () => existing,
           },
           async () => {
             throw refusal;
@@ -169,7 +165,7 @@ describe.each([false, true])(
       const retryInput = {
         ...input(),
         sessionId: existing ? 'resumed-session' : undefined,
-        sessionExists: () => existing,
+        hasSessionStartRecord: () => existing,
       };
       const effect = vi.fn(async (id: string) => handle(id));
       const result = await claims.run(retryInput, effect);
@@ -222,38 +218,6 @@ test("two verified local agent sessions under one user cannot replay each other'
         claims.run({ ...input(), intent: { message: 'different' } }, effect),
     ),
   ).rejects.toMatchObject({ code: 'create_request_conflict' });
-});
-
-test('legacy completion timestamps are durably migrated even when capacity refuses the first new create', async () => {
-  vi.useFakeTimers({ toFake: ['Date'] });
-  vi.setSystemTime(new Date('2026-11-01T00:00:00Z'));
-  const { file, claims } = setup();
-  await claims.run(input(), async (id) => handle(id));
-  const ledger = JSON.parse(readFileSync(file, 'utf8'));
-  const row = Object.values(ledger.claims)[0] as {
-    digest: string;
-    completedAt?: number;
-  };
-  row.digest = createHash('sha256').update(row.digest).digest('hex');
-  delete row.completedAt;
-  ledger.version = 1;
-  ledger.claims = Object.fromEntries(
-    Array.from({ length: 1024 }, (_, n) => [
-      n.toString(16).padStart(64, '0'),
-      row,
-    ]),
-  );
-  writeFileSync(file, JSON.stringify(ledger));
-  const effect = vi.fn(async (id: string) => handle(id));
-  await expect(
-    claims.run({ ...input(), requestKey: 'new' }, effect),
-  ).rejects.toMatchObject({ code: 'create_request_capacity' });
-  expect(JSON.parse(readFileSync(file, 'utf8')).version).toBe(3);
-  vi.setSystemTime(new Date('2026-11-08T00:00:00Z'));
-  await expect(
-    claims.run({ ...input(), requestKey: 'new' }, effect),
-  ).resolves.toMatchObject({ providerTurnId: 'turn-1' });
-  expect(effect).toHaveBeenCalledTimes(1);
 });
 
 test('an oversized completion remains indeterminate within its reserved storage budget', async () => {
@@ -320,69 +284,42 @@ test('changed input conflicts while the original create is still running', async
   }
 });
 
-test('a starting claim expires into an indeterminate receipt while a deliberate new key can run', async () => {
+test('expiry with a durable Session start retains the key until capacity pressure', async () => {
   vi.useFakeTimers({ toFake: ['Date'] });
   vi.setSystemTime(new Date('2026-11-01T00:00:00Z'));
-  const { home, file, claims } = setup();
+  const { home, claims } = setup();
+  const request = { ...input(), hasSessionStartRecord: () => true };
+  let reserved = '';
   await expect(
-    claims.run(input(), async (id) => {
+    claims.run(request, async (id) => {
+      reserved = id;
       await markCreateRequestStarting(id);
       throw new Error('lost reply');
     }),
   ).rejects.toThrow('lost reply');
-  const ledger = JSON.parse(readFileSync(file, 'utf8'));
-  const originalKey = Object.keys(ledger.claims)[0];
-  const row = ledger.claims[originalKey];
-  ledger.claims = Object.fromEntries(
-    Array.from({ length: 1024 }, (_, n) => [
-      n === 0 ? originalKey : n.toString(16).padStart(64, '0'),
-      row,
-    ]),
-  );
-  writeFileSync(file, JSON.stringify(ledger));
   const effect = vi.fn(async (id: string) => handle(id));
-  vi.setSystemTime(new Date('2026-11-07T23:59:59.999Z'));
-  await expect(
-    new CreateRequestClaims(home).run(input(), effect),
-  ).rejects.toMatchObject({
-    code: 'create_request_indeterminate',
-    message: expect.stringContaining('Station cannot automatically reconcile'),
-  });
-  await expect(
-    claims.run({ ...input(), requestKey: 'new' }, effect),
-  ).rejects.toMatchObject({
-    code: 'create_request_capacity',
-  });
-  expect(effect).not.toHaveBeenCalled();
   vi.setSystemTime(new Date('2026-11-08T00:00:00Z'));
   await expect(
-    new CreateRequestClaims(home).run(input(), effect),
+    new CreateRequestClaims(home).run(request, effect),
   ).rejects.toMatchObject({
     code: 'create_request_indeterminate',
-    sessionId: row.sessionId,
+    sessionId: reserved,
     message: expect.stringContaining('A new key is permitted'),
   });
   expect(effect).not.toHaveBeenCalled();
   await expect(
-    new CreateRequestClaims(home).run(
-      { ...input(), requestKey: 'deliberate-new-key' },
-      effect,
-    ),
+    claims.run({ ...request, requestKey: 'separate-request' }, effect),
   ).resolves.toMatchObject({ providerTurnId: 'turn-1' });
-  expect(effect).toHaveBeenCalledTimes(1);
-  await expect(
-    new CreateRequestClaims(home).run(
-      { ...input(), intent: { message: 'different' } },
-      effect,
-    ),
-  ).rejects.toMatchObject({ code: 'create_request_conflict' });
   vi.setSystemTime(new Date('2027-11-08T00:00:00Z'));
   await expect(
-    new CreateRequestClaims(home).run(input(), effect),
+    new CreateRequestClaims(home).run(request, effect),
   ).rejects.toMatchObject({
     code: 'create_request_indeterminate',
-    sessionId: row.sessionId,
+    sessionId: reserved,
   });
+  await expect(
+    claims.run({ ...request, intent: { message: 'different' } }, effect),
+  ).rejects.toMatchObject({ code: 'create_request_conflict' });
   expect(effect).toHaveBeenCalledTimes(1);
 });
 
@@ -453,4 +390,119 @@ test('an oversized ledger refuses with typed capacity before effects', async () 
     limit: 'bytes',
   });
   expect(effect).not.toHaveBeenCalled();
+});
+
+test('a typed start refusal after a durable Session start cannot release the key', async () => {
+  const { claims } = setup();
+  let created = false;
+  const request = { ...input(), hasSessionStartRecord: () => created };
+  const refusal = new SessionStartRefusedError(
+    'late refusal',
+    'provider_session_start_failed',
+  );
+  await expect(
+    claims.run(request, async (id) => {
+      await markCreateRequestStarting(id);
+      created = true;
+      throw refusal;
+    }),
+  ).rejects.toBe(refusal);
+  const duplicate = vi.fn(async (id: string) => handle(id));
+  await expect(claims.run(request, duplicate)).rejects.toMatchObject({
+    code: 'create_request_indeterminate',
+  });
+  expect(duplicate).not.toHaveBeenCalled();
+});
+
+test('an expired starting claim without a Session start reclaims the same reserved identity', async () => {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(new Date('2026-11-01T00:00:00Z'));
+  const { home, claims } = setup();
+  let reserved = '';
+  await expect(
+    claims.run(input(), async (id) => {
+      reserved = id;
+      await markCreateRequestStarting(id);
+      throw new Error('crash before Session start');
+    }),
+  ).rejects.toThrow('crash before Session start');
+  const effect = vi.fn(async (id: string) => handle(id));
+  vi.setSystemTime(new Date('2026-11-07T23:59:59.999Z'));
+  await expect(claims.run(input(), effect)).rejects.toMatchObject({
+    code: 'create_request_indeterminate',
+  });
+  expect(effect).not.toHaveBeenCalled();
+  vi.setSystemTime(new Date('2026-11-08T00:00:00Z'));
+  expect(
+    (await new CreateRequestClaims(home).run(input(), effect)).sessionId,
+  ).toBe(reserved);
+  expect(effect).toHaveBeenCalledTimes(1);
+});
+
+test('capacity pressure prunes only the oldest tombstone and preserves newer indeterminate proof', async () => {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(new Date('2026-11-01T00:00:00Z'));
+  const { claims, file } = setup();
+  const request = { ...input(), hasSessionStartRecord: () => true };
+  let oldestId = '';
+  let newerId = '';
+  const fail = async (id: string) => {
+    await markCreateRequestStarting(id);
+    throw new Error('lost reply');
+  };
+  await expect(
+    claims.run(request, async (id) => {
+      oldestId = id;
+      return fail(id);
+    }),
+  ).rejects.toThrow('lost reply');
+  vi.setSystemTime(new Date('2026-11-08T00:00:00Z'));
+  const effect = vi.fn(async (id: string) => handle(id));
+  await expect(claims.run(request, effect)).rejects.toMatchObject({
+    code: 'create_request_indeterminate',
+  });
+  await expect(
+    claims.run({ ...request, requestKey: 'newer' }, async (id) => {
+      newerId = id;
+      return fail(id);
+    }),
+  ).rejects.toThrow('lost reply');
+  vi.setSystemTime(new Date('2026-11-15T00:00:00Z'));
+  await expect(
+    claims.run({ ...request, requestKey: 'newer' }, effect),
+  ).rejects.toMatchObject({ code: 'create_request_indeterminate' });
+  await claims.run({ ...request, requestKey: 'completed' }, async (id) =>
+    handle(id),
+  );
+  const ledger = JSON.parse(readFileSync(file, 'utf8'));
+  const completed = {
+    kind: 'foreground',
+    digest: Object.values(ledger.claims).map(
+      (row) => row as { digest: string },
+    )[0].digest,
+    sessionId: 'fixture-completed',
+    completedAt: Date.now(),
+    result: handle('fixture-completed'),
+  };
+  for (let n = Object.keys(ledger.claims).length; n < 1024; n++)
+    ledger.claims[`fixture-${n}`] = completed;
+  writeFileSync(file, JSON.stringify(ledger));
+  await expect(claims.run(request, effect)).rejects.toMatchObject({
+    code: 'create_request_indeterminate',
+    sessionId: oldestId,
+  });
+  await claims.run({ ...request, requestKey: 'capacity-pressure' }, effect);
+  const rows = Object.values(
+    JSON.parse(readFileSync(file, 'utf8')).claims,
+  ) as Array<{ sessionId: string }>;
+  expect(rows).toHaveLength(1024);
+  expect(rows.some((row) => row.sessionId === oldestId)).toBe(false);
+  expect(rows.some((row) => row.sessionId === newerId)).toBe(true);
+  await expect(
+    claims.run({ ...request, requestKey: 'newer' }, effect),
+  ).rejects.toMatchObject({
+    code: 'create_request_indeterminate',
+    sessionId: newerId,
+  });
+  expect(effect).toHaveBeenCalledTimes(1);
 });

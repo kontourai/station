@@ -15,9 +15,10 @@ await new CreateRequestClaims(home).run(
       undefined,
       undefined,
     ),
+    sessionId: cut === 'starting' ? undefined : 'resumed-session',
     requestKey: 'crash-key',
     intent: { message: 'original input' },
-    sessionExists: () => false,
+    hasSessionStartRecord: () => false,
   },
   async (id) => {
     if (cut !== 'reserved') await markCreateRequestStarting(id);

@@ -2678,46 +2678,43 @@ completion, identical retries replay the original receipt and changed input
 returns HTTP `409` (`client_turn_input_conflict` for foreground,
 `create_request_conflict` for delegation).
 
-A live owner holds its request lock. After a crash, an unmarked claim with no
-Session can be reclaimed under the same key and input. Station durably marks
-`starting` immediately before session start, an initial turn, or a forwarded
-create POST. A marked but
-unconfirmed create is indeterminate: inspect the returned Session reference and
-its turn delivery with the key. `get_session` and the Session API can inspect an
-existing Session; Station has no automatic reconciliation path for an absent
-Session. A pre-start refusal releases this request's claim even when its target
-Session already exists. A typed rejected start also releases the claim. The
-original typed error is preserved.
+A live owner holds its request lock. After its owner dies, a reservation with
+no starting mark is reclaimable immediately under the same key and input, even
+when it targets an existing Session. The absence of this request's mark proves
+it did not invoke. Station durably marks `starting` immediately before session
+start, an initial turn, or a forwarded create POST. A marked but unconfirmed
+create is indeterminate within its seven-day window. Inspect the returned
+Session reference with `get_session` or the Session API; Station has no automatic
+reconciliation path for an absent Session.
+
+A pre-start refusal releases this request's claim even when its target Session
+already exists. A standalone typed start-refusal error releases a marked claim
+only if `hasSessionStartRecord` proves no durable start exists. A confirmed typed
+rejection recorded through the request's rejection capability clears the mark.
+The original typed refusal is preserved.
 
 Completed receipts expire seven wall-clock days after completion; reusing one of
-those keys later is a new request. Retain the original Session reference and do
-not blindly retry outside that window.
+those keys later is a new request. An expired starting claim is reclaimable only
+when `hasSessionStartRecord` finds no durable start. For the key being retried,
+Station retains its reserved Session identity and input proof for that reclaim.
+Otherwise it becomes a compact tombstone and keeps refusing the key with the
+original Session reference. A live or unverifiable owner prevents expiry while
+its request is running. Forward clock jumps can shorten elapsed retention.
 
-Unconfirmed starting claims expire seven days after their first starting mark
-into compact indeterminate receipts. The original key continues to return HTTP
-409 with its original Session reference and never executes again; different input
-still conflicts. Expiry frees the active-request slot and pending-receipt
-reservation. After expiry, a caller may deliberately submit a separate request
-with a new key, after inspecting the original Session. That may duplicate an
-earlier effect; expiry does not prove failure or authorize an automatic retry.
-A live or unverifiable owner prevents expiry while its request is running.
-Forward clock jumps can shorten elapsed retention. Legacy starting claims receive
-a durable seven-day window at migration; legacy completed records receive the same
-window after their first observation. Unmarked reservations remain reclaimable
-only when no Session exists. Legacy unscoped keys fail closed for verified agent
-callers; inspect their original Session instead of automatically using a new key.
-Current operator and verified Session scopes have independent key namespaces.
-The create ledger upgrades to format 3 before admission; older writers reject
-that format rather than reclaim an expired indeterminate receipt.
+Tombstones are pruned only when a new admission would exceed the 1,024-record or
+4 MiB budget, oldest first. Live claims and completed receipts within their
+window are never pruned to admit a new request. If eligible tombstones cannot
+free enough capacity, HTTP 429 `create_request_capacity` refuses before effects.
+Each pending request reserves 3 KiB. An invalid or oversized returned receipt
+remains indeterminate rather than overflowing storage.
 
-Admission retains at most 1,024 active or completed requests within their window,
-plus expired indeterminate receipts, in a 4 MiB ledger. Each pending request
-reserves 3 KiB before effects. Expired indeterminate receipts retain their input
-proof and Session reference indefinitely, consume ledger bytes, and may eventually
-cause capacity pressure. Capacity refuses with HTTP 429,
-`create_request_capacity`, and starts nothing. An oversized or invalid receipt
-leaves its started create indeterminate rather than overflowing storage. These
-limits are separate from the turn ledger's seven-day retention.
+A pruned tombstone no longer protects its key. Retain the original Session
+reference and never blindly retry an old key: pruning or absence does not prove
+failure or authorize an automatic resend. A deliberate separate request with a
+new key may duplicate existing work. These bounds are separate from the turn
+ledger's seven-day retention. The general create ledger is introduced by this
+change; main persists only the separate portable-attempt ledger, so no legacy
+create-ledger migration is provided.
 
 An authorized delivery lookup for an explicitly settled prepared turn returns
 HTTP `409` with `code: client_turn_settled` and `disposition: cancelled` or

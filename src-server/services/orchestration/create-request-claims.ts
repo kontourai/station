@@ -37,32 +37,20 @@ interface Claim {
   sessionId: string;
   starting?: true;
   startedAt?: number;
-  expired?: true;
-  legacyDigest?: true;
+  tombstoneAt?: number;
   completedAt?: number;
   result?: CreateHandle;
 }
 function claimExpired(claim: Claim, now: number): boolean {
-  if (claim.expired) return false;
+  if (claim.tombstoneAt !== undefined) return false;
   const since = claim.result ? claim.completedAt : claim.startedAt;
   return since !== undefined && now - since >= RETENTION_MS;
 }
 
-function matchesClaimInput(claim: Claim, digest: string): boolean {
-  // Version 1 stored a second hash of the submission digest.
-  return (
-    claim.digest ===
-    (claim.legacyDigest
-      ? createHash('sha256').update(digest).digest('hex')
-      : digest)
-  );
-}
-
 interface Ledger {
-  version: 3;
+  version: 1;
   claims: Record<string, Claim>;
 }
-type StoredLedger = Ledger | { version: 1 | 2; claims: Record<string, Claim> };
 
 export function isCreateRequestHandle(
   value: unknown,
@@ -126,8 +114,8 @@ export class CreateRequestIndeterminateError extends Error {
   ) {
     super(
       expired
-        ? 'Creation remains indeterminate after its seven-day window. Inspect the returned conversationId with get_session or the Session API. The original key will never execute again. A new key is permitted for a deliberate separate request, which may duplicate the original effect.'
-        : 'Creation may have started. Inspect the returned conversationId with get_session or the Session API and retain the original request key. Station cannot automatically reconcile an absent Session. Do not resend under a new key within seven days. After expiry the original key remains indeterminate; a deliberate new key is permitted for a separate request and may duplicate the original effect.',
+        ? 'Creation remains indeterminate because a durable Session start exists. Inspect the returned conversationId with get_session or the Session API. This key is refused while its tombstone remains; capacity pressure may prune that protection. A new key is permitted for a deliberate separate request, which may duplicate the original effect.'
+        : 'Creation may have started. Inspect the returned conversationId with get_session or the Session API and retain the original request key. Station cannot automatically reconcile an absent Session. Do not resend under a new key within seven days. After seven days this key can retry only when no durable Session start exists; otherwise it remains indeterminate. A separate new request may duplicate the original effect.',
     );
   }
 }
@@ -172,13 +160,12 @@ export async function createRequestCallerSession(
 export class CreateRequestClaims {
   readonly #file: string;
   constructor(dataDir: string) {
-    // Keep the existing filename so deployed claims remain authoritative.
-    this.#file = join(dataDir, 'delegation-create-claims.json');
+    this.#file = join(dataDir, 'create-request-claims.json');
   }
-  #read(): { ledger: Ledger; migrated: boolean } {
-    let value: StoredLedger | typeof MISSING;
+  #read(): Ledger {
+    let value: Ledger | typeof MISSING;
     try {
-      value = readJsonFile<StoredLedger | typeof MISSING>(this.#file, MISSING, {
+      value = readJsonFile<Ledger | typeof MISSING>(this.#file, MISSING, {
         maxBytes: MAX_LEDGER_BYTES,
         label: 'Create request claims',
       });
@@ -190,34 +177,30 @@ export class CreateRequestClaims {
         throw new CreateRequestCapacityError('bytes');
       throw error;
     }
-    if (value === MISSING)
-      return { ledger: { version: 3, claims: {} }, migrated: false };
+    if (value === MISSING) return { version: 1, claims: {} };
     if (
       !value ||
       typeof value !== 'object' ||
-      ![1, 2, 3].includes(value.version) ||
+      value.version !== 1 ||
       !value.claims ||
       typeof value.claims !== 'object' ||
       Array.isArray(value.claims)
     )
       throw new Error('Malformed create request claims');
-    const now = Date.now();
-    let migrated = value.version !== 3;
     for (const claim of Object.values(value.claims)) {
       if (
         !claim ||
-        !(
-          value.version === 1 || claim.legacyDigest
-            ? /^[a-f0-9]{64}$/
-            : /^station-chat-submission\/v1:sha256:[a-f0-9]{64}$/
-        ).test(claim.digest) ||
+        !/^station-chat-submission\/v1:sha256:[a-f0-9]{64}$/.test(
+          claim.digest,
+        ) ||
         typeof claim.sessionId !== 'string' ||
         !claim.sessionId ||
         !['delegation', 'foreground'].includes(claim.kind) ||
         (claim.starting !== undefined && claim.starting !== true) ||
-        (claim.expired !== undefined && claim.expired !== true) ||
-        (claim.expired &&
-          (claim.starting !== undefined || claim.result !== undefined)) ||
+        (claim.tombstoneAt !== undefined &&
+          (!Number.isFinite(claim.tombstoneAt) ||
+            claim.starting !== undefined ||
+            claim.result !== undefined)) ||
         (claim.startedAt !== undefined && !Number.isFinite(claim.startedAt)) ||
         (claim.completedAt !== undefined &&
           !Number.isFinite(claim.completedAt)) ||
@@ -225,20 +208,8 @@ export class CreateRequestClaims {
           !isCreateRequestHandle(claim.result, claim))
       )
         throw new Error('Malformed create request claim');
-      if (value.version === 1) {
-        claim.legacyDigest = true;
-        if (claim.result) claim.completedAt = now;
-        else claim.starting = true;
-      }
-      if (claim.starting && claim.startedAt === undefined) {
-        claim.startedAt = now;
-        migrated = true;
-      }
     }
-    return {
-      ledger: { version: 3, claims: value.claims },
-      migrated,
-    };
+    return value;
   }
   async #withLockedLedger<T>(
     use: (ledger: Ledger) => T | Promise<T>,
@@ -247,22 +218,15 @@ export class CreateRequestClaims {
       `${this.#file}.mutation`,
     );
     try {
-      const { ledger, migrated } = this.#read();
-      if (migrated)
-        await publishJsonFileWithOwnedLock(this.#file, ledger, {
-          maxBytes: MAX_LEDGER_BYTES,
-          label: 'Create request claims',
-          indent: null,
-          trailingNewline: true,
-        });
+      const ledger = this.#read();
       return await use(ledger);
     } finally {
       await release();
     }
   }
-  async #update<T>(change: (ledger: Ledger) => T): Promise<T> {
+  async #update<T>(change: (ledger: Ledger) => T | Promise<T>): Promise<T> {
     return this.#withLockedLedger(async (ledger) => {
-      const result = change(ledger);
+      const result = await change(ledger);
       await publishJsonFileWithOwnedLock(this.#file, ledger, {
         maxBytes: MAX_LEDGER_BYTES,
         label: 'Create request claims',
@@ -281,7 +245,7 @@ export class CreateRequestClaims {
       requestKey: string;
       intent: unknown;
       sessionId?: string;
-      sessionExists: (sessionId: string) => Promise<boolean> | boolean;
+      hasSessionStartRecord: (sessionId: string) => Promise<boolean> | boolean;
     },
     effect: (sessionId: string) => Promise<T>,
   ): Promise<T> {
@@ -298,29 +262,16 @@ export class CreateRequestClaims {
       input.principal?.id ?? null,
       callerSessionId ?? null,
     ];
-    const legacyKey = createHash('sha256')
-      .update(
-        JSON.stringify([
-          input.kind,
-          JSON.stringify(scope.slice(0, 4)),
-          input.requestKey,
-        ]),
-      )
-      .digest('hex');
     const key = createHash('sha256')
       .update(JSON.stringify([input.kind, scope, input.requestKey]))
       .digest('hex');
     const digest = chatTurnSubmissionDigest(input.intent);
     // Reject changed input before waiting for the live request's ownership lock.
-    const known = await this.#withLockedLedger(
-      (ledger) =>
-        ledger.claims[key] ??
-        (!callerSessionId ? ledger.claims[legacyKey] : undefined),
-    );
+    const known = await this.#withLockedLedger((ledger) => ledger.claims[key]);
     if (
       known &&
       (!known.result || !claimExpired(known, Date.now())) &&
-      !matchesClaimInput(known, digest)
+      known.digest !== digest
     )
       throw new CreateRequestConflictError();
 
@@ -329,7 +280,7 @@ export class CreateRequestClaims {
       `${this.#file}.${key}.owner`,
     );
     try {
-      const reserved = await this.#update((ledger) => {
+      const claim = await this.#update(async (ledger) => {
         const now = Date.now();
         for (const [id, row] of Object.entries(ledger.claims)) {
           if (!claimExpired(row, now)) continue;
@@ -338,29 +289,21 @@ export class CreateRequestClaims {
             if (owner && lockOwnerAlive(owner.owner)) continue;
           }
           if (row.result) delete ledger.claims[id];
-          else {
-            row.expired = true;
+          else if (await input.hasSessionStartRecord(row.sessionId)) {
+            row.tombstoneAt = now;
             delete row.starting;
             delete row.startedAt;
-          }
-        }
-        if (callerSessionId && ledger.claims[legacyKey]?.legacyDigest)
-          throw new CreateRequestConflictError();
-        if (!callerSessionId && ledger.claims[legacyKey]) {
-          ledger.claims[key] = ledger.claims[legacyKey];
-          delete ledger.claims[legacyKey];
+          } else if (id === key) {
+            delete row.starting;
+            delete row.startedAt;
+          } else delete ledger.claims[id];
         }
         const existing = ledger.claims[key];
         if (existing) {
-          if (!matchesClaimInput(existing, digest))
+          if (existing.digest !== digest)
             throw new CreateRequestConflictError();
-          return { claim: existing, fresh: false };
+          return existing;
         }
-        if (
-          Object.values(ledger.claims).filter((row) => !row.expired).length >=
-          MAX_CLAIMS
-        )
-          throw new CreateRequestCapacityError('records');
         const row: Claim = {
           kind: input.kind,
           digest,
@@ -369,28 +312,42 @@ export class CreateRequestClaims {
             `${input.kind === 'delegation' ? 'task' : 'conversation'}:${randomUUID()}`,
         };
         ledger.claims[key] = row;
-        // Reserve room for every outstanding result before any effect can run.
-        const reservedBytes =
-          Buffer.byteLength(JSON.stringify(ledger) + '\n') +
-          Object.values(ledger.claims).filter((r) => !r.result && !r.expired)
-            .length *
-            (MAX_RECEIPT_BYTES + 128);
-        if (reservedBytes > MAX_LEDGER_BYTES)
-          throw new CreateRequestCapacityError('bytes');
-        return { claim: row, fresh: true };
+        const capacity = (): 'records' | 'bytes' | undefined => {
+          if (Object.keys(ledger.claims).length > MAX_CLAIMS) return 'records';
+          const reservedBytes =
+            Buffer.byteLength(JSON.stringify(ledger) + '\n') +
+            Object.values(ledger.claims).filter(
+              (r) => !r.result && r.tombstoneAt === undefined,
+            ).length *
+              (MAX_RECEIPT_BYTES + 128);
+          return reservedBytes > MAX_LEDGER_BYTES ? 'bytes' : undefined;
+        };
+        let limit = capacity();
+        if (limit) {
+          const tombstones = Object.entries(ledger.claims).flatMap(
+            ([id, row]) =>
+              row.tombstoneAt === undefined
+                ? []
+                : [{ id, at: row.tombstoneAt }],
+          );
+          tombstones.sort((a, b) => a.at - b.at || a.id.localeCompare(b.id));
+          for (const tombstone of tombstones) {
+            delete ledger.claims[tombstone.id];
+            limit = capacity();
+            if (!limit) break;
+          }
+        }
+        if (limit) throw new CreateRequestCapacityError(limit);
+        return row;
       });
-      const { claim } = reserved;
-      if (claim.expired)
+      if (claim.tombstoneAt !== undefined)
         throw new CreateRequestIndeterminateError(
           claim.sessionId,
           input.requestKey,
           true,
         );
       if (claim.result) return claim.result as T;
-      if (
-        claim.starting ||
-        (!reserved.fresh && (await input.sessionExists(claim.sessionId)))
-      )
+      if (claim.starting)
         throw new CreateRequestIndeterminateError(
           claim.sessionId,
           input.requestKey,
@@ -447,7 +404,11 @@ export class CreateRequestClaims {
         });
         return receipt as T;
       } catch (error) {
-        if (!starting || error instanceof SessionStartRefusedError)
+        if (
+          !starting ||
+          (error instanceof SessionStartRefusedError &&
+            !(await input.hasSessionStartRecord(claim.sessionId)))
+        )
           await this.#update((ledger) => {
             delete ledger.claims[key];
           });
@@ -464,7 +425,7 @@ export async function runDelegationCreate(
   authority: SessionReadAuthority,
   existingAttemptSessionId: string | undefined,
   create: (sessionId: string) => Promise<DelegatedTaskHandle>,
-  sessionExists: (sessionId: string) => Promise<boolean>,
+  hasSessionStartRecord: (sessionId: string) => Promise<boolean>,
 ): Promise<DelegatedTaskHandle> {
   const claims = input.delegationAttemptClaimStore?.createRequests;
   if (!claims)
@@ -485,7 +446,7 @@ export async function runDelegationCreate(
         attachments: input.taskRoomAttachments ?? null,
       },
       sessionId: existingAttemptSessionId ?? input.sessionId,
-      sessionExists,
+      hasSessionStartRecord,
     },
     create,
   );
@@ -496,7 +457,7 @@ export async function runForegroundCreateClaim(
   authority: SessionReadAuthority,
   intent: unknown,
   execute: (input: ForegroundMessageInput) => Promise<unknown>,
-  sessionExists: (sessionId: string) => Promise<boolean>,
+  hasSessionStartRecord: (sessionId: string) => Promise<boolean>,
   callerSessionId?: string,
 ): Promise<ForegroundMessageHandle> {
   if (input.conversationId) {
@@ -518,7 +479,7 @@ export async function runForegroundCreateClaim(
       callerSessionId,
       requestKey: input.clientTurnId,
       intent,
-      sessionExists,
+      hasSessionStartRecord,
     },
     async (conversationId) =>
       (await execute({ ...input, conversationId })) as ForegroundMessageHandle,

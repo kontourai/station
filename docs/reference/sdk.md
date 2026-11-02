@@ -4841,20 +4841,23 @@ For a new foreground conversation, retain the original input and key. A server
 containing the durable create-claim implementation reserves an implicit
 conversation allocation under the caller scope and key, replays its completed
 handle, and refuses changed input.
-A dead unmarked create with no Session can be reclaimed under the same key and
-input. A durable starting mark without confirmation is indeterminate; inspect
-its reserved reference with `get_session` or the Session API. Station cannot
-automatically reconcile an absent Session. Completed create receipts replay for
-seven wall-clock days after completion. Unconfirmed starting claims expire seven
-days after their first starting mark into compact indeterminate receipts. The
-original key remains indeterminate with its Session reference and never executes
-again. After expiry, a deliberate new key is permitted for a separate request; it
-may duplicate the original effect and must not be generated automatically. Pre-start refusals release the request key even for an existing Session.
-Keys must be unique per intended request within the caller scope (including a
-verified calling Session). Capacity is a typed HTTP 429 before effects. See the
-[API limits](api.md) for receipt-size and migration semantics. Older hosts may
-allocate a fresh conversation per attempt, so retain an explicit
-`conversationId` when their create-claim behavior is unknown.
+A dead owner's unmarked request can be reclaimed immediately under the same
+key and input, including a request targeting an existing Session. A durable
+starting mark without confirmation is indeterminate within seven days. At expiry,
+the original key may reclaim only if no durable Session start record exists;
+otherwise it keeps refusing with its original Session reference in a tombstone.
+Inspect that reference with `get_session` or the Session API. Station cannot
+automatically reconcile an absent Session.
+
+Tombstones are pruned only under record/byte capacity pressure, oldest first.
+Pruning removes key protection; neither absence nor expiry authorizes an automatic
+retry. A deliberate separate new key may duplicate existing work. Completed
+receipts replay for seven wall-clock days. Keys must be unique per intended
+request within caller scope, including a verified calling Session. Capacity is a
+typed HTTP 429 before effects. See the [API limits](api.md) for precise rejection,
+expiry and capacity rules. Older hosts may allocate a fresh conversation per
+attempt, so retain an explicit `conversationId` when their create-claim behavior
+is unknown.
 
 When the input is a Station-fetched MCP prompt, `sendExecutionMessage` accepts
 `mcpPromptOrigin: { serverId, name, receipt }` alongside the unchanged rendered

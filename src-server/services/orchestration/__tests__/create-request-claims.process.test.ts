@@ -4,14 +4,20 @@ import { resolve } from 'node:path';
 import { agentId } from '@kontourai/station-contracts/agent-identity';
 import { environmentId } from '@kontourai/station-contracts/execution-target';
 import { sessionReadAuthorityFromRequest } from '@kontourai/station-contracts/tenancy';
-import { expect, test, vi } from 'vitest';
+import { afterEach, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { CreateRequestClaims } from '../create-request-claims.js';
 
 const temp = trackTempDirs();
-test.each(['reserved', 'starting', 'rejected'])(
-  'SIGKILL after %s: only an unstarted create can be reclaimed',
-  async (cut) => {
+afterEach(() => vi.useRealTimers());
+test.each([
+  { cut: 'reserved', age: 0 },
+  { cut: 'reserved', age: 210 * 24 * 60 * 60 * 1000 },
+  { cut: 'starting', age: 0 },
+  { cut: 'rejected', age: 0 },
+])(
+  'SIGKILL after $cut (age=$age): an unmarked resumed claim reclaims without checking Session existence',
+  async ({ cut, age }) => {
     const home = temp('create-owner-crash-');
     const child = spawn(
       process.execPath,
@@ -80,24 +86,10 @@ test.each(['reserved', 'starting', 'rejected'])(
           },
         },
       }));
-      if (cut !== 'starting')
-        await expect(
-          new CreateRequestClaims(home).run(
-            {
-              kind: 'foreground',
-              principal: undefined,
-              authority: sessionReadAuthorityFromRequest(
-                'operator',
-                undefined,
-                undefined,
-              ),
-              requestKey: 'crash-key',
-              intent: { message: 'original input' },
-              sessionExists: () => true,
-            },
-            effect,
-          ),
-        ).rejects.toMatchObject({ outcome: 'indeterminate' });
+      if (age) {
+        vi.useFakeTimers({ toFake: ['Date'] });
+        vi.setSystemTime(Date.now() + age);
+      }
       await expect(
         new CreateRequestClaims(home).run(
           {
@@ -110,7 +102,7 @@ test.each(['reserved', 'starting', 'rejected'])(
             ),
             requestKey: 'crash-key',
             intent: { message: 'changed input' },
-            sessionExists: () => false,
+            hasSessionStartRecord: () => false,
           },
           effect,
         ),
@@ -127,7 +119,7 @@ test.each(['reserved', 'starting', 'rejected'])(
           ),
           requestKey: 'crash-key',
           intent: { message: 'original input' },
-          sessionExists: () => false,
+          hasSessionStartRecord: () => cut !== 'starting',
         },
         effect,
       );
