@@ -1018,23 +1018,27 @@ test.skipIf(!mediaReady)(
           allowed = false;
         },
       });
-      await expect(
-        h.recordSyntheticDevice({
+      const failure: unknown = await h
+        .recordSyntheticDevice({
           current: () => mode !== 'current' || allowed,
           authorize: async () => mode !== 'authorize' || allowed,
           onFrameConsumed: () => {
             consumed += 1;
           },
           ...(mode === 'rotation' ? { rotation: 90 } : {}),
-        }),
-      ).rejects.toMatchObject({
+        })
+        .then(
+          () => null,
+          (error: unknown) => error,
+        );
+      expect.soft(failure, mode).toMatchObject({
         code: 'recording-unavailable',
         message:
           mode === 'rotation'
             ? 'Rotated Device recording is unavailable.'
             : 'Recording authority changed during capture.',
       });
-      expect(consumed).toBe(1);
+      expect.soft(consumed, `${mode} consumed frames`).toBe(1);
     }
   },
 );
