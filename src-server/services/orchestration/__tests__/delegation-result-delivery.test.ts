@@ -711,7 +711,11 @@ describe('delegation result schema migration (#3158)', () => {
       });
       await delivery.reconcile();
       delivery.stop();
-      expect(starts).toEqual([starts[0], starts[0]]);
+      const expectedRequestId = `dr-${createHash('sha256')
+        .update(JSON.stringify(['child', `migrated-${_name}-2`]))
+        .digest('hex')
+        .slice(0, 40)}`;
+      expect(starts).toEqual([expectedRequestId, expectedRequestId]);
       expect(store.listForChild('child')[0]!.state).toBe('delivered');
       expect(JSON.parse(store.listForChild('child')[0]!.transitionKey)).toEqual(
         ['station.delegation-result/2', 'child', 'native', native],
