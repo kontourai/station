@@ -58,11 +58,13 @@
 
     "src-server/services/orchestration/remote-home-transfer-coordinator.ts",
 
-    "src-server/services/orchestration/session-turn-boundary.ts",
-
     "src-server/services/projects/task-dispatcher.ts",
 
-    "src-server/services/ssh/device-pairing-service.ts"
+    "src-server/services/ssh/device-pairing-service.ts",
+
+    "packages/monument/src/session-boundary.ts",
+
+    "src-server/services/orchestration/session-turn-boundary-binding.ts"
   ],
 
   "checks": [

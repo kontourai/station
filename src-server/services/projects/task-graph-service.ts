@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import { existsSync, realpathSync } from 'node:fs';
 import os from 'node:os';
 import { join, resolve } from 'node:path';
+import type { SessionStartBoundaryClaim } from '@kontourai/monument/session-boundary';
 import {
   canTransitionTaskStatus,
   createTaskSessionId,
@@ -80,7 +81,6 @@ import type { WorkflowSidecarService } from '../evidence/workflow-sidecar-servic
 import { JsonFileStore } from '../infra/json-store.js';
 import type { OrchestrationService } from '../orchestration/orchestration-service.js';
 import type { SessionOwnerStamp } from '../orchestration/session-owner-attribution.js';
-import type { SessionStartBoundaryClaim } from '../orchestration/session-turn-boundary.js';
 import { createIsolatedTaskSearch } from '../search/isolated-task-search.js';
 import { ProjectResourceResolver } from './project-resource-resolver.js';
 import type { ProjectService } from './project-service.js';

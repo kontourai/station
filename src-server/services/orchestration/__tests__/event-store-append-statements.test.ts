@@ -84,7 +84,11 @@ function committedRows(path: string) {
 // One explicit prepare call per selected shape and connection; execution stays fresh.
 // SQLite automatic recompilation after DDL is not counted by the spy.
 // Projection equivalence remains owned by the unchanged high-cardinality case.
-test('three append shapes use one explicit prepare call per connection with fresh bindings, schema changes, errors and reopen', () => {
+test('three append shapes use one explicit prepare call per connection with fresh bindings, schema changes, errors and reopen', ({
+  skip,
+}) => {
+  // Cache-reuse performance assertion; uncached correctness is covered separately.
+  if (process.env.STATION_DISABLE_EVENT_STORE_CACHES === '1') skip();
   const root = makeTempDir('event-store-append-statements-');
   const path = join(root, 'first.sqlite');
   const store = open(path);

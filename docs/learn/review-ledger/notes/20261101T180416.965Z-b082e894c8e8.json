@@ -1,0 +1,41 @@
+{
+  "revision": "f5b030fc273572db6832e27a264d119df765521d",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed RecoveryLedger and EventStore ownership against Monument recovery commands and the cache-disabled diagnostic; durable table and recovery authority are unchanged by cache bypass.","inputs":["docs/architecture/module-map.md","src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/contexts/evidence-governance/CONTEXT.md","note":"Reviewed receipt scope and outcome wording against verification environment identity; cache mode gets a distinct receipt and does not imply completion.","inputs":["docs/contexts/evidence-governance/CONTEXT.md","src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"Reviewed verification lane and receipt boundaries; the cache diagnostic changes environment identity, not the documented lane completion authority.","inputs":["docs/contexts/operations/CONTEXT.md","src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Reviewed recovery and cached inventory claims against EventStore cache bypass; transcript, stop and recovery authority remain unchanged.","inputs":["docs/design/chat-composer.md","src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/event-store-ledger-migration.md","note":"Reviewed recovery command ownership, Station table binding and credential recovery admission against EventStore and Monument; the diagnostic bypasses derived caches only.","inputs":["docs/design/event-store-ledger-migration.md","src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/mcp-ui-host.md","note":"Reviewed EventStore-related host and recovery references; bypassing derived and prepared statement caches changes no MCP UI host contract.","inputs":["docs/design/mcp-ui-host.md","src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/placement.md","note":"Reviewed placement and EventStore-related projection claims; the cache diagnostic does not change placement authority or persisted events.","inputs":["docs/design/placement.md","src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/pnpm-workspace-installation.md","note":"Reviewed verification and install evidence against the receipt environment identity change; managed dependency installation and cache-mode distinction remain separate.","inputs":["docs/design/pnpm-workspace-installation.md","scripts/__tests__/verification-receipt.test.ts","scripts/lib/test-reliability.mjs"]},
+
+    {"path":"docs/design/project-task-room-history.md","note":"Reviewed history persistence and worker claims against EventStore cache mode; durable event rows and worker ownership are unchanged.","inputs":["docs/design/project-task-room-history.md","src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/revision-bound-evidence.md","note":"Reviewed revision and receipt claims against EventStore diagnostic mode and verification identity; uncached runs receive distinct environment digests.","inputs":["docs/design/revision-bound-evidence.md","src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/shared-working-state.md","note":"Reviewed shared state and EventStore persistence claims; diagnostic cache bypass preserves committed authority and does not add a synchronization guarantee.","inputs":["docs/design/shared-working-state.md","src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/guides/dependency-security.md","note":"Reviewed verification receipt and dependency evidence references against the added cache-mode identity; dependency checks and their evidence scope are unchanged.","inputs":["docs/guides/dependency-security.md","scripts/lib/test-reliability.mjs"]},
+
+    {"path":"docs/guides/monitoring.md","note":"Reviewed EventStore telemetry and recovery descriptions; cache bypass changes neither recorded outcomes nor monitoring authority.","inputs":["docs/guides/monitoring.md","src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Reviewed EventStore configuration and persistence references; the diagnostic switch affects only derived and prepared statements, not saved configuration.","inputs":["docs/reference/config.md","src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/reference/env-vars.md","note":"Reviewed STATION_DISABLE_EVENT_STORE_CACHES against EventStore and verification identity: value 1 bypasses its derived and statement caches, without disabling durable or all process state.","inputs":["docs/reference/env-vars.md"]},
+
+    {"path":"docs/reference/verification-receipts.md","note":"Reviewed behavior environment digest and receipt reuse against test-reliability.mjs; uncached and ordinary diagnostic runs have distinct identities.","inputs":["docs/reference/verification-receipts.md","scripts/lib/test-reliability.mjs"]},
+
+    {"path":"packages/monument/CONTEXT.md","note":"Reviewed recovery storage and EventStore host boundary; Station keeps its existing tables and terminal predicate while Monument owns commands.","inputs":["packages/monument/CONTEXT.md","src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"packages/monument/README.md","note":"Reviewed adapter conformance and recovery host binding against Monument and EventStore; the diagnostic cache switch does not alter the package storage guarantees.","inputs":["packages/monument/README.md","src-server/services/orchestration/event-store.ts"]}
+  ]
+}

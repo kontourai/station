@@ -1,0 +1,41 @@
+{
+  "revision": "6a8f10f23df769db7ddcbc965b08815d7ac95b2a",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Reviewed RecoveryLedger and EventStore ownership against Monument recovery commands and the cache-disabled diagnostic; durable table and recovery authority are unchanged by cache bypass. Rechecked the subsequent formatting-only EventStore change and removal of an unused Station type alias.","inputs":["docs/architecture/module-map.md","src-server/services/orchestration/event-store.ts","src-server/services/orchestration/recovery-ledger-binding.ts"]},
+
+    {"path":"docs/contexts/evidence-governance/CONTEXT.md","note":"Reviewed receipt scope and outcome wording against verification environment identity; cache mode gets a distinct receipt and does not imply completion. Rechecked the subsequent formatting-only EventStore change and removal of an unused Station type alias.","inputs":["docs/contexts/evidence-governance/CONTEXT.md","src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/contexts/operations/CONTEXT.md","note":"Reviewed verification lane and receipt boundaries; the cache diagnostic changes environment identity, not the documented lane completion authority. Rechecked the subsequent formatting-only EventStore change and removal of an unused Station type alias.","inputs":["docs/contexts/operations/CONTEXT.md","src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/chat-composer.md","note":"Reviewed recovery and cached inventory claims against EventStore cache bypass; transcript, stop and recovery authority remain unchanged. Rechecked the subsequent formatting-only EventStore change and removal of an unused Station type alias.","inputs":["docs/design/chat-composer.md","src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/event-store-ledger-migration.md","note":"Reviewed recovery command ownership, Station table binding and credential recovery admission against EventStore and Monument; the diagnostic bypasses derived caches only. Rechecked the subsequent formatting-only EventStore change and removal of an unused Station type alias.","inputs":["docs/design/event-store-ledger-migration.md","src-server/services/orchestration/event-store.ts","src-server/services/orchestration/recovery-ledger-binding.ts"]},
+
+    {"path":"docs/design/mcp-ui-host.md","note":"Reviewed EventStore-related host and recovery references; bypassing derived and prepared statement caches changes no MCP UI host contract. Rechecked the subsequent formatting-only EventStore change and removal of an unused Station type alias.","inputs":["docs/design/mcp-ui-host.md","src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/placement.md","note":"Reviewed placement and EventStore-related projection claims; the cache diagnostic does not change placement authority or persisted events. Rechecked the subsequent formatting-only EventStore change and removal of an unused Station type alias.","inputs":["docs/design/placement.md","src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/pnpm-workspace-installation.md","note":"Reviewed verification and install evidence against the receipt environment identity change; managed dependency installation and cache-mode distinction remain separate. Rechecked the subsequent formatting-only EventStore change and removal of an unused Station type alias.","inputs":["docs/design/pnpm-workspace-installation.md"]},
+
+    {"path":"docs/design/project-task-room-history.md","note":"Reviewed history persistence and worker claims against EventStore cache mode; durable event rows and worker ownership are unchanged. Rechecked the subsequent formatting-only EventStore change and removal of an unused Station type alias.","inputs":["docs/design/project-task-room-history.md","src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/revision-bound-evidence.md","note":"Reviewed revision and receipt claims against EventStore diagnostic mode and verification identity; uncached runs receive distinct environment digests. Rechecked the subsequent formatting-only EventStore change and removal of an unused Station type alias.","inputs":["docs/design/revision-bound-evidence.md","src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/design/shared-working-state.md","note":"Reviewed shared state and EventStore persistence claims; diagnostic cache bypass preserves committed authority and does not add a synchronization guarantee. Rechecked the subsequent formatting-only EventStore change and removal of an unused Station type alias.","inputs":["docs/design/shared-working-state.md","src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/guides/dependency-security.md","note":"Reviewed verification receipt and dependency evidence references against the added cache-mode identity; dependency checks and their evidence scope are unchanged. Rechecked the subsequent formatting-only EventStore change and removal of an unused Station type alias.","inputs":["docs/guides/dependency-security.md"]},
+
+    {"path":"docs/guides/monitoring.md","note":"Reviewed EventStore telemetry and recovery descriptions; cache bypass changes neither recorded outcomes nor monitoring authority. Rechecked the subsequent formatting-only EventStore change and removal of an unused Station type alias.","inputs":["docs/guides/monitoring.md","src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/reference/config.md","note":"Reviewed EventStore configuration and persistence references; the diagnostic switch affects only derived and prepared statements, not saved configuration. Rechecked the subsequent formatting-only EventStore change and removal of an unused Station type alias.","inputs":["docs/reference/config.md","src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"docs/reference/env-vars.md","note":"Reviewed STATION_DISABLE_EVENT_STORE_CACHES against EventStore and verification identity: value 1 bypasses its derived and statement caches, without disabling durable or all process state. Rechecked the subsequent formatting-only EventStore change and removal of an unused Station type alias.","inputs":["docs/reference/env-vars.md"]},
+
+    {"path":"docs/reference/verification-receipts.md","note":"Reviewed behavior environment digest and receipt reuse against test-reliability.mjs; uncached and ordinary diagnostic runs have distinct identities. Rechecked the subsequent formatting-only EventStore change and removal of an unused Station type alias.","inputs":["docs/reference/verification-receipts.md"]},
+
+    {"path":"packages/monument/CONTEXT.md","note":"Reviewed recovery storage and EventStore host boundary; Station keeps its existing tables and terminal predicate while Monument owns commands. Rechecked the subsequent formatting-only EventStore change and removal of an unused Station type alias.","inputs":["packages/monument/CONTEXT.md","src-server/services/orchestration/event-store.ts"]},
+
+    {"path":"packages/monument/README.md","note":"Reviewed adapter conformance and recovery host binding against Monument and EventStore; the diagnostic cache switch does not alter the package storage guarantees. Rechecked the subsequent formatting-only EventStore change and removal of an unused Station type alias.","inputs":["packages/monument/README.md","src-server/services/orchestration/event-store.ts"]}
+  ]
+}

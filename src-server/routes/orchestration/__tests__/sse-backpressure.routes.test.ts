@@ -263,13 +263,16 @@ describe('SSE backpressure over real loopback sockets (#3817)', () => {
     allowed.mockRestore();
     f.emit(50, 10);
     f.emit(51, 10);
-    expect(
-      prepares.mock.calls.filter(([sql]) =>
-        sql.includes(
-          'SELECT global_sequence FROM orchestration_events WHERE id = ?',
+    // This assertion measures prepared-statement reuse; retain the delivery,
+    // serialization, binding and revocation checks in uncached diagnostics.
+    if (process.env.STATION_DISABLE_EVENT_STORE_CACHES !== '1')
+      expect(
+        prepares.mock.calls.filter(([sql]) =>
+          sql.includes(
+            'SELECT global_sequence FROM orchestration_events WHERE id = ?',
+          ),
         ),
-      ),
-    ).toHaveLength(1);
+      ).toHaveLength(1);
     expect(await a.until('"eventId":"event-50"')).not.toContain(
       '"eventId":"secret"',
     );

@@ -308,9 +308,11 @@ import {
   captureLoggerLines,
   stopLoggerCaptures,
 } from '../../../__test-utils__/logger-capture.js';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { setProviderAdapterRegistrationProvenance } from '../../../providers/adapter-shape.js';
 import { ModelCatalogHttpError } from '../../../providers/registries/catalog-http.js';
 import { credentialProfileApplication } from '../../../telemetry/metrics.js';
+import { createCredentialRecoveryModule } from '../../orchestration/credential-recovery-module.js';
 import { EventStore } from '../../orchestration/event-store.js';
 import {
   type ConnectionSmokeRunner,
@@ -787,6 +789,7 @@ describe('ConnectionService — model connection check evidence (RT-06)', () => 
 });
 
 describe('ConnectionService', () => {
+  const makeRecoveryTempDir = trackTempDirs();
   test('binds a public registry connection id to its runtime adapter for quota reads', async () => {
     const readQuotaSnapshot = vi.fn(async (_input: unknown) => ({
       kind: 'snapshot' as const,
@@ -3893,6 +3896,129 @@ describe('ConnectionService', () => {
     expect(staged.attempt).not.toHaveProperty('connectionId');
     expect(typeof staged.attempt.commit).toBe('function');
     expect(typeof staged.attempt.rollback).toBe('function');
+  });
+
+  test('#2823: real connection staging waits for an unresolved application on any connection', async () => {
+    const directory = makeRecoveryTempDir('credential-admission-');
+    const store = new EventStore(join(directory, 'orchestration.sqlite'));
+    try {
+      const protocol = store.createCredentialApplicationFactory();
+      const { service, getAppConfig } = createCredentialProfileApplyFixture(
+        vi.fn<ConnectionSmokeRunner>(),
+        'restart_resume',
+        protocol,
+      );
+      await service.setCredentialRecoveryAutomaticPolicy('codex', true);
+      getAppConfig().agentConnections.muse = structuredClone(
+        getAppConfig().agentConnections.codex,
+      );
+      vi.mocked(service.getConnection).mockImplementation(
+        async (id) =>
+          ({
+            id,
+            kind: 'agent',
+            type: id,
+            enabled: true,
+            capabilities: ['agent-runtime'],
+            config: { provider: id },
+          }) as any,
+      );
+      const adapter = service.createCredentialProfileRecoveryAdapter(
+        (provider) => provider,
+      );
+      if (
+        !adapter.inspectStartup ||
+        !adapter.settleStartup ||
+        !adapter.acknowledgeStartup
+      )
+        throw new Error('missing startup adapter');
+      const ledger = store.createRecoveryLedger({
+        credentialStartup: {
+          inspect: adapter.inspectStartup,
+          settle: adapter.settleStartup,
+          acknowledge: adapter.acknowledgeStartup,
+        },
+      });
+      const at = '2026-08-13T00:00:00.000Z';
+      const arm = (provider: string, fingerprint: string) =>
+        ledger.arm({
+          fingerprint,
+          threadId: fingerprint,
+          provider,
+          sourceEventId: `${fingerprint}-event`,
+          sourceTurnId: 'turn',
+          failureKind: 'capacity',
+          scope: 'account',
+          decision: 'retry-now',
+          dueAt: at,
+          maxAttempts: 1,
+          outcome: 'armed',
+          createdAt: at,
+          updatedAt: at,
+        });
+      const old = arm('codex', 'old');
+      const oldClaim = ledger.claim({
+        fingerprint: old.fingerprint,
+        kind: 'profile',
+        now: at,
+      });
+      if (oldClaim.kind !== 'owner') throw new Error('missing recovery claim');
+      const credential = oldClaim.attempt.prepareCredential(at);
+      if (credential.kind !== 'owner')
+        throw new Error('missing credential claim');
+      const application = protocol.start({
+        recoveryFingerprint: credential.attemptId,
+        connectionId: 'codex',
+        candidateProfileRef: 'canary-profile-ref',
+        previousProfileRef: 'profile-a',
+        now: at,
+      });
+      if (application.kind !== 'owner') throw new Error('missing application');
+      expect(application.claim.staged(at)).toEqual({ kind: 'applied' });
+      expect(application.claim.settle('indeterminate', at)).toEqual({
+        kind: 'applied',
+      });
+      expect(oldClaim.attempt.indeterminate(at)).toEqual({ kind: 'applied' });
+      const same = arm('codex', 'same');
+      const other = arm('muse', 'other');
+      const stage = vi.spyOn(
+        service,
+        'stageAutomaticCredentialProfileApplication',
+      );
+      const module = createCredentialRecoveryModule({
+        ledger,
+        adapter,
+        dispatchAdapter: {
+          dispatch: async () => ({ kind: 'accepted', turnId: 'recovered' }),
+        },
+        restoreSession: async () => undefined,
+        now: () => new Date(at),
+      });
+      const recover = (intent: typeof same) =>
+        module.recover({
+          intent,
+          replay: {
+            threadId: intent.threadId,
+            input: 'input',
+            recoveryCorrelationId: 'id',
+            signal: new AbortController().signal,
+          },
+        });
+      await expect(recover(same)).resolves.toEqual({ kind: 'unavailable' });
+      await expect(recover(other)).resolves.toEqual({ kind: 'unavailable' });
+      expect(stage).not.toHaveBeenCalled();
+      expect(application.claim.settle('rolled-back', at)).toEqual({
+        kind: 'applied',
+      });
+      await expect(recover(same)).resolves.toEqual({
+        kind: 'restarted',
+        turnId: 'recovered',
+      });
+      expect(stage).toHaveBeenCalledOnce();
+      service.dispose();
+    } finally {
+      store.close();
+    }
   });
 
   test('startup imports legacy credential evidence before routes can overwrite config', async () => {

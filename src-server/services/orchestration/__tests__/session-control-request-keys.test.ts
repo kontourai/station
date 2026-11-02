@@ -1,17 +1,19 @@
 import { join } from 'node:path';
+import {
+  runWithSessionControlKey,
+  sessionControlDeliveryId,
+  sessionControlRequestDigest,
+} from '@kontourai/monument/session-control';
 import { afterEach, describe, expect, test } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { EventStore } from '../event-store.js';
+import type { SqliteDatabase } from '../sqlite-database.js';
 import {
   createSqliteSessionControlRequestKeys,
-  runWithSessionControlKey,
   SESSION_CONTROL_REQUEST_KEY_MAX_ROWS,
   SESSION_CONTROL_REQUEST_KEY_MAX_ROWS_PER_CALLER,
   SESSION_CONTROL_REQUEST_KEY_TTL_MS,
-  sessionControlDeliveryId,
-  sessionControlRequestDigest,
-} from '../session-control-request-keys.js';
-import type { SqliteDatabase } from '../sqlite-database.js';
+} from '../sqlite-session-control-request-keys.js';
 
 // Registered first so the stores close (the hook below) before the directories go.
 const makeTempDir = trackTempDirs();

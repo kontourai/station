@@ -29,10 +29,12 @@ Station ownership of its native loop or every tool it executes.
 | Select and resolve an Agent | [Runtime Agent registry](../../../src-server/runtime/agents/runtime-agent-registry.ts) | Identity, current engine binding, and availability |
 | Start a Session | [SessionCommandModule](../../../src-server/services/orchestration/session-command-module.ts) | Start/reattach sequencing, command receipt durability, and uncertain provider creation |
 | Invoke an engine and compose services | [OrchestrationService](../../../src-server/services/orchestration/orchestration-service.ts) | Real provider caller and its cancellation path |
-| Admit a turn without replaying an uncertain effect | [Session execution coordinator](../../../src-server/services/orchestration/session-execution-coordinator.ts) and [durable invocation boundary](../../../src-server/services/orchestration/session-turn-boundary.ts) | Client-turn deduplication, provider acceptance, lifecycle exclusion, and retained uncertainty |
+| Admit a turn without replaying an uncertain effect | [Session execution coordinator](../../../src-server/services/orchestration/session-execution-coordinator.ts) and [durable invocation boundary](../../../packages/monument/src/session-boundary.ts) | Client-turn deduplication, provider acceptance, lifecycle exclusion, and retained uncertainty |
 | Record and read history | [EventStore](../../../src-server/services/orchestration/event-store.ts) | Persisted events, projections, and replay |
 | Change Session lifecycle | [SessionLifecycleModule](../../../src-server/services/orchestration/session-lifecycle-module.ts) | Transition ownership and concurrency with a new turn |
 | Attach an optional Flow run | [Flow policy owner](../../../src-server/services/orchestration/flow-policy-sidecar.ts) | Explicit `metadata.flowDefinition`, eligible definition, evidence, and completion verdict |
+
+Automatic credential recovery waits for startup reconciliation before staging. An unreadable scan or unresolved obligation blocks staging across connections until a later reconciliation succeeds. Due-claim scans also retry while the coordinator runs. See the [recovery module](../../architecture/module-map.md#credentialrecoverymodule).
 
 A Session can contain several turns. `idle` means a finished turn between
 messages; `completed` closes the Session. Stopped, terminal, and resumable have

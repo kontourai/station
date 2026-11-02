@@ -1,0 +1,7 @@
+{
+  "revision": "80eab4a73ff69eb9843b9f851f681221892772d4",
+
+  "notes": [
+    {"path":"docs/reference/verification-receipts.md","note":"Reviewed the receipt environment allowlist against test-reliability.mjs and its policy test: both cache diagnostic toggles change request identity, while receipts retain only their digest.","inputs":["docs/reference/verification-receipts.md"]}
+  ]
+}

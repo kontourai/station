@@ -81,7 +81,7 @@ import {
 import {
   SESSION_START_INDETERMINATE_CODE,
   SessionStartIndeterminateError,
-} from './session-turn-boundary.js';
+} from './session-turn-boundary-binding.js';
 
 const ATTACHED_SESSION_PROJECT_SLUG_MAX_LENGTH = 512;
 /** archive#1462: bounds the candidate list replayed out of event metadata. */

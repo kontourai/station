@@ -1,3 +1,7 @@
+import type {
+  RecoveryClaim,
+  RecoveryTransition,
+} from '@kontourai/monument/recovery';
 import type { ConnectionRecoveryIntent } from '@kontourai/station-contracts/connection-recovery';
 import { credentialProfileApplication } from '../../telemetry/metrics.js';
 import type { ClassifiedConnectionFailure } from '../connections/connection-recovery-policy.js';
@@ -6,11 +10,7 @@ import type {
   RecoveryDispatchAdapter,
   RecoveryDispatchReplay,
 } from './recovery-dispatch-adapter.js';
-import type {
-  RecoveryClaim,
-  RecoveryLedger,
-  RecoveryTransition,
-} from './recovery-ledger.js';
+import type { RecoveryLedger } from './recovery-ledger-binding.js';
 
 /** An opaque candidate from the connection implementation; it never enters events. */
 export interface CredentialProfileRecoveryAttempt {
@@ -90,6 +90,7 @@ interface CredentialRecoveryObservation {
 type CredentialRecoveryOutcome =
   | { kind: 'unnecessary' }
   | { kind: 'conflicted' }
+  | { kind: 'unavailable' }
   | { kind: 'restarted'; turnId: string }
   | { kind: 'recovered' }
   | { kind: 'rolled-back' }
@@ -192,7 +193,8 @@ class CredentialRecoveryImplementation implements CredentialRecoveryModule {
   private async recoverAfterStartup(
     observation: CredentialRecoveryObservation,
   ): Promise<CredentialRecoveryOutcome> {
-    await this.awaitStartupReadiness();
+    const readiness = await this.awaitStartupReadiness();
+    if (readiness.kind !== 'reconciled') return { kind: 'unavailable' };
     return this.recoverOne(observation);
   }
 

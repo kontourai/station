@@ -1,11 +1,12 @@
 // Frozen from EventStore.composeSessionTurnBoundaries at d57abb035ac3ad638cdf5615f4edbca051ac6e99.
 // Keep this pre-migration SQL independent of Monument for differential evidence.
-import { isProjectTaskRoomExecutionSealed } from '../../project-task-room-source-seal.js';
+
 import {
   SESSION_TURN_ACCEPTED_CAPACITY,
-  type SessionTurnBoundaryCoordinator,
   type SessionTurnBoundaryRecord,
-} from '../../session-turn-boundary.js';
+} from '@kontourai/monument/session-boundary';
+import { isProjectTaskRoomExecutionSealed } from '../../project-task-room-source-seal.js';
+import { type SessionTurnBoundaryCoordinator } from '../../session-turn-boundary-binding.js';
 import type { SqliteDatabase } from '../../sqlite-database.js';
 
 class EventAppendTransactionLostError extends Error {

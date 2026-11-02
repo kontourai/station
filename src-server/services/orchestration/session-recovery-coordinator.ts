@@ -1,3 +1,7 @@
+import type {
+  RecoveryClaim,
+  RecoveryTransition,
+} from '@kontourai/monument/recovery';
 import type { ChatAttachmentInput } from '@kontourai/station-contracts/chat-attachment';
 import type {
   ConnectionRecoveryDecision,
@@ -28,11 +32,7 @@ import {
 import { type CredentialRecoveryModule } from './credential-recovery-module.js';
 import type { EventStore } from './event-store.js';
 import type { RecoveryDispatchAdapter } from './recovery-dispatch-adapter.js';
-import {
-  type RecoveryClaim,
-  type RecoveryLedger,
-  type RecoveryTransition,
-} from './recovery-ledger.js';
+import type { RecoveryLedger } from './recovery-ledger-binding.js';
 import type {
   UsageLimitResumeChoice,
   UsageLimitResumeChoices,
@@ -113,6 +113,7 @@ export class SessionRecoveryCoordinator {
   private readonly cancellationResults = new Map<string, RecoveryTransition>();
   private credentialRecovery?: CredentialRecoveryModule;
   private disposed = false;
+  private dueScanRetry?: ReturnType<typeof setTimeout>;
 
   constructor(
     private readonly options: {
@@ -192,16 +193,7 @@ export class SessionRecoveryCoordinator {
     // profile attempt into candidate-profile compensation.  This coordinator
     // may settle ordinary recovery only; otherwise it would erase the
     // credential identity before its owner can make it safe.
-    const unsettled = this.ledger.reconcilePrepared(
-      this.now().toISOString(),
-      'due',
-    );
-    // An unreadable scan fences nothing, so there is no outcome to record.
-    // Its prepared rows stay durable for the next startup; this due-path
-    // sweep has no in-process retry (#2823 scopes that to credentials).
-    if (unsettled.kind === 'available')
-      for (const intent of unsettled.obligations)
-        this.recordIntentOutcome(intent, 'indeterminate');
+    this.reconcileDueClaims();
     // #3563: the bulk repair is defence in depth. Each timer re-checks the
     // same rule for its own intent before it can dispatch, so a failed
     // repair only needs to be said, not to pause every recovery.
@@ -216,6 +208,23 @@ export class SessionRecoveryCoordinator {
       this.schedule(intent.fingerprint, intent.dueAt);
     }
     void this.credentialRecovery?.reconcile();
+  }
+
+  private reconcileDueClaims(): void {
+    if (this.stopping || this.disposed) return;
+    const unsettled = this.ledger.reconcilePrepared(
+      this.now().toISOString(),
+      'due',
+    );
+    for (const intent of unsettled.obligations ?? [])
+      this.recordIntentOutcome(intent, 'indeterminate');
+    if (unsettled.kind === 'available') return;
+    if (this.dueScanRetry) return;
+    this.dueScanRetry = setTimeout(() => {
+      this.dueScanRetry = undefined;
+      this.reconcileDueClaims();
+    }, SOURCE_TERMINAL_FENCE_RETRY_MS);
+    this.dueScanRetry.unref();
   }
 
   /**
@@ -270,6 +279,8 @@ export class SessionRecoveryCoordinator {
   }
 
   async dispose(): Promise<void> {
+    if (this.dueScanRetry) clearTimeout(this.dueScanRetry);
+    this.dueScanRetry = undefined;
     if (this.disposed) return;
     this.stopping = true;
     for (const timer of this.timers.values()) clearTimeout(timer);
@@ -749,6 +760,16 @@ export class SessionRecoveryCoordinator {
         this.activeByThread.set(intent.threadId, intent.fingerprint);
         this.recordIntentOutcome(claimed, 'resumed');
       }
+      return true;
+    }
+    if (outcome.kind === 'unavailable') {
+      this.clearIntentRuntime(intent, false);
+      this.schedule(
+        intent.fingerprint,
+        new Date(
+          this.now().getTime() + SOURCE_TERMINAL_FENCE_RETRY_MS,
+        ).toISOString(),
+      );
       return true;
     }
     if (outcome.kind === 'conflicted') {

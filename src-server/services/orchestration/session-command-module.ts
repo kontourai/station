@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import { resolve as resolveFilesystemPath } from 'node:path';
+import { type SessionStartBoundaryClaim } from '@kontourai/monument/session-boundary';
 import type { AgentDelegationContext } from '@kontourai/station-contracts/agent';
 import type { ClientOrigin } from '@kontourai/station-contracts/client-origin';
 import type {
@@ -31,10 +32,7 @@ import type { DispatchCwdAdmission } from './dispatch-cwd-admission.js';
 import type { ExecutionWorkspaceBinding } from './execution-workspace-binding.js';
 import type { ForegroundInvocationAdmission } from './foreground-invocation-admission.js';
 import type { StartOwnerAttribution } from './session-owner-attribution.js';
-import {
-  type SessionStartBoundaryClaim,
-  SessionStartIndeterminateError,
-} from './session-turn-boundary.js';
+import { SessionStartIndeterminateError } from './session-turn-boundary-binding.js';
 
 /** The only start-session intent callers may issue. */
 export type SessionCommand = {

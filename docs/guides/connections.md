@@ -1256,6 +1256,11 @@ profile whose overlay is identical to the active profile's; when every
 enrolled candidate differs, it refuses with `environment_mismatch`. Choosing
 a profile by hand, or pinning one on an Agent, is not restricted this way.
 
+Automatic profile recovery waits while startup reconciliation cannot read its
+obligations or an earlier application remains unresolved. This pause applies
+across connections; Station retries an armed recovery after reconciliation can
+be attempted again. It does not prove that a previous provider call was undone.
+
 ### Prefer allowance that expires sooner during account recovery
 
 Automatic recovery keeps enrollment order unless you explicitly add an

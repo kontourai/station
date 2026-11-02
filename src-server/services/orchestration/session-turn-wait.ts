@@ -1,4 +1,5 @@
 import type { InvocationTerminalRead } from '@kontourai/monument';
+import type { InputlessTurnDisposition } from '@kontourai/monument/session-boundary';
 import {
   type CanonicalRuntimeEvent,
   isProviderTriggeredTurn,
@@ -9,7 +10,6 @@ import {
   nextTurnIdentityAnchor,
   type TurnIdentityAnchor,
 } from './session-lifecycle-service.js';
-import type { InputlessTurnDisposition } from './session-turn-boundary.js';
 
 /**
  * #3160: the wait behind `wait_session`.

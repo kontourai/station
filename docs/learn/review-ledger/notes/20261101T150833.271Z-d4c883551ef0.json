@@ -1,0 +1,7 @@
+{
+  "revision": "4fc48d51b3e8f0e856818f3979f8c82e078dae57",
+
+  "notes": [
+    {"path":"docs/design/event-store-ledger-migration.md","note":"Reviewed the recovery protocol move, existing EventStore SQL binding, startup admission and retry against source and focused SQLite tests. Monument recovery storage commands and adapter conformance are not established.","inputs":["docs/design/event-store-ledger-migration.md","docs/architecture/module-map.md","src-server/services/orchestration/credential-recovery-module.ts","src-server/services/orchestration/event-store.ts","src-server/services/orchestration/recovery-ledger.ts","packages/monument/src/recovery-ledger.ts","src-server/services/orchestration/recovery-ledger-binding.ts"]}
+  ]
+}

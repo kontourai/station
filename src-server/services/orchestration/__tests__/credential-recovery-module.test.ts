@@ -13,7 +13,8 @@ import {
 } from '../credential-recovery-module.js';
 import { EventStore } from '../event-store.js';
 import type { RecoveryDispatchAdapter } from '../recovery-dispatch-adapter.js';
-import type { RecoveryLedger } from '../recovery-ledger.js';
+import type { RecoveryLedger } from '../recovery-ledger-binding.js';
+import { observeRecoveryScans } from './fixtures/recovery-scan-fault.js';
 
 function recoveryLedger(eventStore: EventStore) {
   return eventStore.createRecoveryLedger();
@@ -509,24 +510,110 @@ describe('CredentialRecoveryModule', () => {
     return { databasePath, intent };
   }
 
-  /**
-   * The production coordinator's SQLite read behind both startup scans. A
-   * throw here is what SQLITE_BUSY at boot looks like to RecoveryLedger.
-   */
-  function preparedScan(eventStore: EventStore) {
-    return vi.spyOn(
-      eventStore as unknown as {
-        preparedRecoveryDispatches: (...args: unknown[]) => unknown;
-      },
-      'preparedRecoveryDispatches',
-    );
-  }
+  const preparedScan = observeRecoveryScans;
 
   const busy = () => {
     throw Object.assign(new Error('SQLITE_BUSY: database is locked'), {
       code: 'SQLITE_BUSY',
     });
   };
+
+  test('#2823: an unreadable startup scan refuses staging until a later successful scan', async () => {
+    const { eventStore, intent } = fixture();
+    preparedScan(eventStore).mockImplementationOnce(busy);
+    const stage = vi.fn(async () => credentialAttempt());
+    const module = createCredentialRecoveryModuleForTest({
+      eventStore,
+      adapter: { stage },
+      restartResume: vi.fn(async () => ({ turnId: 'recovered' })),
+      restoreSession: vi.fn(async () => undefined),
+      now: () => new Date('2026-08-12T00:00:01.000Z'),
+    });
+    const observation = {
+      intent,
+      replay: {
+        threadId: 'thread',
+        input: 'authoritative',
+        recoveryCorrelationId: 'id',
+        signal: new AbortController().signal,
+      },
+    };
+
+    await expect(module.recover(observation)).resolves.toEqual({
+      kind: 'unavailable',
+    });
+    expect(stage).not.toHaveBeenCalled();
+    expect(recoveryLedger(eventStore).find(intent.fingerprint)).toMatchObject({
+      outcome: 'armed',
+    });
+    await expect(module.recover(observation)).resolves.toEqual({
+      kind: 'restarted',
+      turnId: 'recovered',
+    });
+    expect(stage).toHaveBeenCalledOnce();
+    eventStore.close();
+  });
+
+  test('#2823: an unresolved startup receipt blocks same and unrelated connections until settled', async () => {
+    const { databasePath } = await persistAcceptedLinkedReceipt();
+    const store = new EventStore(databasePath);
+    const ledger = recoveryLedger(store);
+    const makeIntent = (provider: string) =>
+      ledger.arm({
+        fingerprint: `${provider}:new:capacity:account`,
+        threadId: `${provider}-new`,
+        provider,
+        sourceEventId: `${provider}-event`,
+        sourceTurnId: 'new',
+        failureKind: 'capacity',
+        scope: 'account',
+        decision: 'retry-now',
+        dueAt: '2026-08-12T00:00:00.000Z',
+        maxAttempts: 1,
+        outcome: 'armed',
+        createdAt: '2026-08-12T00:00:00.000Z',
+        updatedAt: '2026-08-12T00:00:00.000Z',
+      });
+    const same = makeIntent('codex');
+    const other = makeIntent('other');
+    let settled = false;
+    const stage = vi.fn(async () => credentialAttempt());
+    const module = createCredentialRecoveryModuleForTest({
+      eventStore: store,
+      adapter: {
+        stage,
+        inspectStartup: vi.fn(async () =>
+          settled
+            ? { kind: 'already-adopted' as const }
+            : { kind: 'indeterminate' as const },
+        ),
+        acknowledgeStartup: vi.fn(async () => ({ kind: 'applied' as const })),
+      },
+      restartResume: vi.fn(async () => ({ turnId: 'recovered' })),
+      restoreSession: vi.fn(async () => undefined),
+      now: () => new Date('2026-08-12T00:00:01.000Z'),
+    });
+    const recover = (intent: ConnectionRecoveryIntent) =>
+      module.recover({
+        intent,
+        replay: {
+          threadId: intent.threadId,
+          input: 'input',
+          recoveryCorrelationId: 'id',
+          signal: new AbortController().signal,
+        },
+      });
+    await expect(recover(same)).resolves.toEqual({ kind: 'unavailable' });
+    await expect(recover(other)).resolves.toEqual({ kind: 'unavailable' });
+    expect(stage).not.toHaveBeenCalled();
+    settled = true;
+    await expect(recover(other)).resolves.toEqual({
+      kind: 'restarted',
+      turnId: 'recovered',
+    });
+    expect(stage).toHaveBeenCalledOnce();
+    store.close();
+  });
 
   test('#2823: a startup scan that fails once does not latch reconciliation, and the retry settles the obligation', async () => {
     const { databasePath, intent } = await persistAcceptedLinkedReceipt();
@@ -641,18 +728,10 @@ describe('CredentialRecoveryModule', () => {
 
   test('#2823: a failed legacy-row scan alone keeps readiness unknown and suppresses the orphan sweep', async () => {
     const { eventStore } = fixture();
-    const store = eventStore as unknown as {
-      preparedRecoveryDispatches: (
-        kind?: 'due' | 'profile',
-        unlinkedOnly?: boolean,
-      ) => unknown;
-    };
-    const read = store.preparedRecoveryDispatches.bind(eventStore);
     let legacyFailures = 1;
     preparedScan(eventStore).mockImplementation((...args: unknown[]) => {
-      // Only the identity-free legacy read (`unlinkedOnly`) fails, once.
-      if (args[1] === true && legacyFailures-- > 0) busy();
-      return read(...(args as Parameters<typeof read>));
+      // The first bound SQL parameter selects the identity-free legacy rows.
+      if (args[0] === 1 && legacyFailures-- > 0) busy();
     });
     const rollbackPending = vi.fn(async () => undefined);
     const module = createCredentialRecoveryModuleForTest({
@@ -834,9 +913,11 @@ describe('CredentialRecoveryModule', () => {
           throw new Error('commit stale');
         }),
         rollback,
-        rollbackPending: vi.fn(async () => {
-          throw new Error('still unavailable');
-        }),
+        rollbackPending: vi
+          .fn(async (): Promise<void> => {
+            throw new Error('still unavailable');
+          })
+          .mockResolvedValueOnce(undefined),
       },
       restartResume: vi.fn(async () => ({ turnId: 'recovered-turn' })),
       restoreSession: vi.fn(async () => undefined),
@@ -1252,9 +1333,11 @@ describe('CredentialRecoveryModule', () => {
           throw new Error('commit unavailable');
         }),
         rollback,
-        rollbackPending: vi.fn(async () => {
-          throw new Error('compensation unavailable');
-        }),
+        rollbackPending: vi
+          .fn(async (): Promise<void> => {
+            throw new Error('compensation unavailable');
+          })
+          .mockResolvedValueOnce(undefined),
       },
       restartResume: vi.fn(async () => ({ turnId: 'recovered-turn' })),
       restoreSession,
@@ -1395,9 +1478,11 @@ describe('CredentialRecoveryModule', () => {
         // an application before its call failed. It is not an unavailable
         // candidate and therefore must never re-arm the recovery intent.
         stage: vi.fn(async () => ({ kind: 'indeterminate' as const })),
-        rollbackPending: vi.fn(async () => {
-          throw new Error('scoped cleanup unavailable');
-        }),
+        rollbackPending: vi
+          .fn(async (): Promise<void> => {
+            throw new Error('scoped cleanup unavailable');
+          })
+          .mockResolvedValueOnce(undefined),
       },
       restoreSession: vi.fn(async () => undefined),
       now: () => new Date('2026-08-12T00:00:00.000Z'),

@@ -474,7 +474,7 @@ export interface TurnAbortedEvent extends CanonicalRuntimeEventBase {
    * Set ONLY by `InterruptedTurnRecovery.consume()` (station#2235). Marks
    * this abort as synthesized crash recovery, not the engine's own terminal
    * fact for the turn. The boundary-retirement machinery
-   * (`session-turn-boundary.ts`'s `observe()` and the event store's
+   * (the Monument boundary's `observe()` and the event store's
    * `reconcileSessionTurnTerminalsFromEvents`) ignores a marked abort, so
    * the recovery's own boundary row survives until its explicit resolve and
    * the crash-window retry chain (banner, FileMemory marker, explicit

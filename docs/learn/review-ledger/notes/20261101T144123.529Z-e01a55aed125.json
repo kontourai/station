@@ -1,0 +1,7 @@
+{
+  "revision": "a97818c3a43c55aa27ebcc1e7b4bd3f5b6838f05",
+
+  "notes": [
+    {"path":"docs/contexts/agent-runtime/CONTEXT.md","note":"Reviewed credential startup admission and retry statement against CredentialRecoveryModule and SessionRecoveryCoordinator, including focused SQLite scan-failure and retry tests; no live provider claim.","inputs":["docs/contexts/agent-runtime/CONTEXT.md"]}
+  ]
+}

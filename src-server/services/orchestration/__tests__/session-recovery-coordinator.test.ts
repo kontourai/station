@@ -21,6 +21,10 @@ import {
 import { EventStore } from '../event-store.js';
 import type { RecoveryDispatchAdapter } from '../recovery-dispatch-adapter.js';
 import { SessionRecoveryCoordinator as RuntimeSessionRecoveryCoordinator } from '../session-recovery-coordinator.js';
+import {
+  observeRecoveryFences,
+  observeRecoveryScans,
+} from './fixtures/recovery-scan-fault.js';
 
 function recoveryLedger(eventStore: EventStore) {
   return eventStore.createRecoveryLedger();
@@ -183,6 +187,67 @@ describe('SessionRecoveryCoordinator', () => {
       .splice(0)
       .forEach((dir) => rmSync(dir, { recursive: true, force: true })),
   );
+
+  test('#2823: retries profile recovery after startup storage becomes readable', async () => {
+    vi.useFakeTimers();
+    const store = new EventStore(
+      join(makeTempDir('recovery-readiness-'), 'events.sqlite'),
+    );
+    const now = new Date('2026-07-29T12:00:00.000Z');
+    const scan = observeRecoveryScans(store);
+    scan.mockImplementationOnce(() => {
+      throw new Error('SQLITE_BUSY');
+    });
+    const stage = vi.fn(async () => ({
+      candidateProfileRef: 'backup',
+      capability: 'restart_resume' as const,
+    }));
+    const restartResume = vi.fn(async () => ({ turnId: 'profile-turn' }));
+    const sendTurn = vi.fn(async () => ({ turnId: 'ordinary-turn' }));
+    const coordinator = new SessionRecoveryCoordinator({
+      eventStore: store,
+      adapterForProvider: () =>
+        ({
+          metadata: {
+            recovery: { sameSession: true, application: 'restart_resume' },
+          },
+        }) as any,
+      credentialRecoveryAdapter: { stage },
+      restartResume,
+      sendTurn,
+      now: () => now,
+    });
+    store.appendEvent({
+      eventId: 'started',
+      provider: 'claude',
+      threadId: 'thread',
+      turnId: 'turn',
+      createdAt: now.toISOString(),
+      method: 'turn.started',
+      prompt: 'input',
+    });
+    coordinator.observe({
+      eventId: 'exhausted',
+      provider: 'claude',
+      threadId: 'thread',
+      turnId: 'turn',
+      createdAt: now.toISOString(),
+      method: 'runtime.error',
+      severity: 'error',
+      message: 'account capacity exhausted',
+      details: { scope: 'account', retryAfterMs: 0 },
+    });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(stage).not.toHaveBeenCalled();
+    expect(sendTurn).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(stage).toHaveBeenCalledOnce();
+    expect(restartResume).toHaveBeenCalledOnce();
+    expect(sendTurn).not.toHaveBeenCalled();
+    await coordinator.dispose();
+    store.close();
+    vi.useRealTimers();
+  });
 
   test('restarts a staged credential profile and commits only its matching completion without recording the ref', async () => {
     vi.useFakeTimers();
@@ -1146,9 +1211,11 @@ describe('SessionRecoveryCoordinator', () => {
         }),
         commit: vi.fn(async () => ({ kind: 'adopted' as const })),
         rollback,
-        rollbackPending: vi.fn(async () => {
-          throw new Error('compensation unavailable during shutdown');
-        }),
+        rollbackPending: vi
+          .fn(async (): Promise<void> => {
+            throw new Error('compensation unavailable during shutdown');
+          })
+          .mockResolvedValueOnce(undefined),
       },
       now: () => now,
     });
@@ -2673,12 +2740,7 @@ describe('SessionRecoveryCoordinator', () => {
   test('#2823: startup records nothing when the due scan is unavailable', () => {
     const { path, fingerprint } = abandonedDueClaim();
     const store = new EventStore(path);
-    vi.spyOn(
-      store as unknown as {
-        preparedRecoveryDispatches: (...args: unknown[]) => unknown;
-      },
-      'preparedRecoveryDispatches',
-    ).mockImplementation(() => {
+    observeRecoveryScans(store).mockImplementation(() => {
       throw new Error('SQLITE_BUSY: database is locked');
     });
     const { coordinator, outcomes } = restartedCoordinator(store);
@@ -2693,6 +2755,74 @@ describe('SessionRecoveryCoordinator', () => {
       dispatchSettlement: 'prepared',
     });
     store.close();
+  });
+
+  test('#2823: retries an unavailable due scan in the same process', async () => {
+    vi.useFakeTimers();
+    const { path, fingerprint } = abandonedDueClaim();
+    const store = new EventStore(path);
+    const scan = observeRecoveryScans(store);
+    scan.mockImplementationOnce(() => {
+      throw new Error('SQLITE_BUSY');
+    });
+    const { coordinator, outcomes } = restartedCoordinator(store);
+    coordinator.reconcile();
+    expect(outcomes).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(recoveryLedger(store).find(fingerprint)).toMatchObject({
+      outcome: 'indeterminate',
+    });
+    expect(outcomes).toHaveBeenCalledWith({
+      failureKind: 'capacity',
+      decision: 'retry-now',
+      outcome: 'indeterminate',
+    });
+    await coordinator.dispose();
+    store.close();
+    vi.useRealTimers();
+  });
+
+  test('#2823: records due claims fenced before a mid-scan failure and retries the remainder', async () => {
+    vi.useFakeTimers();
+    const { path, fingerprint } = abandonedDueClaim();
+    const previous = new EventStore(path);
+    const ledger = recoveryLedger(previous);
+    const first = ledger.find(fingerprint);
+    if (!first) throw new Error('missing first intent');
+    const second = ledger.arm({
+      ...first,
+      fingerprint: 'second-due-claim',
+      threadId: 'second-thread',
+      sourceEventId: 'second-event',
+      outcome: 'armed',
+    });
+    expect(
+      ledger.claim({
+        fingerprint: second.fingerprint,
+        kind: 'due',
+        now: '2026-08-11T12:00:00.000Z',
+      }).kind,
+    ).toBe('owner');
+    previous.close();
+    const store = new EventStore(path);
+    let calls = 0;
+    observeRecoveryFences(store).mockImplementation(() => {
+      if (++calls === 2) throw new Error('SQLITE_BUSY');
+    });
+    const { coordinator, outcomes } = restartedCoordinator(store);
+    coordinator.reconcile();
+    expect(outcomes).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(outcomes).toHaveBeenCalledTimes(2);
+    expect(recoveryLedger(store).find(fingerprint)).toMatchObject({
+      outcome: 'indeterminate',
+    });
+    expect(recoveryLedger(store).find(second.fingerprint)).toMatchObject({
+      outcome: 'indeterminate',
+    });
+    await coordinator.dispose();
+    store.close();
+    vi.useRealTimers();
   });
 
   test('refuses a re-entrant runtime error after dispose publishes its stopping gate', async () => {

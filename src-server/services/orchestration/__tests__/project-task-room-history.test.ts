@@ -35,7 +35,7 @@ import {
 } from '../project-task-room-history.js';
 import { createProjectTaskRoomWorkingState } from '../project-task-room-working-state.js';
 import { SessionExecutionCoordinator } from '../session-execution-coordinator.js';
-import { runSessionStartWithBoundary } from '../session-turn-boundary.js';
+import { runSessionStartWithBoundary } from '../session-turn-boundary-binding.js';
 
 const workerConstructions = vi.hoisted(() => ({ count: 0 }));
 // Track construction while retaining the real worker and SQLite implementation.
