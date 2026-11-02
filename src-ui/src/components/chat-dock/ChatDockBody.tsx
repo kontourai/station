@@ -53,6 +53,7 @@ import { isReplayThread } from '../../hooks/orchestration/replay/replay-registry
 import { useActiveChatTranscript } from '../../hooks/orchestration/useActiveChatTranscript';
 import { useChatStreamStatus } from '../../hooks/orchestration/useChatStreamStatus';
 import { useACPConnections } from '../../hooks/useACPConnections';
+import { useActiveStationName } from '../../hooks/useActiveStationName';
 import type { useChatInput } from '../../hooks/useChatInput';
 import { useFeatureSettings } from '../../hooks/useFeatureSettings';
 import { useShareReceiver } from '../../hooks/useShareReceiver';
@@ -645,13 +646,17 @@ export function ChatDockBody({
   );
   // Stable across renders unless the saved Station or accountable display name
   // changes, preserving ChatMessageList's memoization.
+  // #4402: "via <machine>" for the seeded "Default" connection.
+  const activeStationName = useActiveStationName();
   const owner = useMemo(
     () =>
       ownerAttributionFromStation(
-        activeConnection,
+        activeConnection && activeStationName
+          ? { ...activeConnection, name: activeStationName }
+          : activeConnection,
         verifiedBuildLabel ? `Station ${verifiedBuildLabel}` : null,
       ),
-    [activeConnection],
+    [activeConnection, activeStationName],
   );
   const accountableHuman = useMemo(
     () => accountableHumanFromUser(user),

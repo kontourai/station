@@ -4,6 +4,7 @@ import type {
   ConnectionFailureReason,
   ConnectionStatus,
 } from '@kontourai/station-connect';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ChatDockMobileConnection } from '../components/chat-dock/ChatDockMobileConnection';
@@ -173,6 +174,32 @@ describe('ChatDockMobileConnection', () => {
     expect(button.getAttribute('aria-label')).toBe(
       'Manage Stations — Connected · Station · Kontour',
     );
+  });
+
+  it('names the seeded "Default" Station after its machine, and its details show the build (#4402)', () => {
+    activeConnection = {
+      id: 'seeded',
+      name: 'Default',
+      url: 'http://station.test',
+    };
+    const client = new QueryClient();
+    client.setQueryData(['system-status', 'http://station.test'], {
+      devicePresentation: { deviceClass: 'host', hostName: 'desktop-win' },
+      build: { shortSha: 'abc1234', channel: 'nightly' },
+    });
+    render(
+      <QueryClientProvider client={client}>
+        <ChatDockMobileConnection />
+        <StationDetailsHost />
+      </QueryClientProvider>,
+    );
+    const button = screen.getByTestId('chat-dock-mobile-connection');
+    expect(button.textContent).toBe('Station · desktop-win');
+    fireEvent.click(button);
+    const details = screen.getByRole('dialog', { name: 'Station details' });
+    expect(details.textContent).toContain('desktop-win');
+    expect(details.textContent).not.toContain('Default');
+    expect(details.textContent).toContain('Build nightly · abc1234');
   });
 
   it('shows the saved Station label and status in the expanded mobile connection sheet', () => {
