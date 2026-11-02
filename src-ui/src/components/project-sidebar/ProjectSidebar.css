@@ -188,6 +188,29 @@
   display: none;
 }
 
+/* #4397: the phone drawer's recent chats. */
+.sidebar__recent-chat-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.sidebar__recent-chat {
+  min-height: 44px;
+}
+
+.sidebar__section-link {
+  min-height: 44px;
+  padding: 0 var(--k-space-2);
+  border: none;
+  background: transparent;
+  color: var(--k-action);
+  font: inherit;
+  letter-spacing: normal;
+  text-transform: none;
+  cursor: pointer;
+}
+
 .sidebar__section-add {
   flex-shrink: 0;
   display: inline-flex;
