@@ -229,11 +229,13 @@ function putBlock(
     at: first.createdAt,
     wires: frames.map((frame) => frame.wire),
     ...(times.some((at) => at !== first.createdAt)
-      ? {
-          elapsed: times.map(
-            (at) => Date.parse(at) - Date.parse(first.createdAt),
-          ),
-        }
+      ? times.every((at) => new Date(Date.parse(at)).toISOString() === at)
+        ? {
+            elapsed: times.map(
+              (at) => Date.parse(at) - Date.parse(first.createdAt),
+            ),
+          }
+        : { times }
       : {}),
     ...(frames.some((frame, index) => frame.position !== first.position + index)
       ? { positions: frames.map((frame) => frame.position) }
