@@ -1,0 +1,7 @@
+{
+  "revision": "922e90f8b00eb5a29054cdb970f56d1d64d5f4f3",
+
+  "notes": [
+    {"path":"docs/design/process-supervisor.md","note":"Re-read the generations, crash-restart and failure-modes sections against packages/supervisor/src/protocol.ts and generation-manager.ts after this change: a handoff trial still has parkTimeoutMs (30 s); launchActive (first boot, crash restart, rollback relaunch) now waits bootParkTimeoutMs (120 s); waitForDeadline logs 'did not park within …ms (park deadline)' or the readiness equivalent before the generation is ended; noteFailure gives up at maxFailures within failureWindowMs or maxFailures consecutive failures with no commitActive between them. Updated step 1 and the crash-restart paragraph to say so; the failure-modes table rows remain accurate.","inputs":["docs/design/process-supervisor.md"]}
+  ]
+}
