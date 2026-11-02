@@ -897,7 +897,9 @@ export function NewChatModal({
         choice.expectedDefinitionFingerprint !== agent.definitionFingerprint
       ) {
         setSelectFeedback(
-          'Choose a verified engine on that Station before starting a task. Visual skills stay in the foreground chat.',
+          experience
+            ? 'Visual skills aren’t available for this remote start.'
+            : 'Choose a verified engine on that Station before starting.',
         );
         setShowChatOptions(true);
         return;
@@ -910,24 +912,34 @@ export function NewChatModal({
           );
           return;
         }
-        onPeerChatStarted(agent, {
-          environmentId: choice.environmentId,
-          stationName:
-            stationChoices.nameFor(choice.environmentId) ?? 'Selected Station',
-          conversationId: `chat:${randomCorrelationId()}`,
-          agentId: agent.slug,
-          executionAgentId: choice.executionAgentId,
-          expectedDefinitionFingerprint: choice.expectedDefinitionFingerprint,
-          projectSlug: peerChat.project?.slug,
-          projectName: peerChat.project?.name,
-          model: choice.modelId,
-          providerOptions: choice.providerOptions,
-          pending: {
-            id: randomCorrelationId(),
-            text: initialMessage ?? '',
-            dispatched: false,
-          },
-        });
+        try {
+          startedRef.current = true;
+          onPeerChatStarted(agent, {
+            environmentId: choice.environmentId,
+            stationName:
+              stationChoices.nameFor(choice.environmentId) ??
+              'Selected Station',
+            conversationId: `chat:${randomCorrelationId()}`,
+            agentId: agent.slug,
+            executionAgentId: choice.executionAgentId,
+            expectedDefinitionFingerprint: choice.expectedDefinitionFingerprint,
+            projectSlug: peerChat.project?.slug,
+            projectName: peerChat.project?.name,
+            model: choice.modelId,
+            providerOptions: choice.providerOptions,
+            pending: {
+              id: randomCorrelationId(),
+              text: initialMessage ?? '',
+              dispatched: false,
+            },
+          });
+        } catch (error) {
+          startedRef.current = false;
+          setSelectFeedback(
+            userFacingErrorMessage(error, 'Could not open the chat.'),
+          );
+          setShowChatOptions(true);
+        }
         return;
       }
       setRemoteLaunch({ profile: agent, choice, prompt: initialMessage ?? '' });
@@ -2343,7 +2355,7 @@ export function NewChatModal({
               peerChat.active
                 ? {
                     options: peerChat.options,
-                    context: peerChat.context ?? GLOBAL_CONTEXT,
+                    context: peerChat.context ?? '',
                     workspaceHint: peerChat.project?.workingDirectory
                       ? {
                           kind: 'unverified',

@@ -116,6 +116,7 @@ function start() {
 function wire() {
   const state = {
     uncertain: false,
+    stopUncertain: false,
     accepted: false,
     busy: false,
     events: [] as CanonicalRuntimeEvent[],
@@ -159,6 +160,7 @@ function wire() {
     }
     if (path.endsWith('/api/orchestration/commands')) {
       commands.push(JSON.parse(String(init?.body)));
+      if (state.stopUncertain) throw new Error('Stop response lost');
       state.busy = false;
       return Response.json({ success: true, data: {} });
     }
@@ -399,3 +401,24 @@ test.each([true, false])(
     ).toBeTruthy();
   },
 );
+
+test('a failed Stop clears its warning once history confirms the turn finished', async () => {
+  const { state, commands } = wire();
+  state.busy = true;
+  start()();
+  const stop = await screen.findByRole('button', { name: 'Stop' });
+  state.stopUncertain = true;
+  fireEvent.click(stop);
+  await screen.findByText('Couldn’t confirm the Station’s response');
+  expect(commands).toHaveLength(1);
+  state.busy = false;
+  await act(() =>
+    client.invalidateQueries({ queryKey: ['peer-chat-history'] }),
+  );
+  await waitFor(() =>
+    expect(
+      screen.queryByText('Couldn’t confirm the Station’s response'),
+    ).toBeNull(),
+  );
+  expect(screen.queryByRole('button', { name: 'Stop' })).toBeNull();
+});

@@ -135,6 +135,7 @@ export function createPeerChatRoutes(deps: {
         body = JSON.stringify(parsed.data);
       }
     }
+    let forwarded = false;
     try {
       const id = c.req.param('environmentId');
       const peer = deps.peers.get(id);
@@ -194,6 +195,7 @@ export function createPeerChatRoutes(deps: {
           },
           409,
         );
+      forwarded = true;
       const response = await fetchRemoteStation(
         `${target.apiBase}${path}${url.search}`,
         {
@@ -221,9 +223,10 @@ export function createPeerChatRoutes(deps: {
       return new Response(response.body, {
         status: response.status,
         headers: {
-          'Content-Type': path.includes('/content/')
-            ? 'text/plain; charset=utf-8'
-            : 'application/json; charset=utf-8',
+          'Content-Type':
+            response.ok && path.includes('/content/')
+              ? 'text/plain; charset=utf-8'
+              : 'application/json; charset=utf-8',
           'X-Content-Type-Options': 'nosniff',
           ...Object.fromEntries(
             [
@@ -240,12 +243,12 @@ export function createPeerChatRoutes(deps: {
         },
       });
     } catch {
-      if (request.method === 'POST') c.header(RELAYED_RESPONSE_HEADER, '1');
+      if (forwarded) c.header(RELAYED_RESPONSE_HEADER, '1');
       return c.json(
         {
           success: false,
           error:
-            request.method === 'POST'
+            request.method === 'POST' && forwarded
               ? 'The Station did not confirm this change. Check the conversation before sending again.'
               : 'Could not reach the paired Station. Reconnect and try again.',
         },

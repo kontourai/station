@@ -52,8 +52,7 @@ export function PeerChatBody({
   binding: PeerChatBinding;
   onEditDraft?: (intent: NewChatIntent) => void;
 }) {
-  const host = useHostRequestAuthorityScope();
-  const scope = host;
+  const scope = useHostRequestAuthorityScope();
   const apiBase = scope
     ? peerChatApiBase(scope.apiBase, binding.environmentId)
     : undefined;
@@ -217,6 +216,9 @@ export function PeerChatBody({
     },
     onSuccess: refresh,
   });
+  useEffect(() => {
+    if (history.isSuccess && !busy && stop.error) stop.reset();
+  }, [history.isSuccess, busy, stop.error, stop.reset]);
   if (!enabled)
     return (
       <ErrorState

@@ -186,4 +186,35 @@ describe('paired Station foreground chat bridge', () => {
     expect(response.headers.get('X-Station-Content-Kind')).toBe('string');
     expect(await response.text()).toBe('<script>untrusted</script>');
   });
+  test('an identity transport failure does not claim a foreground send was attempted', async () => {
+    const { call, fetch } = fixture();
+    fetch.mockRejectedValue(new Error('offline'));
+    const response = await call('/api/orchestration/chat', {
+      target: { environment: { kind: 'current' }, agent: 'codex' },
+      message: 'Hello',
+    });
+    expect(response.status).toBe(502);
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(await response.json()).toMatchObject({
+      error: 'Could not reach the paired Station. Reconnect and try again.',
+    });
+  });
+
+  test('content refusals retain the JSON error envelope', async () => {
+    const { call, fetch } = fixture();
+    fetch.mockImplementation(async (input) =>
+      String(input).endsWith('/.well-known/station/v1')
+        ? Response.json({ environmentId: 'desktop-win' })
+        : Response.json(
+            { success: false, error: 'Content unavailable' },
+            { status: 404 },
+          ),
+    );
+    const response = await call('/api/orchestration/sessions/one/content/ref');
+    expect(response.status).toBe(404);
+    expect(response.headers.get('Content-Type')).toContain('application/json');
+    expect(await response.json()).toMatchObject({
+      error: 'Content unavailable',
+    });
+  });
 });
