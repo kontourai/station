@@ -45,6 +45,9 @@ interface TaskPickerProps<TTarget> {
   /** Receives the target captured when this dialog opened, never live row props. */
   attach: (taskId: string, target: TTarget) => Promise<unknown>;
   successMessage: (task: TaskPickerTask) => string;
+  failureMessage?: string;
+  submitLabel?: string;
+  pendingLabel?: string;
 }
 
 function sortTasks(tasks: readonly TaskPickerTask[]): TaskPickerTask[] {
@@ -76,6 +79,9 @@ export function TaskPicker<TTarget>({
   onAttached,
   attach,
   successMessage,
+  failureMessage = 'Unable to add this to the Task. Try again.',
+  submitLabel = 'Add to Task',
+  pendingLabel = 'Adding…',
 }: TaskPickerProps<TTarget>) {
   const [openTarget, setOpenTarget] = useState<TTarget | null>(() =>
     initiallyOpen ? target : null,
@@ -192,9 +198,9 @@ export function TaskPicker<TTarget>({
                   onClick={() => void submit()}
                   disabled={!selectedTask}
                   pending={isPending}
-                  pendingLabel="Adding…"
+                  pendingLabel={pendingLabel}
                 >
-                  Add to Task
+                  {submitLabel}
                 </Button>
               </>
             }
@@ -294,7 +300,7 @@ export function TaskPicker<TTarget>({
               )}
               {submissionFailed && (
                 <p className="task-picker__submission-error" role="alert">
-                  Unable to add this to the Task. Try again.
+                  {failureMessage}
                 </p>
               )}
             </div>

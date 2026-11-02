@@ -38,7 +38,8 @@ only when this Station's build can run it; if none is, the section says
 | `integration-content-trust` | Integration content trust | Shows trust classification and after-untrusted-content permissions for integrations in Connections. | Saved choices remain effective when the preview is off; enforcement depends on the engine and integration path. |
 | `browser-experience` | Browser experience | Adds Browser shortcuts, per-tab zoom and appearance, float over chat, and agent action visualization. | Off by default on personal hosts; ordinary Browser authority and control checks still apply. |
 | `plugin-recovery-inventory` | Plugin recovery inventory | Enables the operator's retained plugin backup listing and manual recovery guidance. | The listing reveals local backup paths to the operator; it does not restore backups. |
-| `walkthroughs` | Walkthroughs | Imports narrated recordings and enables Task-bound Browser clips. | One-time consented media/speech tool download; CPU use; recordings may contain private information. |
+| `walkthroughs` | Walkthroughs | Imports narrated recordings and enables Task-bound Browser and Device clips. | One-time consented media/speech tool download; CPU use; recordings may contain private information. |
+| `device-developer-loop` | Device developer loop | Enables app-filtered logs, Device clips and agent-open auto-float. | Device clips also require Walkthroughs; logs and recordings may contain private information. |
 | `local-speech` | Local speech | Offers Station (local) in Voice → Speech-to-text: record a message, then transcribe it on this Station. | One-time consented tool/model download; English batch dictation only; microphone permission; shares one recognizer and a bounded wait queue with Walkthroughs. |
 | `chat-host-images` | Chat images from the host | On by default. Shows images an agent saves on this Station and names by absolute path in its reply, on any device, and tells agents where to save them. | Station copies each admitted image (up to 5 per reply, 512 KiB each) into the chat's attachment storage; engines started while it is on get a per-session temporary folder. |
 | `stale-project-checkout` | Stale checkout warning | Warns in a Project's Workspace settings, and in `get_project` for agents, when the Project's checkout is far behind its upstream branch. | Reads local git refs (cached for ten seconds); never fetches or updates the checkout. |
@@ -60,7 +61,7 @@ thread for its history; use **Send** or **Send + Resolve** to ask the live lead
 agent to act, or **Copy for agent** to copy the discussion. Outdated means the
 quoted text can no longer be relocated; a changed revision alone is separate.
 
-Choose **Capture** beside **Screens**, then select a Browser session
+Choose **Capture** beside **Screens**, then select a Browser or Device session
 from the Task's Project and capture it. Commit workspace changes first. Place a
 region pin with the pointer, or focus the image target, use the arrow keys and
 press Enter, then comment. Captures retain the commit and appear through the
@@ -72,7 +73,9 @@ Turning the preview off hides Review and Timeline; a
 `taskView=review` link then opens Overview.
 
 With **Walkthroughs** also enabled, Browser clips made by the Task's bound
-agent appear under **Screens** with their commit and duration. Open a clip to
+agent appear under **Screens** with their commit and duration. With **Device
+developer loop** enabled too, people and bound agents can record Device clips.
+Open a clip to
 load its video; close the player to release it. See [Task clips](https://github.com/kontourai/station/blob/main/docs/guides/walkthroughs.md#record-a-task-clip).
 
 **Chat images from the host** (`chat-host-images`): when a reply finishes,

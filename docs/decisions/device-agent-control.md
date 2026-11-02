@@ -35,6 +35,9 @@ when another operation remains active. Human takeover advances the fence,
 interrupts queued events and stops producer sends. Screenshot/accessibility
 publication also checks its fence after the observation completes. Input uses the existing allowlisted device-hub transport,
 not arbitrary shell commands. Captures retain the existing 8 MiB PNG bound.
+`device_logs` and `device_record_to_task` also claim this input lease. They
+are refused while a person controls the device and hold the lease until the
+operation finishes.
 
 Pointer and key gestures must be complete within one `device_input` batch: send
 down/move/up or key down/up together. Unmatched down or up returns
