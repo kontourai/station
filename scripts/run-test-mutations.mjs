@@ -56,6 +56,23 @@ export function removeEmptyRender(source) {
 }
 export const MUTATIONS = [
   {
+    id: 'codex-unbound-workspace',
+    test: 'src-server/providers/__tests__/codex-adapter.test.ts',
+    failure:
+      'an unbound Codex session starts and sends turns in its private workspace, reused after restart',
+    files: [
+      {
+        path: 'src-server/services/infra/managed-engine-workspace.ts',
+        change: (source) =>
+          exactReplace(
+            source,
+            'return realpath(workspace);',
+            'return realpath(home);',
+          ),
+      },
+    ],
+  },
+  {
     id: 'attention-snooze-pending',
     test: 'src-server/services/projects/__tests__/attention-projection.test.ts',
     failure:

@@ -61,7 +61,7 @@ import type { IProviderAdapterRegistry } from '../../providers/provider-interfac
 import { withTenantExecutionContext } from '../../runtime/bootstrap/runtime-tenant-context.js';
 import { safeSanitizeUIBlockEventProvenance } from '../../runtime/conversation/ui-block-provenance.js';
 import { errorMessage } from '../../utils/error-message.js';
-import { isManagedAcpWorkspace } from '../acp/managed-acp-workspace.js';
+import { isManagedEngineWorkspace } from '../infra/managed-engine-workspace.js';
 import { receiptBus } from '../infra/receipt-bus.js';
 import type { RuntimeEngineStartLease } from '../infra/resource-posture.js';
 import { assertDispatchCwdUnmoved } from './dispatch-cwd-admission.js';
@@ -724,7 +724,7 @@ export function buildOrchestrationSessionSummary(options: {
     ...(modelRoute ? { modelRoute } : {}),
     ...(base.model ? { model: base.model } : {}),
     ...(base.cwd ? { cwd: base.cwd } : {}),
-    ...(base.cwd && isManagedAcpWorkspace(base.cwd)
+    ...(base.cwd && isManagedEngineWorkspace(base.cwd)
       ? { cwdManagedWorkspace: true as const }
       : {}),
     ...(resumeCursor !== undefined ? { resumeCursor } : {}),
