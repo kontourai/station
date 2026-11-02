@@ -942,8 +942,11 @@ describe('EnvironmentSecurityService', () => {
     const service = new EnvironmentSecurityService({ homeDir });
     await service.initialize();
 
+    // No host shell, so no owner standing (2026-11-02): only the explicit
+    // access:approve promotion below opens anything under /api/pairing.
     const offer = service.devicePairing.createOffer({
       endpoint: 'https://station.example.test',
+      scope: 'orchestration:read orchestration:operate',
     });
     const request = service.devicePairing.requestPairing({
       offerId: offer.offerId,

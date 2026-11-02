@@ -1948,8 +1948,9 @@ export function HostDevicePairingPanel({
   };
 
   const creatingOffer = useRef(false);
-  const createOffer = async (target: string = endpoint) => {
-    if (creatingOffer.current) return;
+  /** Resolves whether a pairing code now exists for `target`. */
+  const createOffer = async (target: string = endpoint): Promise<boolean> => {
+    if (creatingOffer.current) return false;
     pollingPaused.current = false;
     setError(null);
     setAuthBlocked(false);
@@ -1966,7 +1967,7 @@ export function HostDevicePairingPanel({
             ? 'This address only works on this computer. Choose an address your phone can reach, such as your local network or Tailscale.'
             : 'Use an address your phone can reach: HTTPS, or a local-network or Tailscale address.',
         );
-        return;
+        return false;
       }
       const response = await authenticatedFetch('/api/pairing/offers', {
         method: 'POST',
@@ -1985,16 +1986,18 @@ export function HostDevicePairingPanel({
         setError(outcome.message);
         setAuthBlocked(outcome.auth);
         setOperatorHandoff(outcome.operatorHandoff ?? false);
-        return;
+        return false;
       }
       const value: unknown = await response.json();
       if (!isDevicePairingOffer(value)) throw new Error('Invalid offer');
       rememberPairingEndpoint(apiBase, address.origin);
       setOffer(value);
+      return true;
     } catch {
       setError(
         'Could not create a pairing code. Check the connection and try again.',
       );
+      return false;
     } finally {
       creatingOffer.current = false;
       setCreating(false);
@@ -2038,7 +2041,11 @@ export function HostDevicePairingPanel({
       return;
     }
     setEndpoint(preferred.url);
-    void createOfferRef.current(preferred.url);
+    void createOfferRef.current(preferred.url).then((created) => {
+      // A refusal or failure keeps its message and reveals the address and
+      // access form, so there is always a next step.
+      if (!created) setShowOtherOptions(true);
+    });
   }, [quickPair, routes, apiBase]);
   const selectRoute = async (route: PairingRoute) => {
     if (creatingOffer.current || offer?.endpoint === route.url) return;

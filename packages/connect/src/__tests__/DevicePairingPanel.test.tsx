@@ -3711,44 +3711,45 @@ describe('explicit verified-person pairing consent', () => {
   });
 });
 
-test('refuses an HTTP LAN pairing code before posting an offer and preserves explicit HTTPS entry', async () => {
+test('refuses loopback and public cleartext addresses before posting, and posts a private-network HTTP route the server accepts', async () => {
   const request = vi.fn(
     async (_input: RequestInfo | URL, init?: RequestInit) =>
       init?.method === 'POST'
         ? response({ error: 'unavailable' }, 503)
         : response({ requests: [], devices: [] }),
   );
+  const posts = () =>
+    request.mock.calls.filter(([, init]) => init?.method === 'POST');
   render(
     <HostDevicePairingPanel
-      apiBase="http://192.168.1.2:19441"
-      publicEndpoint="http://192.168.1.2:19441"
+      apiBase="http://127.0.0.1:19441"
+      publicEndpoint="http://127.0.0.1:19441"
       getCredential={() => undefined}
       request={request}
       onCancel={vi.fn()}
     />,
   );
+  // Loopback points the phone at itself.
   fireEvent.click(screen.getByRole('button', { name: 'Create pairing code' }));
-  expect((await screen.findByRole('alert')).textContent).toContain('HTTPS');
-  expect(
-    request.mock.calls.filter(([, init]) => init?.method === 'POST'),
-  ).toHaveLength(0);
+  expect((await screen.findByRole('alert')).textContent).toContain(
+    'only works on this computer',
+  );
+  // Cleartext to a public name is refused by the server too.
   fireEvent.change(screen.getByLabelText('Pairing endpoint'), {
-    target: { value: 'https://computer.example.test/path' },
+    target: { value: 'http://computer.example.test' },
   });
   fireEvent.click(screen.getByRole('button', { name: 'Create pairing code' }));
-  await waitFor(() =>
-    expect(
-      request.mock.calls.filter(([, init]) => init?.method === 'POST'),
-    ).toHaveLength(1),
+  expect((await screen.findByRole('alert')).textContent).toContain('HTTPS');
+  expect(posts()).toHaveLength(0);
+  // A private-network HTTP route is what the server accepts for an offer.
+  fireEvent.change(screen.getByLabelText('Pairing endpoint'), {
+    target: { value: 'http://192.168.1.2:19441/path' },
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Create pairing code' }));
+  await waitFor(() => expect(posts()).toHaveLength(1));
+  expect(JSON.parse(String(posts()[0]?.[1]?.body)).endpoint).toBe(
+    'http://192.168.1.2:19441',
   );
-  expect(
-    JSON.parse(
-      String(
-        request.mock.calls.find(([, init]) => init?.method === 'POST')?.[1]
-          ?.body,
-      ),
-    ).endpoint,
-  ).toBe('https://computer.example.test');
 });
 
 describe('Pair phone quick flow (owner-device standing, 2026-11-02)', () => {
