@@ -1,0 +1,35 @@
+{
+  "revision": "ecb950e2e2b351a194bc98d73d009be24c97c138",
+
+  "notes": [
+    {"path":"CONTEXT-MAP.md","note":"Reviewed the downstream documentation links for the new optional durable Station owner. Existing product vocabulary, entity identity, public entry points and authority instructions remain accurate; the new owner is an implementation boundary under the off-by-default preview. No new provider, deployment or release qualification is inferred.","inputs":["CONTEXT-MAP.md","docs/architecture/module-map.md","docs/contexts/agent-runtime/CONTEXT.md"]},
+
+    {"path":"CONTEXT.md","note":"Reviewed the downstream documentation links for the new optional durable Station owner. Existing product vocabulary, entity identity, public entry points and authority instructions remain accurate; the new owner is an implementation boundary under the off-by-default preview. No new provider, deployment or release qualification is inferred.","inputs":["CONTEXT.md","docs/architecture/module-map.md","docs/contexts/agent-runtime/CONTEXT.md"]},
+
+    {"path":"README.md","note":"Reviewed the downstream documentation links for the new optional durable Station owner. Existing product vocabulary, entity identity, public entry points and authority instructions remain accurate; the new owner is an implementation boundary under the off-by-default preview. No new provider, deployment or release qualification is inferred.","inputs":["README.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/README.md","note":"Reviewed the downstream documentation links for the new optional durable Station owner. Existing product vocabulary, entity identity, public entry points and authority instructions remain accurate; the new owner is an implementation boundary under the off-by-default preview. No new provider, deployment or release qualification is inferred.","inputs":["docs/README.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/design/process-supervisor.md","note":"Reviewed the development-guide package-row delta and the merged supervisor documentation. Runtime journal ownership does not alter supervisor listener custody, direct/watch launch policy, service ownership or restart-generation proof.","inputs":["docs/design/process-supervisor.md","docs/guides/development.md"]},
+
+    {"path":"docs/glossary.md","note":"Reviewed the downstream documentation links for the new optional durable Station owner. Existing product vocabulary, entity identity, public entry points and authority instructions remain accurate; the new owner is an implementation boundary under the off-by-default preview. No new provider, deployment or release qualification is inferred.","inputs":["docs/glossary.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/guides/agent-efficiency.md","note":"Compared the optional durable runtime delta with the guide's model-input, cache and measured-efficiency claims. The preview adds local journal cost and supplies cache-affinity hints; it establishes no new live cache hit or token-efficiency measurement. Existing guide claims retain their cited revisions.","inputs":["docs/guides/agent-efficiency.md","docs/architecture/module-map.md","docs/user/settings.md"]},
+
+    {"path":"docs/plans/agent-identity-supported-surface-inventory.md","note":"Reviewed the downstream documentation links for the new optional durable Station owner. Existing product vocabulary, entity identity, public entry points and authority instructions remain accurate; the new owner is an implementation boundary under the off-by-default preview. No new provider, deployment or release qualification is inferred.","inputs":["docs/plans/agent-identity-supported-surface-inventory.md","docs/architecture/module-map.md","docs/guides/agent-configuration.md"]},
+
+    {"path":"docs/reference/deploy-ledger.md","note":"Reviewed the latest Nightly rows against the machine-readable JSON and the generated-view authority note. Retained source SHAs, workflow references and caveats remain qualified publication records; this runtime change adds no release receipt.","inputs":["docs/reference/deploy-ledger.md","docs/reference/deploy-ledger.json"]},
+
+    {"path":"docs/reference/settings-deep-links.md","note":"Reviewed the downstream documentation links for the new optional durable Station owner. Existing product vocabulary, entity identity, public entry points and authority instructions remain accurate; the new owner is an implementation boundary under the off-by-default preview. No new provider, deployment or release qualification is inferred.","inputs":["docs/reference/settings-deep-links.md","docs/architecture/module-map.md"]},
+
+    {"path":"docs/user/concepts.md","note":"Reviewed the downstream documentation links for the new optional durable Station owner. Existing product vocabulary, entity identity, public entry points and authority instructions remain accurate; the new owner is an implementation boundary under the off-by-default preview. No new provider, deployment or release qualification is inferred.","inputs":["docs/user/concepts.md","docs/architecture/module-map.md"]},
+
+    {"path":"examples/repository-knowledge-graph/README.md","note":"Reviewed the downstream documentation links for the new optional durable Station owner. Existing product vocabulary, entity identity, public entry points and authority instructions remain accurate; the new owner is an implementation boundary under the off-by-default preview. No new provider, deployment or release qualification is inferred.","inputs":["examples/repository-knowledge-graph/README.md","docs/architecture/module-map.md","docs/learn/atlas.json"]},
+
+    {"path":"packages/shared/README.md","note":"Reviewed the downstream documentation links for the new optional durable Station owner. Existing product vocabulary, entity identity, public entry points and authority instructions remain accurate; the new owner is an implementation boundary under the off-by-default preview. No new provider, deployment or release qualification is inferred.","inputs":["packages/shared/README.md","docs/guides/development.md"]},
+
+    {"path":"src-server/AGENTS.md","note":"Reviewed the module-map and development-guide routing delta against these scope instructions. The new durable owner keeps route validation, service ownership, focused-test routing, platform process rules and governance boundaries; no agent instruction is changed.","inputs":["src-server/AGENTS.md","docs/architecture/module-map.md","docs/guides/development.md"]},
+
+    {"path":"src-ui/AGENTS.md","note":"Reviewed the module-map and development-guide routing delta against these scope instructions. The new durable owner keeps route validation, service ownership, focused-test routing, platform process rules and governance boundaries; no agent instruction is changed.","inputs":["src-ui/AGENTS.md","docs/architecture/module-map.md"]}
+  ]
+}

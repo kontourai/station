@@ -22,6 +22,7 @@ only when this Station's build can run it; if none is, the section says
 
 | ID | Name | What turning it on does | Notable cost/risk |
 | --- | --- | --- | --- |
+| `durable-station-agent` | Crash-durable Station Agent | Keeps Station-engine text turns running after a client disconnect and resumes journaled steps after restart. Stop still cancels. | Experimental; writes every model/tool step to private SQLite and can add substantial latency. An uncertain model request is surfaced without automatic resend; pending approvals still require an answer. |
 | `reviewed-usage-tariffs` | Reviewed usage tariffs | Lets the operator review exact Bearing source bytes and route/model tariff bindings for later usage capture. | No default price or live fetching. Retail values remain separate from billing, subscription fees and quota. Historical snapshots stay frozen. |
 | `project-working-configuration` | Project working configuration | Discovers repository guidance and lets an operator review the rules, checks and completion criteria used in Task briefs. | Reads bounded repository files. Applying defaults runs no command and grants no setup authority. Stale sources refuse dispatch until reviewed again. |
 | `progressive-station-tools` | Progressive Station tools | Offers an index and on-demand tool families to eligible runtime credentials. | Experimental engine notification support; ordinary tool authorization still runs on each call. Turning it off restores the static catalog. |

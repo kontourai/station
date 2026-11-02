@@ -1,5 +1,14 @@
 # Strands Agents SDK Migration
 
+The off-by-default **Crash-durable Station Agent** preview now journals native
+model streams, tool outcomes and approval decisions above the existing Strands
+loop. It stages identified memory writes and reconstructs entry history on
+recovery. Internal tracing UUIDs are excluded from provider-input equality;
+provider messages and options remain pinned. The historical buffering analysis
+below describes the ordinary path, not this optional journal. Uncertain model
+dispatch is surfaced without automatic resend. See the
+[runtime contract](../../packages/agent-runtime/README.md) and its stated limits.
+
 > **Status: historical migration assessment.** The parity table and SDK gaps
 > below record the assessment made when the Strands runtime was added; they are
 > not a current compatibility guarantee. **Successors:** the
