@@ -831,8 +831,9 @@ provider names. While the Session projection is pending, the mode picker and
 pending list show **Loading steering support…**. Once that read settles without
 a declaration, they disclose that steering is unavailable; neither Send-as-steer
 nor Retry-steering is offered. Follow-up Retry remains available. A durable
-steer already queued keeps waiting while its declaration is unknown. A declared
-placement of `none` refuses it with `unsupported-engine` before any handoff.
+steer already queued waits while Session materialization has not registered an
+adapter. A registered adapter without a declaration, or a declared placement of
+`none`, refuses it with `unsupported-engine` before any handoff.
 ACP's cancel-and-reprompt extension does not become an additive
 native composer action. Profile observations are not persisted in browser session
 state. After post-tool injection the entry remains claimed until model dispatch,

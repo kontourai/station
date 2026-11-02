@@ -2291,10 +2291,14 @@ Delivery probes outside that transaction, rereads the boundary afterward, and
 compares its snapshot again while recording custody. Completion and release recheck durable facts
 under the writer lock. The health tick starts at most one owned-work
 maintenance pass without waiting for adapter Stop before other health work or
-future ticks.
+future ticks. Shutdown stops future passes and awaits the in-flight maintenance
+before closing orchestration services.
 
 Open reconstructs edges through the naming index and derives stop obligations
-from retained request and terminal events. Completed, permanently fenced
+from retained request and terminal events. Constructor backfill and append-time
+derivation use durable settlement facts before runtime binding exists; reopening
+finished children must not create stop obligations or fences. Explicit delivery
+rechecks targets at the original trigger sequence with the binding-required guard. Completed, permanently fenced
 children are excluded from fresh stop targets; pending stops still redeliver.
 Completing root stop delivery releases its temporary root fence while child fences remain.
 Ownership candidate and activity reads use one SQLite snapshot. Inventory and conversation-history reads batch owned activity per request. Session
@@ -2314,8 +2318,10 @@ still be running and will no longer be tracked by this Session. The command
 closes an at-rest parent's retained adapter and removes its unknown cleanup with
 the parent record. It preserves cancellation fences against replay, child history and independent stop
 intents. Known child owners, changed custody snapshots, and observations not refreshed
-after the release recheck refuse release. An unbound store cannot infer that a
-terminal child has no local adapter. The raw custody reader retains its
+after the release recheck refuse release. A probe captures the recheck generation
+before awaiting its adapter; custody writes and settled acknowledgements compare
+that generation under the writer lock. Effectful delivery and deletion cannot
+infer that an unbound terminal child has no local adapter. The raw custody reader retains its
 existing default, but service delivery supplies an explicit adapter observation.
 This is untracking, not a claim that the child's process stopped.
 Lifecycle transition validation and the completed-session send guard use the
