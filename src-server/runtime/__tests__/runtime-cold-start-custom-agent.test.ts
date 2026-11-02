@@ -642,7 +642,7 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
       },
     });
     await waitFor(() => repliesTo(child, 51)[0], 'policy denial');
-    expect(repliesTo(child, 51)[0].error).toBeDefined();
+    expect(repliesTo(child, 51)[0].error.message).toBe('Bound tool refused');
     expect(dispatch).not.toHaveBeenCalled();
     await adapter.stopSession('preview-on');
     await runtime.shutdown();
@@ -666,6 +666,12 @@ describe('StationRuntime.initialize() — cold boot with a custom agent (#208)',
     await runtime.initialize();
     const hosted = runtime as any;
     expect(hosted.codexBoundToolsPreview).toBeUndefined();
+    await expect(
+      hosted.featurePreviews.setEnabled(
+        'codex-bound-browser-device-tools',
+        true,
+      ),
+    ).rejects.toThrow();
     adapter = hosted.codexAdapter;
     adapter.processFactory = () => child;
     const hostedStart = await start('hosted');

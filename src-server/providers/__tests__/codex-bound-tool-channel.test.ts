@@ -38,6 +38,7 @@ test('dynamic calls are bound to the current Session and turn, approved once, an
         },
       ],
       call: execute,
+      expired: () => false,
       close: async () => {},
     }),
   });
@@ -196,6 +197,7 @@ test('resume admits only the freshly authorized catalog and refuses stale persis
         },
       ],
       call: execute,
+      expired: () => false,
       close: async () => {},
     }),
   });
@@ -288,6 +290,7 @@ test('a provider disconnect cancels a pending tool approval before any effect', 
         },
       ],
       call: execute,
+      expired: () => false,
       close: async () => {},
     }),
   });
@@ -372,6 +375,7 @@ test('a delegated Session without approval authority refuses an approval-bound t
         },
       ],
       call: execute,
+      expired: () => false,
       close: async () => {},
     }),
   });
@@ -495,6 +499,7 @@ test('device catalog uses the first control entry and excludes coordinator-deriv
     const create = vi.fn(async () => ({
       tools: [],
       call: vi.fn(),
+      expired: () => false,
       close: async () => {},
     }));
     const adapter = new CodexAdapter({
@@ -547,6 +552,7 @@ test('session approval applies to later defers, and interrupt fences pending and
         { name: 'browser_open', inputSchema: { type: 'object' } },
       ],
       call: execute,
+      expired: () => false,
       close: async () => {},
     }),
   });
@@ -640,4 +646,154 @@ test('session approval applies to later defers, and interrupt fences pending and
   expect(response.error.message).toContain('executed; result withheld');
   await adapter.stopSession('interrupt-session');
   await iterator.return?.();
+});
+
+test('interrupt history stays bounded and retains the newest cancellation without retiring the session', async () => {
+  const child = new FakeCodexProcess();
+  const execute = vi.fn(async () => ({
+    content: [{ type: 'text', text: 'ok' }],
+  }));
+  const adapter = new CodexAdapter({
+    processFactory: () => child as never,
+    boundToolsEnabled: () => true,
+    resolveBoundToolPolicy: async () => async () => ({ behavior: 'allow' }),
+    createBoundTools: async () => ({
+      tools: [{ name: 'browser_status', inputSchema: { type: 'object' } }],
+      expired: () => false,
+      call: execute,
+      close: async () => {},
+    }),
+  });
+  const started = adapter.startSession({
+    provider: 'codex',
+    threadId: 'long-session',
+    cwd: '/tmp',
+    agent: {} as never,
+  });
+  await flushIo();
+  await emit(child, { id: '1', result: { userAgent: 'test' } });
+  await emit(child, { id: '2', result: { thread: { id: 'native-long' } } });
+  await withTimeout(started, 'start');
+  const record = (adapter as any).transport.getSession('long-session');
+  record.cancelledBoundTurns = new Set(
+    Array.from({ length: 4100 }, (_, i) => `old-${i}`),
+  );
+  for (let i = 0; i < 40; i++) {
+    const turnId = `turn-${i}`;
+    record.activeTurnId = turnId;
+    const interrupt = adapter.interruptTurn('long-session', turnId);
+    const rpc = await waitFor(
+      () =>
+        child.stdin.lines
+          .map((line) => JSON.parse(line))
+          .find(
+            (item) =>
+              item.method === 'turn/interrupt' && item.params.turnId === turnId,
+          ),
+      'interrupt request',
+    );
+    await emit(child, { id: rpc.id, result: {} });
+    await withTimeout(interrupt, 'interrupt');
+    expect(record.cancelledBoundTurns.size).toBeLessThanOrEqual(32);
+  }
+  expect(record.cancelledBoundTurns.has('turn-39')).toBe(true);
+  record.activeTurnId = 'turn-39';
+  await emit(child, {
+    id: 201,
+    method: 'item/tool/call',
+    params: {
+      threadId: 'native-long',
+      turnId: 'turn-39',
+      callId: 'cancelled',
+      tool: 'browser_status',
+      arguments: {},
+    },
+  });
+  expect(repliesTo(child, 201)[0]?.error.message).toBe('Bound tool refused');
+  expect(execute).not.toHaveBeenCalled();
+  record.activeTurnId = 'fresh';
+  await emit(child, {
+    id: 202,
+    method: 'item/tool/call',
+    params: {
+      threadId: 'native-long',
+      turnId: 'fresh',
+      callId: 'fresh',
+      tool: 'browser_status',
+      arguments: {},
+    },
+  });
+  const response = await waitFor(() => repliesTo(child, 202)[0], 'fresh tool');
+  expect(response.result.success).toBe(true);
+  expect(execute).toHaveBeenCalledOnce();
+  await adapter.stopSession('long-session');
+});
+
+test('expired Codex credentials refuse on the wire before opening approval', async () => {
+  const { createCodexBoundToolServer } = await import(
+    '../../runtime/mcp/station-control-in-process.js'
+  );
+  const child = new FakeCodexProcess();
+  const adapter = new CodexAdapter({
+    processFactory: () => child as never,
+    boundToolsEnabled: () => true,
+    resolveBoundToolPolicy: async () => async () => ({ behavior: 'defer' }),
+    createBoundTools: async (input) =>
+      createCodexBoundToolServer({
+        ...input,
+        dispatch: async () => {
+          throw new Error('unexpected dispatch');
+        },
+      }),
+  });
+  const events: any[] = [];
+  const iterator = adapter.streamEvents()[Symbol.asyncIterator]();
+  void (async () => {
+    for await (const event of { [Symbol.asyncIterator]: () => iterator })
+      events.push(event);
+  })();
+  const started = adapter.startSession({
+    provider: 'codex',
+    threadId: 'expiry-session',
+    cwd: '/tmp',
+    agent: {} as never,
+  });
+  await flushIo();
+  await emit(child, { id: '1', result: { userAgent: 'test' } });
+  await emit(child, { id: '2', result: { thread: { id: 'native-expiry' } } });
+  await withTimeout(started, 'start');
+  const turn = adapter.sendTurn({ threadId: 'expiry-session', input: 'go' });
+  await flushIo();
+  await emit(child, { id: '3', result: { turn: { id: 'turn' } } });
+  await withTimeout(turn, 'turn');
+  const now = vi
+    .spyOn(Date, 'now')
+    .mockReturnValue(Date.now() + 12 * 60 * 60 * 1000 + 1);
+  try {
+    await emit(child, {
+      id: 301,
+      method: 'item/tool/call',
+      params: {
+        threadId: 'native-expiry',
+        turnId: 'turn',
+        callId: 'expired',
+        tool: 'browser_status',
+        arguments: {},
+      },
+    });
+    const response = await waitFor(
+      () => repliesTo(child, 301)[0],
+      'expiry refusal',
+    );
+    expect(response.error.message).toBe(
+      'Bound tool unavailable; restart the Session',
+    );
+    expect(events.some((event) => event.method === 'request.opened')).toBe(
+      false,
+    );
+  } finally {
+    now.mockRestore();
+    await adapter.stopSession('expiry-session');
+    await iterator.return?.();
+  }
 });

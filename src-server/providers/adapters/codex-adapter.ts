@@ -2331,8 +2331,10 @@ export class CodexAdapter implements ProviderAdapterShape {
           };
           return channel.invoke(
             call,
-            (current) =>
-              this.approveBoundTool(
+            (current) => {
+              if (boundTools.expired())
+                throw new Error('bound-tool-session-restart-required');
+              return this.approveBoundTool(
                 record,
                 call.turnId,
                 call.name,
@@ -2342,7 +2344,8 @@ export class CodexAdapter implements ProviderAdapterShape {
                 call.callId,
                 boundPolicy,
                 current,
-              ),
+              );
+            },
             async (current) => {
               const response = await boundTools.call(
                 call.name,
@@ -3316,7 +3319,7 @@ export class CodexAdapter implements ProviderAdapterShape {
     }
     record.cancelledBoundTurns ??= new Set();
     record.cancelledBoundTurns.add(activeTurnId);
-    if (record.cancelledBoundTurns.size > 32) {
+    while (record.cancelledBoundTurns.size > 32) {
       const oldest = record.cancelledBoundTurns.values().next().value;
       if (oldest !== undefined) record.cancelledBoundTurns.delete(oldest);
     }

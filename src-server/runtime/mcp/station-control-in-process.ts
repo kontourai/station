@@ -74,7 +74,7 @@ export async function createCodexBoundToolServer(input: {
   dispatch: (request: Request) => Promise<Response>;
   isCurrent: () => boolean;
 }) {
-  const token = mintStationControlMcpToken(
+  const { token, expiresAt } = mintStationControlMcpToken(
     input.sessionId,
     'sdk-in-process',
     undefined,
@@ -83,7 +83,7 @@ export async function createCodexBoundToolServer(input: {
     'codex-tools',
     undefined,
     input.isCurrent,
-  ).token;
+  );
   const server = new McpServer({
     name: 'station-bound-tools',
     version: '1.0.0',
@@ -189,6 +189,7 @@ export async function createCodexBoundToolServer(input: {
   };
   return {
     tools: listing.tools,
+    expired: () => Date.now() >= expiresAt,
     call: (name: string, args: unknown, invocationCurrent: () => boolean) =>
       request(
         'tools/call',
