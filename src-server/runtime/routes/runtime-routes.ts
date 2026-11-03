@@ -428,6 +428,7 @@ import { createModelsRoutes } from '../../routes/connections/models.js';
 import { createProviderRoutes } from '../../routes/connections/providers.js';
 import { createConsentNativeRoutes } from '../../routes/consent/consent-native-routes.js';
 import { createHomeAuthorityRoutes } from '../../routes/environments/home-authority-routes.js';
+import { createPeerChatRoutes } from '../../routes/environments/peer-chat-routes.js';
 import { createPeerCredentialRoutes } from '../../routes/environments/peer-credential-routes.js';
 import {
   createDiffCommentRoutes,
@@ -10045,6 +10046,22 @@ export function configureRuntimeRoutes(
         context.configLoader.getProjectHomeDir(),
       ),
     ),
+  );
+  context.app.route(
+    '/api/environments/peers',
+    createPeerChatRoutes({
+      peers: peerCredentialStore,
+      remote: remoteStations,
+      current: isRequestPrincipalCurrent,
+      preview: hostedTenantRegistry
+        ? undefined
+        : context.featurePreviews.bind({
+            id: 'paired-station-chats',
+            label: 'Paired Station chats',
+            description:
+              'Start and continue chats on paired Stations. Messages use the selected Station’s providers and credits.',
+          }),
+    }),
   );
   // station#1423: the operator's own answer-share management family. The base
   // is a STRING LITERAL rather than `ANSWER_SHARE_ROUTE_PREFIX`, for the same

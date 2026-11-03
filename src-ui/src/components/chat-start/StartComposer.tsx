@@ -85,9 +85,7 @@ function StartAttachButton({ onAdd }: { onAdd: (files: File[]) => void }) {
         multiple
         accept={START_FILE_ACCEPT}
         onChange={handleFileSelect}
-        className="attachment-input"
-        tabIndex={-1}
-        aria-hidden="true"
+        hidden
       />
       <button
         type="button"
@@ -251,6 +249,7 @@ export function StartComposer({
   onOpenModel,
   project,
   onOpenProject,
+  onClearProject,
   projectFixed = false,
   stationControl,
   overflowActions,
@@ -272,9 +271,8 @@ export function StartComposer({
   /** One line, above a page of work (Home with work). */
   compact?: boolean;
   /**
-   * `hero` (Home, Project page): a heading with the Project and Station
-   * controls above the text box. `draft` (the dock's New chat): no heading;
-   * those controls join the chip row under the text, as in a reply composer.
+   * Home and New Chat share the inline Project heading and Station footer.
+   * `draft` supplies the dock's compact spacing.
    */
   layout?: 'hero' | 'draft';
   heading?: string;
@@ -283,6 +281,7 @@ export function StartComposer({
   onOpenModel?: (trigger: HTMLElement) => void;
   project: StartProjectChip;
   onOpenProject: (trigger: HTMLElement) => void;
+  onClearProject?: () => void;
   projectFixed?: boolean;
   stationControl?: ReactNode;
   overflowActions?: readonly OverflowAction[];
@@ -390,15 +389,37 @@ export function StartComposer({
         if (canStart && !pending) onStart();
       }}
     >
-      {!draft && (
-        <div className="start-composer__destination">
-          <h2>
-            {heading ?? (compact ? 'Start work' : 'What would you like to do?')}
-          </h2>
-          {projectControl}
-          {stationControl}
-        </div>
-      )}
+      <div className="start-composer__destination">
+        <h2>
+          {heading ?? (compact ? 'Start work' : 'What would you like to do')}
+          {!compact && (
+            <>
+              {project.status === 'ready' && !project.isGlobal && (
+                <> in {projectControl}</>
+              )}
+              {!heading && '?'}
+            </>
+          )}
+        </h2>
+        {compact ||
+        project.status === 'loading' ||
+        (project.status === 'ready' && project.isGlobal)
+          ? projectControl
+          : null}
+        {!compact &&
+          !projectFixed &&
+          project.status === 'ready' &&
+          !project.isGlobal &&
+          onClearProject && (
+            <Button
+              variant="link"
+              className="start-composer__without-project"
+              onClick={onClearProject}
+            >
+              or start without a project
+            </Button>
+          )}
+      </div>
       <div
         className={`start-composer__box${drop.isDraggingFiles ? ' start-composer__box--file-drag' : ''}`}
       >
@@ -552,8 +573,6 @@ export function StartComposer({
                   onPick={agent.onApprovalPick}
                 />
               )}
-            {draft && projectControl}
-            {draft && stationControl}
             {skill && (
               <span className="start-composer__chip start-composer__chip--skill">
                 <span className="start-composer__chip-text">{skill.title}</span>
@@ -602,6 +621,14 @@ export function StartComposer({
             </Button>
           </div>
         </div>
+      </div>
+      <div className="start-composer__location">
+        {stationControl}
+        {project.status === 'ready' && project.folder && (
+          <span className="start-composer__folder" title={project.folder}>
+            {project.folder}
+          </span>
+        )}
       </div>
       {note && <p className="start-composer__note">{note}</p>}
       {children}
