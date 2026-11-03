@@ -178,15 +178,17 @@ export function PaneOverflowMenu({
     const menuElement = menuRef.current;
     const menu = menuElement?.getBoundingClientRect();
     if (!trigger || !menuElement || !menu) return;
-    // The chat dock overlays the bottom of the viewport above every popover
-    // (`--layer-dock`), so the menu's floor is the dock's top edge, not the
-    // window's: on a landscape phone the last rows otherwise sit under it.
+    // The chat dock overlays the bottom of the viewport, so for a pane
+    // outside it the menu's floor is the dock's top edge: on a landscape
+    // phone the last rows otherwise sit under it. A pane shown inside the
+    // dock (the phone sheet, the right region) is already above that edge.
     const rootStyle = getComputedStyle(document.documentElement);
     const inset = (name: string) =>
       Number.parseFloat(rootStyle.getPropertyValue(name)) || 0;
+    const insideDock = triggerRef.current?.closest('.chat-dock') != null;
     const viewportHeight =
       window.innerHeight -
-      inset('--dock-slot-size') -
+      (insideDock ? 0 : inset('--dock-slot-size')) -
       inset('--visual-viewport-bottom-inset');
     const viewportTop = Math.max(
       EDGE_PX,
@@ -229,7 +231,7 @@ export function PaneOverflowMenu({
       maxHeight,
       maxWidth: `calc(100vw - ${EDGE_PX * 2}px)`,
     });
-  }, [open, listId, menuRef]);
+  }, [open, listId, menuRef, triggerRef]);
 
   useEffect(() => {
     if (!open || style.visibility === 'hidden') return;
