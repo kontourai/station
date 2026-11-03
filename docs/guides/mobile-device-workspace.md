@@ -17,8 +17,8 @@ Limits, refusal codes, the single-frame API and evidence live in the
 4. Open **Device** and follow setup to turn on Station's device helper.
    Restart Station if you change its PATH.
 
-To use another machine as a device host, add it under **Device
-hosts (SSH)** in **Settings → Advanced → Browser & devices**. See
+To use another machine as a device host, add it under **Settings →
+Advanced → Device hosts**. See
 [host setup details](../reference/browser-and-devices.md#configure-a-device-host).
 
 ## View, control and end a session
@@ -29,7 +29,7 @@ hosts (SSH)** in **Settings → Advanced → Browser & devices**. See
 3. Tap or type on the screen. While you hold control, Agents cannot send
    input. Use **Home**, and **Back** on Android or **Rotate** on iOS.
 
-Everything else is in **⋯**: **Screenshot**, **Record**, **Logs**, **Apps**,
+Everything else is in **⋯**: **Save screenshot**, **Record to Task**, **Logs**, **Apps**,
 **Device settings**, **Recents** (Android), **Float over chat**, **Power off**,
 **End for everyone** and **Close**.
 
@@ -40,8 +40,8 @@ Everything else is in **⋯**: **Screenshot**, **Record**, **Logs**, **Apps**,
 
 ## Share a device and give Agents access
 
-Devices belong to the operator. In **Settings → Advanced → Browser & devices**
-the operator can:
+Devices belong to the operator. In **Settings → Advanced → Browser & devices**,
+**Open device setup** lets the operator:
 
 - share a device with a Project, so that Project's admins and owners can view
   and drive it;
@@ -68,8 +68,8 @@ device before retrying. See
 
 ## Screenshots, recordings and logs
 
-- **⋯ → Screenshot** downloads a PNG.
-- **⋯ → Record** saves a clip of up to 30 seconds to a Task. It needs the
+- **⋯ → Save screenshot** downloads a PNG.
+- **⋯ → Record to Task** saves a clip of up to 30 seconds to a Task. It needs the
   **Device developer loop** and **Walkthroughs** previews.
 - **⋯ → Logs** samples recent logs for one running app.
 

@@ -61,7 +61,7 @@ Everything except tabs, navigation, the address bar and the driver chip is in
 | Group | Items |
 | --- | --- |
 | Capture | **Screenshot** (Mod+Shift+S), **Annotate**, **Record** |
-| View | **Zoom**, **Appearance**, **Viewport**, **Rotate** |
+| View | **Zoom**, **Appearance**, **Viewport**, **Rotate viewport** |
 | Inspect | **Console**, **Network** |
 | Session | **Float over chat**, **Reload without cache**, **Stop loading**, **Sessions**, **Browser settings…**, **Close session** |
 

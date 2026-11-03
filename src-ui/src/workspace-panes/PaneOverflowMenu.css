@@ -22,13 +22,13 @@
 }
 
 .pane-menu__group + .pane-menu__group {
-  border-top: 1px solid var(--border-primary, var(--k-line));
+  border-top: 1px solid var(--k-line);
   margin-top: var(--k-space-1);
   padding-top: var(--k-space-1);
 }
 
 .pane-menu__heading {
-  color: var(--text-secondary, var(--k-text-muted));
+  color: var(--k-text-muted);
   font-size: 0.75rem;
   font-weight: 600;
   padding: var(--k-space-1) var(--k-space-3) 0;
@@ -39,7 +39,7 @@
 }
 
 .pane-menu__hint {
-  color: var(--text-secondary, var(--k-text-muted));
+  color: var(--k-text-muted);
   font-family: var(--k-font-mono);
   font-size: 0.75rem;
   margin-left: var(--k-space-3);

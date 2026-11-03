@@ -331,10 +331,25 @@ test.describe('Device Tools drawer at 390x844', () => {
     const pane = devicePane(page);
     await expect(pane).toBeVisible({ timeout: FIRST_RENDER_TIMEOUT_MS });
     await pane.getByRole('button', { name: `Open ${IOS_NAME}` }).click();
-    await pane.getByRole('button', { name: 'Tools', exact: true }).click();
-    const drawer = pane.getByRole('complementary', { name: 'Tools' });
+    // The ⋯ menu opens the tools one view at a time: Apps shows what the
+    // device reported, Device settings holds the folded settings sections.
+    const chooseFromMenu = async (name: string) => {
+      await pane
+        .getByRole('button', { name: `More ${IOS_NAME} actions` })
+        .click();
+      await page.getByRole('menuitem', { name }).click();
+    };
+    await chooseFromMenu('Apps');
+    const apps = pane.getByRole('complementary', { name: 'Apps' });
+    await expect(apps).toBeVisible();
+    await expect(apps.getByText('com.apple.Preferences')).toBeVisible();
+    await apps.getByRole('button', { name: 'Close apps' }).click();
+    await chooseFromMenu('Device settings');
+    const drawer = pane.getByRole('complementary', { name: 'Device settings' });
     await expect(drawer).toBeVisible();
-    await expect(drawer.getByText('com.apple.Preferences')).toBeVisible();
+    // Unfold every section so the measurement below covers the whole drawer.
+    const folded = drawer.locator('button[aria-expanded="false"]');
+    while ((await folded.count()) > 0) await folded.first().click();
 
     // Below 560px of pane width the drawer OVERLAYS the stage.
     await expect(drawer).toHaveAttribute('data-layout', 'overlay');

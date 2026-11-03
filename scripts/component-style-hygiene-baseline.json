@@ -2283,6 +2283,9 @@
     "src-ui/src/workspace-panes/FilePreviewPane.tsx": {
       "alert-with-action:div": 2
     },
+    "src-ui/src/workspace-panes/PaneOverflowMenu.tsx": {
+      "bespoke-action:{`menu-row pane-menu__row${item.kind === 'danger' ? ' pane-menu__row--danger' : ''}`}": 1
+    },
     "src-ui/src/workspace-panes/PluginDraftPreviewPane.css": {
       "legacy-token:--text-md": 1,
       "legacy-token:--text-secondary": 1,
@@ -2417,9 +2420,6 @@
       "legacy-token:--radius-sm": 1,
       "legacy-token:--bg-tertiary": 1,
       "legacy-token:--font-mono": 1
-    },
-    "src-ui/src/workspace-panes/browser-pane/BrowserOverflowMenu.tsx": {
-      "bespoke-action:{`menu-row browser-pane__menu-row${item.kind === 'danger' ? ' browser-pane__menu-row--danger' : ''}`}": 1
     },
     "src-ui/src/workspace-panes/browser-pane/BrowserPageDialog.css": {
       "legacy-token:--bg-primary": 2,

@@ -1,6 +1,6 @@
 /* Settings › Advanced › Browser & devices. */
 .browser-settings__panel {
-  border-top: 1px solid var(--border-primary, var(--k-line));
+  border-top: 1px solid var(--k-line);
   display: grid;
   gap: var(--k-space-2);
   padding: var(--k-space-3) 0;
@@ -25,7 +25,7 @@
 }
 
 .browser-settings__hint {
-  color: var(--text-secondary, var(--k-text-muted));
+  color: var(--k-text-muted);
   font-size: 0.8125rem;
   margin: 0;
   overflow-wrap: anywhere;
@@ -40,14 +40,14 @@
 }
 
 .browser-settings__suggestion {
-  border-top: 1px solid var(--border-primary, var(--k-line));
+  border-top: 1px solid var(--k-line);
   display: grid;
   gap: var(--k-space-1);
   padding-top: var(--k-space-2);
 }
 
 .browser-settings__warning {
-  color: var(--accent-warning, var(--text-primary));
+  color: var(--k-caution);
   font-size: 0.8125rem;
   margin: 0;
 }
