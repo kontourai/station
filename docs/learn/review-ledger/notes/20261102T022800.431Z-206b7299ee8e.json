@@ -1,0 +1,19 @@
+{
+  "revision": "9814560bb6975fc1eeb33ec3abd0b2797a8afcd3",
+
+  "notes": [
+    {"path":"docs/design/pnpm-workspace-installation.md","note":"package.json scripts changed only by appending examples/related-terminal/tsconfig.json to typecheck:examples; this document does not cite that script or the examples list, and every script it names is unchanged. No prose change.","inputs":["docs/design/pnpm-workspace-installation.md","package.json#/scripts"]},
+
+    {"path":"docs/guides/code-hygiene.md","note":"package.json scripts changed only by appending examples/related-terminal/tsconfig.json to typecheck:examples; this document does not cite that script or the examples list, and every script it names is unchanged. No prose change.","inputs":["docs/guides/code-hygiene.md","package.json#/scripts"]},
+
+    {"path":"docs/guides/code-quality.md","note":"package.json scripts changed only by appending examples/related-terminal/tsconfig.json to typecheck:examples; this document does not cite that script or the examples list, and every script it names is unchanged. No prose change.","inputs":["docs/guides/code-quality.md","package.json#/scripts"]},
+
+    {"path":"docs/guides/dependency-security.md","note":"package.json scripts changed only by appending examples/related-terminal/tsconfig.json to typecheck:examples; this document does not cite that script or the examples list, and every script it names is unchanged. No prose change.","inputs":["docs/guides/dependency-security.md","package.json#/scripts"]},
+
+    {"path":"docs/guides/development.md","note":"package.json scripts changed only by appending examples/related-terminal/tsconfig.json to typecheck:examples; this document does not cite that script or the examples list, and every script it names is unchanged. No prose change.","inputs":["docs/guides/development.md","package.json#/scripts"]},
+
+    {"path":"docs/guides/repository-knowledge-graph.md","note":"package.json scripts changed only by appending examples/related-terminal/tsconfig.json to typecheck:examples; this document does not cite that script or the examples list, and every script it names is unchanged. No prose change.","inputs":["docs/guides/repository-knowledge-graph.md","package.json#/scripts"]},
+
+    {"path":"docs/reference/verification-receipts.md","note":"package.json scripts changed only by appending examples/related-terminal/tsconfig.json to typecheck:examples; this document does not cite that script or the examples list, and every script it names is unchanged. No prose change.","inputs":["docs/reference/verification-receipts.md","package.json#/scripts"]}
+  ]
+}

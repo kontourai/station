@@ -24,7 +24,11 @@ import {
   type KontourDependencyState,
 } from '../lib/kontour-dependency-drift.js';
 import { CWD, LIFECYCLE_CODE_ROOT, PROJECT_HOME } from './helpers.js';
-import { collectInstanceStatus } from './lifecycle.js';
+import {
+  collectInstanceStatus,
+  inspectTerminalShellHosts,
+  type TerminalShellHostReport,
+} from './lifecycle.js';
 import {
   type LifecycleCodeRoot,
   resolveLifecycleStateLocation,
@@ -77,6 +81,8 @@ export interface DoctorDeps {
   ) => Promise<ReadonlyArray<string>>;
   /** The checkout's terminal PTY backend — see `probeTerminalPtyModule`. */
   probeTerminalPty: (repoRoot: string) => TerminalCapability;
+  /** Each running instance's terminal shell host (#3994). */
+  inspectShellHosts: (projectHome: string) => TerminalShellHostReport[];
   /** What this CLI runs from (#2675): a source tree or a prebuilt archive. */
   codeRoot: LifecycleCodeRoot;
   /** The Node.js executing this CLI: an archive runs its bundled one. */
@@ -227,6 +233,43 @@ async function inspectSupervisorWedges(
     }
   }
   return wedges;
+}
+
+/**
+ * #3994: which host runs each running instance's shells. Supervisor
+ * workloads survive a core restart; a shell in the core ends with it, and
+ * Station reopens it after the restart instead. A missing PTY host bundle
+ * keeps shells in the core.
+ */
+export function shellHostChecks(
+  reports: readonly TerminalShellHostReport[],
+): DoctorCheck[] {
+  if (reports.length === 0)
+    return [
+      {
+        label: 'Terminal shell host',
+        status: 'pass',
+        detail:
+          'No instance is running; the shell host is chosen when one starts.',
+      },
+    ];
+  return reports.flatMap((report): DoctorCheck[] => [
+    {
+      label: `Terminal shell host (${report.instanceId})`,
+      status: report.workloads === 'granted' ? 'pass' : 'warn',
+      detail:
+        report.workloads === 'granted'
+          ? 'Supervisor workloads: shells survive a core restart.'
+          : `In the core server (${report.detail}): shells end when it restarts and reopen after it.`,
+    },
+    {
+      label: `Terminal PTY host bundle (${report.instanceId})`,
+      status: report.hostBundle ? 'pass' : 'warn',
+      detail: report.hostBundle
+        ? 'station-pty-host.js is beside the server bundle.'
+        : 'station-pty-host.js is missing beside the server bundle; rebuild Station so shells can run as supervisor workloads.',
+    },
+  ]);
 }
 
 function stringField(record: Record<string, unknown>, key: string): string {
@@ -404,6 +447,7 @@ export async function collectDoctorReport(
     inspectKontourDependencies: inspectExactKontourDependencyPins,
     inspectSupervisorWedges,
     probeTerminalPty: probeTerminalPtyModule,
+    inspectShellHosts: inspectTerminalShellHosts,
     codeRoot: LIFECYCLE_CODE_ROOT,
     processRuntime: { version: process.version, execPath: process.execPath },
     ...deps,
@@ -447,6 +491,7 @@ export async function collectDoctorReport(
     runtimeDeps.projectHome,
   );
   const terminalCapability = runtimeDeps.probeTerminalPty(runtimeDeps.repoRoot);
+  const shellHosts = runtimeDeps.inspectShellHosts(runtimeDeps.projectHome);
 
   const appConfig = runtimeDeps.readJson<Record<string, unknown>>(
     appConfigPath,
@@ -522,6 +567,7 @@ export async function collectDoctorReport(
           ? 'Native module loads; interactive terminal panes are available.'
           : terminalCapability.reason,
     },
+    ...shellHostChecks(shellHosts),
     {
       label: 'App config',
       status: runtimeDeps.exists(appConfigPath) ? 'pass' : 'warn',

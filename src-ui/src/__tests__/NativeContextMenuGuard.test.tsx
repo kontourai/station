@@ -172,16 +172,21 @@ describe('in the desktop and mobile apps', () => {
     );
   });
 
-  test('the terminal keeps the native menu xterm drives', () => {
+  test('a menu the terminal already answered is left alone', () => {
     render(
       <>
         <NativeContextMenuGuard />
-        <div className="xterm">
+        <div className="station-terminal">
           <div data-testid="rows">$ ls</div>
         </div>
       </>,
     );
-    expect(rightClick(screen.getByTestId('rows'))).toBe(false);
+    // The terminal opens its own menu and cancels the event before it
+    // reaches the document; the guard must not open the link menu as well.
+    const rows = screen.getByTestId('rows');
+    rows.addEventListener('contextmenu', (event) => event.preventDefault());
+    expect(rightClick(rows)).toBe(true);
+    expect(screen.queryByRole('menu')).toBeNull();
   });
 
   test('Escape and a click away close the link menu', () => {

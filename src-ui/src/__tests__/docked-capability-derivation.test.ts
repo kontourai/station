@@ -80,6 +80,7 @@ const EXPECTED_BUILTIN_DESCRIPTOR_EXPORTS = [
   '@kontourai/station-contracts:WORKSPACE_SPATIAL_BOARD_PANE_DESCRIPTOR',
   '@kontourai/station-contracts:WORKSPACE_TASK_ROOM_CHAT_DESCRIPTOR',
   '@kontourai/station-contracts:WORKSPACE_TASK_ROOM_EDITOR_DESCRIPTOR',
+  '@kontourai/station-contracts:WORKSPACE_TERMINAL_PANE_DESCRIPTOR',
   '@kontourai/station-contracts:WORKSPACE_TRUST_PANE_DESCRIPTOR',
 ] as const;
 
@@ -216,6 +217,9 @@ describe('docked is a derived capability, pinned to the shell surface registry',
       // descriptor, which a related open admits without `docked`
       // (docs/design/pane-relationships.md), so the family names none.
       'plugin-pane:',
+      // One terminal session a plugin opened through related panes
+      // (docs/design/terminal.md, "Plugins").
+      'terminal-pane:',
     ]);
     for (const prefix of INSTANCE_SURFACE_PREFIXES) {
       if (prefix.descriptorId === null) {
