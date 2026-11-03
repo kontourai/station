@@ -7,6 +7,7 @@ import { envelopeError } from './api-error-message.js';
 import { hasCapability } from './capability.js';
 import { mutateJson } from './http.js';
 import { readPublicStationCapabilities } from './publicStationCapabilities.js';
+import { unlessDeadline } from './request-deadline.js';
 
 /**
  * Whether the host can prepare an in-app troubleshooting conversation
@@ -30,7 +31,9 @@ export async function prepareTroubleshoot(
     { timeoutMs: 30_000 },
     request,
   );
-  const body = (await response.json().catch(() => ({}))) as unknown;
+  const body = (await response
+    .json()
+    .catch(unlessDeadline(() => ({})))) as unknown;
   if (!response.ok)
     // Keeps the route's refusal `code` (for example `route-too-long`).
     throw envelopeError(

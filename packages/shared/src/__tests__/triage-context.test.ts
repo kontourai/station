@@ -31,7 +31,9 @@ function tempRoot(): string {
 
 const GITHUB_TOKEN = `ghp_${'a'.repeat(36)}`;
 // The shape of a Station pairing/device credential: 32 bytes, base64url.
-const PAIRING_CREDENTIAL = 'Qm9vdHN0cmFwU2VjcmV0MTIzNDU2Nzg5MGFiY2RlZmdo';
+// Same shape as a real credential (43 base64url chars, mixed case, digits),
+// built at runtime so secret scanners do not read a literal key.
+const PAIRING_CREDENTIAL = `${'Ab1'.repeat(14)}Z`;
 
 describe('redactTroubleshootReportText', () => {
   test('redacts credentials, pairing secrets, private URLs and home paths', () => {
