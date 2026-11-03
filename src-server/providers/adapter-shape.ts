@@ -561,6 +561,8 @@ export interface ProviderAdapterShape {
        */
       inputContent?: InputRequestContent;
       expectedRequestEventId?: string;
+      /** Server-internal live service guard for delayed Station canonical settlement. */
+      assertAnswerCurrent?: () => void;
       /**
        * With `acceptForSession`: widen the grant to the whole in-process
        * Station browser server. Honoured only by the Claude adapter, and only

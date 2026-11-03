@@ -3,10 +3,8 @@ import type { AgentFrame, DurableApproval } from '@kontourai/agent-runtime';
 import type { AgentDelegationContext } from '@kontourai/station-contracts/agent';
 import { engineId } from '@kontourai/station-contracts/agent-identity';
 import type { ChatAttachmentInput } from '@kontourai/station-contracts/chat-attachment';
-import type { ClientOrigin } from '@kontourai/station-contracts/client-origin';
 import { STATION_ENGINE_DURABILITY } from '@kontourai/station-contracts/engine-capability-matrix';
 import type {
-  InputRequestContent,
   InputRequestForm,
   InputRequestResponse,
 } from '@kontourai/station-contracts/input-request';
@@ -1893,11 +1891,7 @@ export class StationAgentAdapter implements ProviderAdapterShape {
     threadId: string,
     requestId: string,
     decision: 'accept' | 'acceptForSession' | 'decline' | 'cancel',
-    context?: {
-      clientOrigin?: ClientOrigin;
-      inputContent?: InputRequestContent;
-      expectedRequestEventId?: string;
-    },
+    context?: Parameters<ProviderAdapterShape['respondToRequest']>[3],
   ): Promise<void> {
     const record = this.requireSession(threadId);
     const pending = record.pendingRequests.get(requestId);
@@ -1915,6 +1909,7 @@ export class StationAgentAdapter implements ProviderAdapterShape {
             throw new Error('The reserved input request changed.');
           if (context?.expectedRequestEventId !== canonical.eventId)
             throw new Error('The reserved input request event changed.');
+          context?.assertAnswerCurrent?.();
         });
       }
       if (

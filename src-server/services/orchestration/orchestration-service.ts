@@ -11580,8 +11580,8 @@ export class OrchestrationService {
                   'request_verification_unavailable',
                   'Request authority changed before the decision.',
                 );
-              // Adapter resolution can await. Recheck authorization and the exact
-              // current request immediately before its synchronous adapter handoff.
+              // Recheck at handoff and, for delayed Station canonical answers,
+              // again inside the adapter's final synchronous settlement check.
               if (
                 context?.userId !== undefined &&
                 !this.sessionAuthz.canReadSessionForCommand(
@@ -11701,6 +11701,11 @@ export class OrchestrationService {
           const requestContext =
             inputForm || context?.clientOrigin || serverScope
               ? {
+                  ...(adapter.provider === 'station-agent' &&
+                  inputForm &&
+                  command.expectedRequestEventId
+                    ? { assertAnswerCurrent }
+                    : {}),
                   ...(serverScope
                     ? { sessionGrantScope: 'server' as const }
                     : {}),

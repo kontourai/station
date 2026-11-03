@@ -91,6 +91,7 @@ export async function publicFenceFixture(
   beforeInner: () => void = () => {},
   observation?: {
     protocol?: 'legacy' | 'rounds';
+    principalId?: string;
     reportHome?: RoundsFinalFetchOwners['reportHome'];
     inputRuntime?: ReservedStationInputRuntime;
     allowedTools?: string[];
@@ -116,7 +117,9 @@ export async function publicFenceFixture(
   const initial = actual?.members[0];
   const brief = initial?.brief ?? 'inspect exactly this source';
   const principalId =
-    actual?.root.authenticated_principal_ref.id ?? 'fixture-owner';
+    actual?.root.authenticated_principal_ref.id ??
+    observation?.principalId ??
+    'fixture-owner';
   const clientTurnId = initial?.clientTurnId ?? 'reserved-client-turn';
   const current = () =>
     f.environment.withCurrentAuthority(() =>
