@@ -1117,7 +1117,6 @@ function DeviceStage({
           onStreamLive={setStreamLive}
           onOpenTools={setToolsView}
           menuButtonRef={menuButtonRef}
-          toolsDrawerId={toolsDrawerId}
           toolsView={toolsView}
           onClose={() => {
             if (deviceLoopEnabled) {
@@ -1262,7 +1261,6 @@ function DeviceStage({
           }}
           load={loadDeviceToolsDrawer}
           pending={<SkeletonBlock count={1} label="Loading device tools" />}
-          key={toolsView}
         />
       ) : null}
     </div>
@@ -1306,7 +1304,6 @@ function DeviceToolbar({
   reconnecting,
   toolsView,
   menuButtonRef,
-  toolsDrawerId,
   onOpenTools,
   deviceLoopEnabled,
   floatAvailable,
@@ -1333,7 +1330,6 @@ function DeviceToolbar({
   reconnecting: boolean;
   toolsView: DeviceToolsView | null;
   menuButtonRef: RefObject<HTMLButtonElement | null>;
-  toolsDrawerId: string;
   onOpenTools: (view: DeviceToolsView) => void;
   deviceLoopEnabled: boolean;
   /** A chat's floater is mounted (a chat with a Project is open). */
@@ -1510,10 +1506,7 @@ function DeviceToolbar({
             label={`More ${session.name} actions`}
             items={menuItems}
             triggerRef={menuButtonRef}
-            triggerProps={{
-              'aria-controls': toolsView ? toolsDrawerId : undefined,
-              tabIndex: tabStopTaken ? -1 : 0,
-            }}
+            triggerProps={{ tabIndex: tabStopTaken ? -1 : 0 }}
           >
             <MoreGlyph />
           </PaneOverflowMenu>

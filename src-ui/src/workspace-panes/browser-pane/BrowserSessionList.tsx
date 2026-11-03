@@ -209,7 +209,7 @@ export function BrowserSessionList({
   projectSlug: string;
   currentSessionId?: string;
   onOpen: (browserSessionId: string) => void;
-  /** Render nothing, rather than an empty list, when no session exists. */
+  /** Render nothing while loading or when no session exists, rather than an empty list. */
   hideWhenEmpty?: boolean;
 }) {
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -218,7 +218,8 @@ export function BrowserSessionList({
     queryFn: ({ signal }) => api.sessions(projectSlug, signal),
     refetchInterval: 5_000,
   });
-  if (hideWhenEmpty && sessions.data?.length === 0) return null;
+  if (hideWhenEmpty && (sessions.isPending || sessions.data?.length === 0))
+    return null;
   return (
     <section
       className="browser-pane__panel"

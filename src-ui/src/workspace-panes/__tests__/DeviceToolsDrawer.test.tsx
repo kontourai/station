@@ -150,10 +150,11 @@ const TREE: DeviceAccessibilityTree = {
 
 type ToolsHandler = NonNullable<DeviceFetchPlan['tools']>;
 
-async function openDevice(tools: ToolsHandler) {
+async function openDevice(tools: ToolsHandler, deviceLoopPreview = false) {
   const log = stubDeviceFetch({
     inventory: readyInventory([IOS_DEVICE]),
     tools,
+    deviceLoopPreview,
   });
   renderInQueryClient(<DeviceWorkspacePane />);
   await click(
@@ -185,6 +186,34 @@ async function openSettings(...sections: string[]) {
 }
 
 describe('the Tools drawer', () => {
+  test('switching views from the ⋯ menu keeps what the Logs view was doing', async () => {
+    await openDevice(
+      ({ method, path }) =>
+        method === 'GET' && path.endsWith('/tools')
+          ? { body: { success: true, data: snapshot() } }
+          : undefined,
+      true,
+    );
+    await chooseDeviceMenuItem('Logs');
+    const logs = await screen.findByRole('complementary', { name: 'Logs' });
+    fireEvent.change(within(logs).getByLabelText('App ID'), {
+      target: { value: 'com.example.app' },
+    });
+    fireEvent.change(within(logs).getByLabelText('Filter'), {
+      target: { value: 'failed' },
+    });
+    await chooseDeviceMenuItem('Apps');
+    await screen.findByRole('complementary', { name: 'Apps' });
+    await chooseDeviceMenuItem('Logs');
+    const back = await screen.findByRole('complementary', { name: 'Logs' });
+    expect(
+      (within(back).getByLabelText('App ID') as HTMLInputElement).value,
+    ).toBe('com.example.app');
+    expect(
+      (within(back).getByLabelText('Filter') as HTMLInputElement).value,
+    ).toBe('failed');
+  });
+
   test('the ⋯ menu opens it, and it shows what the device reported', async () => {
     const { log } = await openDevice(({ method, path }) =>
       method === 'GET' && path.endsWith('/tools')
@@ -203,9 +232,9 @@ describe('the Tools drawer', () => {
     expect(screen.queryByRole('menu')).toBeNull();
     expect(more.getAttribute('aria-expanded')).toBe('false');
     const drawer = await screen.findByRole('complementary', { name: 'Apps' });
-    // The trigger names the region it controls.
-    expect(drawer.id).not.toBe('');
-    expect(more.getAttribute('aria-controls')).toBe(drawer.id);
+    // The trigger controls only its menu: naming the drawer while it reports
+    // aria-expanded=false would tell assistive tech a visible panel is shut.
+    expect(more.hasAttribute('aria-controls')).toBe(false);
     expect(
       await within(drawer).findByText('com.apple.Preferences'),
     ).toBeTruthy();
@@ -215,7 +244,8 @@ describe('the Tools drawer', () => {
       name: 'Device settings',
     });
     expect(screen.queryByRole('complementary', { name: 'Apps' })).toBeNull();
-    expect(more.getAttribute('aria-controls')).toBe(settings.id);
+    // Switching views moves focus into the drawer's new view.
+    await waitFor(() => expect(document.activeElement).toBe(settings));
     await within(settings).findByRole('button', { name: 'Appearance' });
     // Folded until its disclosure is opened.
     expect(

@@ -232,12 +232,14 @@ export function DeviceToolsDrawer(props: DeviceToolsDrawerProps) {
   const headingId = useId();
   const drawerRef = useRef<HTMLElement>(null);
 
-  // Opening the drawer moves focus into it. ONLY on open: a docked↔overlay
-  // flip (a resize) must not pull focus away. Closing returns focus to the
-  // ⋯ button (the pane owns that; see DeviceStage).
+  // Opening the drawer, or switching it to another view from the ⋯ menu,
+  // moves focus into it. A docked↔overlay flip (a resize) must not pull focus
+  // away. Closing returns focus to the ⋯ button (the pane owns that; see
+  // DeviceStage).
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the view is the change key.
   useEffect(() => {
     drawerRef.current?.focus();
-  }, []);
+  }, [view]);
 
   async function run(next: DeviceToolAction, done?: string) {
     setLastAction(next.type);

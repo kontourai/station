@@ -78,12 +78,18 @@ export function BrowserDevicesSection() {
                 ))}
               </select>
             </label>
-            <BrowserAgentSettingsPanel
-              key={`agent:${projectSlug}`}
-              apiBase={apiBase}
-              api={api}
-              projectSlug={projectSlug}
-            />
+            {access.isError || access.data?.canDrive === false ? (
+              <p className="settings__field-hint">
+                You can't change Browser settings for this Project.
+              </p>
+            ) : access.data ? (
+              <BrowserAgentSettingsPanel
+                key={`agent:${projectSlug}`}
+                apiBase={apiBase}
+                api={api}
+                projectSlug={projectSlug}
+              />
+            ) : null}
             {access.data?.operator ? (
               <BrowserLocalTargetsPanel
                 key={`targets:${projectSlug}`}

@@ -692,7 +692,9 @@ function BrowserNewSession({
                     className="browser-pane__control"
                     disabled={open.isPending}
                     onClick={() =>
-                      open.mutate(`http://${target.host}:${target.port}/`)
+                      open.mutate(
+                        `http://${target.host.includes(':') ? `[${target.host}]` : target.host}:${target.port}/`,
+                      )
                     }
                   >
                     {target.label} · {target.host}:{target.port}

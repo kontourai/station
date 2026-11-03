@@ -193,6 +193,33 @@ describe('Browser agent JavaScript (D4)', () => {
   });
 });
 
+describe('Browser settings for a view-only caller', () => {
+  test('a caller who cannot drive this Project gets no agent JavaScript switch', async () => {
+    const calls = stub({
+      'GET /api/browser/projects/alpha/access': () =>
+        ok({
+          projectId: 'p-alpha',
+          role: 'operator-device',
+          operator: false,
+          canDrive: false,
+          browser: 'ready',
+        }),
+    });
+    mount();
+    expect(
+      await screen.findByText(
+        "You can't change Browser settings for this Project.",
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole('switch', {
+        name: "Let agents run JavaScript in this Project's pages",
+      }),
+    ).toBeNull();
+    expect(calls.some((c) => c.path.endsWith('/settings'))).toBe(false);
+  });
+});
+
 describe('Browser shared local servers (D7, operator only)', () => {
   const suggestion = {
     host: 'localhost',

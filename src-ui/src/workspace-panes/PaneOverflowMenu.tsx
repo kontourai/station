@@ -125,7 +125,7 @@ export function PaneOverflowMenu({
   /** The trigger, for a host that returns focus to it. */
   triggerRef?: RefObject<HTMLButtonElement | null>;
   /** Extra trigger attributes, e.g. a toolbar's roving `tabIndex`. */
-  triggerProps?: { 'aria-controls'?: string; tabIndex?: number };
+  triggerProps?: { tabIndex?: number };
 }) {
   const [open, setOpen] = useState(false);
   /** A `list` row's id while its choices are shown in place. */
@@ -266,7 +266,7 @@ export function PaneOverflowMenu({
         aria-haspopup="menu"
         aria-expanded={open}
         tabIndex={triggerProps?.tabIndex}
-        aria-controls={open ? menuId : triggerProps?.['aria-controls']}
+        aria-controls={open ? menuId : undefined}
         onClick={() => (open ? close() : setOpen(true))}
       >
         {children}

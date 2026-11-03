@@ -1235,6 +1235,48 @@ describe('BrowserPane Chromium acquisition (D3)', () => {
   });
 });
 
+describe('Browser empty state', () => {
+  test('says what to do and opens a shared local server, IPv6 included, in one click', async () => {
+    const { calls, onAttach } = renderPane(
+      {
+        'GET /api/browser/projects/alpha/access': OPERATOR_ACCESS,
+        'GET /api/browser/sessions?projectSlug=alpha': ok([]),
+        'GET /api/browser/projects/alpha/local-targets': ok([
+          {
+            id: 'lt_00000000-0000-4000-8000-000000000002',
+            host: '::1',
+            port: 5173,
+            label: 'vite',
+            addedBy: 'operator',
+            addedAt: '2026-09-22T12:00:00.000Z',
+          },
+        ]),
+        'POST /api/browser/sessions': ok(sessionView(), 201),
+      },
+      { kind: 'new' },
+    );
+    expect(
+      await screen.findByRole('heading', {
+        name: 'Enter a URL or pick a local server',
+      }),
+    ).toBeTruthy();
+    // No empty session list beside it: one instruction, one place to act.
+    expect(screen.queryByRole('heading', { name: 'Sessions' })).toBeNull();
+    const servers = await screen.findByRole('list', { name: 'Local servers' });
+    fireEvent.click(within(servers).getByRole('button', { name: /vite/ }));
+    await waitFor(() =>
+      expect(
+        (
+          calls.find(
+            (c) => c.method === 'POST' && c.path === '/api/browser/sessions',
+          )?.body as { url?: string } | undefined
+        )?.url,
+      ).toBe('http://[::1]:5173/'),
+    );
+    await waitFor(() => expect(onAttach).toHaveBeenCalledWith(SESSION));
+  });
+});
+
 describe('Browser commands in the command palette', () => {
   test('console, sessions, rotate, stop loading, float and Browser settings each run from the palette', async () => {
     const release = registerFloatHost();
