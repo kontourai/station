@@ -1,377 +1,84 @@
 # Mobile device workspace
 
-The Device pane lists simulators/emulators on the selected Station's device
-hosts and can open a shared live view with human input. It uses the same
-[live-surface contract](../architecture/module-map.md#shared-live-surface) as the
-[Browser pane](browser-workspace.md), with a device-specific producer and access
-policy. A separate single-frame capture API remains available; its result is
-a timestamped screenshot, not a claim that a live session exists.
+The Device pane shows an iOS simulator or Android emulator running on one of
+your Station's device hosts. You and authorized Agents can watch and use the
+same screen. This guide covers simulators and emulators, not physical
+phones.
 
-This guide describes current code, replacing the earlier capture-only slice of
-[#1967](https://github.com/kontourai/station/issues/1967). Physical device/app,
-remote-host and release qualification require their own receipts. A visible
-screen alone does not identify the foreground application or its build.
+Limits, refusal codes, the single-frame API and evidence live in the
+[Device reference](../reference/browser-and-devices.md#devices).
 
 ## Configure a device host
 
-Use a personal Station instance. Hosted tenant runtimes do not mount the device
-routes. Install the platform prerequisites on the device host: Xcode and the
-chosen simulator runtime for iOS, or Android SDK/emulator tooling and an image
-for Android. This inventory is for simulators/emulators; do not infer physical
-phone support from it.
+1. Use a personal Station. Hosted Stations do not offer devices.
+2. On the device host, install Xcode with a simulator runtime (iOS) or the
+   Android SDK with an emulator image (Android).
+3. Install Node.js 24 or later with npm, on the PATH Station starts with.
+4. Open **Device** and follow setup to turn on Station's device helper.
+   Restart Station if you change its PATH.
 
-Device tools additionally need a user-installed Node.js 24 or later with npm
-on the device host. Station resolves the first executable `node` from the user's
-PATH, follows version-manager shims to that installation, and runs its own npm
-CLI and the device hub with that absolute Node path. A later PATH entry cannot
-supply npm for a different installation. The user's PATH is preserved exactly.
-The desktop's private Node still runs Station's bundled services.
-
-If Node/npm is missing or Node is too old, setup explains the prerequisite.
-An installed helper stays blocked until **Check again** succeeds; it does not
-enter a crash/restart loop. Restart Station after changing its inherited PATH.
-An independently configured helper keeps its own prerequisites and lifecycle.
-
-The operator can enable Station's managed device helper through the Device
-setup UI. The [toolchain service](../../src-server/services/devices/toolchain/device-toolchain-service.ts)
-records consent, installs its pinned helper and starts a supervised process.
-Later use can start an already-enabled helper on demand. The current pins and
-integrity records live in the toolchain source; a setup response is not proof
-that every platform prerequisite is ready. Disabling the managed helper stops
-it and withdraws that choice while retaining its installed files.
-
-An explicitly configured **Device helper URL** overrides the managed helper.
-The setting resolves stored Station configuration before the
-`STATION_MOBILE_DEVICE_HUB_URL` environment fallback. For an independently
-managed helper, use an admitted numeric-loopback origin, for example:
-
-```sh
-export STATION_MOBILE_DEVICE_HUB_URL=http://127.0.0.1:43871
-```
-
-The configured endpoint admits only an exact `http://127.0.0.1:<port>` origin;
-hostnames, paths, credentials, queries, fragments and reserved ports are refused.
-Configuration is captured when these runtime services are composed; changing a
-setting does not prove the running service has adopted it. Restart the same
-owned instance to apply a different helper endpoint. Keep an external helper's
-private dashboard and shell routes off the network; Station does not own that
-external process's lifecycle.
-
-Operator-managed SSH device hosts also have current implementations:
-[host routes](../../src-server/routes/device-hosts.ts) register a host, check its
-connection, and separately enable/start its helper. They are not Station Device
-pairing. A registered address alone is not installation consent or proof that a
-remote simulator works. The
-[host registry](../../src-server/services/devices/hosts/device-host-registry.ts)
-and resolver carry the host identity into inventory, sessions, tools and shares.
-The viewer talks to its selected Station, never directly to the helper's loopback
-URL. Remote platform receipts remain separate from these source/fixture claims.
+To use another machine as a device host, add it under **Device
+hosts (SSH)** in **Settings → Advanced → Browser & devices**. See
+[host setup details](../reference/browser-and-devices.md#configure-a-device-host).
 
 ## View, control and end a session
 
-Open **Device** from a region's pane chooser, select a host and exact device,
-then start a stopped device or open its live session. Startup can return a
-`starting` state while inventory polling waits for the booted target; acceptance
-is not completed boot. The current
-[pane](../../src-ui/src/workspace-panes/DeviceWorkspacePane.tsx) renders a
-`LiveSurfaceCanvas`, controller and input status, and device tools. Its bounded
-selection state does not persist captured image bytes or control authority.
-The canvas asks for frames no larger than the pane's size in device pixels,
-rounded up in 320-pixel steps so resizing within a step keeps the stream. On a
-metered or data-saving connection it asks for at most 5 frames per second at
-quality 50 and 960 pixels on each side. See the
-[stream budget](../../src-ui/src/live-surface/liveSurfaceStreamBudget.ts).
+1. Open **Device** from a region's pane chooser. With nothing running it says
+   **Start a simulator**.
+2. Choose the host and device, then start it or open its live session.
+3. Tap or type on the screen. While you hold control, Agents cannot send
+   input. Use **Home**, and **Back** on Android or **Rotate** on iOS.
 
-Devices belong to the operator. An active admin/owner of a Project may view or
-drive only devices shared with that Project, on the named host. Android shares
-resolve to AVD identity rather than treating a reusable emulator serial as a
-permanent grant. Starting a shared device uses drive authorization; powering it
-off and ending a session for everyone are operator operations. Membership,
-shares, current request credentials and the route's pairing scope all matter.
-[Device access](../../src-server/services/devices/device-access.ts) and
-[session routes](../../src-server/routes/mobile-device.ts) own those checks.
+Everything else is in **⋯**: **Screenshot**, **Record**, **Logs**, **Apps**,
+**Device settings**, **Recents** (Android), **Float over chat**, **Power off**,
+**End for everyone** and **Close**.
 
-The [producer](../../src-server/services/devices/device-live-surface-producer.ts)
-separates video and input liveness. iOS video uses MJPEG. Android video goes
-to a browser that can decode it (a Station on loopback, a secure context with
-WebCodecs, and the stream's profile) as H.264, decoded on the viewer's
-machine; a viewer that cannot keep up is switched to images. The pane shows
-"H.264, decoded in this browser". Other viewers get server-side H.264
-decoding when a decoder is available; otherwise a PNG screenshot-poll
-fallback, reported as such. The server decoder runs only while such a viewer
-is open. The decoder uses host ffmpeg even without ffprobe,
-or the pinned ffmpeg already acquired through `station media-tools download --yes`.
-Existing decoding stays available with both Feature Previews off. Downloading
-missing tools requires enabling Walkthroughs or Local speech in Settings →
-Advanced → Feature previews and explicit consent. Resolution never downloads;
-see [local speech and media tools](local-speech.md). Controls reflect input-channel status independently
-of the most recent frame. A successful input write proves only that the hub
-socket accepted bytes, not that the device applied the gesture.
+- **Close** only closes your view. An unwatched session ends after ten
+  minutes; the device keeps running.
+- **End for everyone** ends the session for every viewer. **Power off** stops
+  the device. Only the operator can do either.
 
-Human input follows the shared control lease and stale-epoch/fence checks.
-The station-control `device_*` tools admit a bound, verified agent Session with
-its recorded owner and Project. The operator may use local devices; active
-Project admins/owners remain limited to devices shared with that Project. Every
-call rechecks this authority and requires the operator to enable **Agent access**
-in Device setup. Disabling that opt-in also revokes existing surface grants. The in-process device grant targets one host/device
-and cannot be supplied in tool arguments. See the
-[device Agent control decision](../decisions/device-agent-control.md).
+## Share a device and give Agents access
 
-`device_list` lists accessible local and configured SSH-host devices and sessions opened by this
-conversation. `device_open` starts a stopped device asynchronously (a `starting`
-answer is not completed boot) or opens/joins its live session. Android boots can
-change the device ID from AVD name to emulator serial: list again and select
-the running row. `device_open` accepts an optional `hostId` (default `local`)
-and never falls back to a different host. Open joins a running session without
-claiming input, including while a person holds control.
+Devices belong to the operator. In **Settings → Advanced → Browser & devices**
+the operator can:
 
-By default a successful live open publishes a bounded, ten-minute reveal intent
-for the calling principal, Project and conversation. `reveal: false` opens in
-the background. Repeated opens reuse that intent. The active matching chat polls
-for new intents and opens/reuses the canonical Device pane, subject to current
-Station authority and device view access. The operator’s own current paired Device may receive reveal intents within its granted scope, without gaining Device drive or administration authority. Explicit intents survive an initial
-poll failure; opening an existing session by itself creates no historical reveal.
-A bounded, authority/Project/conversation-scoped in-memory history remembers
-handled intents across chat remounts in the same tab, preserving dismissals.
-Reloading the app clears this presentation history; an unexpired explicit intent
-can then be shown again.
-Navigation away, ended sessions, revoked Agent access or credentials, removed
-hosts and revoked device shares prevent delivery. Starting a device alone does
-not enqueue a live reveal: list and open its running target after boot.
+- share a device with a Project, so that Project's admins and owners can view
+  and drive it;
+- turn on agent device access, so bound Agents can use the `device_*` tools.
 
-The tool returns `revealRequested` separately from `paneRevealed: false`:
-queuing a request cannot prove that a viewer displayed it. A refusal or absent
-viewer leaves the existing session available through Device. Reveal acquires no
-input lease.
+Turning agent access off also revokes Agents' current access. See
+[Agent tools](../reference/browser-and-devices.md#view-control-and-end-a-session)
+for the full rules.
 
-`device_input` sends bounded typed pointer, text and key events through the
-existing allowlisted producer, never a shell command. It claims only an
-unclaimed lease or renews its own; a human or another agent holding control
-refuses the action. Human takeover interrupts queued input and the producer
-checks the fence before each send. The grant is rechecked before each event
-in a batch. Concurrent calls from the same agent retain their shared control
-until the last call finishes; it releases in `finally`. Opening or observing a
-device does not leave an idle agent blocking the human Tools drawer. Input
-responses carry the lease after completion/release; it may still name the agent
-if another concurrent call remains active.
+## Install and run an app
 
-Complete pointer/key gestures within one batch: send down/move/up or key down/up
-together. Unmatched presses/releases return `incomplete-gesture` before any event
-is sent. Cross-call holds, drags and held keys are unsupported, and this API has
-no wait/duration event for a timed long press. Unsupported input kinds are also
-refused for the whole batch before delivery. Concurrent input batches run in
-sequence so their pointer/key events cannot interleave; observations can overlap.
-A dispatch failure releases control immediately to cancel uncertain held input
-and can interrupt other operations sharing that fence. `device_snapshot` reads the bounded
-accessibility tree; `device_screenshot` returns PNG through the existing capture
-service (maximum 8 MiB, validated dimensions). Both require the agent lease and
-recheck authority and the fence before publishing. An accepted socket write is
-not proof the device applied it.
+Turn on the **Device developer loop** preview, then open **⋯ → Apps**:
 
-`device_close` requires current operator standing and ends only a session this
-conversation created. It ends that shared session for everyone, leaves the device
-running, and refuses while another controller holds it. Project admins cannot
-end a shared session. Operator standing is checked before a close can claim
-control or renew idle grace. Joining a human-opened session does not transfer
-ownership. Successful agent operations renew an
-unwatched session's idle grace. Remote operations use the selected host's
-session, capture and accessibility services with the same ownership ledger and
-lease; host removal or replacement invalidates existing grants. Agent shutdown
-is not included.
+1. Pick an iOS `.app` from the Project workspace, upload a ZIP containing one
+   `.app`, or give an Android APK path or upload.
+2. Install it. Station checks it on the host and reports the installed app ID,
+   version and build.
+3. Launch, terminate, or open a URL in the app.
 
-Claude's in-process tools and the preview Codex dynamic-tool channel can carry
-bound assurance. Codex requires the **Codex browser and device tools** Feature
-Preview and an Agent with the built-in Station Control source. ACP
-`http-header-token` calls remain `caller-not-bound`; a stdio connection with no
-verified caller is refused as `caller-required`. Tool visibility grants no authority. The separate toolchain
-**Agent access** setting is the explicit operator opt-in for both managed
-agent-device tooling and these live tools. It does not put external CLI commands
-under the shared lease.
+Agents use `device_install_app`, `device_launch_app`, `device_terminate_app`
+and `device_open_url`. If a connection drops during an install, check the
+device before retrying. See
+[Install and inspect an app](../reference/browser-and-devices.md#install-and-inspect-an-app).
 
-Closing or hiding a pane detaches that viewer. The
-[session service](../../src-server/services/devices/device-session-service.ts)
-ends an unwatched device session after a ten-minute grace by default; the device
-continues running. **End for everyone** unregisters the session for every viewer;
-powering off is a separate action. An observed stopped device or supervised
-helper exit also ends its sessions. An external helper does not emit the same
-exit signal, and an unavailable inventory is not proof that a device stopped.
-Browser sessions have different lifetime rules, so do not apply this
-device idle timeout to a Browser pane.
+## Screenshots, recordings and logs
 
-## Install and inspect an app
-
-With **Device developer loop** enabled, the Tools drawer accepts an iOS
-simulator `.app` under the Project workspace, a ZIP containing one `.app`, or
-an Android APK upload or Project-relative path. The workspace root and each
-path component must be free of symlinks; use the canonical Project path (on
-macOS, `/private/tmp` rather than the `/tmp` symlink). Windows workspace
-snapshots currently refuse; an upload is the available intake path there.
-Archive traversal, symlinks, collisions, excess size and incompatible platform,
-ABI or minimum OS are refused. Staging is bounded and its Project-scoped handle
-expires; staging alone does not establish compatibility or installation. Each Project has its own staging quota, with a 512 MiB host-wide stored-byte ceiling and at most four concurrent install copies; uploads must finish within ten minutes.
-
-Station checks the artifact on the selected host, rechecks Project and device
-authority immediately before installation, and verifies the installed app ID,
-version and build afterward. The receipt includes the SHA-256 digest, platform,
-ABI and source; revision remains `null` when it cannot be established. A lost
-connection or takeover after installation starts reports an unknown effect:
-check the device before retrying. Local and enabled SSH hosts use fixed
-`simctl` or `adb` vectors on that host, never a generic shell or local fallback.
-
-The App section can launch, terminate, or open a URL. Launch and URL actions
-report only that the requested app was observed in the foreground; they do not
-prove URL delivery. Android permits HTTP and HTTPS, plus schemes found in the installed app's intent filters. iOS permits schemes declared by the target app in its installation receipt; an unobserved scheme is refused. Telephone, SMS, mail, preferences and web-search schemes are refused. iOS can show a first-use confirmation, in which case Station
-reports the unconfirmed postcondition until the person acts. Termination checks
-that the app process is absent. The agent equivalents are `device_install_app`
-(with exactly one of `workspacePath` or a staged `artifactHandle`),
-`device_launch_app`, `device_terminate_app`, and `device_open_url`. Each claims
-the input lease for its operation and refuses while a person controls it.
-
-**Action history** shows at most 100 entries for the open session. It records
-agent operations and person-initiated Tools actions as action names and outcomes,
-without input text, URLs or notification payloads. It is in memory and ends with
-the session; it is not a complete device audit or a record of every human touch.
-**Save reproduction to Task** stores a JSON attachment in the Task room with the
-selected app's bounded log sample, screenshot, device identity, available install
-receipt and session history. If the app has stopped, the bundle records that state instead of refusing the capture. Log samples pass through secret redaction, but the screenshot and logs may still contain private data.
-If publication cannot be confirmed, check the Task before retrying.
-
-With the preview on and a chat floater available, closing the Device stage,
-closing its tab, or hiding its visible region requests a host-qualified float.
-The floater still checks current access and session availability.
+- **⋯ → Screenshot** downloads a PNG.
+- **⋯ → Record** saves a clip of up to 30 seconds to a Task. It needs the
+  **Device developer loop** and **Walkthroughs** previews.
+- **⋯ → Logs** samples recent logs for one running app.
 
 ## Capture a device Screen to a Task
 
-In Task Review, **Capture** lists accessible Device sessions alongside Browser
-sessions. Select the named host and device to save a Screen to that Task.
-Station checks the Task's Project and the device's current access before
-publishing; a removed host or ended session cannot provide a capture.
+With the **Task review** preview on, open **Task → Review**, choose
+**Capture**, and pick the Device session. Commit your workspace changes first.
+An Agent bound to the Task can call `device_capture_to_task`.
 
-A bound agent can call station-control `device_capture_to_task` with the
-`deviceSessionId` returned by `device_open` and an optional `label` (120
-characters maximum). The route derives the Task from that Session's current
-lead binding; the tool accepts no Task id. It uses the existing `DEVICE_AGENT`
-policy, Agent access opt-in, Project standing and shared-device authorization.
-It is a mutating tool and is not on the auto-approved bounded-write list.
-
-Commit workspace changes first. Station pins the clean Task workspace before
-capturing and re-pins it afterwards. Dirty workspaces or a commit made during
-capture return `workspace-changed`; unavailable workspaces or unobserved
-submodules return `workspace-unobservable`. Per-Task, home-storage and image
-limits use the same capture store as `browser_capture_to_task`, including
-`capture-limit`, `capture-home-limit` and `screenshot-too-large` refusals.
-For the agent tool, human takeover, source loss or authority changes refuse
-publication. Its control lease remains held through publication and is then
-released. Person capture rechecks device access and session identity before
-publication.
-
-Success returns `captureId`, `commit`, `digest` and the image. The immutable
-Screen is available in Review and in the Overview **Timeline** while the
-existing **Task review** feature preview (`task-review`) is enabled. A thumbnail
-opens that Screen in Review. The Timeline shows its label, commit and gate
-standing from a referencing review reply: verified evidence uses the existing
-gate-evaluation verifier; missing or unverifiable evidence says **claimed**.
-The gate reference must name the same capture and commit. Thumbnail bytes come
-through the Task-authorized capture-content route.
-
-With **Device developer loop** and **Walkthroughs** enabled, use **Record to
-Task** in the Device pane to select a Task and start a clip. Stop it with the
-toolbar control; Station also stops at 30 seconds. The clip is saved in Task
-Review with the host and device and the app observed at the start. A rotated
-frame currently refuses the recording. If no fresh image arrives, the clip uses
-the last image cached when recording began; that image may predate the clip.
-An agent with a Task-bound Session can
-use `device_record_to_task` with a duration of up to 30 seconds.
-
-With **Device developer loop** enabled, the Tools drawer can sample logs for
-one running app ID. Start or pause the sample and filter the displayed output
-by text or level. iOS reads the last five seconds; Android reads up to the last
-1,000 logcat lines for the app PID. Station retains at most 1,000 lines and
-256 KiB and reports truncation, then checks the PID again before publishing.
-Samples can have gaps. `device_logs` provides the same bounded read to an
-authorized agent. Agent logs and recording claim the input lease, are refused
-while a person controls the device, and hold the lease while running. Both
-tools use the selected device host, including an enabled SSH host.
-
-The commit records the observed Task workspace. It does not establish which
-build is installed on the device or which app is in the foreground; attach
-those receipts separately. Real-device capture and installed-build provenance
-require separate verification.
-
-## Single-frame API and SDK
-
-The live Device toolbar's **Save screenshot** action downloads a PNG of the
-selected host and device. A failed capture is shown as an error; a screenshot
-does not identify the installed build or foreground app.
-
-- `GET /api/mobile-devices/hosts/local/devices` returns host state,
-  `observedAt`, and device ID/platform/name/runtime/booted metadata.
-- `POST /api/mobile-devices/hosts/local/devices/{platform}/{deviceId}/capture`
-  accepts exactly `{}` and returns a capture ID, target tuple, capture timestamp,
-  PNG dimensions, and `pngBase64`. The service re-discovers that exact target
-  before capturing. A disappeared or stopped device is a conflict, not a frame.
-
-Alongside the per-device authorization above, inventory uses
-`orchestration:read`. Screen capture requires the stronger
-existing `terminal:operate` scope because a device screen can expose arbitrary
-applications and terminal content. A read-only credential can discover devices
-but cannot obtain their screens. The normal runtime authentication and origin
-checks apply, and current authorization is checked again before publishing a
-capture. All responses use `Cache-Control: no-store`.
-
-```ts
-import {
-  fetchMobileDeviceInventory,
-  captureMobileDevice,
-} from '@kontourai/station-sdk/mobile-device';
-
-const projectSlug = 'my-project'; // The active Project for a shared device.
-const inventory = await fetchMobileDeviceInventory(apiBase, requestOptions, projectSlug);
-// Display the returned device list and let the user select an exact target.
-const capture = await captureMobileDevice(apiBase, selectedTarget, requestOptions, projectSlug);
-// Render only after decoding the PNG; this is a timestamped snapshot.
-const imageUrl = `data:${capture.mimeType};base64,${capture.pngBase64}`;
-```
-
-`requestOptions` uses the SDK's existing credential/origin and request-authority
-binding. Do not place credentials in URLs or persisted pane state. The SDK
-validates returned target identity and capture shape; HTTP refusal status stays
-observable through `MobileDeviceRequestError.status` without forwarding helper
-error messages. Clear private images when the selected Station/authority changes.
-
-## Failure and lifecycle behavior
-
-The single-frame adapter limits its inventory and screenshot exchanges.
-The separate live session and tools paths have their own allowlists and bounds.
-It does not forward the viewer's credentials; the managed connection adds its
-own private helper secret. It refuses redirects, limits inventory to 256 KiB
-and 256 devices, limits PNGs to 8 MiB and 8192 pixels per dimension, and caps
-each adapter's concurrent inventory and screenshot lanes at two requests each.
-Each request and its streamed body share a 12-second
-deadline. A capture includes a fresh inventory exchange followed by capture.
-
-Incomplete platform discovery is `partial`; malformed or unreachable replies
-are `unavailable`. Raw helper diagnostics and local host paths are not returned.
-Neither an old inventory nor a successfully loaded wrapper establishes a live
-screen. The frame identifies the selected device, not the build or foreground
-application: record app/build provenance separately from the frame, even when
-the Tools drawer can inspect application state.
-
-Use the owning lifecycle action for the resource you intend to stop: viewer,
-shared session, device and managed helper are distinct. No physical simulator,
-remote host, input effect, relay frame rate or native-client journey was verified
-by this documentation audit.
-
-Fixture owners include the [single-frame adapter tests](../../src-server/services/mobile-device/__tests__/mobile-device-host.test.ts),
-[session-route tests](../../src-server/routes/__tests__/mobile-device-sessions.routes.test.ts),
-and [producer tests](../../src-server/services/devices/__tests__/device-live-surface-producer.test.ts).
-They do not replace an application/build-specific device receipt.
-
-The Agent route fixtures cover colliding local/SSH device IDs, host removal,
-lease-neutral open and reveal admission. The mounted reveal fixture reaches the
-canonical region and Device live surface, checks repeat/dismissal behavior and
-stale authority, and sends no control request. These are synthetic receipts.
-Artifact installation/lifecycle with build provenance, reproduction bundles,
-physical-device and authenticated remote-platform
-qualification remain outstanding under #1967/#1970/#1971/#1973; cloud/EAS providers
-remain #2373. These epics are not complete on fixture evidence alone.
+A captured Screen records the Task workspace commit. It does not show which
+build is installed or which app is in front; record that separately. See
+[Task capture details](../reference/browser-and-devices.md#capture-a-device-screen-to-a-task).

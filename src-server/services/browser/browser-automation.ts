@@ -66,6 +66,7 @@ import {
   BROWSER_LOCATOR_ENGINE_READY,
   BROWSER_LOCATOR_ENGINE_REF,
 } from './browser-locator-engine.js';
+import type { BrowserNetworkSnapshot } from './browser-network-log.js';
 import type { BrowserProjectSettingsStore } from './browser-project-settings.js';
 import {
   type BrowserLiveTarget,
@@ -606,12 +607,7 @@ export interface BrowserAutomationDeps {
     browserSessionId: string,
     after?: number,
     limit?: number,
-  ): Promise<
-    | (ReturnType<
-        import('./browser-network-log.js').BrowserNetworkLog['read']
-      > & { generation: number })
-    | undefined
-  >;
+  ): Promise<BrowserNetworkSnapshot | undefined>;
   networkPreviewEnabled?: () => boolean;
   agentActionsEnabled?: () => boolean;
   /**

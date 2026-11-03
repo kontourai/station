@@ -2,11 +2,11 @@ import { randomUUID } from 'node:crypto';
 import { BROWSER_RECORD_MAX_DURATION_MS } from '../../tools/station-browser-policy.js';
 import type { TaskReviewAccess } from '../orchestration/project-task-room-runtime.js';
 import { TaskBrowserCaptureError } from './task-browser-capture.js';
-import {
-  type RecordingSource,
-  type TaskBrowserRecording,
-  TaskBrowserRecordingError,
+import type {
+  RecordingSource,
+  TaskBrowserRecording,
 } from './task-browser-recording.js';
+import { TaskBrowserRecordingError } from './task-recording-errors.js';
 
 const RETAIN_MS = 5 * 60_000;
 const MAX_RETAINED = 100;
