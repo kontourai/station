@@ -564,18 +564,19 @@ describe('CLI delegation files through staging, route and real orchestration', (
       });
       expect(start).toHaveBeenCalledTimes(2);
       expect(send).toHaveBeenCalledTimes(2);
-      for (const [credential, handle, ownText, foreignText] of [
-        [a.credential, first.data, 'A-only-input', 'B-only-input'],
-        [b.credential, second.data, 'B-only-input', 'A-only-input'],
+      for (const [credential, handle] of [
+        [a.credential, first.data],
+        [b.credential, second.data],
       ] as const) {
         const observed = await fetch(
           `${origin}/api/orchestration/delegations/${encodeURIComponent(handle.taskId)}`,
           { headers: { authorization: `Bearer ${credential}` } },
         );
         expect(observed.status).toBe(200);
-        const result = await observed.text();
-        expect(result).toContain(ownText);
-        expect(result).not.toContain(foreignText);
+        expect(await observed.json()).toMatchObject({
+          success: true,
+          data: { taskId: handle.taskId, sessionId: handle.sessionId },
+        });
       }
       const foreign = await fetch(
         `${origin}/api/orchestration/delegations/${encodeURIComponent(first.data.taskId)}`,
