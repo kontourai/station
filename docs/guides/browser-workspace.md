@@ -63,7 +63,8 @@ Everything except tabs, navigation, the address bar and the driver chip is in
 | Capture | **Screenshot** (Mod+Shift+S), **Annotate**, **Record** |
 | View | **Zoom**, **Appearance**, **Viewport**, **Rotate viewport** |
 | Inspect | **Console**, **Network** |
-| Session | **Float over chat**, **Reload without cache**, **Stop loading**, **Sessions**, **Browser settings…**, **Close session** |
+| Session | **Float over chat**, **Reload without cache**, **Stop loading**, **Sessions**, **Browser settings…** |
+| (last, on its own) | **Close session** |
 
 Some items need a Feature Preview in **Settings → Advanced → Feature
 previews**: **Annotate**, **Record** and **Network** need **Browser
@@ -116,6 +117,6 @@ automatically. Agents cannot answer a dialog that is waiting for you.
 ## Close or reopen a session
 
 Hiding or closing the pane does not stop the page; an Agent may keep working.
-Choose **⋯ → Session → Close session** to stop it. If the browser or Station
+Choose **⋯ → Close session** to stop it. If the browser or Station
 restarts, the session shows **needs reopen**; reopening starts a fresh browser
 for it.

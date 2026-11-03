@@ -58,7 +58,7 @@ names the agent tool that does the same thing, if one exists.
 | Agent JavaScript permission | ⋯ › Agent access panel | Settings › Advanced › Browser & devices | power | ⋯ › Browser settings…, palette, Settings search | no (owner decision) |
 | Shared local servers | ⋯ › Local servers panel (operator) | Settings › Advanced › Browser & devices (operator) | power | same | no (operator only) |
 | Local server one-click open | none | Empty state | core | n/a | `browser_open` |
-| Close session | ⋯ row | ⋯ › Session, last | occasional | n/a | `browser_close` |
+| Close session | ⋯ row | ⋯, last, on its own | occasional | n/a | `browser_close` |
 | Codec diagnostic ("JPEG", "H.264…") | Always under the page | On hover or focus of the live view | power | n/a | n/a |
 
 ### Device
@@ -78,7 +78,7 @@ names the agent tool that does the same thing, if one exists.
 | Appearance, accessibility, push, location, permissions | Drawer sections, all open | ⋯ › Device settings, folded | power | n/a | gap, except accessibility (`device_snapshot`) |
 | Float over chat | Toolbar | ⋯ › Session | occasional | n/a | n/a |
 | Close (this viewer) | Toolbar | ⋯ › Session | occasional | pane chrome | `device_close` |
-| Power off, End for everyone (manager only) | Toolbar | ⋯ › Session (manager only) | power | n/a | gap (owner-gated) |
+| Power off, End for everyone (manager only) | Toolbar | ⋯, last, on their own (manager only) | power | n/a | gap (owner-gated) |
 | Device hub, sharing, agent device access | Setup wizard only, unreachable once set up | Settings › Advanced › Browser & devices › Open device setup | power | Settings search | no |
 | SSH device hosts | Settings › Devices | Settings › Advanced › Device hosts | power | Settings search | no |
 | Recording limits | Server constants, no UI | Unchanged; documented in reference | power | n/a | n/a |
@@ -108,16 +108,18 @@ driver chip and one ⋯. The ⋯ menu has four groups:
 - **Inspect:** Console (its row shows new errors; a dot on ⋯ says there are
   some), Network.
 - **Session:** Float over chat, Reload without cache, Stop loading,
-  Sessions, Browser settings…, Close session.
+  Sessions, Browser settings….
+- **Close session**, alone and last, in a group of its own.
 
 **Device default chrome:** the screen, Home, Back (Android) or Rotate (iOS),
-and one ⋯. The ⋯ menu has three groups:
+and one ⋯. The ⋯ menu has three named groups:
 
 - **Capture:** Save screenshot, Record to Task.
 - **Tools:** Logs, Apps, Device settings. Each opens the drawer on that view
   alone; Device settings sections start folded.
-- **Session:** Recents (Android), Float over chat, Close, Power off, End for
-  everyone.
+- **Session:** Recents (Android), Float over chat, Close.
+- **Power off** and **End for everyone** (managers only), last, in a group of
+  their own.
 
 **Settings › Advanced › Browser & devices:** agent JavaScript and shared
 local servers for a chosen Project (the Browser's link opens on its own
@@ -191,3 +193,10 @@ nothing running.
 - Android-only rows (Back in the toolbar, Recents in ⋯). No emulator was
   available; unit tests cover them.
 - The Tauri desktop shell. The coordinator checks desktop on Windows.
+
+The Playwright journey `tests/device-pane.spec.ts` ran once through
+`npm run test:e2e:product -- --spec=tests/device-pane.spec.ts` on the suite's
+own isolated server: 4 passed. Its first run found the Device settings fold
+toggles under the 44px phone tap floor; they are now 44px rows. The
+not-configured "after" capture above predates the final copy, which now names
+Settings › Advanced › Host options.
