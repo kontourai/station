@@ -7,6 +7,39 @@ normally before publication. Open one PR when the combined work is ready.
 
 ## Current delivery state
 
+**NOT_READY.** Normal merge `c434d1c4cab6` integrates main through
+`8ff82a7952c`; managed dependencies and hooks pass. The merge retains main's
+interim start-owner settlement and child-work's canonical request-commit
+acknowledgement. Neither mechanism proves durable `session.started` at an
+accepted start. The separate initialized durable-start acceptance remains
+blocked on #4467, owned by #3558; no retry or synthetic-event workaround is added.
+
+Canonical raw-grant owner source `ce5b15e3621` validates both the originating
+and current Home contexts, including a two-Home release-notification escape.
+Its native-unfused roster baseline measured159 lock inspections; the safe
+candidate passes an at-most153 bound. Both complete principal checks, independent
+policy, signer reads and uncertainty fences remain. All44 focused cases pass,
+three guard/cost mutations fail their intended assertions, and exact restoration
+passes44. This is an inspection-count result, not a latency or fsync saving claim.
+
+At `0a2ded30b1e`, both original report-input callers pass with unchanged
+120-second deadlines and assertions. That receipt precedes the latest main
+merge and does not establish combined-source or live-provider qualification.
+The merged finalizer matrix at `c434d1c4cab6` remains red: eight checks pass,
+but the original journey times out at its unchanged60-second limit. Its failure
+requires diagnosis; no unchanged rerun or budget increase is counted as progress.
+
+The sealed composer visual approval remains bound to `f138f28e20b0` and its
+four hash-bound images. The SDK compatibility changeset is committed; older
+closed-shape readers may reject restricted Sessions declaring `queuedFollowUp`.
+The combined epic has additional UI changes and needs its own final review.
+Broader source-current documentation, initialized storage/recovery, complete
+supported group/envelope/topology and folded-work acceptance, exact combined
+CLI/device journeys and final independent qualification remain open. The group
+advertisement and finalizer qualification guard remain false. No push or PR exists.
+
+### Historical delivery checkpoint before the canonical raw-origin repair
+
 **NOT_READY.** No push or PR exists. Normal merge `26f1acaeee5` integrates
 main through `8bf2544cc93`; managed dependencies and hooks pass after the merge.
 Conflict resolution preserves leased environment initialization/reset, main's

@@ -1354,9 +1354,12 @@ project does not acquire a contribution because it had a path.
 
 Project execution offers are stored only in
 `AppConfig.contribution["project:<portableProjectId>"]` and default off. The
-dedicated offer mutation requires Station's bound local-operator authority and
-an exact current local/portable Project association plus the expected current
-offer. A remote operate credential may round-trip an unchanged contribution map
+dedicated offer mutation requires Station's bound owner authority: host
+home-possession or an eligible paired device with server-recorded owner standing.
+It also requires an exact current local/portable Project association and the
+expected current offer. Owner standing does not supply local-grant consent
+custody or shared-human membership. An ordinary remote operate credential may
+round-trip an unchanged contribution map
 while saving another setting, but cannot add, remove, replace, enable, or disable
 consent. The comparison occurs inside ConfigLoader's serialized mutation owner,
 so a queued stale save cannot overwrite a newer local offer.
