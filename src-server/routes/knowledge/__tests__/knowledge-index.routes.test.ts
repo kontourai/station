@@ -16,6 +16,7 @@ import { readJson } from '../../../__test-utils__/read-json.js';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { SqliteVecIndexProvider } from '../../../knowledge-index/sqlite-vec-index-provider.js';
 import { KnowledgeStoreProvider } from '../../../knowledge-store/knowledge-store-provider.js';
+import { guardProjectResponse } from '../../../services/projects/project-response-guard.js';
 import { createKnowledgeIndexRoutes } from '../knowledge-index-routes.js';
 
 const { DatabaseSync } = createRequire(import.meta.url)('node:sqlite') as {
@@ -130,6 +131,23 @@ describe('knowledge-index routes', () => {
   }
 
   describe('POST /index/rebuild', () => {
+    test('non-operator rebuild refuses an author-private root before indexing', async () => {
+      const root = await store.createRoot({
+        scope: { kind: 'personal' },
+        readPolicy: { kind: 'author-private', ownerId: 'human:owner' },
+        adapterId: 'kit-default-store',
+        storeRoot: storeDir,
+        displayName: 'Private',
+      });
+      const app = routesApp();
+      const res = await app.request('/index/rebuild', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rootId: root.id }),
+      });
+      expect(res.status).toBe(403);
+      expect((await indexProvider.stats(root.id)).chunks).toBe(0);
+    });
     test('rebuilds a single named root and reports real record/chunk counts', async () => {
       const root = await store.createRoot({
         scope: { kind: 'personal' },
@@ -733,6 +751,42 @@ describe('knowledge-index routes', () => {
   });
 
   describe('POST /index/search currency (#2727, #2728) and refill', () => {
+    test('withholds a selected search result if root authority ends before body delivery', async () => {
+      const root = await createRoot('Private');
+      const id = await addRecord(root.id, 'Private title', 'Private text');
+      await rebuild(appWith(embedder), root.id);
+      let allowed = true;
+      const app = createKnowledgeIndexRoutes({
+        store,
+        indexProvider,
+        dataDir,
+        getEmbedder: () => embedder,
+        mayReadHitRoot: () => allowed,
+        guardReadResponse: (_request, roots, response) =>
+          guardProjectResponse(
+            response,
+            async () => allowed && roots.some((entry) => entry.id === root.id),
+          ),
+      });
+      const control = await app.request('/index/search', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: 'Private text' }),
+      });
+      expect(
+        (await readJson<SearchBody>(control)).data.some(
+          (hit) => hit.recordId === id,
+        ),
+      ).toBe(true);
+      const pending = await app.request('/index/search', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: 'Private text' }),
+      });
+      expect(pending.status).toBe(200);
+      allowed = false;
+      await expect(pending.text()).rejects.toThrow('authorization ended');
+    });
     interface SearchBody {
       success: boolean;
       data: Array<{

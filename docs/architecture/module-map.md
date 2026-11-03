@@ -3172,6 +3172,8 @@ and root identity. In personal mode, root and record reads admit that owner or
 an approved personal-account device; delegation peers and unknown callers are
 refused. Search rechecks the root and request authority at response delivery.
 Hosted access and the local source-observation path refuse this classification.
+Only an in-person operator may mutate the root through the Knowledge routes.
+Project Task learning and automatic Project tool discovery exclude it.
 Existing roots without the policy retain their prior access rules.
 
 The separate [Neo4j graph routes](../../src-server/routes/knowledge/neo4j-graph-routes.ts)

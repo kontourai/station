@@ -146,6 +146,7 @@ async function projectStores(
     (root) =>
       root.scope.kind === 'project' &&
       root.scope.projectSlug === projectSlug &&
+      root.readPolicy === undefined &&
       root.adapterId !== CONVERSATION_STORE_ADAPTER_ID,
   );
 }

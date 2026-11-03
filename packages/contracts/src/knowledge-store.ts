@@ -48,6 +48,7 @@ export function isProjectKnowledgeRoot(
 ): boolean {
   return (
     root.scope.kind === 'project' &&
+    root.readPolicy === undefined &&
     Boolean(projectId) &&
     root.projectId === projectId
   );

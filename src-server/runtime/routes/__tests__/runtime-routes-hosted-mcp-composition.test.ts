@@ -15,7 +15,9 @@ import { afterEach, describe, expect, test, vi } from 'vitest';
 import { bindOperatorPrincipal } from '../../../__test-utils__/operator-principal.js';
 import { readStreamUntil } from '../../../__test-utils__/sse-helpers.js';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
+import { FileStorageAdapter } from '../../../domain/file-storage-adapter.js';
 import { ProjectFileTransactions } from '../../../domain/project-file-transactions.js';
+import { KnowledgeStoreProvider } from '../../../knowledge-store/knowledge-store-provider.js';
 import { STATION_CONTROL_MCP_PATH } from '../../../routes/mcp/station-control-mcp-route.js';
 import { assertRuntimeHttpRouteCoverage } from '../../../security/pairing-route-scopes.js';
 import {
@@ -236,6 +238,91 @@ describe('configureRuntimeRoutes hosted station-control MCP composition', () => 
     for (const directory of directories.splice(0)) {
       rmSync(directory, { recursive: true, force: true });
     }
+  });
+
+  test('author-private root is visible to its personal owner but refused in hosted mode', async () => {
+    const homeDir = makeTempDir('station-private-hosted-');
+    const registryPath = join(homeDir, 'tenants.json');
+    writeFileSync(
+      registryPath,
+      JSON.stringify({
+        schemaVersion: 1,
+        tenants: [{ id: 'alpha', authority: 'alpha.example.test' }],
+      }),
+    );
+    const store = new KnowledgeStoreProvider(new FileStorageAdapter(homeDir));
+    const root = await store.createRoot({
+      scope: { kind: 'personal' },
+      readPolicy: {
+        kind: 'author-private',
+        ownerId: LOCAL_OPERATOR_PRINCIPAL_ID,
+      },
+      adapterId: 'kit-default-store',
+      storeRoot: join(homeDir, 'private'),
+      displayName: 'Private',
+    });
+    const security = {
+      devicePairing: { environmentId: () => 'test-environment' },
+      authorizeCredential: () => true,
+      resolveGrantedScope: () => DEFAULT_GRANT_PAIRING_SCOPE,
+      verifyOperatorCredential: () => true,
+      identifyDevice: () => null,
+      canSharePersonalConversation: () => false,
+    };
+    const createApp = async (hosted: boolean) => {
+      if (hosted) process.env[registryFileEnv] = registryPath;
+      else delete process.env[registryFileEnv];
+      const app = new Hono();
+      bindOperatorPrincipal(app);
+      app.use('*', async (c, next) => {
+        (
+          c as unknown as {
+            set: (
+              key: typeof RUNTIME_CREDENTIAL_AUTHORITY_VAR,
+              value: RuntimeCredentialAuthority,
+            ) => void;
+          }
+        ).set(RUNTIME_CREDENTIAL_AUTHORITY_VAR, 'operator-credential');
+        await next();
+      });
+      await configureRuntimeRoutes(
+        runtimeContext(app, homeDir, {
+          knowledgeStoreProvider: store,
+          environmentSecurityService: security,
+        }),
+      );
+      return app;
+    };
+    const personal = await createApp(false);
+    const personalList = await personal.request(
+      '/api/knowledge/roots',
+      {},
+      loopbackEnv(),
+    );
+    expect(personalList.status).toBe(200);
+    expect(
+      (
+        (await personalList.json()) as { data: Array<{ id: string }> }
+      ).data.some((item) => item.id === root.id),
+    ).toBe(true);
+    const hosted = await createApp(true);
+    const hostedList = await hosted.request(
+      '/api/knowledge/roots',
+      { headers: hostedHeaders('alpha') },
+      loopbackEnv(),
+    );
+    expect(hostedList.status).toBe(200);
+    expect(
+      ((await hostedList.json()) as { data: Array<{ id: string }> }).data.some(
+        (item) => item.id === root.id,
+      ),
+    ).toBe(false);
+    const read = await hosted.request(
+      `/api/knowledge/roots/${root.id}/records?type=raw`,
+      { headers: hostedHeaders('alpha') },
+      loopbackEnv(),
+    );
+    expect(read.status).toBe(403);
   });
 
   test('runtime-enumerates every Station HTTP/SSE/MCP route against the central capability table', async () => {

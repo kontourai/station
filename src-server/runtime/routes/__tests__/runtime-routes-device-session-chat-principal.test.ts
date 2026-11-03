@@ -4043,6 +4043,31 @@ describe('device-session chat principal resolution over the REAL auth path (stat
         REMOTE_TAILNET_ENV,
       );
       expect(anonymousList.status).toBe(401);
+      for (const [credential, status] of [
+        [OPERATOR_SECRET, 201],
+        [paired.credential, 403],
+        [peer.credential, 403],
+      ] as const) {
+        const response = await app.request(
+          `/api/knowledge/roots/${root.id}/records`,
+          {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${credential}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              type: 'raw',
+              title: 'Write',
+              body: 'Owner edit',
+              category: 'test',
+              provenance: { agent: 'fixture' },
+            }),
+          },
+          REMOTE_TAILNET_ENV,
+        );
+        expect(response.status).toBe(status);
+      }
       const anonymous = await app.request(
         `/api/knowledge/roots/${root.id}/records/${id}`,
         {},

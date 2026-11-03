@@ -27,6 +27,8 @@ An internally registered author-private root is readable by its recorded
 owner and the owner's approved personal devices. Project membership and
 delegation peers do not grant access. This classification is available in
 personal mode; hosted reads fail closed. Existing root policies are unchanged.
+Private-root mutations through these routes require the in-person operator;
+Project Task learning and automatic Project tool discovery exclude these roots.
 Older Station versions cannot read a registry containing this new policy.
 
 Claude receives an in-process server. Codex and ACP receive separate,

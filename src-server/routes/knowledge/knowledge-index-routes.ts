@@ -185,7 +185,13 @@ export function createKnowledgeIndexRoutes(deps: KnowledgeIndexRouteDeps) {
           const kind = await knowledgeRootReadKind(deps.store, rootId);
           if (kind === 'session-backed' || kind === 'author-private') {
             return c.json(
-              { success: false, error: SESSION_BACKED_BUILD_FORBIDDEN_ERROR },
+              {
+                success: false,
+                error:
+                  kind === 'author-private'
+                    ? "Only this Station's operator may build an author-private knowledge root index"
+                    : SESSION_BACKED_BUILD_FORBIDDEN_ERROR,
+              },
               403,
             );
           }
