@@ -497,9 +497,7 @@ function assertSession(value: State, record: object): void {
     refuse();
 }
 
-function reservedStationTurnHasInput(
-  handle: ReservedStationTurn,
-): boolean {
+function reservedStationTurnHasInput(handle: ReservedStationTurn): boolean {
   return state(handle).inputRuntime !== undefined;
 }
 
