@@ -51,7 +51,7 @@ function TerminalSessionRecord({
       <Empty
         variant="compact"
         label="This terminal is no longer available"
-        description="Station no longer knows which session this pane showed. Close it and reopen it from where it came."
+        description="Station no longer knows which terminal this pane showed. Close this pane and open the terminal again."
       />
     );
   if (identity.state !== 'resolved')

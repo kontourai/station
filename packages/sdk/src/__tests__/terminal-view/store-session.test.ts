@@ -30,6 +30,7 @@ function fakeSession(retained: string[]) {
     resize: () => undefined,
     cwd: async () => null,
     close: async () => undefined,
+    restart: async () => undefined,
     detach: () => undefined,
   } satisfies TerminalSession;
   const emit = (text: string) => {

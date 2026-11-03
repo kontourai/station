@@ -1,3 +1,7 @@
+export {
+  ROOT_THEME_ATTRIBUTES,
+  rootThemeSignature,
+} from './theme-signature';
 export { sentTurnKey } from './client/sent-turn-key';
 export {
   fetchTaskWriteBack,

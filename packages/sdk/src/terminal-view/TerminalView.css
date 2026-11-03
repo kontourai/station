@@ -88,6 +88,12 @@
   min-height: 12px;
   border-radius: var(--k-radius-sm, 4px);
   background: var(--k-line-strong, var(--k-line));
+  transition: background var(--k-dur, 120ms) var(--k-ease, ease);
+}
+
+.station-terminal__scrollbar:hover .station-terminal__thumb,
+.station-terminal__scrollbar:active .station-terminal__thumb {
+  background: var(--k-text-faint, var(--k-text-muted));
 }
 
 .station-terminal__latest {
@@ -117,6 +123,21 @@
   color: var(--k-text);
   border-bottom: 1px solid var(--k-line);
   font-size: var(--k-text-sm);
+}
+
+.station-terminal__notice {
+  position: absolute;
+  inset-inline-end: var(--k-space-3);
+  inset-block-start: var(--k-space-3);
+  max-width: calc(100% - 2 * var(--k-space-3));
+  padding: var(--k-space-1) var(--k-space-3);
+  border: 1px solid var(--k-line);
+  border-radius: var(--k-radius-control, 6px);
+  background: var(--k-panel-raised, var(--k-panel));
+  color: var(--k-text);
+  box-shadow: var(--k-elevation-overlay);
+  font-size: var(--k-text-sm);
+  pointer-events: none;
 }
 
 .station-terminal__find {
@@ -156,7 +177,9 @@
   z-index: 1000;
   display: flex;
   flex-direction: column;
-  min-width: 180px;
+  min-width: min(180px, calc(100vw - 16px));
+  max-height: calc(100dvh - 16px);
+  overflow-y: auto;
   padding: var(--k-space-1);
   background: var(--k-panel-raised, var(--k-panel));
   color: var(--k-text);
@@ -178,8 +201,15 @@
 
 .station-terminal__menu [role="menuitem"]:hover:not(:disabled),
 .station-terminal__menu [role="menuitem"]:focus-visible {
-  background: var(--k-active, var(--k-panel));
-  outline: 2px solid var(--k-focus);
+  background: color-mix(in oklab, var(--k-text) 8%, transparent);
+}
+
+.station-terminal__menu [role="menuitem"]:focus {
+  outline: none;
+}
+
+.station-terminal__menu [role="menuitem"]:focus-visible {
+  outline: var(--k-focus-ring-width, 2px) solid var(--k-focus);
   outline-offset: -2px;
 }
 
@@ -227,6 +257,25 @@
     #000 calc(100% - 32px),
     transparent
   );
+}
+
+.station-terminal__keys button {
+  transition:
+    background var(--k-dur, 120ms) var(--k-ease, ease),
+    border-color var(--k-dur, 120ms) var(--k-ease, ease);
+}
+
+.station-terminal__keys button:hover:not(:disabled) {
+  border-color: var(--k-action);
+}
+
+.station-terminal__keys button:active:not(:disabled) {
+  background: color-mix(in oklab, var(--k-text) 14%, var(--k-bg));
+}
+
+.station-terminal__keys button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .station-terminal__keys button[aria-pressed="true"] {

@@ -223,7 +223,7 @@
     },
     {
       "id": "terminal-history-per-terminal",
-      "label": "Terminal history per terminal",
+      "label": "Maximum history per terminal",
       "help": "Each terminal keeps at most this many MiB of history; the oldest output goes first.",
       "scope": "station",
       "section": "host-runtime",
@@ -232,7 +232,7 @@
     },
     {
       "id": "terminal-history-total",
-      "label": "Terminal history total",
+      "label": "Maximum total history",
       "help": "All terminals together keep at most this many MiB; the oldest ended terminals go first.",
       "scope": "station",
       "section": "host-runtime",

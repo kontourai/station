@@ -80,6 +80,9 @@ export interface ControllerElements {
   input: HTMLTextAreaElement;
 }
 
+/** Every event the controller listens for, on the root, window or document. */
+type ListenedEvents = HTMLElementEventMap & DocumentEventMap & WindowEventMap;
+
 const MODIFIER_KEYS = new Set(['Shift', 'Control', 'Alt', 'Meta']);
 const LONG_PRESS_MS = 450;
 const BLINK_MS = 600;
@@ -389,7 +392,10 @@ export class TerminalController {
 
   private refreshTheme(): void {
     if (!this.engine || !this.renderer) return;
-    this.theme = readTerminalTheme(this.elements.root);
+    const theme = readTerminalTheme(this.elements.root);
+    // An unchanged palette repaints nothing and posts nothing.
+    if (JSON.stringify(theme) === JSON.stringify(this.theme)) return;
+    this.theme = theme;
     this.renderer.setTheme(this.theme);
     this.engine.send({ type: 'theme', theme: this.engineTheme(this.theme) });
   }
@@ -528,15 +534,16 @@ export class TerminalController {
 
   private installListeners(): void {
     const { root, input } = this.elements;
-    const on = <K extends keyof HTMLElementEventMap>(
+    const on = <K extends keyof ListenedEvents>(
       target: HTMLElement | Window | Document,
-      type: K | string,
-      handler: (event: any) => void,
+      type: K,
+      handler: (event: ListenedEvents[K]) => void,
       options?: AddEventListenerOptions,
     ) => {
-      target.addEventListener(type, handler, options);
+      const listener = handler as EventListener;
+      target.addEventListener(type, listener, options);
       this.cleanups.push(() =>
-        target.removeEventListener(type, handler, options),
+        target.removeEventListener(type, listener, options),
       );
     };
 

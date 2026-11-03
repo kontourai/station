@@ -344,3 +344,66 @@ test('a session’s events reach only its own listeners', async () => {
   expect(seen.quiet).toEqual([]);
   expect(quiet.status).toBe('running');
 });
+
+// An exited shell could only be reattached, which showed the same dead
+// session again; restart starts it anew under the same id.
+test('restart asks the server to start the session again on its channel', async () => {
+  vi.useFakeTimers();
+  const f = fixture(ticket);
+  const session = f.store.attach(target, id);
+  await flush();
+  const socket = f.sockets[0]!;
+  socket.open();
+  const channel = attachedReady(socket);
+  socket.message({
+    type: 'progress',
+    channel,
+    sentThrough: 0,
+    replayThrough: 0,
+    status: 'exited',
+  });
+  expect(session.status).toBe('exited');
+
+  const restarted = session.restart();
+  await flush();
+  const request = socket.controls().slice(-1)[0]!;
+  expect(request).toMatchObject({ type: 'restart', channel });
+  socket.message({
+    type: 'done',
+    requestId: request.requestId,
+    channel,
+    restartedAfterSeq: 0,
+  });
+  await expect(restarted).resolves.toBeUndefined();
+  socket.message({
+    type: 'progress',
+    channel,
+    sentThrough: 0,
+    replayThrough: 0,
+    status: 'running',
+  });
+  expect(session.status).toBe('running');
+});
+
+test('a read-only view cannot restart a session', async () => {
+  vi.useFakeTimers();
+  const f = fixture(ticket);
+  const session = f.store.attach(target, id);
+  await flush();
+  const socket = f.sockets[0]!;
+  socket.open();
+  const command = socket.controls().slice(-1)[0]!;
+  socket.message({
+    type: 'attached',
+    requestId: command.requestId,
+    channel: command.channel,
+    terminalId: id,
+    status: 'exited',
+    replayThrough: 0,
+    readOnly: true,
+    maxOutstandingOutputFrames: TERMINAL_MAX_OUTSTANDING_OUTPUT_FRAMES,
+  });
+  socket.message({ type: 'ready', channel: command.channel, seq: 0 });
+  await expect(session.restart()).rejects.toMatchObject({ code: 'refused' });
+  expect(socket.controls().some((sent) => sent.type === 'restart')).toBe(false);
+});

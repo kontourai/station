@@ -124,6 +124,12 @@ export interface TerminalSession {
   cwd(): Promise<string | null>;
   /** Ends the shell. */
   close(): Promise<void>;
+  /**
+   * Starts the session's program again under the same id, after it exited
+   * or while it runs; its output continues on this view. Refused for a
+   * read-only view, an agent command or a server-owned launch.
+   */
+  restart(): Promise<void>;
   /** Stops this view; the shell keeps running and can be attached again. */
   detach(): void;
 }
@@ -811,6 +817,12 @@ class StoreSession implements TerminalSession {
     await this.whenReady();
     await this.store.request({ type: 'close', channel: this.channel });
     this.finish();
+  }
+
+  async restart(): Promise<void> {
+    if (this.readOnly) throw new TerminalSessionError('refused');
+    await this.whenReady();
+    await this.store.request({ type: 'restart', channel: this.channel });
   }
 
   detach(): void {

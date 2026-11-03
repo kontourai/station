@@ -4,6 +4,7 @@ import {
   useCallback,
   useEffect,
   useId,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -13,6 +14,7 @@ import { ActionControl } from '../components/ActionControl';
 import { ErrorState } from '../components/ErrorState';
 import { type ControllerSnapshot, TerminalController } from './controller';
 import { loadSymbolsFont, TERMINAL_FONT_FAMILY } from './font';
+import { placeMenu } from './menu-position';
 import type { TerminalLinkTarget } from './links';
 import type { FontSpec } from './render/glyph-atlas';
 import type { TerminalViewSession } from './session';
@@ -48,6 +50,18 @@ export interface TerminalViewProps {
    */
   notices?: boolean;
   className?: string;
+}
+
+/** Station's phone breakpoint, landscape phones included. */
+const PHONE_QUERY =
+  '(max-width: 768px), (max-height: 540px) and (pointer: coarse)';
+
+/** Larger glyphs on a phone; read once per view. */
+function defaultFontSize(): number {
+  return typeof window !== 'undefined' &&
+    window.matchMedia?.(PHONE_QUERY).matches
+    ? 14
+    : 12;
 }
 
 const FOCUSABLE =
@@ -174,7 +188,8 @@ function Scrollbar({
 }: {
   controller: TerminalController | null;
   scrollbar: ControllerSnapshot['scrollbar'];
-  controls: string;
+  /** The mirror's id, when screen reader mode renders one. */
+  controls: string | undefined;
 }) {
   return (
     <div
@@ -283,10 +298,10 @@ const TOUCH_KEYS: readonly [
   ['Interrupt (Ctrl+C)', '^C', 'KeyC', 'c', 1 << 1],
   ['Escape', 'Esc', 'Escape', 'Escape'],
   ['Tab', 'Tab', 'Tab', 'Tab'],
-  ['Previous command', '↑', 'ArrowUp', 'ArrowUp'],
-  ['Next command', '↓', 'ArrowDown', 'ArrowDown'],
-  ['Left', '←', 'ArrowLeft', 'ArrowLeft'],
-  ['Right', '→', 'ArrowRight', 'ArrowRight'],
+  ['Up arrow', '↑', 'ArrowUp', 'ArrowUp'],
+  ['Down arrow', '↓', 'ArrowDown', 'ArrowDown'],
+  ['Left arrow', '←', 'ArrowLeft', 'ArrowLeft'],
+  ['Right arrow', '→', 'ArrowRight', 'ArrowRight'],
 ];
 
 function TouchKeys({
@@ -373,6 +388,21 @@ function TerminalMenu({
   onClose(): void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
+  const [position, setPosition] = useState(at);
+  // Opened at the pointer or the caret, the menu flips above or to the left
+  // of it when it would run past the viewport, and stays inside it.
+  useLayoutEffect(() => {
+    const menu = ref.current;
+    if (!menu) return;
+    const { width, height } = menu.getBoundingClientRect();
+    setPosition(
+      placeMenu(
+        at,
+        { width, height },
+        { width: window.innerWidth, height: window.innerHeight },
+      ),
+    );
+  }, [at]);
   useEffect(() => {
     ref.current?.querySelector<HTMLElement>('[role="menuitem"]')?.focus();
     const close = (event: PointerEvent) => {
@@ -403,7 +433,7 @@ function TerminalMenu({
       className="station-terminal__menu"
       role="menu"
       aria-label="Terminal actions"
-      style={{ left: at.x, top: at.y }}
+      style={{ left: position.x, top: position.y }}
       onKeyDown={onKeyDown}
     >
       {items.map((item) => (
@@ -457,12 +487,8 @@ export function TerminalView({
   const helpId = useId();
   const mirrorId = useId();
   const screenReader = screenReaderMode ?? detectScreenReader?.() ?? false;
-  const size =
-    fontSize ??
-    (typeof window !== 'undefined' &&
-    window.matchMedia?.('(max-width: 767px)').matches
-      ? 14
-      : 13);
+  const [defaultSize] = useState(defaultFontSize);
+  const size = fontSize ?? defaultSize;
   const font = useMemo<FontSpec>(
     () => ({ family: fontFamily, size, lineHeight: 1.2 }),
     [fontFamily, size],
@@ -636,7 +662,7 @@ export function TerminalView({
           <Scrollbar
             controller={controller}
             scrollbar={scrollbar}
-            controls={mirrorId}
+            controls={screenReader ? mirrorId : undefined}
           />
         ) : null}
         {snapshot && !snapshot.atBottom ? (
@@ -658,6 +684,12 @@ export function TerminalView({
           onRetry={() => setAttempt((n) => n + 1)}
           onReconnect={onReconnect}
         />
+        {/* Shown as well as announced: the live region below speaks it. */}
+        {notice ? (
+          <div className="station-terminal__notice" aria-hidden="true">
+            {notice}
+          </div>
+        ) : null}
       </div>
       {touchKeys ? (
         <TouchKeys

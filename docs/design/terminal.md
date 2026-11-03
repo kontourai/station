@@ -600,8 +600,8 @@ Retention is configurable in Settings › Host options (implemented, #3994):
 | Keep terminal history (`terminalHistoryEnabled`) | On | | Off: terminals opened afterwards keep only the in-memory tail and write nothing to disk |
 | Terminal history location (`terminalHistoryDirectory`) | `<home>/terminal-journals` | absolute path | Ended terminals' journals move there; a running one moves after it ends |
 | Terminal history maximum age (`terminalHistoryMaxAgeDays`) | 30 days | 1–3650 | An ended terminal's journal is deleted this long after it ended |
-| Terminal history per terminal (`terminalHistoryMaxTerminalMiB`) | 16 MiB | 1–1024 | Oldest segments are compacted away first |
-| Terminal history total (`terminalHistoryMaxTotalMiB`) | 1024 MiB | 16–1048576, at least the per-terminal size | The oldest ended terminals are expired first; running ones are pinned |
+| Maximum history per terminal (`terminalHistoryMaxTerminalMiB`) | 16 MiB | 1 MiB–1 GiB | Oldest segments are compacted away first |
+| Maximum total history (`terminalHistoryMaxTotalMiB`) | 1024 MiB | 16 MiB–1 TiB, at least the per-terminal maximum | The oldest ended terminals are expired first; running ones are pinned |
 
 The service reads them before each open and each usage read, and on start,
 so a change applies without a restart. Settings shows usage per Project
