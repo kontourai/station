@@ -12,7 +12,9 @@ normally before publication. Open one PR when the combined work is ready.
 interim start-owner settlement and child-work's canonical request-commit
 acknowledgement. Neither mechanism proves durable `session.started` at an
 accepted start. The separate initialized durable-start acceptance remains
-blocked on #4467, owned by #3558; no retry or synthetic-event workaround is added.
+blocked on #4491, extracted and owned by #3558; the interim owner fallback stays.
+#4467 now owns agent-runtime storage, retention and speed. No retry or
+synthetic-event workaround is added.
 
 Canonical raw-grant owner source `ce5b15e3621` validates both the originating
 and current Home contexts, including a two-Home release-notification escape.
