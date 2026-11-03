@@ -293,6 +293,7 @@ const PUBLISHED_SCOPE_BY_ID: Readonly<Record<string, string>> = {
   'plugin-visibility': 'station',
   'host-runtime': 'informational',
   'diagnostics-bundle': 'informational',
+  'diagnostics-troubleshoot': 'informational',
   'default-model': 'defaults',
   'default-region': 'defaults',
   'default-agent-instructions': 'defaults',

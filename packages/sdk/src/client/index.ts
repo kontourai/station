@@ -132,6 +132,7 @@ export * from './task-tool-results';
 export * from './task-user-input-references';
 export * from './terminal-output-session';
 export * from './terminal-session-store';
+export * from './troubleshoot';
 export * from './unified-search';
 export * from './usage-export';
 export * from './walkthroughs';

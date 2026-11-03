@@ -1,6 +1,6 @@
 import { createPortal } from 'react-dom';
 import { useMenuFocus } from '../../hooks/useMenuFocus';
-import { ArrowRightGlyph, InfoGlyph } from '../icons/Glyph';
+import { ArrowRightGlyph, InfoGlyph, SearchGlyph } from '../icons/Glyph';
 import './HeaderMenu.css';
 import type { HeaderHelpPrompt } from './utils';
 
@@ -81,13 +81,32 @@ export function HelpMenu({
             </button>
           ))}
         </div>
-        {/* #766 item 4: not an "Ask Station" prompt — opens the
-            Report-a-problem dialog, which previews the captured context
-            before the user chooses where the report goes. Its own group, so the
-            4px group gap is what separates it from the prompts; the hairline
-            that used to do that is gone with every other per-row rule (#1552
-            D4). */}
+        {/* #4470: "Something wrong?" holds the two problem paths. Neither is
+            an "Ask Station" prompt. Troubleshoot opens an investigating
+            conversation with the Station Assistant; Report a problem (#766
+            item 4) opens the dialog that previews the captured context
+            before the user chooses where the report goes. Its own group, so
+            the 4px group gap separates it from the prompts (#1552 D4). */}
         <div className="menu-group">
+          <div className="menu-group__label">Something wrong?</div>
+          <button
+            type="button"
+            className="menu-row"
+            onClick={() => {
+              onClose();
+              // Inline literal for the same entry-chunk reason as the report
+              // row below; `HelpMenu.troubleshoot.test.tsx` binds it to
+              // `OPEN_TROUBLESHOOT_EVENT` behaviorally.
+              window.dispatchEvent(
+                new CustomEvent('station:open-troubleshoot'),
+              );
+            }}
+          >
+            <span className="menu-row__glyph" aria-hidden="true">
+              <SearchGlyph />
+            </span>
+            Troubleshoot with an agent
+          </button>
           <button
             type="button"
             className="menu-row"

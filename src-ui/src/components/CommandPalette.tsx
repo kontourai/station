@@ -45,6 +45,7 @@ import { useSurfaceVisibilityFlags } from '../hooks/useSurfaceVisibilityFlags';
 import { useLocale } from '../i18n/LocaleContext';
 import { isComposingKeyEvent } from '../lib/isComposingKeyEvent';
 import { requestReportProblem } from '../lib/reportProblemEvents';
+import { requestTroubleshoot } from '../lib/troubleshootEvents';
 import { usePlatformProfile } from '../platform/PlatformProfileContext';
 import { useResolvedWorkspacePaneCatalog } from '../workspace-panes/resolvedWorkspacePaneCatalog';
 import { presentWorkspacePaneAvailability } from '../workspace-panes/workspacePaneAvailabilityPresentation';
@@ -658,6 +659,26 @@ export function CommandPalette() {
         'guide',
       ],
       run: () => requestFirstRunTour(),
+    });
+    // #4470: starts a troubleshooting conversation with the Station
+    // Assistant (`TroubleshootHost`, same overlays chunk). With no usable
+    // engine it falls back to Report a problem and the CLI command.
+    list.push({
+      id: 'action:troubleshoot',
+      label: 'Troubleshoot an issue',
+      group: 'Actions',
+      keywords: [
+        'troubleshoot',
+        'triage',
+        'bug',
+        'broken',
+        'not working',
+        'crash',
+        'help',
+        'support',
+        'debug',
+      ],
+      run: () => requestTroubleshoot(),
     });
     // #766 item 4: opens the Report-a-problem dialog (hosted by
     // `ReportProblemHost` in the same overlays chunk), which previews the

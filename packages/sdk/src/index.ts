@@ -1149,6 +1149,7 @@ export {
   usePluginUpdateMutation,
   usePluginUpdatesQuery,
   usePluginVisibilityQuery,
+  usePrepareTroubleshootMutation,
   usePreviewSchedule,
   useProbeSshEnvironmentMutation,
   useProjectChatDefaultsQuery,

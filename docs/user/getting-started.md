@@ -1235,6 +1235,37 @@ After an interruption, **Resume exact check** continues the recorded check.
 Failed or uncertain runs offer **Inspect receipt**. They are not restarted
 automatically. See [Scheduler identity and recovery](https://github.com/kontourai/station/blob/main/docs/guides/starter-work.md#run-a-scheduled-readiness-check).
 
+## When Something Goes Wrong
+
+Open the help menu and choose **Troubleshoot with an agent**, or search the
+command palette for **Troubleshoot an issue**. It is also under Settings →
+Diagnostics.
+
+1. Describe what went wrong in your own words and choose **Start
+   troubleshooting**. You can paste or drop screenshots into the chat.
+2. The Station Assistant asks for the steps that reproduce the problem and
+   which app and build you saw it in, then investigates with Station's own
+   tools.
+3. It offers to fix the problem, file it, both, or neither. A fix changes
+   configuration only through Station's approval prompts, after you agree. It
+   will not restart the Station it runs in; it gives you the steps instead.
+4. To file, it shows the complete redacted report first and waits for your
+   yes. It posts the issue itself only when you are the Station owner and this
+   computer's GitHub CLI can label issues in kontourai/station. Otherwise it
+   gives you a prefilled link to submit as yourself.
+
+These are instructions the assistant follows, not checks Station enforces.
+Read the report before you approve it.
+
+The assistant can't read Station's server logs unless the Station owner grants
+it access. If it asks, copy the relevant lines from Developer → Logs, or
+download the diagnostics bundle from Settings → Diagnostics and paste the parts
+that matter. Logs can contain conversation content.
+
+If the Station Assistant has no engine, these entries open **Report a
+problem** instead. If the app itself won't open, run `station triage` in a
+terminal. The [design](https://github.com/kontourai/station/blob/main/docs/design/troubleshoot-in-app.md) covers the details.
+
 ## Update, Stop, Or Uninstall
 
 ### Recovery boundaries
