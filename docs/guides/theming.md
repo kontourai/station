@@ -224,8 +224,10 @@ receive resolved token values by message and re-read on
 [`observeRootTheme`/`useRootThemeVersion`](../../src-ui/src/lib/root-theme.ts),
 which reports changes to `data-theme`, the `data-color-theme*` attributes,
 `data-app-channel`, `data-brand-focus`, `class` and the non-geometry inline style
-on `<html>`. The SDK terminal view paints a canvas and watches the same `<html>`
-attributes itself. The terminal's colours are the `--terminal-*` variables, one set
+on `<html>`. The SDK terminal view paints a canvas and watches the same inputs
+itself; both use the SDK's
+[`rootThemeSignature`](../../packages/sdk/src/theme-signature.ts), so neither
+re-themes on a geometry-only style write such as the keyboard inset. The terminal's colours are the `--terminal-*` variables, one set
 per mode in [index.css](../../src-ui/src/index.css); the light mode has a light
 terminal. Monitoring's agent and conversation accents use the `--series-*`
 palette.

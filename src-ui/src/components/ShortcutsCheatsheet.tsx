@@ -1,6 +1,8 @@
 import './ShortcutsCheatsheet.css';
+import { terminalViewShortcuts } from '@kontourai/station-sdk/terminal-view';
 import {
   findShortcutConflicts,
+  formatShortcutChord,
   useShortcutRegistry,
 } from '../contexts/KeyboardShortcutsContext';
 import { listedShortcuts } from '../contexts/listedShortcuts';
@@ -17,7 +19,7 @@ export function ShortcutsCheatsheet({
   isOpen,
   onClose,
 }: ShortcutsCheatsheetProps) {
-  const { getAllShortcuts, getDisplay } = useShortcutRegistry();
+  const { getAllShortcuts, getDisplay, isMac } = useShortcutRegistry();
 
   if (!isOpen) return null;
 
@@ -94,6 +96,26 @@ export function ShortcutsCheatsheet({
             </div>
           ))
         )}
+        {/* The keys a focused terminal keeps; not rebindable. */}
+        <div className="shortcuts-cheatsheet__group">
+          <h3 className="shortcuts-cheatsheet__category">In a terminal</h3>
+          <div className="shortcuts-cheatsheet__list">
+            {terminalViewShortcuts(isMac).map((shortcut) => (
+              <div key={shortcut.id} className="shortcuts-cheatsheet__row">
+                <span className="shortcuts-cheatsheet__desc">
+                  {shortcut.description}
+                </span>
+                <kbd className="shortcuts-cheatsheet__kbd">
+                  {shortcut.chords
+                    .map((chord) =>
+                      formatShortcutChord(chord.modifiers, chord.key, isMac),
+                    )
+                    .join(' then ')}
+                </kbd>
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
     </Dialog>
   );

@@ -431,19 +431,19 @@ export const APP_SETTINGS_REGISTRY = [
     key: 'terminalHistoryMaxTerminalMiB',
     scope: 'station',
     descriptor: { kind: 'number', min: 1, max: 1024, integer: true },
-    label: 'Terminal history per terminal',
+    label: 'Maximum history per terminal',
     help: 'Each terminal keeps at most this many MiB of history; the oldest output goes first.',
-    description: 'MiB of history each terminal keeps, 1 to 1024.',
+    description: 'MiB of history each terminal keeps, from 1 MiB to 1 GiB.',
     defaultValue: 16,
   }),
   defineSetting({
     key: 'terminalHistoryMaxTotalMiB',
     scope: 'station',
     descriptor: { kind: 'number', min: 16, max: 1048576, integer: true },
-    label: 'Terminal history total',
+    label: 'Maximum total history',
     help: 'All terminals together keep at most this many MiB; the oldest ended terminals go first.',
     description:
-      'MiB of history all terminals keep together, 16 to 1048576, and at least the per-terminal size.',
+      'MiB of history all terminals keep together, from 16 MiB to 1 TiB, and at least the per-terminal maximum.',
     defaultValue: 1024,
   }),
   defineSetting({

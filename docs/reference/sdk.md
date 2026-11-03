@@ -32,14 +32,14 @@ native shell's host-owned transport), and `requestTicket`, `createSocket` and
   server-resolved program (`{kind: 'shell'}` or `{kind: 'agent', connectionId,
   mode}`); no executable, argument or directory is sent. `legacyTerminalId`
   imports a pre-socket Coding terminal's owned history once.
-
-Station has no `port + 1` terminal listener; the SDK no longer exports
-`fetchTerminalPort`, and `GET /api/system/terminal-port` is not served.
 - `attach(target, terminalId)` views an existing session; repeated calls share
   one view until it is detached.
 - `list(target)` returns the binding's session records, oldest first.
 - `failure`/`restart()` expose and clear a refusal that stopped every session;
   `dispose()` ends the store.
+
+Station has no `port + 1` terminal listener; the SDK no longer exports
+`fetchTerminalPort`, and `GET /api/system/terminal-port` is not served.
 
 Both return a `TerminalSession`, the narrow interface a renderer consumes:
 `terminalId`, `state` (`connecting`, `replaying`, `ready`, `reconnecting`,
@@ -47,7 +47,8 @@ Both return a `TerminalSession`, the narrow interface a renderer consumes:
 reset, change})`, `write(data)`, `resize(cols, rows)`, `cwd()`, `close()` and
 `detach()`. A new subscriber first receives the retained output (256 KiB per
 session by default), then live output; `reset` means earlier output is gone.
-Input is coalesced per animation frame and held until replay is acknowledged;
+Each session notifies only its own subscribers, so output on one terminal
+never wakes a view of another. Input is coalesced per animation frame and held until replay is acknowledged;
 resize is latest-wins. After a dropped socket the store reconnects with backoff
 (sooner on `online` or when the page becomes visible), fetches a new ticket and
 resumes each session from its last applied sequence. Input already sent is
@@ -121,10 +122,17 @@ receives input, pastes or resizes. Several views may subscribe to one session:
 the view copies output before handing it to its worker, so a session may give
 every listener, and later subscribers, the same array. A view with no box (a
 hidden tab, a dock region put away) keeps its last grid and never resizes the
-session.
+session. A view refits whenever its box changes (a window resize, a pane
+splitter, moving between dock regions, a phone keyboard or rotation, a
+devicePixelRatio change): the grid and renderer follow at once, and the
+latest size reaches the session at most every 100 ms. The scrollbar sits in
+the inset, so scrollback appearing never takes columns from the grid. Handing a mounted view a different session (a reconnect, a fresh
+attachment of the same terminal) first resets its emulator to a fresh terminal,
+because the new attachment replays its terminal from the oldest retained
+output; the history is drawn once. A session `reset` does the same.
 
 `toTerminalViewSession(session)` adapts a `TerminalSession` from the
-[terminal session store](#terminal-output-sessions). Output the store hands a
+[terminal session store](#terminal-sessions). Output the store hands a
 new subscriber from its retained buffer, and output that arrives while the
 session replays, both count as replay. A program that has exited reads as
 `exited` whatever the connection state. The Coding terminal pane renders
@@ -135,7 +143,7 @@ Optional props:
 | Prop | Purpose |
 | --- | --- |
 | `label` | Accessible name (default `Terminal`) |
-| `fontSize`, `fontFamily` | Font in CSS pixels; the default stack ends in a bundled Nerd Font symbols face |
+| `fontSize`, `fontFamily` | Font in CSS pixels (default 12, or 14 on a phone); the default stack ends in a bundled Nerd Font symbols face |
 | `screenReaderMode` | Keeps a navigable text mirror and polite announcements; off means no mirror is kept |
 | `detectScreenReader` | Host signal used when `screenReaderMode` is unset; browsers expose none themselves |
 | `touchKeys` | Shows the Ctrl+C (`^C`), Esc, Tab, arrow and sticky Ctrl key row: 44px targets that fit a 390px phone; narrower, the row scrolls and fades at the edge with more keys |
@@ -149,7 +157,19 @@ load with the first terminal on a page. Rendering uses WebGL2 and falls back to
 canvas 2D; a hidden terminal releases its GPU context and draws nothing.
 Escape then Tab moves focus out of the terminal (Shift+Tab backwards);
 Shift+F10 opens the context menu (Copy, Paste, Select all, Add to chat, Find,
-Jump to latest, Clear).
+Jump to latest, Clear) at the caret, and a right-click at the pointer; the
+menu flips above or left of that point when it would leave the viewport.
+Copy and paste outcomes show briefly on the terminal and are announced.
+
+A focused view keeps Copy, Paste, Find and Select all: ⌘C, ⌘V, ⌘F and ⌘A on a
+Mac, Ctrl+Shift+C, V, F and A elsewhere, where plain Ctrl+C copies only while
+there is a selection and otherwise reaches the program. Other Command chords
+on a Mac, and other Ctrl+Shift letter chords elsewhere, are left to the page,
+so the host's shortcuts still work from a focused terminal; every other key
+goes to the program. `terminalViewShortcuts(mac?)` returns these keys as
+`TerminalViewShortcut` records (`id`, `description`, `chords` of
+`{key, modifiers}` in Station's shortcut vocabulary, where `cmd` is Control
+off a Mac) for a host's shortcut list.
 
 ## Local speech and media tools
 

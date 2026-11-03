@@ -18,9 +18,12 @@ import {
   NavigationProvider,
   navigationStore,
 } from '../../../contexts/NavigationContext';
-import { MOBILE_MEDIA_QUERY } from '../../../hooks/useIsMobile';
+import { deviceSettingsStore } from '../../../lib/device-settings-store';
 import { TerminalPanel } from '../TerminalPanel';
 
+const restartFetch = vi.hoisted(() =>
+  vi.fn(async (..._args: unknown[]) => new Response('{"success":true}')),
+);
 const { executeCodingCommand, store, FakeSession } = vi.hoisted(() => {
   type Listener = {
     output?(data: Uint8Array, sequence: number): void;
@@ -78,7 +81,10 @@ const { executeCodingCommand, store, FakeSession } = vi.hoisted(() => {
   return { executeCodingCommand: vi.fn(), store, FakeSession };
 });
 
-vi.mock('@kontourai/station-sdk', () => ({ executeCodingCommand }));
+vi.mock('@kontourai/station-sdk', () => ({
+  executeCodingCommand,
+  authenticatedFetch: (...args: unknown[]) => restartFetch(...args),
+}));
 vi.mock('../terminalSessionStore', () => ({
   useTerminalSessionStore: () => store,
 }));
@@ -100,6 +106,7 @@ type ViewProps = {
   session: ViewSessionLike | null;
   fontSize?: number;
   touchKeys?: boolean;
+  screenReaderMode?: boolean;
   notices?: boolean;
   onAddToChat?(text: string): void;
 };
@@ -208,17 +215,11 @@ async function connectTerminal() {
   return { session };
 }
 
-// The glyph size follows the app's one mobile breakpoint, including its
-// landscape-phone clause, rather than a width-only copy of it.
-test.each([
-  { device: 'a phone held sideways', mobile: true, fontSize: 14 },
-  { device: 'a desktop', mobile: false, fontSize: 12 },
-])('renders larger glyphs only on a phone: $device', ({ mobile, fontSize }) => {
-  vi.stubGlobal('matchMedia', (query: string) => ({
-    matches: mobile && query === MOBILE_MEDIA_QUERY,
-  }));
+// The view owns the default size (larger on a phone), so the panel and a
+// plugin's terminal never disagree on it.
+test('leaves the glyph size to the view', () => {
   renderTerminal();
-  expect(latestView().fontSize).toBe(fontSize);
+  expect(latestView().fontSize).toBeUndefined();
 });
 
 test('renders through the public TerminalView and leaves connection notices to the panel', async () => {
@@ -229,6 +230,19 @@ test('renders through the public TerminalView and leaves connection notices to t
   // The panel reports connection state with its own Reconnect action.
   expect(props.notices).toBe(false);
   expect(typeof props.onAddToChat).toBe('function');
+});
+
+test("screen reader mode follows this device's terminal setting, off by default", async () => {
+  deviceSettingsStore.reset('terminalScreenReader');
+  renderTerminal();
+  await connectTerminal();
+  expect(latestView().screenReaderMode).toBe(false);
+  act(() => deviceSettingsStore.set('terminalScreenReader', true));
+  try {
+    expect(latestView().screenReaderMode).toBe(true);
+  } finally {
+    deviceSettingsStore.reset('terminalScreenReader');
+  }
 });
 
 test('attaches an existing session by id and unmount detaches without closing it', async () => {
@@ -438,4 +452,117 @@ test('appends a fenced live-CWD selection to the real composer draft without dis
   // The working directory came from the session, and nothing was typed.
   expect(session.cwd).toHaveBeenCalledTimes(1);
   expect(session.write).not.toHaveBeenCalled();
+});
+
+// Output goes from the store to the view's emulator, never through React
+// state, and a session's state change renders only the panel showing it.
+test('a busy terminal re-renders neither itself nor a panel of another session', async () => {
+  const other = '0f8f0d5e-8a8c-4c71-9b52-3c0f4b3cbd7e';
+  render(
+    <NavigationProvider>
+      <ActiveChatsProvider>
+        <TerminalPanel
+          projectSlug="project-a"
+          workingDir="/workspace"
+          target={target}
+          terminalId={terminalId}
+        />
+        <TerminalPanel
+          projectSlug="project-a"
+          workingDir="/workspace"
+          target={target}
+          terminalId={other}
+        />
+      </ActiveChatsProvider>
+    </NavigationProvider>,
+  );
+  await waitFor(() => expect(FakeSession.instances).toHaveLength(2));
+  const [busy, quiet] = FakeSession.instances as [
+    InstanceType<typeof FakeSession>,
+    InstanceType<typeof FakeSession>,
+  ];
+  act(() => {
+    busy.emit({ state: 'ready', status: 'running' });
+    quiet.emit({ state: 'ready', status: 'running' });
+  });
+  const settled = view.props.length;
+  act(() => {
+    for (let sequence = 1; sequence <= 100; sequence += 1)
+      busy.output('x', sequence);
+  });
+  expect(view.output.filter(([text]) => text === 'x')).toHaveLength(100);
+  expect(view.props.length).toBe(settled);
+
+  act(() => busy.emit({ status: 'exited' }));
+  const rendered = view.props.slice(settled) as ViewProps[];
+  expect(rendered.length).toBeGreaterThan(0);
+  // Every render that followed is the busy session's panel: typing into it
+  // reaches that session and never the quiet one.
+  for (const props of rendered)
+    props.session?.write(new TextEncoder().encode('?'));
+  expect(quiet.write).not.toHaveBeenCalled();
+});
+
+// "Reconnect terminal" only reattached to the shell that had exited.
+test('an exited shell offers Restart shell, which restarts the same session', async () => {
+  renderTerminal();
+  const { session } = await connectTerminal();
+  act(() => session.emit({ status: 'exited' }));
+  expect(screen.getByRole('alert').textContent).toContain(
+    'The shell has exited.',
+  );
+  expect(
+    screen.queryByRole('button', { name: 'Reconnect terminal' }),
+  ).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'Restart shell' }));
+  await waitFor(() => expect(restartFetch).toHaveBeenCalledTimes(1));
+  const [url, init] = restartFetch.mock.calls[0] as [string, RequestInit];
+  expect(url).toBe(
+    `http://localhost/api/projects/project-a/terminal-sessions/${terminalId}/restart`,
+  );
+  expect(init.method).toBe('POST');
+  expect(JSON.parse(String(init.body))).toEqual({ bindingKey: 'project' });
+  act(() => session.emit({ status: 'running' }));
+  await waitFor(() => expect(screen.queryByRole('alert')).toBeNull());
+  // The same session restarted: nothing reattached or opened.
+  expect(store.attach).toHaveBeenCalledTimes(1);
+  expect(store.open).not.toHaveBeenCalled();
+});
+
+test('a watch-only view of an exited shell offers no restart', async () => {
+  renderTerminal({ readOnly: true });
+  const { session } = await connectTerminal();
+  act(() => session.emit({ status: 'exited' }));
+  expect(screen.getByRole('alert').textContent).toContain(
+    'The shell has exited.',
+  );
+  expect(screen.queryByRole('button', { name: 'Restart shell' })).toBeNull();
+});
+
+// A watch-only pane dropped its session for reads as well as writes, so Add
+// to chat always failed and file links ignored the shell's directory.
+test('a watch-only view still adds a selection to chat', async () => {
+  renderTerminal({ readOnly: true });
+  const { session } = await connectTerminal();
+  await act(async () => latestView().onAddToChat?.('tail of a log'));
+  await waitFor(() =>
+    expect(chatDraftsStore.get('chat-a')).toContain(
+      'Terminal output (working directory: "/workspace/live"):',
+    ),
+  );
+  expect(session.cwd).toHaveBeenCalledTimes(1);
+  expect(screen.queryByRole('alert')).toBeNull();
+
+  // Without operate authority the server refuses the host path; the text
+  // still goes, without one.
+  chatDraftsStore.clear('chat-a');
+  activeChatsStore.updateChat('chat-a', { input: '' });
+  session.cwd.mockRejectedValueOnce(new Error('refused'));
+  await act(async () => latestView().onAddToChat?.('second'));
+  await waitFor(() =>
+    expect(chatDraftsStore.get('chat-a')).toBe(
+      ['Terminal output:', '```', 'second', '```'].join('\n'),
+    ),
+  );
+  expect(screen.queryByRole('alert')).toBeNull();
 });

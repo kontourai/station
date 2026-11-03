@@ -6582,7 +6582,8 @@ other terminal service or listener remains. An ACP engine's terminals are
 (pipes and an output cap, from
 [command-process.ts](../../src-server/services/terminal/command-process.ts)),
 on personal hosts only. `restart` keeps a session's id and starts a new
-journal segment.
+journal segment. Deleting a Project ends its running sessions through
+`endProject`, wired into the Project routes as `endProjectTerminals`.
 
 The `terminalHistory*` [retention settings](../../src-server/services/terminal/terminal-retention.ts)
 are read before each open and usage read: history on or off, the journal
@@ -6643,7 +6644,12 @@ Worker. Only render-state rows marked dirty cross to the UI thread, named by
 stable row ids; the [host](../../packages/sdk/src/terminal-view/engine/engine-host.ts)
 holds one frame in flight until the UI acknowledges it and sends none while
 hidden. Replayed journal output updates the screen with the reply writer and
-bell detached. The [WebGL2 renderer](../../packages/sdk/src/terminal-view/render/webgl2-renderer.ts)
+bell detached. A session handed to a mounted view resets the emulator to a
+fresh terminal before its replay, so a reattach draws its history once. Keys
+the view does not keep, ⌘ chords on a Mac and Ctrl+Shift letters elsewhere,
+are left to the page. Its theme observer and the app's root-theme store share
+[`rootThemeSignature`](../../packages/sdk/src/theme-signature.ts), which skips
+geometry-only style writes, and an unchanged palette is not re-sent. The [WebGL2 renderer](../../packages/sdk/src/terminal-view/render/webgl2-renderer.ts)
 draws instanced rectangles and atlas glyphs, survives context loss and
 releases its context while hidden; a [canvas 2D renderer](../../packages/sdk/src/terminal-view/render/canvas2d-renderer.ts)
 is the fallback. [Box drawing](../../packages/sdk/src/terminal-view/render/box-drawing.ts)
@@ -6656,6 +6662,9 @@ Station uses against the module's `ghostty_type_json()`. The
 runs the real module headlessly: rows and styles, encoders, replies detached
 during replay, the mirror after cursor-addressed redraws, find, selection and
 OSC 8. The [boundary test](../../packages/sdk/src/__tests__/terminal-view/import-boundary.test.ts)
-keeps the Coding layout on the public entry. **Do not reintroduce:** a second
-emulator, terminal state in React render, replies written during replay, or a
-Coding import of terminal internals.
+keeps the Coding layout on the public entry. The
+[controller test](../../packages/sdk/src/__tests__/terminal-view/controller.test.ts)
+covers replay once after a reattach and the keys left to the page.
+**Do not reintroduce:** a second emulator, terminal state in React render,
+replies written during replay, a replay drawn over an earlier attachment's
+screen, or a Coding import of terminal internals.
