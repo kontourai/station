@@ -25,6 +25,7 @@ import {
 } from '../../../security/runtime-request-security.js';
 import { LOCAL_OPERATOR_PRINCIPAL_ID } from '../../../services/identity/principal-resolver.js';
 import { EventStore } from '../../../services/orchestration/event-store.js';
+import { ProjectTaskRoomRuntime } from '../../../services/orchestration/project-task-room-runtime.js';
 import { TaskRoomWorkModule } from '../../../services/projects/task-room-work-module.js';
 import { configureRuntimeRoutes as configureRuntimeRoutesProduction } from '../runtime-routes.js';
 
@@ -155,7 +156,10 @@ describe('Task-room requestAuthority principal (station#4075 stage 3 slice 1)', 
     deviceScope = 'pairing-v7',
     beforeCompose?: (store: EventStore) => void,
     withEventStore = true,
-    prepareContext?: (context: object, directory: string) => void,
+    prepareContext?: (
+      context: object,
+      directory: string,
+    ) => void | Promise<void>,
   ) {
     const directory = mkdtempSync(join(tmpdir(), 'station-room-principal-'));
     directories.push(directory);
@@ -259,7 +263,7 @@ describe('Task-room requestAuthority principal (station#4075 stage 3 slice 1)', 
     // `runtime-system-route-deps-live-config.test.ts` does — upstream growth
     // of ConfigureRuntimeRoutesContext must not force this test to stub
     // members the room wiring never reads.
-    prepareContext?.(context, directory);
+    await prepareContext?.(context, directory);
     const result = await configureRuntimeRoutes(
       context as unknown as Parameters<
         typeof configureRuntimeRoutesProduction
@@ -282,6 +286,200 @@ describe('Task-room requestAuthority principal (station#4075 stage 3 slice 1)', 
       },
     };
   }
+
+  test('startup defers an unavailable completed answer, recovers other rooms, and retries the original answer once readable', async () => {
+    let unavailable = true;
+    let blockedSession = '';
+    const tasks = [task, { ...task, id: 'task-2' }];
+    const starts = vi.fn(async (sessionId: string) => ({ sessionId }));
+    const readAssistantTurn = vi.fn(
+      async ({ threadId }: { threadId: string }) =>
+        unavailable && threadId === blockedSession
+          ? { status: 'unavailable' }
+          : {
+              ...shapingAnswer,
+              sessionId: threadId,
+              turnId: 'turn-1',
+              message: {
+                id: `answer-${threadId}`,
+                role: 'assistant',
+                parts: [{ type: 'text', text: `Recovered answer ${threadId}` }],
+              },
+            },
+    );
+    const { app, store, roomRuntime, setCaller } = await setup(
+      'startup-device',
+      undefined,
+      undefined,
+      true,
+      async (context, directory) => {
+        const graph = Reflect.get(context, 'taskGraphService');
+        Reflect.set(graph, 'listTasks', () => tasks);
+        Reflect.set(
+          graph,
+          'readTaskView',
+          (id: string) => tasks.find((entry) => entry.id === id) ?? null,
+        );
+        const store: EventStore = Reflect.get(
+          context,
+          'orchestrationEventStore',
+        );
+        const work = new TaskRoomWorkModule(
+          join(directory, 'task-room-work.json'),
+        );
+        for (const entry of tasks) {
+          const result = await work.submit(
+            entry.id,
+            entry.createdBy,
+            {
+              operationId: entry.id,
+              agentId: 'researcher',
+              prompt: 'Investigate',
+            },
+            async () => ({
+              projectId: entry.projectId,
+              projectSlug: 'project',
+              roomProjectId: entry.projectId,
+              taskCreatedAt: entry.createdAt,
+              requesterId: entry.createdBy,
+            }),
+            async (sessionId) => {
+              expect(
+                await store.bindProjectTaskRoomExecution({
+                  projectId: entry.projectId,
+                  taskId: entry.id,
+                  sessionId,
+                }),
+              ).toEqual({ kind: 'bound' });
+              return starts(sessionId);
+            },
+          );
+          expect(result.kind).toBe('recorded');
+          if (result.kind === 'recorded' && entry.id === task.id)
+            blockedSession = result.record.sessionId;
+        }
+        Reflect.set(
+          context,
+          'orchestrationService',
+          deepStub({
+            conversationOfSession: (id: string) => id,
+            currentConversationSessionId: (id: string) => id,
+            readSession: async (sessionId: string) => ({
+              session: {
+                id: sessionId,
+                provider: 'claude',
+                status: 'idle',
+                createdAt: task.createdAt,
+                updatedAt: task.updatedAt,
+              },
+              events: [
+                {
+                  method: 'turn.started',
+                  threadId: sessionId,
+                  turnId: 'turn-1',
+                  createdAt: task.createdAt,
+                },
+                {
+                  method: 'turn.completed',
+                  threadId: sessionId,
+                  turnId: 'turn-1',
+                  createdAt: task.updatedAt,
+                },
+              ],
+            }),
+            sessionQueries: { readAssistantTurn },
+          }),
+        );
+      },
+    );
+    setCaller({
+      credential: 'startup-device',
+      authority: 'device-credential',
+      source: 'bearer',
+    });
+    const history = async (taskId: string) => {
+      const opened = await app.fetch(
+        new Request(`http://station/api/tasks/${taskId}/room`),
+        loopbackEnv(),
+      );
+      expect(opened.status).toBe(200);
+      const response = await app.fetch(
+        new Request(`http://station/api/tasks/${taskId}/room/history`),
+        loopbackEnv(),
+      );
+      expect(response.status).toBe(200);
+      return response.text();
+    };
+    try {
+      expect(readAssistantTurn).toHaveBeenCalled();
+      expect(await history(task.id)).not.toContain(
+        `Recovered answer ${blockedSession}`,
+      );
+      expect(await history('task-2')).toContain('Recovered answer');
+      const activity = await app.fetch(
+        new Request('http://station/api/live-activity'),
+        loopbackEnv(),
+      );
+      expect(activity.status).toBe(200);
+      expect(await activity.json()).toMatchObject({
+        data: {
+          participants: expect.arrayContaining([
+            expect.objectContaining({
+              work: expect.objectContaining({
+                workState: 'blocked',
+                workName: "Answer couldn't be posted",
+              }),
+            }),
+          ]),
+        },
+      });
+      unavailable = false;
+      await roomRuntime.reconcileAgentLifecycles([task.id]);
+      await roomRuntime.reconcileAgentLifecycles([task.id]);
+      const recovered = await history(task.id);
+      expect(
+        recovered.split(`Recovered answer ${blockedSession}`),
+      ).toHaveLength(2);
+      expect(starts).toHaveBeenCalledTimes(2);
+    } finally {
+      await roomRuntime.close();
+      store.close();
+    }
+  });
+
+  test('startup still rejects an unexpected room recovery failure', async () => {
+    let store: EventStore | undefined;
+    let room: ProjectTaskRoomRuntime | undefined;
+    const failure = new Error('Controlled room storage failure');
+    const reconcile = vi
+      .spyOn(ProjectTaskRoomRuntime.prototype, 'reconcileAgentLifecycles')
+      .mockImplementationOnce(async function (this: ProjectTaskRoomRuntime) {
+        room = this;
+        throw failure;
+      });
+    try {
+      await expect(
+        setup(
+          'storage-failure-device',
+          undefined,
+          undefined,
+          true,
+          (context) => {
+            store = Reflect.get(context, 'orchestrationEventStore');
+            Reflect.set(
+              Reflect.get(context, 'taskGraphService'),
+              'listTasks',
+              () => [task],
+            );
+          },
+        ),
+      ).rejects.toBe(failure);
+    } finally {
+      reconcile.mockRestore();
+      await room?.close();
+      store?.close();
+    }
+  });
 
   test('without an event store proposal acceptance refuses before Task creation', async () => {
     const { app, store, context, setCaller } = await setup(

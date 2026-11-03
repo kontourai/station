@@ -6824,7 +6824,8 @@ owner loads bounded body pages only after a turn is selected.
 `@kontourai/station-sdk/client/project-working-configuration` exposes bounded
 repository discovery and exact-revision apply. Pass the current host request
 scope and immutable Project identity. A 404/501 is unavailable/update guidance;
-a preview refusal does not enable the feature. Apply saves defaults only.
+an older host's preview refusal does not enable the feature. Working configuration
+needs no preview on current personal hosts. Apply saves defaults only.
 
 `@kontourai/station-sdk/client/learning-review` exports
 `fetchProjectLearning`, `fetchProjectLearningDetail`, `proposeProjectLearning`

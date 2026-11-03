@@ -27,6 +27,7 @@ import {
   loadDeploymentAuthentication,
   readDeploymentAuthenticationConfiguration,
 } from '../../services/identity/deployment-authentication-loader.js';
+import { isDeploymentAccountPrincipalId } from '../../services/identity/deployment-authentication-service.js';
 import {
   type LoadedLocalAccounts,
   type LocalAccountConfiguration,
@@ -1107,7 +1108,9 @@ export class StationRuntime {
         generation === undefined
           ? undefined
           : () => coordinatorGeneration(conversationId) === generation,
-        true,
+        // Codex 0.164 does not refresh tools after load_tool_family, even on
+        // the next turn. Keep its catalog callable until refresh is qualified.
+        false,
       );
       return { url: buildStationControlMcpHeaderUrl(this.port), token };
     },
@@ -1133,7 +1136,7 @@ export class StationRuntime {
         generation === undefined
           ? undefined
           : () => coordinatorGeneration(conversationId) === generation,
-        true,
+        false,
       );
       return {
         url: buildStationControlMcpHeaderUrl(this.port, 'station-knowledge'),
@@ -1197,6 +1200,7 @@ export class StationRuntime {
    * init when `gracefulShutdown` exits the process (archive#3218 review).
    */
   private stopStoreIntegrityVerification?: () => void;
+  private stopHealthChecks?: () => Promise<void>;
   private readonly operationalEventPublisher: OperationalEventPublisher;
   private readonly pluginOperationalEventSubscriptions: PluginOperationalEventSubscriptionService;
   private readonly stationHomeRuntimeLease: StationHomeRuntimeLease;
@@ -1279,7 +1283,6 @@ export class StationRuntime {
   private memberPasskeysPreview!: FeaturePreviewSelector;
   /** #4305: gates the Settings control, not deployment configuration. */
   private accountSharingSettingPreview!: FeaturePreviewSelector;
-  private progressiveToolsPreview!: FeaturePreviewSelector;
   private codexBoundToolsPreview?: FeaturePreviewSelector;
   private sshEnvironmentService: SshEnvironmentService;
   private timers: NodeJS.Timeout[] = [];
@@ -1688,12 +1691,6 @@ export class StationRuntime {
       this.bindChatHostImagesPreview();
       this.bindMemberPasskeysPreview();
       this.bindAccountSharingSettingPreview();
-      this.progressiveToolsPreview = this.featurePreviews.bind({
-        id: 'progressive-station-tools',
-        label: 'Progressive Station tools',
-        description:
-          'Load authorized Station tool families on demand for compatible Codex sessions. Other engines retain their existing tool loading.',
-      });
       if (
         !isHostedTenantExecutionRequired() &&
         !loadHostedTenantRegistryFromEnvironment()
@@ -1795,27 +1792,26 @@ export class StationRuntime {
         });
         return resolveProjectWorkspacePath(projectId, { resolver });
       };
-      this.projectWorkingConfiguration = composeProjectWorkingRuntime(
-        this.featurePreviews,
-        {
-          home: projectHomeDir,
-          hosted: isHostedTenantExecutionRequired(),
-          projects: () => this.projectService.listProjects(),
-          resolveDirectory: this.resolveTaskDispatchWorkspace,
-          canRead: (projectId, principalId) =>
-            principalId === LOCAL_OPERATOR_PRINCIPAL_ID ||
-            Boolean(
-              this.projectMembership?.service
-                .admissionsForResolvedPrincipal(principalId)
-                .some(
-                  (entry) =>
-                    entry.scope.localProjectId === projectId &&
-                    entry.member.status === 'active' &&
-                    entry.member.actions.includes('view'),
-                ),
-            ),
-        },
-      );
+      this.projectWorkingConfiguration = composeProjectWorkingRuntime({
+        home: projectHomeDir,
+        hosted: isHostedTenantExecutionRequired(),
+        projects: () => this.projectService.listProjects(),
+        resolveDirectory: this.resolveTaskDispatchWorkspace,
+        canRead: (projectId, principalId) =>
+          // Personal Device principals follow the canonical personal Project
+          // rule; account-bound callers still need current Project membership.
+          !isDeploymentAccountPrincipalId(principalId) ||
+          Boolean(
+            this.projectMembership?.service
+              .admissionsForResolvedPrincipal(principalId)
+              .some(
+                (entry) =>
+                  entry.scope.localProjectId === projectId &&
+                  entry.member.status === 'active' &&
+                  entry.member.actions.includes('view'),
+              ),
+          ),
+      });
       this.approvalRegistry = new ApprovalRegistry(this.logger, {
         eventBus: this.eventBus,
       });
@@ -5283,11 +5279,6 @@ export class StationRuntime {
       getMcpUiFrameOrigin: () => this.mcpUiFrameServer?.origin,
       getPluginFrameOrigin: () => this.mcpUiFrameServer?.origin,
       featurePreviews: this.featurePreviews,
-      progressiveToolsEnabled: () =>
-        this.progressiveToolsPreview.select({
-          enabled: () => true,
-          disabled: () => false,
-        }),
       projectWorkingConfiguration: this.projectWorkingConfiguration,
       learningReview: this.learningReview,
       getReviewedTariffConfiguration: this.getReviewedTariffConfiguration,
@@ -5423,7 +5414,7 @@ export class StationRuntime {
    * Start periodic health checks for all agents
    */
   private async startHealthChecks(): Promise<void> {
-    await startRuntimeHealthChecks({
+    this.stopHealthChecks = await startRuntimeHealthChecks({
       timers: this.timers,
       logger: this.logger,
       maintainOwnedWork: () =>
@@ -6070,6 +6061,7 @@ export class StationRuntime {
       await shutdownRuntimeServices({
         logger: this.logger,
         timers: this.timers,
+        stopHealthChecks: this.stopHealthChecks,
         schedulerService: this.schedulerService,
         orchestrationService: this.orchestrationService,
         attachedSessionFollowService: this.attachedSessionFollowService,
