@@ -28,6 +28,7 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 
 | Date (UTC) | Channel | Version | Ship SHA | Gate | Run |
 | --- | --- | --- | --- | --- | --- |
+| 2026-11-03T08:46:45Z | nightly-desktop | 0.1.11-nightly.2498 | `3d83c62` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/41595146823) |
 | 2026-11-03T08:46:41Z | nightly-android | 0.1.11-nightly.2498 | `3d83c62` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/41595146823) |
 | 2026-11-03T07:28:22Z | nightly-npm | 0.11.0-nightly.2498.41595146823 | `3d83c62` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/41595146823) |
 | 2026-11-02T21:40:13Z | nightly-npm | 0.11.0-nightly.2497.41527424497 | `e25d138` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/41527424497) |
@@ -406,6 +407,42 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 | 2026-08-28T16:30:48Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-28T16:25:30Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-27T10:54:02Z | nightly-android | 0.1.2-nightly.2430 | `c4229f4` | no test gate existed for this ship: the nightly test gate landed after it (station#4565 merged 2026-08-27T16:04:07Z, this nightly job completed 2026-08-27T10:54:02Z) | [run](https://github.com/kontourai/station-archive/actions/runs/33064078473) |
+
+## 2026-11-03T08:46:45Z · nightly-desktop · 0.1.11-nightly.2498
+
+- Ship SHA: `3d83c6209a3e8be7f65aaebb79bbe48f0c2f699c`
+- Artifact built at: `2026-11-03T07:28:31.887Z` (not provider upload/record time)
+- Artifact: github-release:nightly-desktop (cohort-finalized)
+- Note: ios: TestFlight delivery success (run 41595146823)
+
+### Changelog
+
+Commits since `b5fa353` ([full sha](https://github.com/kontourai/station/commit/b5fa35320b8ff943cacc0e1eaba2d2cf320eb30b)):
+
+**Features**
+
+- [#4474](https://github.com/kontourai/station/pull/4474) feat(ui): improve model picker and runtime speed controls
+- [#4437](https://github.com/kontourai/station/pull/4437) feat(browser,devices): annotate, attach, network, human recording, and device app install/launch
+- [#4473](https://github.com/kontourai/station/pull/4473) feat(chat): start paired Station chats from the shared composer
+- [#4465](https://github.com/kontourai/station/pull/4465) feat: guide Project invitations from setup through access management
+- [#4451](https://github.com/kontourai/station/pull/4451) feat: UX audit follow-ups — private no-project folders, phone chat, 12px text, Regenerate and Windows forks
+- [#4444](https://github.com/kontourai/station/pull/4444) feat(devices): screenshot, recording, logs and Task capture for the Device pane
+
+**Fixes**
+
+- [#4461](https://github.com/kontourai/station/pull/4461) fix(efficiency): recover startup and offer reviewed Project defaults
+- [#4457](https://github.com/kontourai/station/pull/4457) fix(durability): refresh cascade custody and pending steering support
+- [#4456](https://github.com/kontourai/station/pull/4456) fix(docs): stop the generated docs digest from conflicting on every docs change
+- [#4422](https://github.com/kontourai/station/pull/4422) fix: strengthen durable turn admission
+
+**CI / workflow**
+
+- [#4460](https://github.com/kontourai/station/pull/4460) ci: defer confirmed merge-conflict PRs before the plan, shards and statics (#3101)
+
+**Docs**
+
+- [#4471](https://github.com/kontourai/station/pull/4471) docs(skills): add a troubleshoot report intake skill for maintainers
+- [#4459](https://github.com/kontourai/station/pull/4459) docs(design): propose verified replay of Agent browser actions
 
 ## 2026-11-03T08:46:41Z · nightly-android · 0.1.11-nightly.2498
 

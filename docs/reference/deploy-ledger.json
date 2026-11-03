@@ -1,5 +1,49 @@
 [
   {
+    "timestampUtc": "2026-11-03T08:46:45Z",
+    "channel": "nightly-desktop",
+    "version": "0.1.11-nightly.2498",
+    "sha": "3d83c6209a3e8be7f65aaebb79bbe48f0c2f699c",
+    "artifactBuiltAt": "2026-11-03T07:28:31.887Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/41595146823",
+    "artifacts": [
+      "github-release:nightly-desktop (cohort-finalized)"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 41595146823)"
+    ],
+    "changelog": {
+      "previousSha": "b5fa35320b8ff943cacc0e1eaba2d2cf320eb30b",
+      "groups": {
+        "feat": [
+          "[#4474](https://github.com/kontourai/station/pull/4474) feat(ui): improve model picker and runtime speed controls",
+          "[#4437](https://github.com/kontourai/station/pull/4437) feat(browser,devices): annotate, attach, network, human recording, and device app install/launch",
+          "[#4473](https://github.com/kontourai/station/pull/4473) feat(chat): start paired Station chats from the shared composer",
+          "[#4465](https://github.com/kontourai/station/pull/4465) feat: guide Project invitations from setup through access management",
+          "[#4451](https://github.com/kontourai/station/pull/4451) feat: UX audit follow-ups — private no-project folders, phone chat, 12px text, Regenerate and Windows forks",
+          "[#4444](https://github.com/kontourai/station/pull/4444) feat(devices): screenshot, recording, logs and Task capture for the Device pane"
+        ],
+        "fix": [
+          "[#4461](https://github.com/kontourai/station/pull/4461) fix(efficiency): recover startup and offer reviewed Project defaults",
+          "[#4457](https://github.com/kontourai/station/pull/4457) fix(durability): refresh cascade custody and pending steering support",
+          "[#4456](https://github.com/kontourai/station/pull/4456) fix(docs): stop the generated docs digest from conflicting on every docs change",
+          "[#4422](https://github.com/kontourai/station/pull/4422) fix: strengthen durable turn admission"
+        ],
+        "ci": [
+          "[#4460](https://github.com/kontourai/station/pull/4460) ci: defer confirmed merge-conflict PRs before the plan, shards and statics (#3101)"
+        ],
+        "docs": [
+          "[#4471](https://github.com/kontourai/station/pull/4471) docs(skills): add a troubleshoot report intake skill for maintainers",
+          "[#4459](https://github.com/kontourai/station/pull/4459) docs(design): propose verified replay of Agent browser actions"
+        ],
+        "other": []
+      },
+      "note": null,
+      "commitCount": 13
+    }
+  },
+  {
     "timestampUtc": "2026-11-03T08:46:41Z",
     "channel": "nightly-android",
     "version": "0.1.11-nightly.2498",
