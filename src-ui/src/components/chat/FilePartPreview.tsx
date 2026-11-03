@@ -21,6 +21,7 @@ import {
   dataUrlShape,
   thumbnailWorthMaking,
 } from './attachment-thumbnails';
+import { useChatRequestTarget } from './ChatRequestContext';
 
 interface FilePart {
   type: string;
@@ -62,6 +63,9 @@ export function useAttachmentObjectUrlState(
   mediaType: string | undefined,
 ): { url: string | undefined; failed: boolean } {
   const { apiBase } = useApiBase();
+  const target = useChatRequestTarget();
+  // The paired chat bridge currently relays text only.
+  if (target) ref = undefined;
   const [objectUrl, setObjectUrl] = useState<string | undefined>(undefined);
   const [failed, setFailed] = useState(false);
 
@@ -128,7 +132,9 @@ export function useAttachmentObjectUrlState(
   const cached = ref
     ? peekAttachmentObjectUrl(attachmentObjectUrlKey(ref, mediaType))
     : undefined;
-  return { url: cached ?? objectUrl, failed: !cached && failed };
+  return target
+    ? { url: undefined, failed: true }
+    : { url: cached ?? objectUrl, failed: !cached && failed };
 }
 
 type ChipThumbnail = AttachmentObjectUrlSize & { url: string };
@@ -298,6 +304,7 @@ function ChipVisual({
 
 export function FilePartPreview({ part, allParts }: FilePartPreviewProps) {
   const { openPreview } = usePreview();
+  const target = useChatRequestTarget();
   // Inline bytes win: a read that already carried the data URL has nothing to
   // fetch. Only a reference without bytes reaches the blob route.
   const fetchedUrl = useAttachmentObjectUrl(
@@ -337,7 +344,7 @@ export function FilePartPreview({ part, allParts }: FilePartPreviewProps) {
           },
           // Prev/next walks the images of this message; any other type opens
           // on its own.
-          isImage ? previewGallery(allParts) : undefined,
+          isImage && !target ? previewGallery(allParts) : undefined,
         )
     : undefined;
 

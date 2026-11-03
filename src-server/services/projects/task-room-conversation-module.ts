@@ -40,6 +40,12 @@ interface Dependencies {
   authorityForOwner(ownerId: string): SessionReadAuthority;
 }
 
+export class TaskRoomAnswerUnavailableError extends Error {
+  constructor() {
+    super('Completed Task answer is unavailable.');
+  }
+}
+
 /** Room conversation effects compose TaskGraph, the request journal, and canonical Sessions. */
 export class TaskRoomConversationModule {
   private readonly publications = new Map<
@@ -361,7 +367,7 @@ export class TaskRoomConversationModule {
         this.deps.authorityForOwner(ownerOperatorId),
       );
       if (answer.status === 'unavailable')
-        throw new Error('Completed Task answer is unavailable.');
+        throw new TaskRoomAnswerUnavailableError();
       if (answer.status !== 'found') continue;
       const text = answer.message.parts
         .flatMap((part) => (part.type === 'text' ? [part.text] : []))

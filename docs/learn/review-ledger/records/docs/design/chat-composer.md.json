@@ -234,7 +234,25 @@
 
     "src-ui/src/hooks/orchestration/snapshotHandlers.ts",
 
-    "src-ui/src/hooks/useDerivedSessions.ts"
+    "src-ui/src/hooks/useDerivedSessions.ts",
+
+    "src-server/routes/environments/peer-chat-routes.ts",
+
+    "src-server/routes/environments/__tests__/peer-chat-routes.test.ts",
+
+    "src-ui/src/components/chat-dock/PeerChatBody.tsx",
+
+    "src-ui/src/hooks/usePeerChatStart.ts",
+
+    "src-ui/src/lib/peer-chat.ts",
+
+    "src-ui/src/__tests__/PeerChatBody.test.tsx",
+
+    "src-ui/src/components/chat/ChatRequestContext.ts",
+
+    "src-ui/src/components/chat-start/ChatStart.css",
+
+    "src-ui/src/components/chat-start/StartComposer.css"
   ],
 
   "checks": [

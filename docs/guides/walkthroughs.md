@@ -41,6 +41,13 @@ Device clip from the Device pane, and a Task-bound agent can use
 the start. The agent holds the input lease through recording and publication;
 human control prevents its claim. See [Device recording](mobile-device-workspace.md#capture-a-device-screen-to-a-task).
 
+The Browser pane also offers person-initiated silent WebM recording and chat
+frames, described in [Browser workspace](browser-workspace.md). With an active
+Task lead Session, Task access and a clean workspace pinned at recording start,
+**Add to Task clips** publishes through the same Task clip store after rechecks.
+Human and bound Agent Browser recordings share active admission slots. The bound Agent path below remains separate.
+
+
 With Walkthroughs enabled, a bound lead Session can call the sensitive
 `station-browser` tool `browser_record_to_task` with `durationMs` (1–30,000),
 and optional `browserSessionId`, `label`, and `maxBytes` (at most 16 MiB). The

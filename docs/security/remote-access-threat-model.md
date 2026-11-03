@@ -665,7 +665,33 @@ can expose page contents and is served through that Task's authorized reads.
 Device session enumeration, capture and recording require `terminal:operate`
 in addition to current Task, Project and device authority. A Device recording
 or agent log sample holds the device input lease and refuses a human-held lease;
-log output is bounded and can contain private application data.
+log output is bounded and can contain private application data. Project app
+staging and Task reproduction capture also require `terminal:operate`, plus
+current Project, Device and Task authority. Workspace staging refuses symlinks
+and escapes; uploads and host-side installation are bounded. A reproduction
+attachment includes a screenshot and app logs, so Task readers can see those
+contents. A lost response after installation or Task publication may leave the
+effect unconfirmed; the caller must inspect the device or Task before retrying.
+
+The default-off Browser artifacts preview admits element picking only from a
+current person with Browser view authority. Requests that may originate from
+an Agent are refused, even when page evaluation is enabled. A pick can expose
+element attributes and computed styles beyond visible pixels, so sharing its
+image and description with a conversation remains an explicit action. Network
+diagnostics retain only bounded in-memory metadata, without headers or bodies;
+URL credentials, query values and fragments are removed. Agent network reads
+also require **Let agents run JavaScript in this Project's pages**
+(`browserEvaluate`). These boundaries do
+not establish hostile-page or released-package qualification.
+
+Person-initiated Browser recording is a separate action behind the same
+preview. Start, stop, status, cancellation and video reads require current
+person and Browser authority; a recording ID is not authority. Capture is
+bounded and rechecks its session, preview and authority before publication.
+Temporary frames are private to a generated staging directory and are removed
+on ordinary completion or cancellation. A process crash can leave that staging
+directory; no automatic crash cleanup is claimed. A saved WebM can expose page
+content and is not automatically published to a Task.
 
 The exact `POST /api/projects/:projectSlug/walkthroughs/import` and
 `POST /api/transcription` uploads also retain the standard principal rate

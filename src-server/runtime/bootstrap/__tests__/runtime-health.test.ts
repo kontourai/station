@@ -50,6 +50,62 @@ describe('runtime-health', () => {
     for (const timer of timers) clearInterval(timer);
   });
 
+  test('slow stop delivery does not starve the other health checks', async () => {
+    vi.useFakeTimers();
+    let finish!: () => void;
+    const delivery = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+    const runHealthChecks = vi.fn(async () => {});
+    const maintainOwnedWork = vi.fn(() => delivery);
+    const timers: NodeJS.Timeout[] = [];
+    const starting = startRuntimeHealthChecks({
+      timers,
+      logger: { debug: vi.fn(), warn: vi.fn() },
+      maintainOwnedWork,
+      interval: 1000,
+      runHealthChecks,
+    });
+    try {
+      expect(runHealthChecks).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(runHealthChecks).toHaveBeenCalledTimes(2);
+      expect(maintainOwnedWork).toHaveBeenCalledTimes(1);
+    } finally {
+      finish();
+      await starting;
+      for (const timer of timers) clearInterval(timer);
+    }
+  });
+
+  test('health shutdown bounds a maintenance callback that never resolves', async () => {
+    vi.useFakeTimers();
+    let finish!: () => void;
+    const pending = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+    const timers: NodeJS.Timeout[] = [];
+    const stop = await startRuntimeHealthChecks({
+      timers,
+      logger: { debug: vi.fn(), warn: vi.fn() },
+      maintainOwnedWork: () => pending,
+      runHealthChecks: async () => {},
+    });
+    let failure: unknown;
+    const stopping = stop().catch((error) => {
+      failure = error;
+    });
+    try {
+      await vi.advanceTimersByTimeAsync(5000);
+      expect(failure).toBeInstanceOf(Error);
+      expect(String(failure)).toContain('maintenance');
+    } finally {
+      finish();
+      await stopping;
+      for (const timer of timers) clearTimeout(timer);
+    }
+  });
+
   test('records monotonic event-loop lag and treats early wakeups as zero', () => {
     let now = 100;
     let tick: (() => void) | undefined;

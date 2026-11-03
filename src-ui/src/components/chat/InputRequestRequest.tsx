@@ -3,6 +3,7 @@ import { toolRequestIsPlanReview } from '@kontourai/station-shared/tool-request-
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { useAuthorityPersistence } from '../../contexts/AuthorityPersistenceContext';
 import type { PendingApprovalRequest } from '../../hooks/orchestration/pendingRequestRows';
+import { useChatRequestTarget } from './ChatRequestContext';
 import { InputRequestCard } from './InputRequestCard';
 
 /**
@@ -16,7 +17,10 @@ export function InputRequestRequest({
 }: {
   request: PendingApprovalRequest;
 }) {
-  const scope = useHostRequestAuthorityScope();
+  const host = useHostRequestAuthorityScope();
+  const target = useChatRequestTarget();
+  const scope = target?.requestScope ?? host;
+  const apiBase = target?.apiBase ?? scope?.apiBase;
   const { namespace, status } = useAuthorityPersistence();
   const {
     inputRequest,
@@ -34,7 +38,7 @@ export function InputRequestRequest({
   )
     return <p role="status">Connect to this Station to answer this request.</p>;
   const requestKey = [
-    scope.apiBase,
+    apiBase!,
     scope.authorityKey,
     approvalThreadId,
     approvalId,
@@ -61,7 +65,7 @@ export function InputRequestRequest({
       planReview={toolRequestIsPlanReview(approvalToolName)}
       onRespond={async (action, content) => {
         await respondToRequest(
-          scope.apiBase,
+          apiBase!,
           {
             threadId: approvalThreadId,
             requestId: approvalId,

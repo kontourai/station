@@ -38,6 +38,7 @@ import {
 import { createBrowserRoutes } from '../../routes/browser.js';
 import { createBrowserAgentRoutes } from '../../routes/browser-agent.js';
 import { createDeviceAgentRoutes } from '../../routes/device-agent.js';
+import { createDeviceArtifactRoutes } from '../../routes/device-artifacts.js';
 import { createDeviceHostRoutes } from '../../routes/device-hosts.js';
 import { createDeviceToolchainRoutes } from '../../routes/device-toolchain.js';
 import { createDeviceToolsRoutes } from '../../routes/device-tools.js';
@@ -110,6 +111,7 @@ import {
 import { createBrowserPrincipalAuthorizer } from '../../services/browser/browser-agent-authority.js';
 import { BrowserAutomation } from '../../services/browser/browser-automation.js';
 import { withBrowserHumanControl } from '../../services/browser/browser-human-control.js';
+import { BrowserHumanTaskClip } from '../../services/browser/browser-human-task-clip.js';
 import { loadLocatorEngineInstallExpression } from '../../services/browser/browser-locator-engine.js';
 import {
   isStationInternalRequest,
@@ -136,6 +138,7 @@ import {
   deviceAccessFromShares,
   failClosedDeviceAccess,
 } from '../../services/devices/device-access.js';
+import { DeviceArtifactStaging } from '../../services/devices/device-app-artifacts.js';
 import { DeviceAutomation } from '../../services/devices/device-automation.js';
 import {
   createDeviceHostResolver,
@@ -157,6 +160,10 @@ import {
   deviceControlConflict,
 } from '../../services/devices/device-tools.js';
 import { createFfmpegDecoderProvider } from '../../services/devices/h264-jpeg-decoder.js';
+import {
+  runDeviceAppInstall,
+  spawnLocalDeviceInstall,
+} from '../../services/devices/hosts/device-app-install.js';
 import { DeviceHostRegistry } from '../../services/devices/hosts/device-host-registry.js';
 import { RemoteDeviceHostServices } from '../../services/devices/hosts/device-host-services.js';
 import { DeviceHostStore } from '../../services/devices/hosts/device-host-store.js';
@@ -201,6 +208,7 @@ import {
 } from '../../services/projects/project-room-store.js';
 import { ProjectSharedTaskService } from '../../services/projects/project-shared-task-service.js';
 import type { ProjectSharedTaskStore } from '../../services/projects/project-shared-task-store.js';
+import { RecordingLimiter } from '../../services/projects/recording-limiter.js';
 import { TaskBrowserCapture } from '../../services/projects/task-browser-capture.js';
 import { TaskBrowserRecording } from '../../services/projects/task-browser-recording.js';
 import { createTaskCaptureBlobStoreFactory } from '../../services/projects/task-capture-blob-store-factory.js';
@@ -208,7 +216,10 @@ import { TaskDeviceCapture } from '../../services/projects/task-device-capture.j
 import { TaskDeviceRecording } from '../../services/projects/task-device-recording.js';
 import { TaskRoomAttachments } from '../../services/projects/task-room-attachments.js';
 import { createTaskRoomContext } from '../../services/projects/task-room-context.js';
-import { TaskRoomConversationModule } from '../../services/projects/task-room-conversation-module.js';
+import {
+  TaskRoomAnswerUnavailableError,
+  TaskRoomConversationModule,
+} from '../../services/projects/task-room-conversation-module.js';
 import { PullRequestReviewGuideService } from '../../services/pull-requests/pull-request-review-guide.js';
 import { ReviewGuideError } from '../../services/pull-requests/pull-request-review-guide-errors.js';
 import {
@@ -426,6 +437,7 @@ import { createModelsRoutes } from '../../routes/connections/models.js';
 import { createProviderRoutes } from '../../routes/connections/providers.js';
 import { createConsentNativeRoutes } from '../../routes/consent/consent-native-routes.js';
 import { createHomeAuthorityRoutes } from '../../routes/environments/home-authority-routes.js';
+import { createPeerChatRoutes } from '../../routes/environments/peer-chat-routes.js';
 import { createPeerCredentialRoutes } from '../../routes/environments/peer-credential-routes.js';
 import {
   createDiffCommentRoutes,
@@ -1767,6 +1779,10 @@ export function configureRuntimeRoutes(
   let deviceSessions: DeviceSessionService | undefined;
   let localDeviceHost: LocalMobileDeviceHost | undefined;
   let localDeviceTools: DeviceToolsService | undefined;
+  let deviceArtifacts: DeviceArtifactStaging | undefined;
+  let deviceArtifactRoutes:
+    | ReturnType<typeof createDeviceArtifactRoutes>
+    | undefined;
   let deviceLoopEnabled = () => false;
   let deviceHostRegistry: DeviceHostRegistry | undefined;
   let remoteDeviceHosts: RemoteDeviceHostServices | undefined;
@@ -4851,6 +4867,34 @@ export function configureRuntimeRoutes(
           ? localAvd(serial)
           : hostRegistry.resolveAndroidAvd(hostId, serial),
     };
+    const artifacts = new DeviceArtifactStaging();
+    deviceArtifacts = artifacts;
+    const authorizeArtifactProject = createBrowserProjectAuthorizer(
+      deviceMembershipAccess,
+    );
+    const artifactRoutes = createDeviceArtifactRoutes({
+      staging: artifacts,
+      enabled: deviceLoopEnabled,
+      current: isRequestPrincipalCurrent,
+      human: (c) => resolveLiveSurfaceHumanCaller?.(c) != null,
+      project: (slug) => {
+        const project = context.projectService
+          .listProjects()
+          .find((candidate) => candidate.slug === slug);
+        return project
+          ? {
+              id: project.id,
+              root: project.workingDirectory
+                ? resolve(expandTilde(project.workingDirectory))
+                : null,
+            }
+          : undefined;
+      },
+      authorize: async (request, projectId) =>
+        !!(await authorizeArtifactProject(request, projectId, 'drive')),
+    });
+    deviceArtifactRoutes = artifactRoutes;
+    context.app.route('/api/mobile-devices', artifactRoutes);
     // The live Device pane asks one predicate (per device, per purpose);
     // the share store answers it.
     deviceAccessImpl = deviceAccessFromShares(deviceShareAccess);
@@ -4933,6 +4977,23 @@ export function configureRuntimeRoutes(
     let agentDeviceAutomation: DeviceAutomation | undefined;
     if (agentDeviceSessions && agentDeviceSurfaces && deviceShareAccess) {
       agentDeviceAutomation = new DeviceAutomation({
+        artifacts,
+        projectRoot: (projectId) => {
+          const project = context.projectService
+            .listProjects()
+            .find((candidate) => candidate.id === projectId);
+          return project?.workingDirectory
+            ? resolve(expandTilde(project.workingDirectory))
+            : undefined;
+        },
+        installApp: (input) =>
+          input.hostId === LOCAL_DEVICE_HOST_ID
+            ? runDeviceAppInstall({
+                ...input,
+                target: { host: 'localhost' },
+                spawn: spawnLocalDeviceInstall,
+              })
+            : hostRegistry.installApp(input.hostId, input),
         remoteHostIds: () =>
           hostRegistry.summaries().map((host) => host.hostId),
         remoteHost: (hostId) => {
@@ -5050,6 +5111,82 @@ export function configureRuntimeRoutes(
         deviceLoopEnabled,
         isRequestPrincipalCurrent,
         access: deviceAccess,
+        actionHistory: {
+          read: (target) => {
+            const sessions =
+              target.hostId === LOCAL_DEVICE_HOST_ID
+                ? toolSessions
+                : remoteDeviceHosts?.get(target.hostId)?.sessions;
+            const session = sessions?.forDevice(
+              target.platform,
+              target.deviceId,
+            );
+            const entries = session
+              ? sessions?.actionHistory(session.sessionId)
+              : undefined;
+            return session && entries
+              ? { sessionId: session.sessionId, entries }
+              : undefined;
+          },
+          installed: (target) => {
+            const sessions =
+              target.hostId === LOCAL_DEVICE_HOST_ID
+                ? toolSessions
+                : remoteDeviceHosts?.get(target.hostId)?.sessions;
+            const session = sessions?.forDevice(
+              target.platform,
+              target.deviceId,
+            );
+            return session
+              ? sessions?.latestInstallation(session.sessionId)
+              : undefined;
+          },
+          installation: (target, value) => {
+            const sessions =
+              target.hostId === LOCAL_DEVICE_HOST_ID
+                ? toolSessions
+                : remoteDeviceHosts?.get(target.hostId)?.sessions;
+            const session = sessions?.forDevice(
+              target.platform,
+              target.deviceId,
+            );
+            if (session) sessions?.noteInstallation(session.sessionId, value);
+          },
+          note: (target, action, outcome) => {
+            const sessions =
+              target.hostId === LOCAL_DEVICE_HOST_ID
+                ? toolSessions
+                : remoteDeviceHosts?.get(target.hostId)?.sessions;
+            const session = sessions?.forDevice(
+              target.platform,
+              target.deviceId,
+            );
+            if (session)
+              sessions?.noteAction(
+                session.sessionId,
+                action,
+                'person',
+                outcome,
+              );
+          },
+        },
+        appInstall: {
+          staging: artifacts,
+          projectId: (slug) =>
+            context.projectService
+              .listProjects()
+              .find((project) => project.slug === slug)?.id,
+          authorize: async (request, projectId) =>
+            !!(await authorizeArtifactProject(request, projectId, 'drive')),
+          run: (input) =>
+            input.hostId === LOCAL_DEVICE_HOST_ID
+              ? runDeviceAppInstall({
+                  ...input,
+                  target: { host: 'localhost' },
+                  spawn: spawnLocalDeviceInstall,
+                })
+              : hostRegistry.installApp(input.hostId, input),
+        },
         // THIS machine's xcrun/adb and hub serve the local device host; an
         // SSH device host has its own service (#2442), built per host.
         tools: ownDeviceTools,
@@ -6096,7 +6233,21 @@ export function configureRuntimeRoutes(
     })
       .then(() =>
         Promise.all([
-          roomRuntime.reconcileAgentLifecycles(roomTaskIds),
+          (async () => {
+            for (const taskId of roomTaskIds) {
+              try {
+                await roomRuntime.reconcileAgentLifecycles([taskId]);
+              } catch (error) {
+                if (!(error instanceof TaskRoomAnswerUnavailableError))
+                  throw error;
+                // Publication retains blocked presence and the original request.
+                // A later room read can retry without restarting the provider.
+                context.logger.warn('Task room answer recovery deferred', {
+                  taskId,
+                });
+              }
+            }
+          })(),
           roomRuntime.reconcileRevisionPublications(roomTaskIds),
         ]),
       )
@@ -8196,12 +8347,27 @@ export function configureRuntimeRoutes(
     const authorizeBrowserProject =
       createBrowserProjectAuthorizer(browserAccess);
     browserProjectAuthorizer = authorizeBrowserProject;
+    const browserArtifactsPreview = context.featurePreviews.bind({
+      id: 'browser-artifacts',
+      label: 'Browser artifacts',
+      description:
+        'Try Browser annotations, recording and network diagnostics.',
+    });
+    const browserArtifactsEnabled = () =>
+      browserArtifactsPreview.select({
+        enabled: () => true,
+        disabled: () => false,
+      });
+    const recordingLimiter = new RecordingLimiter();
     browserService = createBrowserService({
       stationHome: context.configLoader.getProjectHomeDir(),
       experienceEnabled: browserExperienceEnabled,
       serverPort: context.port,
       consentPort: configuredConsentPort(),
       configuredOrigins: allowedOrigins,
+      networkPreviewEnabled: browserArtifactsEnabled,
+      recordingResolver: context.walkthroughImportDependencies.resolver,
+      recordingLimiter,
       // #1970: the managed device hub and its helpers, read live.
       // #1973: every SSH device host's local forward and host hub port too.
       extraListenerPorts: () => [
@@ -8217,6 +8383,7 @@ export function configureRuntimeRoutes(
           }
         : {}),
     });
+    let humanTaskClip: BrowserHumanTaskClip | undefined;
     context.app.use('/api/browser/*', async (c, next) => {
       roomRequestPrincipals.set(
         c.req.raw,
@@ -8265,6 +8432,14 @@ export function configureRuntimeRoutes(
         pendingDialogFor: browserService.pendingDialogFor,
         answerDialog: browserService.answerDialog,
         consoleFor: browserService.consoleFor,
+        networkFor: browserService.networkFor,
+        networkPreviewEnabled: browserArtifactsEnabled,
+        humanRecordings: browserService.humanRecordings,
+        recordingAdmissionKey: (c) =>
+          resolveLiveSurfaceHumanCaller?.(c)?.principal,
+        prepareHumanTaskClip: (request, conversationId, browser) =>
+          humanTaskClip?.prepare(request, conversationId, browser) ??
+          Promise.resolve({ kind: 'none' }),
         authorizeProject: authorizeBrowserProject,
         authorizeOperator: createBrowserOperatorAuthorizer(browserAccess),
         localTargets: browserService.localTargets,
@@ -8326,6 +8501,8 @@ export function configureRuntimeRoutes(
       sessions: browserService.registry,
       surfaces: liveSurfaceRegistry ?? { get: () => undefined },
       surfaceIdFor: browserService.surfaceIdFor,
+      networkFor: browserService.networkFor,
+      networkPreviewEnabled: browserArtifactsEnabled,
       agentActionsEnabled: browserExperienceEnabled,
       dialogWaitingForPerson: (browserSessionId) =>
         browserService?.pendingDialogFor(browserSessionId) !== undefined,
@@ -8362,6 +8539,21 @@ export function configureRuntimeRoutes(
             forbiddenRoots: captureForbiddenRoots,
           })
         : undefined;
+    if (
+      taskCaptures &&
+      taskWalkthroughs &&
+      captureRuntime &&
+      localMediaPreviews
+    ) {
+      humanTaskClip = new BrowserHumanTaskClip({
+        runtime: captureRuntime,
+        captures: taskCaptures,
+        store: taskWalkthroughs,
+        preview: localMediaPreviews.walkthroughsPreview,
+        localProjectIdFor: captureProjectIdFor,
+        isCurrent: isRequestPrincipalCurrent,
+      });
+    }
     taskRecordings =
       taskCaptures &&
       taskWalkthroughs &&
@@ -8375,6 +8567,7 @@ export function configureRuntimeRoutes(
             resolver: context.walkthroughImportDependencies.resolver,
             preview: localMediaPreviews.walkthroughsPreview,
             store: taskWalkthroughs,
+            limiter: recordingLimiter,
           })
         : undefined;
     const deviceRecordings =
@@ -8750,11 +8943,6 @@ export function configureRuntimeRoutes(
       '/api/projects',
       createProjectWorkingConfigurationRoutes({
         service: working.service,
-        enabled: () =>
-          working.preview.select({
-            enabled: () => true,
-            disabled: () => false,
-          }),
         authorize: async (request, slug) => {
           if (isStationInternalRequest(request)) return undefined;
           const project = context.projectService
@@ -10009,6 +10197,22 @@ export function configureRuntimeRoutes(
         context.configLoader.getProjectHomeDir(),
       ),
     ),
+  );
+  context.app.route(
+    '/api/environments/peers',
+    createPeerChatRoutes({
+      peers: peerCredentialStore,
+      remote: remoteStations,
+      current: isRequestPrincipalCurrent,
+      preview: hostedTenantRegistry
+        ? undefined
+        : context.featurePreviews.bind({
+            id: 'paired-station-chats',
+            label: 'Paired Station chats',
+            description:
+              'Start and continue chats on paired Stations. Messages use the selected Station’s providers and credits.',
+          }),
+    }),
   );
   // station#1423: the operator's own answer-share management family. The base
   // is a STRING LITERAL rather than `ANSWER_SHARE_ROUTE_PREFIX`, for the same
@@ -11930,10 +12134,11 @@ export function configureRuntimeRoutes(
     deviceSessions,
     browserProjectAuthorizer,
     ...(pluginDraftService ? { pluginDraftService } : {}),
-    ...(remoteDeviceHosts || deviceHostRegistry
+    ...(remoteDeviceHosts || deviceHostRegistry || deviceArtifacts
       ? {
           deviceHosts: {
             dispose: async () => {
+              await deviceArtifactRoutes?.dispose();
               // Sessions first: their producers read the hubs that stop next.
               await remoteDeviceHosts?.dispose();
               await deviceHostRegistry?.shutdown();
