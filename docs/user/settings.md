@@ -1,6 +1,6 @@
 # Settings you may not have found
 
-Most Settings rows explain themselves. This page covers four sections that
+Most Settings rows explain themselves. This page covers five sections that
 change what Station offers rather than how it looks. Open **Settings**, pick a
 page in the left rail, or search for a setting by name. You can also find any
 Settings row from the [command palette](../guides/keyboard-shortcuts.md#command-palette)
@@ -11,7 +11,8 @@ Settings row from the [command palette](../guides/keyboard-shortcuts.md#command-
 | Feature previews | **Advanced** | On this Station |
 | Developer tools | **Advanced** | To your account when you are signed in, otherwise on this device |
 | Shared answers | **Privacy & sharing** | On this Station |
-| Device hosts | **Devices** | On this Station |
+| Browser & devices | **Advanced** | On this Station, per Project for the Browser rows |
+| Device hosts | **Advanced** | On this Station |
 
 ## Feature previews
 
@@ -178,6 +179,21 @@ lists those addresses but still connects only through its saved one; see
 
 This section lists the answer links you have created, with their state and
 expiry, and lets you revoke them. See [Share an answer](sharing-answers.md).
+
+## Browser & devices
+
+Configuration the Browser and Device panes keep out of their toolbars. The
+Browser's **⋯ › Browser settings…** opens it on that Browser's Project.
+
+- **Agent JavaScript** lets agents run scripts in the chosen Project's
+  pages. It is off by default, and only the operator or a Project admin can
+  change it.
+- **Shared local servers** (operator only) lists the local servers the
+  Project's admins can open in the Browser. **Find local servers** suggests
+  some, and nothing is shared until you choose it. Shared servers appear as
+  buttons on an empty Browser.
+- **Open device setup** opens the device setup wizard: the device hub,
+  sharing devices with Projects, and agent device access.
 
 ## Device hosts
 
