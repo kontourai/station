@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { rm, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
+import { inspect } from 'node:util';
 import { humanPrincipal } from '@kontourai/station-contracts/principal';
 import { parseProjectTaskRoomBrowserHistory } from '@kontourai/station-contracts/project-task-room-browser';
 import type { ProviderSession } from '@kontourai/station-contracts/provider';
@@ -898,7 +899,7 @@ async function requestAgent(f: Awaited<ReturnType<typeof fixture>>) {
   expect(response.status, await response.clone().text()).toBe(200);
   const body = await readJson<{ data: TaskRoomWorkOutcome }>(response);
   if (body.data.kind !== 'recorded') throw new Error('Missing request record');
-  expect(body.data.record.state, JSON.stringify(f.failures)).toBe('dispatched');
+  expect(body.data.record.state, inspect(f.failures)).toBe('dispatched');
   expect(f.adapter.turns).toHaveLength(1);
   await vi.waitFor(() =>
     expect(f.graph.readTaskView(f.task.id)?.status).toBe('in_progress'),
