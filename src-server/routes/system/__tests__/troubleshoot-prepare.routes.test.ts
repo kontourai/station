@@ -115,9 +115,10 @@ function prepare(app: Hono, caller: Caller, body: unknown = {}) {
   });
 }
 
-function runDirs(stationRoot: string): string[] {
-  const root = join(stationRoot, 'cache', 'triage');
-  return existsSync(root) ? readdirSync(root) : [];
+/** Run ids under a test's temp Station root. */
+function runDirs(tempRoot: string): string[] {
+  const tempTriage = join(tempRoot, 'cache', 'triage');
+  return existsSync(tempTriage) ? readdirSync(tempTriage) : [];
 }
 
 describe('POST /api/diagnostics/troubleshoot/prepare', () => {
