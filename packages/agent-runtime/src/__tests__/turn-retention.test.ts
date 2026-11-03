@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { writeFileSync } from 'node:fs';
+import { constants } from 'node:sqlite';
 import { afterEach, expect, it } from 'vitest';
 import { turnFixture } from './turn-fixture.js';
 
@@ -57,6 +58,17 @@ it('retention bounds open and settle while draining 60 terminal turns with 80 ef
   expect(() =>
     f.database.exec('UPDATE agent_steps_body_counts SET n=0'),
   ).toThrow('DURABLE_AGENT_REFERENCE_WRITE_REFUSED');
+  const guardPayloadReads = new Set<string>();
+  f.database.setAuthorizer((action, table, column, _database, source) => {
+    if (
+      action === constants.SQLITE_READ &&
+      table === 'agent_steps_effects' &&
+      column === 'record' &&
+      source?.endsWith('_no_delete')
+    )
+      guardPayloadReads.add(source);
+    return constants.SQLITE_OK;
+  });
   f.advance(8 * 24 * 60 * 60 * 1000);
   const opens: number[] = [];
   const settles: number[] = [];
@@ -134,6 +146,7 @@ it('retention bounds open and settle while draining 60 terminal turns with 80 ef
     }),
   );
   expect(drained).toBe(true);
+  expect([...guardPayloadReads]).toEqual([]);
   expect(opens.length).toBeLessThanOrEqual(400);
   expect(Math.max(...opens)).toBeLessThan(50);
   expect(Math.max(...settles)).toBeLessThan(50);
