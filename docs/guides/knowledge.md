@@ -138,7 +138,9 @@ recheck immediately precedes embedding. A changed registration or lost authority
 prevents publication; an embedding call
 already sent to a provider cannot be recalled. A private rebuild is refused when
 the lease is unavailable. When the store offers revision leases, rebuilds require
-an index provider that supports revision checks. Example output:
+an index provider that supports revision checks. A registration change, including
+a rename, during embedding can fail that root's rebuild; retry after the change.
+Example output:
 
 ```
 Reindexed root root:personal: 42 record(s), 118 chunk(s).
@@ -262,6 +264,10 @@ earlier write was interrupted, that read can restore or remove files from the
 pending operation and clean up its journal. Thus source snapshot acquisition
 is not a zero-write inspection. The migration's own writes target the new
 store and derived index; healthy source files are retained.
+
+Migration refuses a destination that overlaps an author-private root. It also
+refuses when any registered root path cannot be resolved, because Station cannot
+rule out an overlap; repair or remove the unavailable registration before retrying.
 
 Re-running migration skips destination record IDs that already exist and can
 copy newly discovered records. It may write index rows again, allowing a
