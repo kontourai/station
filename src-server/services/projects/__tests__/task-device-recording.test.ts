@@ -132,7 +132,7 @@ test('disposing the recording owner cancels in-flight work', async () => {
   expect(cancelled).toBe(true);
 });
 
-test('starting jobs are cancellable and capacity is scoped to the Task and author', async () => {
+test('starting jobs are cancellable and capacity is per author', async () => {
   const recordSource = vi.fn(
     async (
       _access: TaskReviewAccess,
@@ -164,6 +164,10 @@ test('starting jobs are cancellable and capacity is scoped to the Task and autho
   owner.start(access('alice'), { durationMs: 1000 }, source);
   expect(() =>
     owner.start(access('alice'), { durationMs: 1000 }, source),
+  ).toThrow('capacity');
+  // The limit follows the author, not the Task: another Task is refused too.
+  expect(() =>
+    owner.start(access('alice', 'task-2'), { durationMs: 1000 }, source),
   ).toThrow('capacity');
   expect(owner.start(access('bob'), { durationMs: 1000 }, source).state).toBe(
     'starting',

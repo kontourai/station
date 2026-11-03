@@ -23,15 +23,16 @@ Advanced → Device hosts**. See
 
 ## View, control and end a session
 
-1. Open **Device** from a region's pane chooser. With nothing running it says
-   **Start a simulator**.
+1. Open **Device** from a region's pane chooser. With devices but none
+   running it says **Start a simulator**; with no devices the heading reads
+   **Devices**.
 2. Choose the host and device, then start it or open its live session.
 3. Tap or type on the screen. While you hold control, Agents cannot send
    input. Use **Home**, and **Back** on Android or **Rotate** on iOS.
 
-Everything else is in **⋯**: **Save screenshot**, **Record to Task**, **Logs**, **Apps**,
-**Device settings**, **Recents** (Android), **Float over chat**, **Power off**,
-**End for everyone** and **Close**.
+Everything else is in **⋯**: **Save screenshot**, **Record to Task**, **Logs**,
+**Apps**, **Device settings**, **Recents** (Android), **Float over chat** and
+**Close**; managers also see **Power off** and **End for everyone**, last.
 
 - **Close** only closes your view. An unwatched session ends after ten
   minutes; the device keeps running.

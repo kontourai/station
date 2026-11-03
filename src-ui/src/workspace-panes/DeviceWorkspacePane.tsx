@@ -41,6 +41,7 @@ import {
   MoreGlyph,
   RecordGlyph,
   TerminalGlyph,
+  WarningGlyph,
 } from '../components/icons/Glyph';
 import { LazyBoundary } from '../components/LazyBoundary';
 import {
@@ -1465,7 +1466,7 @@ function DeviceToolbar({
             kind: 'danger' as const,
             id: 'end',
             label: ending ? 'Ending…' : 'End for everyone',
-            glyph: <StopGlyph />,
+            glyph: <WarningGlyph />,
             disabled: poweringOff || ending,
             onSelect: onEndForEveryone,
           },

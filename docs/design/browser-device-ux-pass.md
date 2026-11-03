@@ -101,7 +101,7 @@ person through the menu, a shortcut or the palette.
 ## Target layout
 
 **Browser default chrome:** tabs, back/forward/reload, the address bar, the
-driver chip and one ⋯. The ⋯ menu has four groups:
+driver chip and one ⋯. The ⋯ menu has four named groups:
 
 - **Capture:** Screenshot, Annotate, Record.
 - **View:** Zoom, Appearance, Viewport, Rotate viewport.
