@@ -7648,7 +7648,7 @@ export class OrchestrationService {
           this.startingSessionThreads.delete(threadId);
           this.startedSessionCommits.delete(threadId);
         },
-        attachStarted: (session, adapter, tenant, startInput) => {
+        attachStarted: async (session, adapter, tenant, startInput) => {
           if (
             startInput.metadata?.[SESSION_VISIBILITY_METADATA_KEY] ===
             'ephemeral'
@@ -7676,14 +7676,7 @@ export class OrchestrationService {
             this.sessionAuthz.bindTenantContext(session.threadId, tenant);
             session.tenantExecutionContext = tenant;
           }
-          const startOwner = startInput.metadata?.userId;
-          if (
-            typeof startOwner === 'string' &&
-            startOwner &&
-            this.sessionAuthz.sessionOwnerUserId(session.threadId) === undefined
-          )
-            this.sessionAuthz.bindStartOwner(session.threadId, startOwner);
-          this.options.eventStore?.upsertSession(session);
+          await this.options.eventStore?.upsertSessionInBackground(session);
         },
       },
       launchPolicy: {
@@ -8360,6 +8353,7 @@ export class OrchestrationService {
         cleanupFailedStart: async (adapter, threadId) => {
           // Revoke even if provider teardown fails or exceeds its deadline.
           revokeStationControlMcpToken(threadId);
+          this.sessionAuthz.forgetTenantContext(threadId);
           try {
             await this.adapterRetirement.runCleanupWithinDeadline(
               () => adapter.stopSession(threadId),
@@ -8437,6 +8431,13 @@ export class OrchestrationService {
           await this.awaitStartedSessionCommit(adapter, session, signal);
         },
         logStarted: (adapter, input) => {
+          const startOwner = input.metadata?.userId;
+          if (
+            typeof startOwner === 'string' &&
+            startOwner &&
+            this.sessionAuthz.sessionOwnerUserId(input.threadId) === undefined
+          )
+            this.sessionAuthz.bindStartOwner(input.threadId, startOwner);
           this.sessionLogger(input).debug('Session started', {
             provider: adapter.provider,
           });

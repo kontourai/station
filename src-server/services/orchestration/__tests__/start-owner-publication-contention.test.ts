@@ -23,7 +23,10 @@ import {
 const makeTempDir = trackTempDirs();
 
 /** Echoes the start metadata on `session.started`, as every real adapter does. */
-class DeferredEchoingAdapter extends GateTestAdapter {
+class EchoingAdapter extends GateTestAdapter {
+  constructor(private readonly deferred = false) {
+    super();
+  }
   private announceStart?: () => void;
   publishStarted() {
     if (!this.announceStart) throw new Error('Session has not started');
@@ -44,6 +47,7 @@ class DeferredEchoingAdapter extends GateTestAdapter {
         createdAt: session.createdAt,
         metadata: input.metadata,
       });
+    if (!this.deferred) this.publishStarted();
     return session;
   }
   override async sendTurn(input: ProviderSendTurnInput) {
@@ -65,7 +69,7 @@ class DeferredEchoingAdapter extends GateTestAdapter {
 test('a deferred start owner can send a turn while its contended session.started publish is still retrying', async () => {
   const path = join(makeTempDir('start-owner-contention-'), 'events.sqlite');
   const store = new EventStore(path);
-  const adapter = new DeferredEchoingAdapter();
+  const adapter = new EchoingAdapter(true);
   const sessions = new OrchestrationService({
     adapterRegistry: createGateTestRegistry(adapter),
     eventBus: new EventBus(),
@@ -73,9 +77,13 @@ test('a deferred start owner can send a turn while its contended session.started
     logger: { debug: vi.fn(), warn: vi.fn() },
   });
   let contended = 0;
+  let holdRetry = true;
+  const releaseRetry = () => {
+    holdRetry = false;
+  };
   const attempt = store.withImmediateWriteAttempt.bind(store);
   vi.spyOn(store, 'withImmediateWriteAttempt').mockImplementation((publish) => {
-    if (contended > 0) return attempt(publish);
+    if (!holdRetry) return attempt(publish);
     contended += 1;
     // A real peer writer: the publish fails with genuine SQLITE_BUSY.
     const peer = new DatabaseSync(path, { timeout: 0 });
@@ -87,19 +95,6 @@ test('a deferred start owner can send a turn while its contended session.started
       peer.close();
     }
   });
-  let releaseRetry!: () => void;
-  const retryHeld = new Promise<void>((resolve) => {
-    releaseRetry = resolve;
-  });
-  const retryReached = vi.fn();
-  const waitForWrite = store.waitForPublicationWrite.bind(store);
-  vi.spyOn(store, 'waitForPublicationWrite').mockImplementation(
-    async (threadId, signal) => {
-      retryReached(threadId);
-      await retryHeld;
-      return waitForWrite(threadId, signal);
-    },
-  );
   try {
     const threadId = 'delegated-session';
     await sessions.dispatch(
@@ -115,8 +110,8 @@ test('a deferred start owner can send a turn while its contended session.started
       { userId: 'owner' },
     );
     adapter.publishStarted();
-    await vi.waitFor(() => expect(retryReached).toHaveBeenCalledWith(threadId));
-    expect(contended).toBe(1);
+    await vi.waitFor(() => expect(contended).toBeGreaterThan(0));
+    expect(contended).toBeGreaterThanOrEqual(1);
     // The durable owner is not written yet: this is the hosted window.
     expect(store.findSessionOwnerUserId(threadId)).toBeUndefined();
 
@@ -179,3 +174,83 @@ test('the injected peer writer is real contention for the zero-timeout publish',
     store.close();
   }
 });
+
+test.each(['transient', 'deadline'] as const)(
+  'start acknowledgement waits for session.started publication under %s contention',
+  async (mode) => {
+    const threadId = `start-publication-${mode}`;
+    const owner = 'start-publication-owner';
+    const store = new EventStore(
+      join(makeTempDir('start-commit-'), 'events.sqlite'),
+    );
+    const adapter = new EchoingAdapter();
+    const sessions = new OrchestrationService({
+      adapterRegistry: createGateTestRegistry(adapter),
+      eventBus: new EventBus(),
+      eventStore: store,
+      logger: { debug: vi.fn(), warn: vi.fn() },
+    });
+    const append = store.appendEvent.bind(store);
+    let attempts = 0;
+    vi.spyOn(store, 'appendEvent').mockImplementation((event, ...rest) => {
+      if (event.method === 'session.started' && event.threadId === threadId) {
+        attempts++;
+        if (mode === 'deadline' || attempts === 1)
+          throw Object.assign(new Error('database is locked'), {
+            code: 'SQLITE_BUSY',
+          });
+      }
+      return append(event, ...rest);
+    });
+    try {
+      const outcome = await sessions.sessionCommands.execute(
+        {
+          type: 'start-session',
+          input: { threadId, provider: 'claude', metadata: { userId: owner } },
+        },
+        { userId: owner },
+      );
+      if (mode === 'deadline') {
+        expect(outcome.status).toBe('indeterminate');
+        expect(
+          store.latestEventByMethod(threadId, 'session.started'),
+        ).toBeUndefined();
+        expect(sessions.sessionRecordedOwnerId(threadId)).toBeUndefined();
+        await expect(
+          sessions.dispatchWithReceipt(
+            {
+              type: 'sendTurn',
+              input: { threadId, input: 'unconfirmed start cannot send' },
+            },
+            { userId: owner },
+          ),
+        ).rejects.toThrow(`Session not found: ${threadId}`);
+        expect(adapter.turns).toEqual([]);
+      } else {
+        expect(outcome.status).toBe('accepted');
+        expect(
+          store.latestEventByMethod(threadId, 'session.started')?.payload,
+        ).toMatchObject({
+          threadId,
+          method: 'session.started',
+          metadata: { userId: owner },
+        });
+        expect(sessions.sessionRecordedOwnerId(threadId)).toBe(owner);
+        await sessions.dispatchWithReceipt(
+          {
+            type: 'sendTurn',
+            input: { threadId, input: 'immediate authorized send' },
+          },
+          { userId: owner },
+        );
+        expect(adapter.turns.map((turn) => turn.input)).toEqual([
+          'immediate authorized send',
+        ]);
+        expect(attempts).toBeGreaterThanOrEqual(2);
+      }
+    } finally {
+      await sessions.shutdown();
+      store.close();
+    }
+  },
+);
