@@ -182,7 +182,7 @@ export type OperatorAuthorityFact =
   | { readonly locality: CredentialLocality }
   | { readonly verifiedOperatorCredential: true }
   /**
-   * Owner standing (owner decision, 2026-11-02): one of the owner's own
+   * Owner-device standing: one of the owner's own
    * paired devices on a personal Station, verified by the pairing store at
    * the auth boundary (`RuntimeAuthenticatedRequestPrincipal.standing`). The
    * device is one more position of the one principal (principals.md §2(a)),
