@@ -112,6 +112,11 @@
       "description": "Further information is requested"
     },
     {
+      "name": "reported:troubleshoot",
+      "color": "5319E7",
+      "description": "Filed from Station's Troubleshoot flow, after an agent investigated the problem"
+    },
+    {
       "name": "rust",
       "color": "000000",
       "description": "Pull requests that update rust code"
