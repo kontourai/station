@@ -63,6 +63,15 @@
   margin-block: auto;
   text-align: center;
 }
+.new-chat-draft__lead:empty {
+  display: none;
+}
+.new-chat-draft__body .chat-start__setup {
+  padding-block: 0;
+}
+.new-chat-draft__body .chat-start__recent-heading h4 {
+  margin-block: 0;
+}
 .new-chat-draft__lead .button.task-chat-start__chip {
   align-self: center;
   margin-inline: 0;
