@@ -187,6 +187,10 @@ test.each(['transient', 'deadline'] as const)(
       join(makeTempDir('start-commit-'), 'events.sqlite'),
     );
     const adapter = new EchoingAdapter();
+    if (mode === 'deadline')
+      vi.spyOn(adapter, 'stopSession').mockRejectedValue(
+        new Error('stop failed'),
+      );
     const sessions = new OrchestrationService({
       adapterRegistry: createGateTestRegistry(adapter),
       eventBus: new EventBus(),
@@ -219,6 +223,7 @@ test.each(['transient', 'deadline'] as const)(
           store.latestEventByMethod(threadId, 'session.started'),
         ).toBeUndefined();
         expect(sessions.sessionRecordedOwnerId(threadId)).toBeUndefined();
+        expect(adapter.sessions.has(threadId)).toBe(true);
         await expect(
           sessions.dispatchWithReceipt(
             {
