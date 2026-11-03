@@ -129,8 +129,8 @@ describe('useChatDockViewModel (memoized bindingStatus/effectiveModels)', () => 
               model: 'default',
               execution: { agentConnectionId: engineConnectionId('claude') },
               modelOptions: [
-                { id: 'default', name: 'Default' },
-                { id: 'opus', name: 'Opus' },
+                { id: 'default', name: 'Default', originalId: 'default' },
+                { id: 'opus', name: 'Opus', originalId: 'opus' },
               ],
             },
             {
