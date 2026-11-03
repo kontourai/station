@@ -77,12 +77,15 @@ export async function sessionWorkspaceDirectoryFor(
 
 /**
  * The production composition of `sessionWorkspaceDirectoryFor` over the
- * orchestration service. The binding is read with the REQUEST's authority,
- * so it refuses a session the caller may not read even past the `canRead`
- * check, and it reads only the session's start binding and row — never its
+ * orchestration service. The binding is read with the caller's authority (a
+ * request's, or a session owner's for a server-side read), so it refuses a
+ * session the caller may not read even past the `canRead` check, and it reads only the session's start binding and row — never its
  * event history, which a preview request must not pay for.
  */
-export function orchestrationSessionWorkspaceDirectory<Authority>(source: {
+export function orchestrationSessionWorkspaceDirectory<
+  Authority,
+  Caller = Request,
+>(source: {
   sessions: {
     canUserReadSession(threadId: string, authority: Authority): boolean;
     readSessionWorkspaceBinding(
@@ -90,22 +93,22 @@ export function orchestrationSessionWorkspaceDirectory<Authority>(source: {
       authority: Authority,
     ): SessionRecord | null;
   };
-  authorityFor: (request: Request) => Authority;
+  authorityFor: (caller: Caller) => Authority;
   projects: { getProject(slug: string): { workingDirectory?: string } };
 }): (
-  request: Request,
+  caller: Caller,
   projectSlug: string,
   thread: string,
 ) => Promise<string | undefined | null> {
-  return (request, projectSlug, thread) =>
+  return (caller, projectSlug, thread) =>
     sessionWorkspaceDirectoryFor(
       {
         canRead: (id) =>
-          source.sessions.canUserReadSession(id, source.authorityFor(request)),
+          source.sessions.canUserReadSession(id, source.authorityFor(caller)),
         readSession: async (id) =>
           source.sessions.readSessionWorkspaceBinding(
             id,
-            source.authorityFor(request),
+            source.authorityFor(caller),
           ),
         projectDirectory: async (slug) => {
           try {

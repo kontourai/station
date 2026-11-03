@@ -105,12 +105,15 @@ export interface AgentTerminalRunRoutesDeps {
   project(projectId: string): { id: string; slug: string } | undefined;
   /**
    * The absolute directory a command in the session's thread binding runs
-   * in, with the agent's relative `subdirectory`; throws to refuse.
+   * in, with the agent's relative `subdirectory`, read as the session's
+   * recorded owner; throws to refuse.
    */
-  runDirectory(
-    request: Request,
-    input: { projectSlug: string; sessionId: string; subdirectory?: string },
-  ): Promise<string>;
+  runDirectory(input: {
+    projectId: string;
+    sessionId: string;
+    ownerId: string;
+    subdirectory?: string;
+  }): Promise<string>;
   /** One page of a started run's output, after `fromSeq`. */
   output(run: TerminalRun, fromSeq: number): Promise<TerminalRunOutput>;
 }
@@ -181,11 +184,23 @@ export function createAgentTerminalRunRoutes(deps: AgentTerminalRunRoutesDeps) {
         409,
         NO_STORE,
       );
+    const ownerId = caller.caller.principal?.id;
+    if (!ownerId)
+      return c.json(
+        {
+          success: false,
+          code: 'terminal_run_owner_required',
+          error: 'Terminal runs need a chat with a recorded owner.',
+        },
+        409,
+        NO_STORE,
+      );
     let cwd: string;
     try {
-      cwd = await deps.runDirectory(c.req.raw, {
-        projectSlug: project.slug,
+      cwd = await deps.runDirectory({
+        projectId: project.id,
         sessionId: caller.sessionId,
+        ownerId,
         ...(parsed.data.subdirectory
           ? { subdirectory: parsed.data.subdirectory }
           : {}),

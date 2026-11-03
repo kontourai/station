@@ -30,7 +30,10 @@ import { STATION_CONTROL_CALLER_TOKEN_HEADER } from '../../../tools/station-cont
 import { InProcessShellHost } from '../shell-host.js';
 import { resolveTerminalCommandLaunch } from '../terminal-command-programs.js';
 import { TerminalRunRequests } from '../terminal-runs.js';
-import { TerminalSessions } from '../terminal-sessions.js';
+import {
+  confineTerminalDirectory,
+  TerminalSessions,
+} from '../terminal-sessions.js';
 
 const makeTempDir = trackTempDirs();
 const posix = process.platform !== 'win32';
@@ -68,6 +71,7 @@ async function harness(options: { fakePackageManager?: string } = {}) {
       boundOperator: false,
       caller: {
         sessionId: SESSION,
+        principal: { id: 'human:local:operator', elevationEligible: true },
         conversationId: c.req.header('x-test-conversation') ?? CONVERSATION,
         assurance: 'bound',
         localProjectId: project.id,
@@ -84,8 +88,8 @@ async function harness(options: { fakePackageManager?: string } = {}) {
       isInternalRequest: () => true,
       runs,
       project: (id) => (id === project.id ? project : undefined),
-      runDirectory: (request, input) =>
-        sessions.commandDirectory(request, thread, input.subdirectory),
+      runDirectory: async (input) =>
+        (await confineTerminalDirectory(root, input.subdirectory ?? '.')).cwd,
       output: async (run, fromSeq) => {
         const read = await sessions.readInternal(
           thread,
@@ -355,6 +359,11 @@ describe.runIf(posix)('script runner', () => {
         WAIT,
       )
       .toBe('exited');
+
+    // Add to chat names where an ended script ran, though no process remains.
+    expect(
+      await sessions.cwd(operatorRequest(), scope, record.terminalId),
+    ).toBe(root);
 
     const restarted = await sessions.restart(
       operatorRequest(),

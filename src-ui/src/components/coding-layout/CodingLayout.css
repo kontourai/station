@@ -126,6 +126,12 @@
   flex-shrink: 0;
 }
 
+/* How a script tab's run is going or ended, inside the tab's height. */
+.coding-layout__terminal-tab-status {
+  padding: 0 var(--k-space-1);
+  line-height: 1.4;
+}
+
 .coding-layout__terminal-tab:hover {
   color: var(--text-primary);
 }
@@ -417,7 +423,8 @@
     display: none;
   }
 
-  .coding-layout__terminal-tab-close {
+  .coding-layout__terminal-tab-close,
+  .coding-layout__terminal-tab-restart {
     min-width: 44px;
     min-height: 44px;
     display: inline-flex;

@@ -209,6 +209,28 @@ interface TerminalSessionAuthority<Principal> {
   ): Promise<ShellLaunch>;
 }
 
+/**
+ * A binding's canonical root and a directory inside it: a relative
+ * `requested` path, or a function of the root for a stored directory.
+ */
+export async function confineTerminalDirectory(
+  bindingRoot: string,
+  requested: string | ((root: string) => string),
+): Promise<{ root: string; cwd: string }> {
+  const root = await realpath(bindingRoot);
+  if (typeof requested === 'string' && isAbsolute(requested))
+    throw new TerminalSessionRefusal('Terminal subdirectory must be relative');
+  const cwd = await realpath(
+    typeof requested === 'string' ? resolve(root, requested) : requested(root),
+  );
+  const inside = relative(root, cwd);
+  if (inside === '..' || inside.startsWith(`..${sep}`) || isAbsolute(inside))
+    throw new TerminalSessionRefusal(
+      'Terminal directory is outside its binding',
+    );
+  return { root, cwd };
+}
+
 function isShell(record: SessionRecord): boolean {
   return (
     record.kind !== 'command' &&
@@ -604,21 +626,6 @@ export class TerminalSessions<Principal> {
     });
   }
 
-  /**
-   * The directory a command in `scope` would run in, for the server component
-   * that shows it to a person before they approve it. Nothing is authorized
-   * here: `openCommand` checks the approver and refuses a directory that
-   * resolves differently by then.
-   */
-  async commandDirectory(
-    principal: Principal,
-    scope: TerminalSessionScope,
-    subdirectory = '.',
-  ): Promise<string> {
-    await this.ready;
-    return (await this.confine(principal, scope, subdirectory)).cwd;
-  }
-
   /** The package scripts in the binding's directory, for the script runner. */
   async scripts(principal: Principal, scope: TerminalSessionScope) {
     await this.check(principal, scope, 'observe');
@@ -807,24 +814,10 @@ export class TerminalSessions<Principal> {
     scope: TerminalSessionScope,
     requested: string | ((root: string) => string),
   ): Promise<{ root: string; cwd: string }> {
-    const root = await realpath(
+    return confineTerminalDirectory(
       await this.authority.resolveRoot(principal, scope),
+      requested,
     );
-    if (typeof requested === 'string' && isAbsolute(requested))
-      throw new TerminalSessionRefusal(
-        'Terminal subdirectory must be relative',
-      );
-    const cwd = await realpath(
-      typeof requested === 'string'
-        ? resolve(root, requested)
-        : requested(root),
-    );
-    const inside = relative(root, cwd);
-    if (inside === '..' || inside.startsWith(`..${sep}`) || isAbsolute(inside))
-      throw new TerminalSessionRefusal(
-        'Terminal directory is outside its binding',
-      );
-    return { root, cwd };
   }
 
   /**
@@ -1000,14 +993,20 @@ export class TerminalSessions<Principal> {
     return allowed;
   }
 
-  /** The shell's current directory: a host path, so operate authority only. */
+  /**
+   * The shell's current directory, or the directory a command runs in (it
+   * never moves): a host path, so operate authority only.
+   */
   async cwd(
     principal: Principal,
     scope: TerminalSessionScope,
     terminalId: string,
   ): Promise<string | null> {
-    await this.find(principal, scope, terminalId, 'operate');
-    const cwd = await this.live.get(terminalId)?.process.getCwd?.();
+    const record = await this.find(principal, scope, terminalId, 'operate');
+    const cwd =
+      record.kind === 'command'
+        ? record.cwd
+        : await this.live.get(terminalId)?.process.getCwd?.();
     await this.find(principal, scope, terminalId, 'operate');
     return cwd || null;
   }

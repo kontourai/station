@@ -49,6 +49,7 @@ export function TerminalPanel({
   isActive = false,
   attachOnly = false,
   readOnly = false,
+  command = false,
   ended,
 }: {
   projectSlug: string;
@@ -69,6 +70,8 @@ export function TerminalPanel({
   attachOnly?: boolean;
   /** Watch without typing, pasting or resizing, whatever the session allows. */
   readOnly?: boolean;
+  /** A program without a terminal (a script), which writes bare line feeds. */
+  command?: boolean;
   /** What to say once the program ends, and how to run it again (a script). */
   ended?: { message: string; restart?: () => void };
   /** True when this is the visible terminal tab; only then does it accept
@@ -144,13 +147,12 @@ export function TerminalPanel({
                 }),
             });
       sessionRef.current = readOnly ? null : session;
-      setViewSession(
-        session
-          ? readOnly
-            ? watchOnly(toTerminalViewSession(session))
-            : toTerminalViewSession(session)
-          : null,
-      );
+      const view = session
+        ? readOnly
+          ? watchOnly(toTerminalViewSession(session))
+          : toTerminalViewSession(session)
+        : null;
+      setViewSession(view && command ? startLinesAtFeeds(view) : view);
       unsubscribe = session?.subscribe({ change: render });
       if (session) render(session);
       else setWsError('This terminal session is unavailable.');
@@ -206,6 +208,7 @@ export function TerminalPanel({
     key,
     attachOnly,
     readOnly,
+    command,
     connectionAttempt,
   ]);
 
@@ -240,13 +243,9 @@ export function TerminalPanel({
       setHandoffError('Open a chat before sending terminal output to it.');
       return;
     }
+    // A host that cannot read a shell's directory (a supervisor workload)
+    // adds the output without one rather than naming a guessed directory.
     const cwd = await sessionRef.current?.cwd().catch(() => null);
-    if (!cwd) {
-      setHandoffError(
-        'The terminal working directory is unavailable; output was not added to chat.',
-      );
-      return;
-    }
     // A chip in the composer, sent with the next message the person sends;
     // nothing is dispatched here.
     try {
@@ -254,7 +253,7 @@ export function TerminalPanel({
         version: 1,
         kind: 'terminal',
         origin: apiBase,
-        cwd,
+        ...(cwd ? { cwd } : {}),
         excerpt: terminalOutput,
       });
       setHandoffError(null);
@@ -397,6 +396,43 @@ function watchOnly(view: TerminalViewSession): TerminalViewSession {
     subscribe: (listener) => view.subscribe(listener),
     write: () => false,
     resize: () => {},
+  };
+}
+
+/**
+ * A program without a terminal writes bare line feeds, which move a terminal
+ * down without returning to the first column; here each also starts a line.
+ * Only the view changes: the journal keeps the program's own bytes.
+ */
+function startLinesAtFeeds(view: TerminalViewSession): TerminalViewSession {
+  return {
+    get state() {
+      return view.state;
+    },
+    get readOnly() {
+      return view.readOnly;
+    },
+    subscribe(listener) {
+      let afterReturn = false;
+      return view.subscribe({
+        output(bytes, kind) {
+          const lines: number[] = [];
+          for (const byte of bytes) {
+            if (byte === 0x0a && !afterReturn) lines.push(0x0d);
+            lines.push(byte);
+            afterReturn = byte === 0x0d;
+          }
+          listener.output(Uint8Array.from(lines), kind);
+        },
+        reset() {
+          afterReturn = false;
+          listener.reset?.();
+        },
+        state: (state, detail) => listener.state?.(state, detail),
+      });
+    },
+    write: (bytes) => view.write(bytes),
+    resize: (cols, rows) => view.resize(cols, rows),
   };
 }
 

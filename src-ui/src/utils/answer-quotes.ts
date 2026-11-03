@@ -25,7 +25,8 @@ export interface SavedTerminalQuote {
   kind: 'terminal';
   /** The Station the terminal ran on. */
   origin: string;
-  cwd: string;
+  /** Absent when the host could not tell the shell's directory. */
+  cwd?: string;
   excerpt: string;
 }
 
@@ -45,12 +46,12 @@ export function parseDraftQuote(value: unknown): DraftQuote | null {
     (value as { kind?: unknown }).kind === 'terminal'
   ) {
     const row = value as Record<string, unknown>;
+    const cwd = row.cwd;
     return row.version === 1 &&
       typeof row.origin === 'string' &&
       row.origin.length <= 2048 &&
-      typeof row.cwd === 'string' &&
-      row.cwd.length > 0 &&
-      row.cwd.length <= 4096 &&
+      (cwd === undefined ||
+        (typeof cwd === 'string' && cwd.length > 0 && cwd.length <= 4096)) &&
       typeof row.excerpt === 'string' &&
       row.excerpt.trim() &&
       row.excerpt.length <= MAX_TERMINAL_QUOTE_CHARS
@@ -58,7 +59,7 @@ export function parseDraftQuote(value: unknown): DraftQuote | null {
           version: 1,
           kind: 'terminal',
           origin: row.origin,
-          cwd: row.cwd,
+          ...(typeof cwd === 'string' ? { cwd } : {}),
           excerpt: row.excerpt,
         }
       : null;
@@ -166,7 +167,9 @@ export function composeQuotedReply(
       if (isTerminalQuote(quote)) {
         const fence = literalFence(quote.excerpt);
         return [
-          `Terminal output (working directory: ${JSON.stringify(quote.cwd)}):`,
+          quote.cwd
+            ? `Terminal output (working directory: ${JSON.stringify(quote.cwd)}):`
+            : 'Terminal output:',
           fence,
           quote.excerpt,
           fence,

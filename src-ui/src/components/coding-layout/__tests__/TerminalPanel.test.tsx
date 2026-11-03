@@ -458,3 +458,52 @@ test('adds the selection as a terminal chip with the live directory, leaving the
   expect(session.cwd).toHaveBeenCalledTimes(1);
   expect(session.write).not.toHaveBeenCalled();
 });
+
+test('a script view starts each line at a bare line feed, across reads, and offers Restart once it ends', async () => {
+  const restart = vi.fn();
+  renderTerminal({
+    command: true,
+    attachOnly: true,
+    ended: { message: 'check exited with code 3.', restart },
+  });
+  const { session } = await connectTerminal();
+  act(() => session.output('checking...\nfound\r', 1));
+  act(() => session.output('\nlast\n', 2));
+  expect(view.output.map(([text]) => text).join('')).toBe(
+    'checking...\r\nfound\r\nlast\r\n',
+  );
+  act(() => session.emit({ status: 'exited' }));
+  expect((await screen.findByRole('alert')).textContent).toContain(
+    'check exited with code 3.',
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Restart' }));
+  expect(restart).toHaveBeenCalledTimes(1);
+});
+
+test('a shell view passes its output through unchanged', async () => {
+  renderTerminal();
+  const { session } = await connectTerminal();
+  act(() => session.output('a\nb', 1));
+  expect(view.output.map(([text]) => text)).toEqual(['a\nb']);
+});
+
+test('a shell whose directory the host cannot read still adds its output, naming no directory', async () => {
+  renderTerminal();
+  const { session } = await connectTerminal();
+  session.cwd.mockResolvedValue(null);
+  await act(async () => latestView().onAddToChat?.('make: *** [all] Error 2'));
+  await waitFor(() =>
+    expect(chatDraftsStore.getQuotes('chat-a')).toEqual([
+      {
+        version: 1,
+        kind: 'terminal',
+        origin: expect.any(String),
+        excerpt: 'make: *** [all] Error 2',
+      },
+    ]),
+  );
+  expect(screen.queryByRole('alert')).toBeNull();
+  expect(composeQuotedReply('', chatDraftsStore.getQuotes('chat-a'))).toBe(
+    'Terminal output:\n```\nmake: *** [all] Error 2\n```',
+  );
+});

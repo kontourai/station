@@ -23,7 +23,7 @@ export function SourceQuoteDrafts({
               key={`terminal:${index}`}
             >
               <p className="source-quote-draft__label" title={quote.cwd}>
-                Terminal · {quote.cwd}
+                {quote.cwd ? `Terminal · ${quote.cwd}` : 'Terminal'}
               </p>
               {elsewhere ? (
                 <blockquote>This output belongs to another Station.</blockquote>

@@ -792,3 +792,23 @@ test('closing an ended script tab ends nothing on the server and hides it', asyn
   // The shells keep their names: a script is not a numbered shell.
   expect(screen.getByRole('tab', { name: 'Shell 1' })).toBeTruthy();
 });
+
+test("a script's earlier ended runs do not pile up: only its newest run has a tab", async () => {
+  const script = (terminalId: string, createdAt: number, exitCode: number) => ({
+    ...running(terminalId, {
+      kind: 'command',
+      launch: { kind: 'script', name: 'check' },
+    }),
+    createdAt,
+    status: 'exited',
+    exitCode,
+  });
+  server.records = [
+    running(SHELL_ONE, { ordinal: 1 }),
+    script('55555555-5555-4555-8555-555555555555', 2, 3),
+    script('66666666-6666-4666-8666-666666666666', 3, 0),
+  ];
+  renderPane([]);
+  expect(await screen.findByRole('tab', { name: 'check, Done' })).toBeTruthy();
+  expect(screen.queryByRole('tab', { name: 'check, Exit 3' })).toBeNull();
+});

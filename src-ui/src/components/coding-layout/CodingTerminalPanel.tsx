@@ -1,4 +1,4 @@
-import { type SemanticTone, StatusBadge } from '@kontourai/ui/react';
+import { Badge, type SemanticTone } from '@kontourai/ui/react';
 import { type ReactNode, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { isComposingKeyEvent } from '../../lib/isComposingKeyEvent';
@@ -204,9 +204,9 @@ export function CodingTerminalPanel({
                     {tab.label}
                   </span>
                   {status && (
-                    <StatusBadge
+                    <Badge
                       className="coding-layout__terminal-tab-status"
-                      status={status.text}
+                      value={status.text}
                       tone={status.tone}
                     />
                   )}
@@ -215,7 +215,7 @@ export function CodingTerminalPanel({
               {tab.type === 'script' && onRestartTab && (
                 <button
                   type="button"
-                  className="coding-layout__terminal-tab-toggle"
+                  className="coding-layout__terminal-tab-toggle coding-layout__terminal-tab-restart"
                   aria-label={`Restart ${tab.label}`}
                   title="Restart"
                   disabled={restartingTabIds.has(tab.id)}
@@ -404,6 +404,7 @@ export function CodingTerminalPanel({
                   terminalId={tab.terminalId}
                   {...(tab.type === 'script' && {
                     attachOnly: true,
+                    command: true,
                     ended: {
                       message: scriptEndedText(tab),
                       ...(onRestartTab && {

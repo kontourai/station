@@ -939,6 +939,7 @@ import {
 import { resolveTerminalRetention } from '../../services/terminal/terminal-retention.js';
 import { TerminalRunRequests } from '../../services/terminal/terminal-runs.js';
 import {
+  confineTerminalDirectory,
   TerminalSessionRefusal,
   TerminalSessions,
 } from '../../services/terminal/terminal-sessions.js';
@@ -9561,6 +9562,37 @@ export function configureRuntimeRoutes(
   });
   // Commands agents ask to run (#3994); absent on a host with no terminals.
   let terminalRuns: TerminalRunRequests | undefined;
+  /**
+   * Where a terminal in a binding starts: the Project's directory, or a
+   * thread's own directory as `threadDirectory` reads it (the Project's when
+   * the thread names none).
+   */
+  const terminalBindingRoot = async (
+    scope: { projectId: string; bindingKey: string },
+    threadDirectory: (
+      projectSlug: string,
+      threadId: string,
+    ) => Promise<string | undefined | null>,
+  ): Promise<string> => {
+    const project = context.storageAdapter
+      .listProjects()
+      .find((item) => item.id === scope.projectId);
+    if (!project) throw new TerminalSessionRefusal('Project not found');
+    const thread = scope.bindingKey.startsWith('thread:')
+      ? scope.bindingKey.slice('thread:'.length)
+      : undefined;
+    const root =
+      scope.bindingKey === 'project'
+        ? resolveWorkspacePath(project.slug)
+        : thread
+          ? await threadDirectory(project.slug, thread)
+          : null;
+    const resolved =
+      root === undefined && thread ? resolveWorkspacePath(project.slug) : root;
+    if (!resolved)
+      throw new TerminalSessionRefusal('Terminal binding unavailable');
+    return resolved;
+  };
   // Terminals belong to the operator on a personal host: in person, or
   // through one of their own paired devices (#3994 owner decision,
   // 2026-10-31). Members, agents, plugins and hosted tenants are refused.
@@ -9645,27 +9677,10 @@ export function configureRuntimeRoutes(
             findBinary: findCliBinaryAsync,
             path: resolveAugmentedPath,
           }),
-        resolveRoot: async (request, scope) => {
-          const project = context.storageAdapter
-            .listProjects()
-            .find((item) => item.id === scope.projectId);
-          if (!project) throw new TerminalSessionRefusal('Project not found');
-          let root =
-            scope.bindingKey === 'project'
-              ? resolveWorkspacePath(project.slug)
-              : scope.bindingKey.startsWith('thread:')
-                ? await sessionWorkspaceDirectory(
-                    request,
-                    project.slug,
-                    scope.bindingKey.slice(7),
-                  )
-                : undefined;
-          if (scope.bindingKey.startsWith('thread:') && root === undefined)
-            root = resolveWorkspacePath(project.slug);
-          if (!root)
-            throw new TerminalSessionRefusal('Terminal binding unavailable');
-          return root;
-        },
+        resolveRoot: (request, scope) =>
+          terminalBindingRoot(scope, (slug, thread) =>
+            sessionWorkspaceDirectory(request, slug, thread),
+          ),
       },
       {},
       {},
@@ -9739,6 +9754,14 @@ export function configureRuntimeRoutes(
     );
     const runs = new TerminalRunRequests();
     terminalRuns = runs;
+    // Approving starts the command in the agent's thread binding, whose
+    // directory is read as the approving person. POST only: the leaf has no
+    // other method.
+    context.app.on(
+      'POST',
+      '/api/terminal/runs/:runId/approve',
+      bindConversationReadAuthority,
+    );
     context.app.route(
       '/api/terminal/runs',
       createTerminalRunRoutes({
@@ -9762,6 +9785,11 @@ export function configureRuntimeRoutes(
       }),
     );
   }
+  const ownerSessionDirectory = orchestrationSessionWorkspaceDirectory({
+    sessions: context.orchestrationService,
+    authorityFor: (ownerId: string) => readAuthorityForExecution(ownerId),
+    projects: context.projectService,
+  });
   context.app.route(
     '/api/orchestration/station-control/terminal-runs',
     createAgentTerminalRunRoutes({
@@ -9771,18 +9799,19 @@ export function configureRuntimeRoutes(
         context.storageAdapter
           .listProjects()
           .find((item) => item.id === projectId),
-      runDirectory: async (request, input) => {
-        const sessions = scopedTerminals.sessions;
-        const project = context.storageAdapter
-          .listProjects()
-          .find((item) => item.slug === input.projectSlug);
-        if (!sessions || !project)
-          throw new TerminalSessionRefusal('Terminal runs unavailable');
-        return sessions.commandDirectory(
-          request,
-          { projectId: project.id, bindingKey: `thread:${input.sessionId}` },
-          input.subdirectory,
+      // The agent's request carries no person's read authority, so its
+      // thread's directory is read as the session's recorded owner. The
+      // approver's own read must resolve it the same way before it runs.
+      runDirectory: async (input) => {
+        const root = await terminalBindingRoot(
+          {
+            projectId: input.projectId,
+            bindingKey: `thread:${input.sessionId}`,
+          },
+          (slug, thread) => ownerSessionDirectory(input.ownerId, slug, thread),
         );
+        return (await confineTerminalDirectory(root, input.subdirectory ?? '.'))
+          .cwd;
       },
       output: async (run, fromSeq) => {
         const sessions = scopedTerminals.sessions;

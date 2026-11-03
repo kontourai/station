@@ -185,13 +185,22 @@ function sessionTabs(
   presentation: Presentation,
 ): TerminalTab[] {
   const numbers = shellNumbers(records);
+  // Each script's newest run, so earlier ended runs do not pile up as tabs.
+  const latestRun = new Map<string, string>();
+  for (const record of records)
+    if (record.launch?.kind === 'script')
+      latestRun.set(record.launch.name, record.terminalId);
   return records.flatMap((record): TerminalTab[] => {
     const agent = record.launch?.kind === 'agent' ? record.launch : undefined;
     const shown = presentation[record.terminalId] ?? {};
     const id = shown.tabId ?? `term-${record.terminalId}`;
-    // A script stays after it ends, with how it ended, until it is closed.
+    // A script's run stays after it ends, with how it ended, until it is
+    // closed or the script runs again.
     if (record.launch?.kind === 'script')
-      return shown.dismissed
+      return shown.dismissed ||
+        (record.status !== 'running' &&
+          record.status !== 'starting' &&
+          latestRun.get(record.launch.name) !== record.terminalId)
         ? []
         : [
             {
