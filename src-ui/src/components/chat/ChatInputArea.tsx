@@ -1966,7 +1966,9 @@ export function ChatInputArea({
                   : 'Steer when safe'}
               </Button>
               {busySteeringUnavailableReason && (
-                <p role="status">{busySteeringUnavailableReason}</p>
+                <p role="status" className="chat-input__mode-note">
+                  {busySteeringUnavailableReason}
+                </p>
               )}
             </ResponsiveDialogSurface>
           )}

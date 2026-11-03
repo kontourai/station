@@ -21,7 +21,7 @@ interface UIBlockActions {
   formScope?: string;
 }
 
-const noop: UIBlockActions = {
+export const READ_ONLY_UI_BLOCK_ACTIONS: UIBlockActions = {
   readOnly: true,
   submitForm: () => {},
 };
@@ -31,7 +31,9 @@ const noop: UIBlockActions = {
  * so the renderer works in contexts without a live conversation (tests,
  * read-only/persisted views): a form there renders but its submit is inert.
  */
-export const UIBlockActionsContext = createContext<UIBlockActions>(noop);
+export const UIBlockActionsContext = createContext<UIBlockActions>(
+  READ_ONLY_UI_BLOCK_ACTIONS,
+);
 
 export function useUIBlockActions(): UIBlockActions {
   return useContext(UIBlockActionsContext);

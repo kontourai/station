@@ -199,7 +199,7 @@ class CredentialRecoveryImplementation implements CredentialRecoveryModule {
       outcome.kind === 'unavailable'
         ? 'scan-unavailable'
         : 'reconciliation-indeterminate';
-    if (!this.admissionBlock)
+    if (this.admissionBlock !== reason)
       this.dependencies.logger?.warn(
         'Automatic recovery is blocked until credential recovery readiness is reconciled',
         { reason },

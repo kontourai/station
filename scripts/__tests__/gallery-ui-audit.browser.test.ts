@@ -319,6 +319,20 @@ describe('hit-target and overflow identities', { timeout: 60_000 }, () => {
   const bar =
     '<div style="position:fixed;top:0;left:0;right:0;height:50px;background:#fff;z-index:2"><button class="bar-action" aria-label="Menu" style="width:44px;height:44px">M</button></div>';
 
+  it('keeps a below-fold action reachable without overlapping the input beneath its scroller', async () => {
+    expect(
+      await overlaps(
+        '<div style="height:60px;overflow:auto"><div style="height:80px"></div><button class="below-fold" aria-label="Setup" style="width:200px;height:44px" onclick="this.dataset.clicked=1">Setup</button></div><textarea class="draft-input" aria-label="Draft" style="display:block;width:200px;height:60px"></textarea>',
+      ),
+    ).toEqual([]);
+    await page.getByRole('button', { name: 'Setup' }).click();
+    expect(
+      await page
+        .getByRole('button', { name: 'Setup' })
+        .getAttribute('data-clicked'),
+    ).toBe('1');
+  });
+
   it('does not judge controls inside a closed, clipping details', async () => {
     expect(
       await keys(

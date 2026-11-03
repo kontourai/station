@@ -10,6 +10,7 @@ import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { useAuthorityPersistence } from '../../contexts/AuthorityPersistenceContext';
 import { Button } from '../Button';
 import { Empty, ErrorState, SkeletonBlock } from '../state';
+import { useChatRequestTarget } from './ChatRequestContext';
 import { useUIBlockActions } from './UIBlockActionsContext';
 import './ChildWorkInstructionPanel.css';
 
@@ -51,7 +52,10 @@ export function ChildWorkInstructionPanel({
   transcriptOpen?: boolean;
 }) {
   const authority = useAuthorityPersistence();
-  const scope = useHostRequestAuthorityScope();
+  const host = useHostRequestAuthorityScope();
+  const targetScope = useChatRequestTarget();
+  const scope = targetScope?.requestScope ?? host;
+  const apiBase = targetScope?.apiBase ?? scope?.apiBase;
   const mayContinue = useUIBlockActions().canSendChildInstruction === true;
   const grant = authority.observation?.grant;
   const canOperate =
@@ -69,9 +73,9 @@ export function ChildWorkInstructionPanel({
       requestScope: scope,
       running,
     },
-    scope?.apiBase,
+    apiBase,
   );
-  const send = useSteerChildWorkMutation(scope?.apiBase, scope);
+  const send = useSteerChildWorkMutation(apiBase, scope);
   const [text, setText] = useState('');
   const [draftTurnId, setDraftTurnId] = useState<string | undefined>();
   const [pending, setPending] = useState<Pending | null>(null);

@@ -43,6 +43,7 @@ import {
   DEFAULT_CLIENT_REQUEST_TIMEOUT_MS,
   getJson,
   isApiRequestScope,
+  mutateJson,
   StationRequestAuthorityError,
 } from '../client/http';
 import {
@@ -561,7 +562,12 @@ const CHILD_WORK_TRANSCRIPT_PAGE_SIZE = 30;
  * once and not polled.
  */
 export function useChildWorkTranscriptQuery(
-  input: { threadId: string; childId: string; enabled?: boolean },
+  input: {
+    threadId: string;
+    childId: string;
+    enabled?: boolean;
+    requestScope?: ApiRequestScope;
+  },
   apiBase?: string,
 ) {
   return useInfiniteQuery({
@@ -570,6 +576,7 @@ export function useChildWorkTranscriptQuery(
       apiBase ?? 'default',
       input.threadId,
       input.childId,
+      ...(input.requestScope ? [input.requestScope.authorityKey] : []),
     ],
     enabled:
       (input.enabled ?? true) &&
@@ -582,7 +589,10 @@ export function useChildWorkTranscriptQuery(
         input.threadId,
         input.childId,
         { offset: pageParam, limit: CHILD_WORK_TRANSCRIPT_PAGE_SIZE },
-        { signal },
+        {
+          signal,
+          ...(input.requestScope ? { requestScope: input.requestScope } : {}),
+        },
       ),
     getNextPageParam: (page) => page.nextOffset,
     retry: false,
@@ -707,17 +717,19 @@ export async function dispatchOrchestrationCommand<T = unknown>(
    * that has to leave its pending state either way.
    */
   timeoutMs?: number,
+  opts?: Pick<ClientRequestOptions, 'requestScope'>,
 ): Promise<T> {
   const resolvedApiBase = await resolveApiBase(apiBase);
-  const response = await authenticatedFetch(
-    `${resolvedApiBase}/api/orchestration/commands`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(command),
-      ...(timeoutMs !== undefined ? { timeoutMs } : {}),
-    },
-  );
+  const url = `${resolvedApiBase}/api/orchestration/commands`;
+  const deadline = timeoutMs !== undefined ? { timeoutMs } : {};
+  const response = opts?.requestScope
+    ? await mutateJson(url, 'POST', { ...opts, ...deadline }, command)
+    : await authenticatedFetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(command),
+        ...deadline,
+      });
   const result = (await response.json()) as {
     success: boolean;
     data?: T;
@@ -1200,6 +1212,7 @@ export async function resolveOrchestrationRequest(input: {
   apiBase?: string;
   /** Deadline for decision admission; a timeout does not cancel the server-side decision. */
   timeoutMs?: number;
+  requestScope?: ApiRequestScope;
 }): Promise<void> {
   await dispatchOrchestrationCommand(
     {
@@ -1221,6 +1234,7 @@ export async function resolveOrchestrationRequest(input: {
     },
     input.apiBase,
     input.timeoutMs,
+    input.requestScope ? { requestScope: input.requestScope } : undefined,
   );
 }
 
@@ -1298,6 +1312,7 @@ export async function interruptOrchestrationTurn(input: {
   clientTurnId?: string;
   apiBase?: string;
   timeoutMs?: number;
+  requestScope?: ApiRequestScope;
 }): Promise<InterruptTurnResult> {
   return dispatchOrchestrationCommand<InterruptTurnResult>(
     {
@@ -1308,6 +1323,7 @@ export async function interruptOrchestrationTurn(input: {
     },
     input.apiBase,
     input.timeoutMs ?? STOP_REQUEST_BUDGET_MS,
+    input.requestScope ? { requestScope: input.requestScope } : undefined,
   );
 }
 
