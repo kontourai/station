@@ -110,38 +110,57 @@ describe('redactTroubleshootReportText', () => {
     }
   });
 
-  test('a kept Station link cannot carry other text in its query, fragment or trailing brackets', () => {
+  test('a URL cannot carry text past its core, and Markdown punctuation survives', () => {
+    const station = 'https://github.com/kontourai/station/issues/1';
     const cases: Array<[string, string]> = [
+      // Query and fragment of a kept link are dropped.
       [
-        'see https://github.com/kontourai/station/issues/1?next=https://github.com/acme/secret-product',
-        'see https://github.com/kontourai/station/issues/1',
+        `see ${station}?next=https://github.com/acme/secret-product`,
+        `see ${station}`,
       ],
-      [
-        'see https://github.com/kontourai/station/issues/1#secret-product',
-        'see https://github.com/kontourai/station/issues/1',
-      ],
+      [`see ${station}#secret-product`, `see ${station}`],
+      // Text after a bracket may be URL text: never kept, always marked.
+      [`see ${station}?title=a)secret-product`, `see ${station})[REDACTED]`],
+      [`see ${station}?title=a)]secret-product`, `see ${station})][REDACTED]`],
       [
         'see https://github.com/acme/private/issues/1?title=a)secret-product here',
-        'see [REDACTED_URL] here',
+        'see [REDACTED_URL])[REDACTED] here',
       ],
       [
-        'see [link](https://github.com/acme/secret-product/issues/1) here',
-        'see [link]([REDACTED_URL] here',
+        `see (${station})https://github.com/acme/secret-product`,
+        `see (${station})[REDACTED]`,
+      ],
+      // Path segments are cut at anything but plain characters.
+      [
+        'see https://github.com/kontourai/station/blob/main/a)secret-product',
+        'see https://github.com/kontourai/station/blob/main/a)[REDACTED]',
       ],
       [
-        'see (https://github.com/kontourai/station/issues/1)https://github.com/acme/secret-product',
-        'see (https://github.com/kontourai/station/issues/1)[REDACTED_URL]',
+        'see https://github.com/kontourai/station/blob/main/%73ecret-product/x',
+        'see https://github.com/kontourai/station/blob/main',
+      ],
+      // Markdown and sentence punctuation stay intact.
+      [
+        '[x](https://github.com/acme/secret-product) after prose',
+        '[x]([REDACTED_URL]) after prose',
       ],
       [
-        'see [link](https://github.com/kontourai/station/issues/1).',
-        'see [link](https://github.com/kontourai/station/issues/1).',
+        '![x](https://github.com/acme/secret-product). Next',
+        '![x]([REDACTED_URL]). Next',
       ],
+      [`see [link](${station}).`, `see [link](${station}).`],
+      [`see ${station}, and more`, `see ${station}, and more`],
     ];
     for (const [input, expected] of cases) {
       const redacted = redactTroubleshootReportText(input);
       expect(redacted).toBe(expected);
       expect(redacted).not.toContain('secret-product');
     }
+  });
+
+  test('many adjacent URLs finish without deep recursion', () => {
+    const input = 'https://github.com/kontourai/station/)'.repeat(5_000);
+    expect(() => redactTroubleshootReportText(input)).not.toThrow();
   });
 });
 

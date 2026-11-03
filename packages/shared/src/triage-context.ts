@@ -677,12 +677,20 @@ export function validateTroubleshootContext(value: TroubleshootContext): void {
 
 const REDACTED = '[REDACTED]';
 const REDACTED_URL = '[REDACTED_URL]';
-// Group 1 is the URL; group 2 is a `)`/`]` run that may still be URL text
-// (`?title=a)secret`). A redacted URL takes that run with it.
-const URL_PATTERN_SOURCE =
-  /\b([a-z][a-z0-9+.-]{1,20}:\/\/[^\s<>"'`)\]]+)([)\]][^\s<>"'`]*)?/.source;
-// The only locations a public bug report may keep verbatim: Station's own
-// public repository and docs site. Any other GitHub path can name a private
+// A URL runs to the next whitespace. Its core ends at the first `)` or `]`,
+// because what follows is either more URL text (`?title=a)secret`) or Markdown
+// and prose, and the two cannot be told apart.
+const URL_PATTERN = /\b[a-z][a-z0-9+.-]{1,20}:\/\/[^\s<>"'`]+/gi;
+const URL_CORE_END = /[)\]]/;
+// Punctuation that may follow a URL core and carries no content of its own.
+const DELIMITER_RUN = /^[)\].,;:!?]*/;
+const TRAILING_PUNCTUATION = /[.,;:!?]+$/;
+// Path segments kept from a public URL. The path is cut at the first segment
+// with anything else (percent-encoding, `:`, `(`), which could carry text the
+// reviewer did not mean to publish.
+const PLAIN_SEGMENT = /^[A-Za-z0-9._-]+$/;
+// The only locations a public bug report may keep: Station's own public
+// repository and docs site. Any other GitHub path can name a private
 // repository or issue, so it is replaced like a LAN, tailnet, or pairing URL.
 const PUBLIC_GITHUB_REPOSITORIES = new Set(['kontourai/station']);
 const PUBLIC_DOCS_SITE = {
@@ -691,10 +699,10 @@ const PUBLIC_DOCS_SITE = {
 };
 
 /**
- * Returns the normalized URL when it is public, else null. The URL is parsed
- * rather than prefix-matched: `kontourai/station/../other/repo` normalizes to
- * another repository, and keeping the raw text would leak that name. Only the
- * origin and path are kept: a query or fragment can carry any other URL.
+ * Rebuilds a public URL from its origin and plain leading path segments, or
+ * returns null. Parsing (not prefix matching) means `station/../other/repo`
+ * resolves to the other repository; rebuilding drops queries and fragments,
+ * which can carry any other URL.
  */
 function publicReportUrl(raw: string): string | null {
   let url: URL;
@@ -704,9 +712,13 @@ function publicReportUrl(raw: string): string | null {
     return null;
   }
   if (url.protocol !== 'https:' || url.username || url.password) return null;
-  const segments = url.pathname.split('/').filter(Boolean);
+  const segments: string[] = [];
+  for (const segment of url.pathname.split('/').filter(Boolean)) {
+    if (!PLAIN_SEGMENT.test(segment)) break;
+    segments.push(segment);
+  }
   const host = url.hostname.toLowerCase();
-  const kept = `${url.origin}${url.pathname}`;
+  const kept = `${url.origin}/${segments.join('/')}`.replace(/\/$/, '');
   if (host === 'github.com') {
     const [owner, repo] = segments;
     if (!owner || !repo) return null;
@@ -723,17 +735,17 @@ function publicReportUrl(raw: string): string | null {
 }
 
 function redactReportUrls(text: string): string {
-  return text.replace(
-    new RegExp(URL_PATTERN_SOURCE, 'gi'),
-    (_match, url: string, tail: string | undefined) => {
-      const kept = publicReportUrl(url);
-      if (kept === null) return REDACTED_URL;
-      // After a kept URL the run is ordinary text, which may hold another URL.
-      return tail
-        ? kept + tail.charAt(0) + redactReportUrls(tail.slice(1))
-        : kept;
-    },
-  );
+  return text.replace(URL_PATTERN, (match) => {
+    const coreEnd = match.search(URL_CORE_END);
+    const bracketed = coreEnd === -1 ? match : match.slice(0, coreEnd);
+    // Sentence punctuation after a URL (`…/4470, and`) belongs to the prose.
+    const core = bracketed.replace(TRAILING_PUNCTUATION, '');
+    const rest = match.slice(core.length);
+    const delimiters = DELIMITER_RUN.exec(rest)?.[0] ?? '';
+    // Anything after the delimiters may be URL text; mark it rather than keep it.
+    const dropped = rest.length > delimiters.length ? REDACTED : '';
+    return (publicReportUrl(core) ?? REDACTED_URL) + delimiters + dropped;
+  });
 }
 // Station's pairing and device credentials are 32 random bytes in base64url
 // (43 characters). Requiring upper, lower and digit keeps commit SHAs, UUIDs
