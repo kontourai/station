@@ -417,6 +417,28 @@ test('Task list groups authorized independent room requests and linked chats wit
     expect.arrayContaining(['chat', result.record.sessionId]),
   );
   expect((await read('other')).workChatConversationIds).toEqual([]);
+  h.store.upsertSession({
+    provider: 'claude',
+    threadId: 'failed-successor',
+    status: 'closed',
+    createdAt: '2026-10-02T00:00:00.000Z',
+    updatedAt: '2026-10-02T00:00:00.000Z',
+  });
+  expect(h.store.readSessionByThread('failed-successor')?.status).toBe(
+    'closed',
+  );
+  expect(
+    await h.sessions.resolveConversationOpen(
+      result.record.sessionId,
+      sessionReadAuthorityFromRequest('owner', undefined, undefined),
+    ),
+  ).toMatchObject({
+    status: 'resolved',
+    currentSessionId: result.record.sessionId,
+  });
+  expect((await read('owner')).workChatConversationIds).toEqual(
+    expect.arrayContaining(['chat', result.record.sessionId]),
+  );
   h.store.appendEvent({
     eventId: 'failed-successor-reconfigured',
     threadId: 'failed-successor',

@@ -19,10 +19,7 @@ export function createTaskRelationshipAuthority(deps: {
   >;
   events?: Pick<
     EventStore,
-    | 'conversationSessions'
-    | 'conversationForSession'
-    | 'latestEventByMethods'
-    | 'readSessionByThread'
+    'conversationSessions' | 'conversationForSession' | 'latestEventByMethods'
   >;
   readAuthority(request: Request): SessionReadAuthority;
   current(request: Request): boolean;
@@ -142,8 +139,7 @@ export function createTaskRelationshipAuthority(deps: {
               'session.started',
               'session.configured',
             ]);
-            if (reservedChild && sessionId === child)
-              return !event && !deps.events!.readSessionByThread(sessionId);
+            if (reservedChild && sessionId === child) return !event;
             const payload = event?.payload;
             if (
               !payload ||

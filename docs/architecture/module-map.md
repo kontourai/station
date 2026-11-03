@@ -4884,7 +4884,8 @@ authority, repeats discovery after asynchronous preparation, then rechecks
 Task/Project incarnation and Conversation access before emitting optional
 `workChatConversationIds`. A failed continuation's unstarted lineage tail keeps
 the chat associated when Conversation open authorizes its exact predecessor;
-the tail must still have no persisted Session or start/configuration metadata.
+the tail must still have no start/configuration metadata. A persisted control
+row alone does not establish that the reserved provider Session started.
 Materialized Sessions retain independent Project and reader checks.
 The UI groups these chats under a single Task outcome
 without changing its lead Session. Direct Task association precedes delegated
