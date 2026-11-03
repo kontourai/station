@@ -13036,7 +13036,13 @@ export class OrchestrationService {
             });
           }
         } finally {
-          if (settling)
+          // A replaced adapter's late event settles only a thread it still
+          // owns, never another adapter's in-flight start.
+          if (
+            settling &&
+            (this.isAdapterCurrent(adapter) ||
+              this.sessionAdapters.get(settling.threadId) === adapter)
+          )
             this.settleStartEvent(settling.threadId, settling.method);
         }
       }
@@ -13126,6 +13132,27 @@ export class OrchestrationService {
   }
 
   /**
+   * #4480: a start event settled (appended, declined or abandoned) or the
+   * session exited, so the store answers the thread's ownership from here.
+   * A settled start is remembered only while the thread is still known, so a
+   * start hook that runs after it binds no interim owner. An exit forgets it,
+   * except while the thread's start is still underway: an engine that died
+   * before the start hook ran must not leave that hook free to bind.
+   */
+  private settleStartEvent(
+    threadId: string,
+    method: 'session.started' | 'session.exited',
+  ): void {
+    this.sessionAuthz.settleStartOwner(threadId);
+    if (this.startingSessionThreads.has(threadId))
+      this.settledStartEvents.add(threadId);
+    else if (method === 'session.exited')
+      this.settledStartEvents.delete(threadId);
+    else if (this.sessionReadModel.has(threadId))
+      this.settledStartEvents.add(threadId);
+  }
+
+  /**
    * #3560: `projectAndPublishEvent` for one observed event, retrying the SAME
    * event (same `eventId`) while the failure is store contention. Admission
    * runs once, and only the publish half is retried. The adapter queue has
@@ -13143,25 +13170,6 @@ export class OrchestrationService {
    * for a retry to repeat. Each retry restamps the event's lifecycle through
    * `renormalize`, from the state current after the sleep.
    */
-  /**
-   * #4480: a start event settled (appended, declined or abandoned) or the
-   * session exited, so the store answers the thread's ownership from here.
-   * A settled start is remembered only while the thread is still known, so a
-   * start hook that runs after it binds no interim owner; an exit forgets it.
-   */
-  private settleStartEvent(
-    threadId: string,
-    method: 'session.started' | 'session.exited',
-  ): void {
-    this.sessionAuthz.settleStartOwner(threadId);
-    if (method === 'session.exited') this.settledStartEvents.delete(threadId);
-    else if (
-      this.startingSessionThreads.has(threadId) ||
-      this.sessionReadModel.has(threadId)
-    )
-      this.settledStartEvents.add(threadId);
-  }
-
   private async publishObservedEvent(
     event: CanonicalRuntimeEvent,
     adapter: ProviderAdapterShape,
