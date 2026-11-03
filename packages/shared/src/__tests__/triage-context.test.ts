@@ -8,6 +8,7 @@ import {
   boundedTriageLogTail,
   createTriageRunDirectory,
   draftTroubleshootReport,
+  homeRelativePath,
   localTriageLogFacts,
   MAX_TRIAGE_CONTEXT_BYTES,
   MAX_TRIAGE_DOCTOR_CHECKS,
@@ -379,6 +380,16 @@ describe('localTriageLogFacts', () => {
     expect(
       localTriageLogFacts(join(spaced, '.station'), userHome).directory,
     ).toBe('~/Alice Smith/.station/logs');
+  });
+
+  test('homeRelativePath refuses any path outside the home on its own', () => {
+    const userHome = tempRoot();
+    expect(homeRelativePath('/home/another-user/private', userHome)).toBeNull();
+    expect(
+      homeRelativePath(join(userHome, '..', 'sibling'), userHome),
+    ).toBeNull();
+    expect(homeRelativePath(userHome, userHome)).toBe('~');
+    expect(homeRelativePath(join(userHome, 'a', 'b'), userHome)).toBe('~/a/b');
   });
 
   test('a symlink leading out of the home is withheld', () => {
