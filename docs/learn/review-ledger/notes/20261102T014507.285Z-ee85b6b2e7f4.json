@@ -1,0 +1,9 @@
+{
+  "revision": "54f1ed2db53dcdab8fe6d40aa2b0535d6b85b8dc",
+
+  "notes": [
+    {"path":"examples/docs-snippets/README.md","note":"typecheck:examples gained the examples/related-terminal project at the end of its chain; the docs-snippets project and its compile-check claims are unchanged. No prose change.","inputs":["examples/docs-snippets/README.md","package.json#/scripts/typecheck:examples"]},
+
+    {"path":"docs/guides/testing.md","note":"package.json scripts changed only by appending examples/related-terminal to typecheck:examples; the lanes, selectors and commands this guide describes are unchanged. No prose change.","inputs":["docs/guides/testing.md","package.json#/scripts","scripts/__tests__/path-read-pin-boundary.test.ts","scripts/test-impact-manifest.mjs"]}
+  ]
+}

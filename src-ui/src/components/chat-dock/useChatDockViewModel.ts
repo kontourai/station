@@ -22,6 +22,7 @@ import { countOpenChatAttention } from '../../contexts/open-chats-store';
 import { useProject } from '../../contexts/ProjectsContext';
 import { useGitStatus } from '../../hooks/useGitStatus';
 import type { ChatSession } from '../../types';
+import { chatExecutionBinding } from '../../utils/engine';
 import {
   catalogModelImageSupport,
   connectionEngineId,
@@ -141,8 +142,9 @@ export function useChatDockViewModel({
     ? agents.find((agent) => agent.slug === activeSessionForHook.agentSlug) ||
       null
     : null;
-  const agentDefaultModelId =
-    activeSessionForHook?.defaultModel ?? agentForHook?.model;
+  const executionAgent = activeSessionForHook
+    ? chatExecutionBinding(activeSessionForHook, agents)
+    : null;
 
   const sessionProjectSlug = activeSessionForHook?.projectSlug ?? null;
   const { project: sessionProject } = useProject(sessionProjectSlug ?? '');
@@ -284,11 +286,20 @@ export function useChatDockViewModel({
     conversationOpenState: activeSessionForHook?.conversationOpenState,
     currentSessionId: activeSessionForHook?.currentSessionId,
     chatStateConnectionId: activeSessionForHook?.agentConnectionId,
-    agentBoundConnectionId: agentForHook?.execution?.agentConnectionId,
+    agentBoundConnectionId: executionAgent?.execution?.agentConnectionId,
   });
   const runtimeConnection = agentConnections.find(
     (connection) => connection.id === agentConnectionId,
   );
+  const usesConfiguredEngine =
+    !runtimeConnection ||
+    activeSessionForHook?.executionMode === EXECUTION_MODE.STATION ||
+    runtimeConnection.id === executionAgent?.execution?.agentConnectionId;
+  const agentDefaultModelId = !usesConfiguredEngine
+    ? undefined
+    : activeSessionForHook?.executionAgentId
+      ? executionAgent?.model
+      : (activeSessionForHook?.defaultModel ?? executionAgent?.model);
   const providerConnection = modelConnections.find(
     (connection) => connection.id === activeSessionForHook?.providerId,
   );
@@ -310,9 +321,7 @@ export function useChatDockViewModel({
     ? resolveEngineCapabilityMatrix(agentConnectionId, runtimeConnection)
         .toolPolicy
     : undefined;
-  const currentModelId =
-    activeSession?.model ||
-    agents.find((agent) => agent.slug === activeSession?.agentSlug)?.model;
+  const currentModelId = activeSession?.model || agentDefaultModelId;
   // Memoized: `bindingStatus`/`effectiveModels` are passed straight through to
   // the memoized ChatDockContentArea (as `availableModels`) — recomputing
   // fresh objects/arrays every render would defeat that memo on every
@@ -331,7 +340,7 @@ export function useChatDockViewModel({
   const bindingStatus = useMemo(
     () =>
       resolveBindingStatus({
-        agent: agentForHook,
+        agent: executionAgent,
         chatState: activeSessionForHook,
         runtimeConnection: chatEngineConnection,
         globalModels: availableModels.map((model) => ({
@@ -340,7 +349,12 @@ export function useChatDockViewModel({
           originalId: model.id,
         })),
       }),
-    [agentForHook, activeSessionForHook, chatEngineConnection, availableModels],
+    [
+      executionAgent,
+      activeSessionForHook,
+      chatEngineConnection,
+      availableModels,
+    ],
   );
   const usesGlobalCatalog =
     activeSessionForHook?.executionMode !== EXECUTION_MODE.STATION &&

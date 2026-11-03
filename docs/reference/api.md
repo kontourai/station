@@ -784,6 +784,14 @@ Task). `GET /api/orchestration/station-control/task-brief` takes an optional
 `include=all_records|summary_history`. `GET /api/tasks` adds
 `openQuestionCount` to a Task with open questions.
 
+Task-list rows can also include `workChatConversationIds`, an optional array
+of canonical Conversation IDs for Inbox presentation. It combines the Task's
+primary Session, dispatched independent Task-room requests, and explicit
+work-chat links. Each association is rechecked against the current Task and
+Project incarnation and the caller's Conversation read authority before
+delivery. It grants no access and does not modify the Task's lead assignment.
+Older servers may omit the field.
+
 ### Lessons from a done Task
 
 When a Task is done, its active, standing decisions and dead ends are
@@ -5597,7 +5605,11 @@ accounts, agents and plugins cannot use it. The Coding UI uses the
 [terminal socket](#terminal-socket-operator-transport) instead.
 
 - `POST` creates a session with `{cols, rows, bindingKey?, subdirectory?,
-  legacyTerminalId?}`. `bindingKey` defaults to `project`; `thread:<id>` resolves
+  legacyTerminalId?, adopt?}`. With `adopt: true` it answers with the binding's
+  running shell, marked `adopted: true`, when it has one. Opens are serialized,
+  so concurrent `adopt` requests on an empty binding share one new shell; an
+  older host answers 400. Each shell record carries `ordinal`, its stable
+  "Shell N" within the binding. `bindingKey` defaults to `project`; `thread:<id>` resolves
   through the request-authorized session workspace. Absolute directories,
   traversal and symlink escapes are refused. There is no caller-selected cwd,
   executable or environment. `legacyTerminalId` imports the route Project's
@@ -5617,6 +5629,12 @@ accounts, agents and plugins cannot use it. The Coding UI uses the
   `POST /:terminalId/resize` takes `{cols, rows, bindingKey?}`. Dimensions must be
   integers from 1 through 1,000. `DELETE /:terminalId?bindingKey=project` ends
   the shell and retains its record/journal. Ended sessions never auto-restart.
+- `POST /:terminalId/restart` takes `{bindingKey?, subdirectory?}` and is the
+  explicit restart the socket's `restart` command performs: same id, a new
+  journal segment, a directory confined to the binding. It returns the record
+  with `restart: {count, afterSeq, at}` and the journal's `lastSeq`. Agent
+  command sessions (`kind: "command"`) and server-owned launches are refused
+  (403).
 
 Ingress explicitly requires `terminal:observe` for GET/HEAD list and journal
 reads, and `terminal:operate` for POST/DELETE operations. Operate also satisfies
@@ -5633,17 +5651,27 @@ it cannot preserve the shell across a server restart. Under a process supervisor
 that grants `workloads` (protocol 1.3), the shell and its journal live in the
 supervisor's workload host instead. A session recorded as running is reattached,
 with the same pid and its whole journal, by the next core generation after a
-restart or handoff (see [Shell host](../design/terminal.md#shell-host)). Journal persistence and
-line/byte retention are configured at service construction. Settings and age-based
-retention remain pending. See the
-[implementation boundary](../design/terminal.md#first-implementation-boundary-3994-part-a).
+restart or handoff (see [Shell host](../design/terminal.md#shell-host)). A shell
+that ended because its host restarted reopens on start under the same id, in its
+directory, after a "restored after restart" divider, without re-running anything
+(`restoredAt` is set). History persistence, location, maximum age and the
+per-terminal and total sizes are the `terminalHistory*`
+[settings](config.md); see [Journal](../design/terminal.md#journal).
 
-Core session retention also has whole-store constructor budgets: 1 GiB disk,
-64 MiB of raw tail payload and 32 retained records by default, reserving each
-record's configured per-journal limits. Ended/failed sessions eligible for the
-caller's operate authority expire when a new slot is needed; active sessions
-are pinned. Startup enforces the fixed retention policy on restored metadata.
-Expired session ids are refused. This does not add Settings or clear-history UI.
+Core session retention reserves each record's per-terminal history against the
+total, with 64 MiB of raw tail payload and 32 retained records as constructor
+budgets. Agent command sessions (`kind: 'command'`) have a separate pool of 16
+records and only expire one another. Ended/failed sessions eligible for the caller's operate authority
+expire when a new slot is needed or once older than the maximum age; active
+sessions are pinned. Expired session ids are refused.
+
+`GET /api/terminal/history` (`terminal:observe`, operator only) returns
+`{enabled, directory, projects: [{projectId, terminals, running, bytes}],
+terminals, bytes}` for the sessions the caller may observe.
+`DELETE /api/terminal/history[?projectId=]` (`terminal:operate`) deletes the
+history of ended sessions in that Project, or everywhere, and returns
+`{cleared, running}`; running sessions keep theirs. Both are absent (404) on
+hosted Stations.
 The scoped service's POSIX node-pty close terminates discovered owned process groups; it does
 not merely send HUP to the shell pid. See the
 [retention and custody limits](../design/terminal.md#whole-store-retention-and-process-custody).
@@ -5709,7 +5737,15 @@ Project/binding authority through TerminalSessions.
   `records`. `resize` takes `{type, requestId, channel, cols, rows}`; `close`
   and `detach` take `{type, requestId, channel}`. They return `done`; an adjacent
   queued resize replaced by a newer resize returns `superseded`. Close ends
-  the shell; detach and socket loss leave it running. Restart is not admitted.
+  the shell; detach and socket loss leave it running.
+- `restart`: `{type, requestId, channel, subdirectory?}` requires operate
+  authority. It ends the attached session's program and starts it again under
+  the same `terminalId`; the journal continues in a new segment and earlier
+  output stays readable on the same channel. `subdirectory` (relative, at most
+  4,096 characters) moves it within the binding's root, refused like `open`'s;
+  without it the current directory is kept if it is still inside that root.
+  It returns `done` with `restartedAfterSeq`, the last sequence before the new
+  run. Server-owned launches and command sessions are refused.
 - `cwd`: `{type, requestId, channel}` returns `{type: "cwd", requestId,
   channel, cwd}` with the shell's current directory, or `null` when the host
   cannot tell. It requires operate authority.
@@ -5758,7 +5794,8 @@ before publication. Invalid frames return `invalid-frame`, authority/session
 refusals return generic `terminal-refused`, without exception details.
 
 `@kontourai/station-contracts/terminal-transport` exports the binary codec, the
-ticket and subprotocol constants, launch profiles and the scope predicate.
+ticket and subprotocol constants, launch profiles, the `restart` request shape
+and the scope predicate.
 `terminal:observe` is explicitly promotable and read-only; existing
 scopes/defaults/presets are unchanged. The SDK's `TerminalSessionStore` is the
 client for this protocol. A browser broker (DataChannel) route has no socket
@@ -6840,11 +6877,13 @@ feature preview and Browser view authority:
   cancels or discards it. `GET .../recordings/:recordingId/video` returns a
   bounded WebM while it is retained. Each operation rechecks person and Browser
   authority, preview state, session generation and recording ownership. There
-  are at most four active Browser recordings per Station and two per owner;
-  finished recordings no longer consume active slots. Capture stops at 30 seconds and
-  finishes at 300 frames or 64 MiB of raw input, retaining earlier frames; encoded output is limited to 16 MiB and a
-  completed result is retained for at most one minute; at most four completed
-  results are retained, so an older one may be discarded sooner. This path offers a local save;
+  are at most four active Browser and Device recordings per Station and two per
+  person; an Agent shares the slots of the person it acts for. Finished
+  recordings no longer consume active slots. Capture stops at 30 seconds and
+  finishes at 300 frames or 64 MiB of raw input, retaining earlier frames;
+  encoded output is limited to 16 MiB. A completed result is retained for at
+  most one minute; at most four completed results are retained, so an older one
+  may be discarded sooner. This path offers a local save;
   `POST .../recordings/:recordingId/task` publishes to the pinned Task after
   authority and workspace rechecks. `GET .../recordings/:recordingId/frames`
   returns four sampled JPEGs and provenance while retained, or `409` when the

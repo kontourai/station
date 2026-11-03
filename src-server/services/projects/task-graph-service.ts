@@ -2287,6 +2287,13 @@ export class TaskGraphService {
       : { task: identity, conversationId, linked: false, revision: 0 };
   }
 
+  /** Discovery only; callers must authorize the exact Task and Conversation before disclosure. */
+  listTaskWorkChatCandidates() {
+    return this.readStore()
+      .workChats.filter((chat) => chat.linked)
+      .map((chat) => structuredClone(chat));
+  }
+
   listTaskWorkChats(
     identity: TaskIdentity,
     authority: TaskRelationshipAuthority,

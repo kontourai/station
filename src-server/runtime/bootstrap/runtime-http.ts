@@ -1391,13 +1391,10 @@ function configureRuntimeSecurity(
       const pairingSource = security.resolvePairingSource?.(credential!);
       const locality = security.resolveCredentialLocality?.(credential!);
       const mintKind = security.resolveCredentialMintKind?.(credential!);
-      // Owner standing: only for a device credential that is not already
-      // home-possession (that one is the operator in person).
+      // The pairing store owns which devices qualify; see
+      // `DevicePairingService.credentialHasOwnerStanding`.
       const ownerStanding =
         authority === 'device-credential' &&
-        deviceId !== undefined &&
-        deviceKind !== 'delegation' &&
-        !locality &&
         security.resolveCredentialOwnerStanding?.(credential!) === true;
       setRuntimeAuthenticatedRequestPrincipal(c.req.raw, {
         kind: 'credential',
@@ -2041,6 +2038,13 @@ function getInvalidationKeysForRequest(method: string, path: string): string[] {
   // (and any other reader of ['config']) must see the change.
   if (path.startsWith('/api/project-contributions/')) keys.push('config');
   if (path.includes('/projects')) keys.push('projects');
+  if (
+    /^\/api\/tasks(?:\/from-work-item|\/[^/]+\/(?:work-chats|dispatch|children|parent|title|status))?\/?$/.test(
+      path,
+    ) ||
+    /^\/api\/orchestration\/delegations\/?$/.test(path)
+  )
+    keys.push('tasks');
   if (path.includes('/knowledge')) keys.push('knowledge');
   if (path.includes('/registry')) keys.push('skills', 'integrations', 'agents');
 

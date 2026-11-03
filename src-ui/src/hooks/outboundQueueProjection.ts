@@ -103,9 +103,17 @@ export function projectOutboundQueueEntries(
   for (const [sessionId, chat] of Object.entries(
     activeChatsStore.getSnapshot(),
   )) {
-    if (!chat.outboundQueuedTurns?.length || groups.has(sessionId)) continue;
+    if (groups.has(sessionId)) continue;
+    if (
+      !chat.outboundQueuedTurns?.length &&
+      !chat.ephemeralMessages?.some((message) => message.queuedRetry)
+    )
+      continue;
     activeChatsStore.updateChat(sessionId, {
       outboundQueuedTurns: [],
+      ephemeralMessages: chat.ephemeralMessages?.filter(
+        (message) => !message.queuedRetry,
+      ),
       ...(chat.status === 'queued' ? { status: 'idle' } : {}),
     });
   }

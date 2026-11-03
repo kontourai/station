@@ -282,10 +282,10 @@ export interface OutboundDispatchModule {
    * Settles `invoking` rows whose renderer is gone (the app was closed or
    * crashed mid-send) by asking Station what became of each key:
    * `not-received` → pending (sent again with the SAME key), `started` →
-   * removed (delivered), `received` → left to ask again later,
+   * removed (delivered), `received`/`queued` → left to ask again later,
    * `indeterminate`/`expired` → may-have-started (never resent). A lookup
    * that fails leaves the row as it is. Returns how many rows Station still
-   * reports as received and failed lookups still unresolved, so the caller can
+   * reports as received or queued and failed lookups still unresolved, so the caller can
    * ask again with backoff.
    */
   reconcile(
@@ -2630,7 +2630,7 @@ async function reconcile(
       continue;
     }
     await applyDeliveryAnswer(row, outcome, 'resend');
-    if (outcome === 'received') received += 1;
+    if (outcome === 'received' || outcome === 'queued') received += 1;
   }
   const lookupFailed = failedKeys.size
     ? (await readStored()).filter(

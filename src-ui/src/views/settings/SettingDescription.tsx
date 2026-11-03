@@ -22,6 +22,16 @@ const SUMMARIES: Readonly<Record<string, string>> = {
   registryUrl:
     'Source for installable resources. Applies after restarting Station.',
   terminalShell: 'Choose the shell used by Station terminals on the host.',
+  terminalHistoryEnabled:
+    'Write terminal output to disk so it survives a restart. Off keeps recent output in memory only.',
+  terminalHistoryDirectory:
+    'Absolute directory for terminal history. Ended terminals’ history moves here.',
+  terminalHistoryMaxAgeDays:
+    'Delete an ended terminal’s history after this many days.',
+  terminalHistoryMaxTerminalMiB:
+    'History each terminal keeps. The oldest output goes first.',
+  terminalHistoryMaxTotalMiB:
+    'History all terminals keep together. The oldest ended terminals go first.',
   mcpUiHost:
     'Display interactive MCP tool interfaces in sandboxed chat frames.',
   mobileDeviceHubUrl:

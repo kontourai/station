@@ -1,3 +1,7 @@
+import type {
+  FetchSseConnection,
+  FetchSseOptions,
+} from '@kontourai/station-sdk/client';
 import { QueryClient } from '@tanstack/react-query';
 import { beforeEach, describe, expect, test, vi } from 'vitest';
 
@@ -41,6 +45,8 @@ import {
   readSequencedLiveEvents,
   recordSequencedLiveEvent,
 } from '../sequencedLiveEvents';
+import { subscribeSharedOrchestrationStream } from '../sharedStreamListeners';
+import { getStreamConnectionState } from '../streamConnectionState';
 
 describe('ensureOrchestrationEventStream reconnect-fallback snapshot gating (station#1225)', () => {
   const capturedOnMessage = () => mocks.capturedOnMessage!;
@@ -129,6 +135,86 @@ describe('ensureOrchestrationEventStream reconnect-fallback snapshot gating (sta
 
     expect(mocks.fetchSSE).toHaveBeenCalledOnce();
   });
+
+  test.each(['completion rejection', 'retry notification'] as const)(
+    'a retired stream’s late %s cannot interrupt its live replacement',
+    async (notification) => {
+      const apiBase = `https://retired-stream-${notification.replaceAll(' ', '-')}.example.test`;
+      const streams: {
+        options: FetchSseOptions;
+        resolve: () => void;
+        reject: (error: Error) => void;
+      }[] = [];
+      mocks.fetchSSE.mockImplementation(
+        (_url: string, options: FetchSseOptions): FetchSseConnection => {
+          const controller = new AbortController();
+          let resolve!: () => void;
+          let reject!: (error: Error) => void;
+          const completed = new Promise<void>((done, fail) => {
+            resolve = done;
+            reject = fail;
+          });
+          streams.push({ options, resolve, reject });
+          return {
+            close: () => controller.abort(),
+            signal: controller.signal,
+            completed,
+            retry: vi.fn(),
+            restart: vi.fn(),
+          };
+        },
+      );
+      const releaseRetired = ensureOrchestrationEventStream(
+        apiBase,
+        undefined,
+        'retired-authority',
+      );
+      const releaseCurrent = ensureOrchestrationEventStream(
+        apiBase,
+        undefined,
+        'current-authority',
+      );
+      const onOpen = vi.fn();
+      const onError = vi.fn();
+      let subscription: { close(): void } | undefined;
+      const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+      try {
+        expect(streams).toHaveLength(2);
+        streams[1].options.onOpen?.(
+          new Response(null, {
+            headers: { 'Content-Type': 'text/event-stream' },
+          }),
+        );
+        streams[1].options.onMessage({
+          event: 'orchestration:caughtUp',
+          data: '{}',
+          id: '1',
+        });
+        expect(getStreamConnectionState(apiBase).phase).toBe('caught-up');
+
+        if (notification === 'completion rejection')
+          streams[0].reject(new Error('retired transport ended late'));
+        else streams[0].options.onRetry?.();
+        await Promise.resolve();
+
+        expect(getStreamConnectionState(apiBase).phase).toBe('caught-up');
+        subscription = subscribeSharedOrchestrationStream(apiBase, {
+          onOpen,
+          onError,
+          onMessage: vi.fn(),
+        });
+        await Promise.resolve();
+        expect(onOpen).toHaveBeenCalledOnce();
+        expect(onError).not.toHaveBeenCalled();
+      } finally {
+        subscription?.close();
+        releaseCurrent();
+        releaseRetired();
+        for (const stream of streams) stream.resolve();
+        log.mockRestore();
+      }
+    },
+  );
 
   test('the FIRST snapshot on a fresh stream is never treated as a reconnect fallback', () => {
     applyOrchestrationSnapshot.mockClear();

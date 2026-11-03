@@ -8,14 +8,16 @@ import {
   type WorkspacePaneSuppliableContexts,
   workspacePaneModesSatisfiableBy,
 } from '@kontourai/station-contracts/workspace-pane';
-import type {
-  PaneRelatedPanesHost,
-  RelatedPaneOpenOutcome,
-  RelatedPaneOpenRequest,
-  RelatedPanePresentation,
-  RelatedPaneTarget,
-  RelatedPaneUnavailable,
-  RelatedPaneUnavailableReason,
+import {
+  decodeRelatedTerminalOpenRequest,
+  type PaneRelatedPanesHost,
+  type RelatedPaneOpenOutcome,
+  type RelatedPaneOpenRequest,
+  type RelatedPaneOpenTarget,
+  type RelatedPanePresentation,
+  type RelatedPaneTarget,
+  type RelatedPaneUnavailable,
+  type RelatedPaneUnavailableReason,
 } from '@kontourai/station-contracts/workspace-pane-host-contract';
 import { useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import { isDistinctFrameOrigin } from '../components/mcp-ui/frameOrigin';
@@ -64,9 +66,20 @@ import {
 } from './pluginPaneOccurrence';
 import { registerRelatedPanesScope } from './relatedPanesScope';
 import {
+  type RelatedTerminalSessions,
+  useRelatedTerminalSessions,
+} from './relatedTerminalSessions';
+import {
   type ResolvedWorkspacePaneCatalogEntry,
   useResolvedWorkspacePaneCatalog,
 } from './resolvedWorkspacePaneCatalog';
+import {
+  createTerminalPaneStatePreparation,
+  mintTerminalPaneId,
+  readTerminalPaneState,
+  TERMINAL_PANE_ID,
+  terminalPaneTarget,
+} from './terminalPaneOccurrence';
 import { useDockProject } from './useDockProject';
 import {
   resolveClientTrustedPluginLayout,
@@ -280,6 +293,7 @@ export interface LiveRelatedPanes {
   };
   dockProject: { projectId: string | null; projectSlug: string | null };
   rendererSupport: RendererSupport;
+  terminals: RelatedTerminalSessions;
 }
 
 type AdmissionRefusal = Extract<
@@ -306,6 +320,56 @@ function suppliableContexts(
 }
 
 /**
+ * The caller itself, for any target: the host can place related panes, the
+ * caller's Project is the one on screen, and its plugin is still the
+ * installed generation it was mounted under.
+ */
+function admitCaller(
+  caller: RelatedPaneCaller,
+  live: LiveRelatedPanes,
+): AdmissionRefusal | null {
+  if (!live.model) return 'unsupported';
+  if (
+    live.catalog.projectId !== caller.projectId ||
+    live.catalog.projectSlug !== caller.projectSlug ||
+    live.dockProject.projectId !== caller.projectId ||
+    live.dockProject.projectSlug !== caller.projectSlug
+  )
+    return 'context-mismatch';
+  const stillInstalled = live.catalog.entries.some(
+    (entry) =>
+      entry.descriptor.provenance.pluginId === caller.pluginId &&
+      pluginInstallGeneration(entry.instance?.boundContext?.contribution) ===
+        caller.generation,
+  );
+  return stillInstalled ? null : 'not-authorized';
+}
+
+/**
+ * The closed terminal target's admission (docs/design/terminal.md,
+ * "Plugins"), on arrival and again inside the lock: the caller as above,
+ * then the viewer's own terminal grant. A plugin holds none; the pane is
+ * Station's UI and its socket is the viewer's. Showing a session needs
+ * `terminal:observe`; starting one needs `terminal:operate`.
+ */
+function admitRelatedTerminal(
+  caller: RelatedPaneCaller,
+  live: LiveRelatedPanes,
+  operation: 'observe' | 'operate',
+): AdmissionRefusal | null {
+  const refused = admitCaller(caller, live);
+  if (refused) return refused;
+  const authority = live.terminals.authority;
+  if (authority === null) return 'not-authorized';
+  if (operation === 'operate' && authority !== 'operate')
+    return 'not-authorized';
+  return null;
+}
+
+/** The only launch profile a related open may name; the server resolves it. */
+const TERMINAL_PROFILES: ReadonlySet<string> = new Set(['shell']);
+
+/**
  * Admission, asked when a request arrives and again inside the lock after
  * any guard answered: the caller's Project is the one on screen, its plugin
  * is still the installed generation it was mounted under, and the target is
@@ -319,21 +383,8 @@ function admitRelatedPluginTarget(
 ):
   | { ok: true; entry: ResolvedWorkspacePaneCatalogEntry }
   | { ok: false; reason: AdmissionRefusal } {
-  if (!live.model) return { ok: false, reason: 'unsupported' };
-  if (
-    live.catalog.projectId !== caller.projectId ||
-    live.catalog.projectSlug !== caller.projectSlug ||
-    live.dockProject.projectId !== caller.projectId ||
-    live.dockProject.projectSlug !== caller.projectSlug
-  )
-    return { ok: false, reason: 'context-mismatch' };
-  const stillInstalled = live.catalog.entries.some(
-    (entry) =>
-      entry.descriptor.provenance.pluginId === caller.pluginId &&
-      pluginInstallGeneration(entry.instance?.boundContext?.contribution) ===
-        caller.generation,
-  );
-  if (!stillInstalled) return { ok: false, reason: 'not-authorized' };
+  const refused = admitCaller(caller, live);
+  if (refused) return { ok: false, reason: refused };
   const entry = ownedPluginDescriptor(
     live.catalog.entries,
     caller.pluginId,
@@ -523,7 +574,118 @@ function createRelatedPanesHost(
       );
     };
 
-    const open = async (
+    const terminalAdmission = (operation: 'observe' | 'operate') =>
+      custodyRefusal() ?? admitRelatedTerminal(caller, live(), operation);
+    // A terminal handle names a related occurrence THIS caller opened, in
+    // its own Project, on its Station, whose own record is that session.
+    const ownedTerminalRelation = (
+      relation: PaneRelation | undefined,
+    ): relation is PaneRelation & { target: TerminalRelationTarget } =>
+      relation !== undefined &&
+      custody.station !== null &&
+      relation.stationId === custody.station &&
+      relation.opener.occurrenceId === caller.occurrenceId &&
+      relation.generation === caller.generation &&
+      relation.target.kind === 'terminal' &&
+      relation.target.projectId === caller.projectId &&
+      storedTerminalIs(relation.instanceId, relation.target, custody.station);
+
+    const openTerminal = async (
+      request: unknown,
+    ): Promise<RelatedPaneOpenOutcome> => {
+      const decoded = decodeRelatedTerminalOpenRequest(request);
+      if (!decoded) return unavailable('invalid-request');
+      const refused = custodyRefusal();
+      if (refused !== null) return unavailable(refused);
+      if (!claim()) return unavailable('rate-limited');
+      const operation = decoded.new ? 'operate' : 'observe';
+      const first = terminalAdmission(operation);
+      if (first) return unavailable(first);
+      if (decoded.new && !TERMINAL_PROFILES.has(decoded.new.profile ?? 'shell'))
+        return unavailable('unsupported');
+      const scope = {
+        projectId: caller.projectId,
+        bindingKey: decoded.binding,
+      };
+      const terminals = live().terminals;
+      // The binding, and any named session, must fall inside the caller's
+      // captured Project: a plugin cannot name another Project's thread.
+      try {
+        if (
+          decoded.binding.startsWith('thread:') &&
+          (await terminals.threadProjectSlug(
+            decoded.binding.slice('thread:'.length),
+          )) !== caller.projectSlug
+        )
+          return unavailable('context-mismatch');
+        if (
+          decoded.terminalId !== undefined &&
+          !(await terminals.running(scope, decoded.terminalId))
+        )
+          return unavailable('context-mismatch');
+      } catch {
+        return unavailable('refused');
+      }
+      const again = terminalAdmission(operation);
+      if (again) return unavailable(again);
+      const started = decoded.terminalId === undefined;
+      const terminalId =
+        decoded.terminalId ?? (await terminals.start(scope, { kind: 'shell' }));
+      if (!terminalId) return unavailable('refused');
+      const state = {
+        version: 1 as const,
+        projectId: caller.projectId,
+        projectSlug: caller.projectSlug,
+        binding: decoded.binding,
+        terminalId,
+      };
+      const target = terminalPaneTarget(state);
+      const station = custody.station as string;
+      const outcome = await openRelatedOccurrence(
+        getModel,
+        live().relations,
+        opener,
+        {
+          target,
+          generation: caller.generation,
+          landing: 'bottom',
+          admit: () => terminalAdmission('observe'),
+          confirms: (instanceId) =>
+            storedTerminalIs(instanceId, target, station),
+          reveal: (model, instanceId, options) =>
+            model.openSurfaceInRegion(instanceId, {
+              ...options,
+              focusExisting: true,
+            }),
+          mint: () => {
+            const instanceId = mintTerminalPaneId();
+            const preparation = createTerminalPaneStatePreparation(
+              window.localStorage,
+              instanceId,
+              state,
+            );
+            return {
+              instanceId,
+              stateKey: instanceId,
+              prepare: () => preparation.prepare(),
+              rollback: () => preparation.rollback(),
+            };
+          },
+        },
+      );
+      if (!outcome.ok) {
+        // Nothing shows the shell this open started, so it does not run on.
+        if (started) await terminals.end(caller.projectSlug, terminalId);
+        return unavailable(contractReason(outcome.reason));
+      }
+      return {
+        status: outcome.disposition ?? 'opened',
+        handle: outcome.surfaceId,
+        presentation: presentationOf(getModel(), outcome.surfaceId, 'tool'),
+      };
+    };
+
+    const openPluginPane = async (
       request: RelatedPaneOpenRequest,
     ): Promise<RelatedPaneOpenOutcome> => {
       const decoded = decodeRelatedPaneOpenRequest(request);
@@ -614,28 +776,63 @@ function createRelatedPanesHost(
       };
     };
 
+    const open = (
+      request: RelatedPaneOpenTarget,
+    ): Promise<RelatedPaneOpenOutcome> =>
+      typeof request === 'object' &&
+      request !== null &&
+      (request as { kind?: unknown }).kind === 'terminal'
+        ? openTerminal(request)
+        : openPluginPane(request as RelatedPaneOpenRequest);
+
+    const isHandle = (handle: unknown): handle is string =>
+      typeof handle === 'string' &&
+      (PLUGIN_PANE_ID.test(handle) || TERMINAL_PANE_ID.test(handle));
+    const ownedAny = (
+      relation: PaneRelation | undefined,
+    ): relation is PaneRelation =>
+      ownedRelation(relation) || ownedTerminalRelation(relation);
+    /** Admission for an owned relation's target, and the role it lands as. */
+    const admitOwned = (
+      target: PaneRelationTarget,
+    ):
+      | { ok: true; role: WorkspacePaneRelationRole }
+      | { ok: false; reason: AdmissionRefusal | 'station-unverified' } => {
+      if (target.kind === 'terminal') {
+        const refused = terminalAdmission('observe');
+        return refused
+          ? { ok: false, reason: refused }
+          : { ok: true, role: 'tool' };
+      }
+      if (target.kind !== 'plugin')
+        return { ok: false, reason: 'unknown-descriptor' };
+      const admitted = admitNow(target);
+      return admitted.ok
+        ? { ok: true, role: roleOf(admitted.entry) }
+        : { ok: false, reason: admitted.reason };
+    };
+
     const reveal: PaneRelatedPanesHost['reveal'] = async (handle) => {
-      if (typeof handle !== 'string' || !PLUGIN_PANE_ID.test(handle))
-        return unavailable('unknown-handle');
+      if (!isHandle(handle)) return unavailable('unknown-handle');
       const refused = custodyRefusal();
       if (refused !== null) return unavailable(refused);
       if (!claim()) return unavailable('rate-limited');
       const { relations } = live();
       const relation = relations.relationOf(handle);
-      if (!ownedRelation(relation)) return unavailable('unknown-handle');
+      if (!ownedAny(relation)) return unavailable('unknown-handle');
       const target = relation.target;
-      const first = admitNow(target);
+      const first = admitOwned(target);
       if (!first.ok) return unavailable(first.reason);
-      const role = roleOf(first.entry);
+      const role = first.role;
       const outcome = await revealRelatedOccurrence(
         getModel,
         relations,
         handle,
         {
           landing: role === 'tool' ? 'bottom' : 'right',
-          admitRelation: (current) => ownedRelation(current),
+          admitRelation: (current) => ownedAny(current),
           admit: () => {
-            const admitted = admitNow(target);
+            const admitted = admitOwned(target);
             return admitted.ok ? null : admitted.reason;
           },
           reveal: (model, instanceId) =>
@@ -650,15 +847,14 @@ function createRelatedPanesHost(
     };
 
     const close: PaneRelatedPanesHost['close'] = async (handle) => {
-      if (typeof handle !== 'string' || !PLUGIN_PANE_ID.test(handle))
-        return unavailable('unknown-handle');
+      if (!isHandle(handle)) return unavailable('unknown-handle');
       const refused = custodyRefusal();
       if (refused !== null) return unavailable(refused);
       const { model, relations } = live();
       if (!model) return unavailable('unsupported');
       const relation = relations.relationOf(handle);
       if (
-        !ownedRelation(relation) ||
+        !ownedAny(relation) ||
         !relatedOccurrenceExists(handle) ||
         occupiedRegion(model.readRegions(), handle) === undefined
       )
@@ -686,9 +882,9 @@ function createRelatedPanesHost(
         };
         const result = await relations.transact<void>(
           (tx) => {
-            const admitted = admitNow(target);
+            const admitted = admitOwned(target);
             if (!admitted.ok) return refuse(admitted.reason);
-            if (!ownedRelation(paneRelationOf(tx.record, handle)))
+            if (!ownedAny(paneRelationOf(tx.record, handle)))
               return refuse('unknown-handle');
             if (watch.registered.has(handle)) return refuse('superseded');
             const current = live().model;
@@ -730,6 +926,21 @@ function createRelatedPanesHost(
 }
 
 type PluginRelationTarget = Extract<PaneRelationTarget, { kind: 'plugin' }>;
+type TerminalRelationTarget = Extract<PaneRelationTarget, { kind: 'terminal' }>;
+
+/** The terminal occurrence's own stored record is exactly `target`, on `station`. */
+function storedTerminalIs(
+  instanceId: string,
+  target: PaneRelationTarget,
+  station: string,
+): boolean {
+  const stored = readTerminalPaneState(window.localStorage, instanceId);
+  return (
+    stored !== null &&
+    target.kind === 'terminal' &&
+    sameRelationTarget(station, terminalPaneTarget(stored), target)
+  );
+}
 
 /** The occurrence's own stored record is exactly `target`, on `station`. */
 function storedTargetIs(
@@ -763,6 +974,7 @@ export function useRelatedPanesHost(
   const catalog = useResolvedWorkspacePaneCatalog(caller?.projectSlug ?? '');
   const dockProject = useDockProject();
   const config = useConfig();
+  const terminals = useRelatedTerminalSessions();
   const current: LiveRelatedPanes = {
     model,
     relations,
@@ -776,6 +988,7 @@ export function useRelatedPanesHost(
       mcpAppsEnabled: config?.mcpUiHost !== false,
       pluginFramesEnabled: isDistinctFrameOrigin(config?.pluginFrameOrigin),
     },
+    terminals,
   };
   const liveRef = useRef(current);
   useLayoutEffect(() => {

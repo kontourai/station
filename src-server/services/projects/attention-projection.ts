@@ -590,7 +590,10 @@ export class AttentionProjectionService {
   ): Promise<boolean> {
     if (!this.acknowledgementStore) return false;
     const readAuthority = authority ?? this.defaultReadAuthority();
-    const acknowledgementKey = conversationAcknowledgementKey(readAuthority);
+    const acknowledgementKey = conversationAcknowledgementKey(
+      readAuthority,
+      this.acknowledgementStore.isOwnerDevice,
+    );
     if (!acknowledgementKey) return false;
     const { items } = await this.list(readAuthority);
     const item = items.find((candidate) => candidate.id === itemId);

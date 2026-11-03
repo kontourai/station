@@ -128,6 +128,6 @@ describe('the device host picker (#1973)', () => {
     renderInQueryClient(<DeviceWorkspacePane />);
     await click(await screen.findByRole('button', { name: 'Studio Mac' }));
     await screen.findByText('Devices are not set up on this host');
-    expect(screen.getByText(/Settings › Device hosts/)).toBeTruthy();
+    expect(screen.getByText(/Settings › Advanced › Device hosts/)).toBeTruthy();
   });
 });

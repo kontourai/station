@@ -25,6 +25,7 @@ const reads = vi.hoisted(() => ({
   ssh: { isSuccess: true, isError: false, data: [] as unknown[] },
   peers: { isSuccess: true, isError: false, data: [] as unknown[] },
 }));
+const retries = vi.hoisted(() => ({ ssh: vi.fn(), peers: vi.fn() }));
 
 const OPERATOR: AuthorityObservationGrant = { kind: 'operator' };
 const READ_ONLY_DEVICE: AuthorityObservationGrant = {
@@ -98,8 +99,8 @@ vi.mock('../../../hooks/useDevicePresentation', () => ({
   useDevicePresentation: () => ({ hostName: 'kontour' }),
 }));
 vi.mock('@kontourai/station-sdk', () => ({
-  useSshEnvironmentsQuery: () => reads.ssh,
-  usePeerCredentialsQuery: () => reads.peers,
+  useSshEnvironmentsQuery: () => ({ ...reads.ssh, refetch: retries.ssh }),
+  usePeerCredentialsQuery: () => ({ ...reads.peers, refetch: retries.peers }),
   // Station config behind the No project folder hint (#4389): nothing saved.
   useConfigQuery: () => ({
     data: undefined,
@@ -127,6 +128,8 @@ const sshEnvironment = (verifiedProjectPath: string | null) => ({
 });
 
 beforeEach(() => {
+  retries.ssh.mockClear();
+  retries.peers.mockClear();
   window.localStorage.clear();
   deviceSettingsStore.reloadFromStorage();
   Object.defineProperty(window, 'matchMedia', {
@@ -162,7 +165,7 @@ describe('StartStationControl', () => {
     expect(screen.queryByRole('dialog')).toBeNull();
   });
 
-  test('a caller refused the paired-Station read sees plain text: no button, no caret', () => {
+  test('a refused paired-Station read keeps the chooser reachable for recovery', () => {
     // A scoped phone: `GET /api/environments/peers` is `access:manage`.
     reads.peers = { isSuccess: false, isError: true, data: undefined as never };
     const onOpen = vi.fn();
@@ -170,8 +173,10 @@ describe('StartStationControl', () => {
       <StartStationControl canChoose onOpen={onOpen} />,
     );
     expect(screen.getByText('Runs on kontour')).toBeTruthy();
-    expect(screen.queryByRole('button')).toBeNull();
-    expect(container.querySelector('.choice-caret')).toBeNull();
+    const trigger = screen.getByRole('button', { name: /^Runs on kontour\./ });
+    expect(container.querySelector('.choice-caret')).toBeTruthy();
+    fireEvent.click(trigger);
+    expect(onOpen).toHaveBeenCalledWith(trigger);
   });
 
   test('an SSH environment the task launcher would refuse (unverified) is not a choice', () => {
@@ -395,8 +400,10 @@ test('the Station choice marks where the work runs now and reports the chosen St
 });
 
 describe('the start menus wire the Station choice to the start', () => {
-  function renderMenus(environment?: string) {
-    reads.peers = { isSuccess: true, isError: false, data: [PAIRED] };
+  function renderMenus(environment?: string, unavailable = false) {
+    reads.peers = unavailable
+      ? { isSuccess: false, isError: true, data: [] }
+      : { isSuccess: true, isError: false, data: [PAIRED] };
     const agent = { slug: 'reviewer', name: 'Reviewer' };
     const start = {
       modelChoiceFor: () =>
@@ -432,6 +439,19 @@ describe('the start menus wire the Station choice to the start', () => {
     );
     return { agent, start, setMenu, trigger };
   }
+
+  test('failed Station discovery states the access/version remedy and retries the owning reads', () => {
+    renderMenus(undefined, true);
+    expect(screen.getByText('Couldn’t list other Stations')).toBeTruthy();
+    expect(
+      screen.getByText(
+        'Check this device’s access and the host Station’s version.',
+      ),
+    ).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    expect(retries.ssh).toHaveBeenCalledOnce();
+    expect(retries.peers).toHaveBeenCalledOnce();
+  });
 
   test('choosing another Station sets it for this start and continues to its engine and model', () => {
     const { agent, start, setMenu, trigger } = renderMenus();

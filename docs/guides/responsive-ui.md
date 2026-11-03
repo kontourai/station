@@ -429,9 +429,10 @@ because a held finger there selects text. `useLongPress` is a different
 gesture: one control whose click it owns, plus a second act behind a hold.
 
 [`wantsNativeContextMenu`](../../src-ui/src/lib/native-context-menu.ts) leaves
-four cases to the platform: Shift held on a mouse right-click (`button === 2`),
-a text-entry field, the terminal (xterm.js offers Copy and Paste through the
-native menu), and a press on selected text. Because the Shift case requires
+three cases to the platform: Shift held on a mouse right-click (`button === 2`),
+a text-entry field, and a press on selected text. The terminal opens its own
+menu (Copy, Paste, Add to chat) and the guard leaves a menu it already
+answered alone. Because the Shift case requires
 the right mouse button, Shift+F10 is meant to open Station's menu. That rests on
 keyboard-raised events reporting `button: 0`, which jsdom tests assume and no
 desktop WebView run has confirmed. In the Tauri apps,
@@ -484,10 +485,10 @@ chat** / **Restore chat size** control beside its leading control, so both
 states are one tap. With no chat yet, the bar offers New chat and the
 Inbox title, not a pressed **Back to chat** or Chat actions.
 
-The drawer lists up to five **Recent chats**, newest first and each
-conversation once, read through Home's work items and opened through Home's
-Continue action; **See all** opens the dock's Inbox. The list loads with the
-open drawer only.
+The drawer lists places and Projects. The chat bar's **Inbox** remains the
+conversation list; the drawer does not duplicate it with Recent chats.
+The collapsed chat bar offers **Full screen chat** directly in its leading
+button slot, preserving the one-row layout and 44px target at narrow widths.
 
 The answer's **⋯** sheet lists the answer's actions itself (Provenance,
 Reasoning, Add to Task) below its summary row, instead of a second **⋯** whose

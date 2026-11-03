@@ -10,8 +10,8 @@
  * No screenshot capture: the only dependency-free browser API
  * (`getDisplayMedia`) is unavailable in the WKWebView the desktop app runs
  * in, so offering a checkbox that silently fails there would be a claim the
- * runtime cannot back. The issue template tells the user to attach
- * screenshots manually instead.
+ * runtime cannot back. The prefilled bug-report form tells the user to
+ * attach screenshots manually instead.
  *
  * Styling: reuses the eager `station-dialog__*` chrome plus inline styles
  * (the HelpMenu precedent) — deliberately no new CSS, because the entry
@@ -198,7 +198,7 @@ export default function ReportProblemDialog({
         style={{ margin: '10px 0 0', fontSize: 12, color: 'var(--text-muted)' }}
       >
         Screenshots are not captured automatically. If one would help, take it
-        yourself and attach it to the GitHub issue — the issue body reminds you
+        yourself and attach it to the GitHub issue — the issue form reminds you
         where.
       </p>
     </Dialog>

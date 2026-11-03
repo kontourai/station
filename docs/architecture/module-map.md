@@ -30,6 +30,7 @@ The optional [Durable Station Agent](#durable-station-agent) owner sits above th
 | [PrivateUsageStorage](#privateusagestorage) | Store canonical private pages and checkpoints atomically under an opaque storage capability; Core owns person/source authority. | `packages/telemetry-broker/src/private-usage-store.ts` |
 | [Local speech and media tools](#local-speech-and-media-tools) | Resolve consented media tools and transcribe bounded local audio/video. | `src-server/services/media-tools/media-tools-resolver.ts` |
 | [TerminalSessions](#terminalsessions) | Authorize Project/binding terminal operations and preserve bounded numbered output across reconnects. | `src-server/services/terminal/terminal-sessions.ts` |
+| [TerminalView](#terminalview) | Render a terminal session with Station's surface over Ghostty's libghostty-vt WebAssembly. | `packages/sdk/src/terminal-view/TerminalView.tsx` |
 | [ProductTelemetryReceiver](#producttelemetryreceiver) | Commit and query disclosed product observations with scoped source credentials and explicit delivery coverage. | `packages/telemetry-broker/src/store.ts` |
 | [PluginTelemetryPublisher](#plugintelemetrypublisher) | Validate signed public publisher declarations and deliver kernel-owned, per-publisher counts under notice/consent policy. | `src-server/services/plugin-telemetry-service.ts` |
 | [VirtualApplicationIngress](#virtualapplicationingress) | Dispatch encrypted connector requests into ordinary application authorization without socket or cookie authority. | `src-server/services/connections/virtual-application.ts` |
@@ -2197,7 +2198,9 @@ Starting a Session crosses two boundaries: an engine may start, and Station must
 
 **Interface.** `execute({ type: 'start-session', input }, context)` is the closed caller Interface. It always returns one of `accepted`, `rejected`, `failed`, or `indeterminate`, together with a receipt and `receiptStatus: persisted|unavailable`. `accepted` has a persisted accepted receipt and a session. `rejected` and `failed` report whether their terminal receipt is durable. `indeterminate` covers uncertain provider creation as well as missing accepted-receipt durability; a Session is included only when one is known. The server-only `executeInternal` also carries recovery, Task dispatch, owned-workspace, and portable-execution admission capabilities. Those options are not accepted from public command JSON.
 
-**Behavior.** The Module initializes and records dispatch before launch, then starts, attaches, and binds before persisting `accepted`. A fault before the provider call can return `failed`; a terminal receipt persistence fault returns `failed` or `rejected` with `receiptStatus: unavailable`. After a session effect, an accepted write/readback fault returns `indeterminate`, never overwrites the accepted attempt with `failed`, and must not be retried automatically. A durable readback matching command ID, thread, command type, and accepted status turns a write-success-then-throw into `accepted`. Ordering and receipt-fault classification stay inside the module. `failed` is not a universal proof that no engine started: ordinary errors in later attachment or binding work also use that outcome. Those attachment/binding failures revoke all Session MCP credentials and attempt to stop the newly started engine. A failed or timed-out stop logs the cleanup failure, preserves ownership and the original error, and retires only a replaced adapter; unrelated Sessions on the current adapter survive. Inspect the known Session and receipt rather than inferring retry safety from that word alone.
+**Behavior.** The Module initializes and records dispatch before launch, then starts, attaches, and binds before persisting `accepted`. For an attributed fresh start, the service binds the prepared owner for command authorization while the adapter's startup event is pending. The first turn can proceed during publication retries; durable ownership and public read access still depend on persisted events. The command check continues to refuse other callers and prefers the durable owner once available. A fault before the provider call can return `failed`; a terminal receipt persistence fault returns `failed` or `rejected` with `receiptStatus: unavailable`. After a session effect, an accepted write/readback fault returns `indeterminate`, never overwrites the accepted attempt with `failed`, and must not be retried automatically. A durable readback matching command ID, thread, command type, and accepted status turns a write-success-then-throw into `accepted`. Ordering and receipt-fault classification stay inside the module. `failed` is not a universal proof that no engine started: ordinary errors in later attachment or binding work also use that outcome. Those attachment/binding failures revoke all Session MCP credentials and attempt to stop the newly started engine. A failed or timed-out stop logs the cleanup failure, preserves ownership and the original error, and retires only a replaced adapter; unrelated Sessions on the current adapter survive. Inspect the known Session and receipt rather than inferring retry safety from that word alone.
+
+For an adapter that announces `session.started` before its start returns, acceptance also awaits that start’s durable event, using a per-thread commit signal and the five-second background publication budget. The same event-settlement hook ends the interim start owner and resolves the commit waiter: only an appended event confirms creation. A declined, abandoned or faulted announcement returns `indeterminate`; expiry does too. Failed-start cleanup settles any interim owner even if provider teardown fails, retaining the Session handle for inspection. Deferred announcements retain their existing acceptance and owner-fallback semantics. The contention, timeout, deferred-owner and failed-stop regressions live in `src-server/services/orchestration/__tests__/start-owner-publication-contention.test.ts`.
 
 **Code and evidence.** `OrchestrationService` composes receipt, session-state, launch-policy, and binding Adapters; orchestration routes and Station Control tools use the public Module. Receipt initialization, dispatch recording, accepted persistence, terminal persistence, and exact readback are total at this Interface: warning observation is best effort and cannot make `execute` reject. Evidence lives in `src-server/services/orchestration/__tests__/session-command-module.test.ts`, `orchestration-service.test.ts`, orchestration route tests, and Station Control tool tests. **Do not reintroduce:** exported callback bags, route-specific start sequencing, an untyped command string, a receipt fault that rejects `execute`, or an automatic retry of `indeterminate`.
 
@@ -3536,12 +3539,14 @@ they do not qualify native image insertion or real-provider image understanding.
 composes request publication, todo/ready to in_progress transitions, exact-session
 thread replies, and canonical completed-answer reads. Turn events and startup
 reconcile the existing agent-publish text append path; no new history body or
-storage worker is needed. An unavailable canonical completed-answer query defers
-that Task's startup publication, retaining blocked presence and the original
-request while other rooms recover. An authorized agent-request list read retries publication without
-restarting its provider. Other recovery errors still fail readiness.
-Browser records add optional timestamps, opaque actor
-identity and execution/thread correlation. Older records remain readable;
+storage worker is needed.
+An unavailable canonical answer remains visibly blocked and is logged with its
+Task, Session, and turn identity. Lifecycle reconciliation continues with other
+Sessions so that answer cannot prevent startup. An authorized agent-request list
+read retries publication without restarting its provider. Other recovery errors
+still fail readiness.
+Browser records add optional timestamps, opaque actor identity and
+execution/thread correlation. Older records remain readable;
 older closed DTO readers reject the additive fields. Full runs open in the dock. Idle, resumable room-bound Sessions are parked
 under the lifecycle lock at shutdown so replies retain their raw Session identity
 after restart; authority is revoked before cleanup and rechecked before a new
@@ -4516,6 +4521,13 @@ An offline message is a draft until transport may have started it. After that, t
 
 **Behavior.** The rules below are grouped by concern.
 
+After a request loses its reply, delivery lookups reporting either `received`
+or `queued` keep the automatic observation backoff active. A `queued` lookup
+leaves the browser's invoking row fenced; only a definitive not-received
+answer permits replay with the same key. A started answer retires the row.
+When its queue projection clears, it also removes stale automatic-retry notices
+while preserving unrelated interruption messages.
+
 - **States and outcomes.** The Module persists `pending → invoking` before transport. An explicit `not-invoked` outcome may return an intent to `pending` or `failed`; `deferred` restores it to `pending` without consuming an attempt and blocks that Session for the current flush; accepted transport becomes `accepted` with its exact provider turn id. A structured foreground indeterminate outcome, any transport throw or abort after invocation begins, or any post-effect persistence uncertainty is `may-have-started` evidence. `invoking`, `accepted`, and `may-have-started` are never replayed blindly and are never aged out or evicted; `invoking` and `accepted` block later work in the same session. A `may-have-started` row no longer blocks later rows of its session.
 - **Settling an `invoking` row.** The one way back from `invoking` is Station's own answer: `reconcile` takes an `invoking` row whose renderer is gone (its Web Lock is no longer held; on a platform without Web Locks, a row older than `OUTBOUND_ORPHAN_GRACE_MS`), asks the delivery lookup about its exact key, and applies the answer — `not-received` returns it to `pending` for replay with the SAME key, `started` removes it, `received` leaves it to be asked again with backoff, `indeterminate`/`expired`/`unknown` make it `may-have-started`. A failed lookup, or an answer naming another key, changes nothing. `check` is the user's version for one row and stops (`failed`) instead of resending when a `may-have-started` row proves never received.
 - **Composer and queue-drain sends.** A composer send's row follows Station's own answer (its envelope): a refusal removes it; may-have-started keeps it `may-have-started`; a busy-engine refusal keeps it as a held follow-up; anything else, including a non-Station response, releases its claim so `reconcile` settles it by the lookup at the next pass. A queue-drain send's row differs: a definitive refusal (Station's own 4xx that a retry would repeat) keeps it as a not-sent (`failed`) record, may-have-started keeps it `may-have-started`, and any other failure returns it to the queue as its held copy. A live row is hidden from projection (`liveInFlight`) while its own renderer waits on it, and so is a held copy. `beginLive` refuses a key whose row is on its way or possibly started (`OutboundRowInFlightError`), and neither the composer nor the queue drain sends it then; a re-send from the same renderer adopts that renderer's own late-landing `invoking` row instead. A refused queued follow-up's not-sent record carries the send's key, so the projection lists it once and its dismissal discards the durable copy.
@@ -4897,6 +4909,22 @@ Without a tenant evidence composition, hosted reads can retain the authorized Th
 A Task remains a durable work record before and after an engine runs. The [dispatcher](../../src-server/services/projects/task-dispatcher.ts) turns a dispatch intent into an execution attempt; [TaskGraph](../../src-server/services/projects/task-graph-service.ts) retains the Task, reservation, and resulting links. A dispatch receipt is not proof the Task succeeded.
 
 **Interface.** `TaskDispatcher.dispatch(taskId, intent)` is the canonical Task dispatch Interface and returns a total tagged `DispatchOutcome`. `TaskGraphService` owns durable graph reads and transitions; it does not expose dispatch as a second caller Interface. Independent [Task room agent requests](../design/task-room-agent-requests.md) use existing delegation and retain their own executions without replacing the Task's current-session association.
+
+**Inbox projection.** [Task Inbox projection](../../src-server/runtime/routes/task-inbox-projection.ts)
+batches discovery of primary Sessions, independent room requests and explicit
+work-chat links for `GET /api/tasks`. It prepares request-local relationship
+authority, repeats discovery after asynchronous preparation, then rechecks
+Task/Project incarnation and Conversation access before emitting optional
+`workChatConversationIds`. A failed continuation's unstarted lineage tail keeps
+the chat associated when Conversation open authorizes its exact predecessor;
+the tail must still have no start/configuration metadata. A persisted control
+row alone does not establish that the reserved provider Session started.
+Materialized Sessions retain independent Project and reader checks.
+The UI groups these chats under a single Task outcome
+without changing its lead Session. Direct Task association precedes delegated
+grouping; multiple direct owners leave the chat separate. Counts include actual
+running chats rather than the Task's recorded status. SDK mutations and HTTP
+data-change broadcasts invalidate Task lists when relationships change.
 
 **Read snapshots.** TaskGraph retains one parsed, validated document only when
 its serialized text contains at most 2,097,152 UTF-16 code units. Every read
@@ -6548,10 +6576,26 @@ the operator in person and the operator's own paired devices
 ([`isTerminalOperator`](../../src-server/security/coding-authority.ts)); hosted,
 account, member, agent and plugin admission is withheld. Engine sign-in, the
 Project terminal close and the process projections reach TerminalSessions; no
-other terminal service or listener remains.
+other terminal service or listener remains. An ACP engine's terminals are
+`command` sessions opened through
+[AcpSessionTerminals](../../src-server/services/acp/acp-session-terminals.ts)
+(pipes and an output cap, from
+[command-process.ts](../../src-server/services/terminal/command-process.ts)),
+on personal hosts only. `restart` keeps a session's id and starts a new
+journal segment.
 
-The [design boundary](../design/terminal.md#first-implementation-boundary-3994-part-a)
-separates this foundation from retention Settings and Ghostty. The
+The `terminalHistory*` [retention settings](../../src-server/services/terminal/terminal-retention.ts)
+are read before each open and usage read: history on or off, the journal
+directory (ended journals move there), maximum age and the per-terminal and
+total sizes; agent command sessions are retained in a separate 16-record pool
+that never expires a user shell. On start, a shell that ended only because its host went away
+reopens under the same id below a "restored after restart" divider; one the
+supervisor reattached, or that ended by itself, is not restored. Shell records
+carry a stable `ordinal`, and an `adopt` open answers with the binding's
+running shell, so concurrent opens of an empty binding share one. The
+[history routes](../../src-server/routes/projects/terminal-session-routes.ts)
+report usage per Project and clear ended terminals' history. The
+[design](../design/terminal.md#journal) owns the rules; Ghostty is separate. The
 [same-origin gateway](../../src-server/services/terminal/terminal-gateway.ts)
 mounts on the API listener through the Station Hono provider and redeems a
 single-use [ticket](../../src-server/services/terminal/terminal-tickets.ts)
@@ -6578,4 +6622,40 @@ its injected identity seam does not qualify live pairing or remote egress. The
 [real PTY suite](../../src-server/services/terminal/__tests__/terminal-sessions.process.test.ts)
 checks durable replay, scope/cwd refusals, service-level observer refusal,
 journal bounds and history migration. It does not qualify Windows, native
-clients, live remote access, or process survival across server restarts.
+clients, live remote access, or process survival across server restarts. The
+[retention suite](../../src-server/services/terminal/__tests__/terminal-retention.process.test.ts)
+covers restore, retention settings, ordinals and a two-client `adopt` race on a
+real loopback server.
+
+## TerminalView
+
+[TerminalView](../../packages/sdk/src/terminal-view/TerminalView.tsx) is the
+public `@kontourai/station-sdk/terminal-view` entry. It renders any
+[`TerminalViewSession`](../../packages/sdk/src/terminal-view/session.ts) and
+owns no transport. Its [controller](../../packages/sdk/src/terminal-view/controller.ts)
+keeps React out of the frame loop: input, visibility, the renderer and the
+screen-reader mirror live there, and React subscribes to a snapshot.
+
+The [engine](../../packages/sdk/src/terminal-view/engine/terminal-engine.ts)
+wraps the vendored libghostty-vt module (Ghostty v1.4.0,
+[built reproducibly](../../scripts/ghostty-vt/build-wasm.mjs)) inside a Web
+Worker. Only render-state rows marked dirty cross to the UI thread, named by
+stable row ids; the [host](../../packages/sdk/src/terminal-view/engine/engine-host.ts)
+holds one frame in flight until the UI acknowledges it and sends none while
+hidden. Replayed journal output updates the screen with the reply writer and
+bell detached. The [WebGL2 renderer](../../packages/sdk/src/terminal-view/render/webgl2-renderer.ts)
+draws instanced rectangles and atlas glyphs, survives context loss and
+releases its context while hidden; a [canvas 2D renderer](../../packages/sdk/src/terminal-view/render/canvas2d-renderer.ts)
+is the fallback. [Box drawing](../../packages/sdk/src/terminal-view/render/box-drawing.ts)
+is drawn at cell size rather than taken from a font.
+
+**Code and evidence.** The [ABI test](../../packages/sdk/src/__tests__/terminal-view/ghostty-vt-abi.test.ts)
+pins the revision and SHA-256 and checks every struct offset and enum value
+Station uses against the module's `ghostty_type_json()`. The
+[engine test](../../packages/sdk/src/__tests__/terminal-view/terminal-engine.test.ts)
+runs the real module headlessly: rows and styles, encoders, replies detached
+during replay, the mirror after cursor-addressed redraws, find, selection and
+OSC 8. The [boundary test](../../packages/sdk/src/__tests__/terminal-view/import-boundary.test.ts)
+keeps the Coding layout on the public entry. **Do not reintroduce:** a second
+emulator, terminal state in React render, replies written during replay, or a
+Coding import of terminal internals.

@@ -337,6 +337,7 @@ export function StartStationMenu({
   stations,
   selectedId,
   stationsUnavailable,
+  onRetry,
   onChoose,
   onClose,
 }: {
@@ -345,6 +346,7 @@ export function StartStationMenu({
   stations: ExecutionStation[];
   selectedId: string;
   stationsUnavailable: boolean;
+  onRetry?: () => void;
   onChoose: (station: ExecutionStation) => void;
   onClose: () => void;
 }) {
@@ -402,9 +404,14 @@ export function StartStationMenu({
         })}
       </div>
       {stationsUnavailable && (
-        <p className="start-menu__hint" role="status">
-          Some Stations could not be listed for this device.
-        </p>
+        <ErrorState
+          variant="compact"
+          title="Couldn’t list other Stations"
+          description="Check this device’s access and the host Station’s version."
+          action={
+            onRetry ? <Button onClick={onRetry}>Retry</Button> : undefined
+          }
+        />
       )}
     </ResponsiveDialogSurface>
   );
@@ -594,7 +601,16 @@ function StationScopedModelPicker(
                 </select>
               </label>
               {catalog.stationsUnavailable && (
-                <p role="status">Some Station choices could not be loaded.</p>
+                <ErrorState
+                  variant="compact"
+                  title="Couldn’t list other Stations"
+                  description="Check this device’s access and the host Station’s version."
+                  action={
+                    <Button onClick={() => void catalog.retryStations()}>
+                      Retry
+                    </Button>
+                  }
+                />
               )}
               {remote && (
                 <p className="session-model-picker__binding">
@@ -607,7 +623,10 @@ function StationScopedModelPicker(
           models={models}
           loading={remote ? catalog.loading : props.loading}
           providers={modelPickerProviders(models, props.modelConnections)}
-          currentProviderId={props.choice?.providerId}
+          currentProviderId={
+            props.choice?.providerId ??
+            (remote ? undefined : props.defaultModel?.providerId)
+          }
           currentModel={props.choice?.modelId}
           currentExecutionAgentId={props.choice?.executionAgentId}
           defaultModel={props.defaultModel?.id ?? undefined}

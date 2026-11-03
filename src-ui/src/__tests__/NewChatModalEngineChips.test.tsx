@@ -273,7 +273,9 @@ describe('NewChatModal engine chips', () => {
     );
 
     expect(await screen.findByRole('dialog', { name: 'Model' })).toBeTruthy();
-    expect(await screen.findByPlaceholderText('Search models…')).toBeTruthy();
+    expect(
+      await screen.findByRole('searchbox', { name: 'Search models' }),
+    ).toBeTruthy();
     expect(
       screen
         .getByRole('button', { name: 'All models' })

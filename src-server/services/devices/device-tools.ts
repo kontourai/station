@@ -947,6 +947,15 @@ export function createDeviceToolRunner(
   };
 }
 
+/** The action was refused before it could reach the device. */
+export function deviceActionRefused(error: unknown): boolean {
+  return (
+    error instanceof DeviceToolsAdmissionError ||
+    error instanceof DeviceHostBusyError ||
+    (error instanceof DeviceToolsError && error.code === 'invalid-request')
+  );
+}
+
 export interface DeviceToolsTarget {
   /**
    * The device host (#1973). A service runs ONE host's `xcrun`/`adb`

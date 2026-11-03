@@ -76,6 +76,7 @@ import { AboutSection } from './settings/AboutSection';
 import { AccountSharingSection } from './settings/AccountSharingSection';
 import { AgentDefaultsSection } from './settings/AgentDefaultsSection';
 import { AnswerSharesSection } from './settings/AnswerSharesSection';
+import { BrowserDevicesSection } from './settings/BrowserDevicesSection';
 import { DeviceHostsSection } from './settings/DeviceHostsSection';
 import { downloadDiagnosticsBundle } from './settings/diagnostics-download';
 import { EnvironmentStatus } from './settings/EnvironmentStatus';
@@ -118,6 +119,7 @@ import {
 } from './settings/settings-pages';
 import { buildStationResetPlan } from './settings/station-reset';
 import { TelemetryDelivery } from './settings/TelemetryDelivery';
+import { TerminalHistoryUsage } from './settings/TerminalHistoryUsage';
 import {
   buildSettingsExportPayload,
   getSettingsValidation,
@@ -1243,6 +1245,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                 {sectionVisible('plugin-visibility') && (
                   <PluginVisibilitySection />
                 )}
+                {sectionVisible('browser-devices') && <BrowserDevicesSection />}
                 {/* #1973: SSH device hosts. Operator-only (the same gate as
               plugin visibility); the panel itself is lazy-loaded. */}
                 {sectionVisible('device-hosts') && <DeviceHostsSection />}
@@ -1265,6 +1268,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                       containerScope="station"
                       projectOverride={projectOverride}
                     />
+                    <TerminalHistoryUsage />
                     {/* Behind the workload-budget-settings Feature Preview;
                   renders nothing while it is off. */}
                     <WorkloadBudgetSettings />
