@@ -40,6 +40,7 @@ import { join } from 'node:path';
 import type { IEmbeddingProvider } from '@kontourai/station-contracts/knowledge-index';
 import type { KnowledgeStoreRoot } from '@kontourai/station-contracts/knowledge-store';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { FileStorageAdapter } from '../../domain/file-storage-adapter.js';
 import { KnowledgeStoreProvider } from '../../knowledge-store/knowledge-store-provider.js';
 import { knowledgeStoreRootPathForNamespace } from '../../knowledge-store/namespace-compat.js';
 import { knowledgeMigrationOps } from '../../telemetry/metrics.js';
@@ -361,6 +362,56 @@ describe('migratePreIndexKnowledge', () => {
     ).toEqual([]);
     expect(embed).not.toHaveBeenCalled();
   });
+
+  test.each([
+    ['before record writes', 1, 0],
+    ['before index rebuild', 2, 2],
+  ])(
+    'migration refuses a private parent registered %s',
+    async (_phase, leaseNumber, expectedRecords) => {
+      const fixture = seedPreIndexFixture(homeDir, { vectorDim: 4 });
+      const actualStore = new KnowledgeStoreProvider(
+        new FileStorageAdapter(homeDir),
+      );
+      const destination = knowledgeStoreRootPathForNamespace(
+        homeDir,
+        fixture.projectSlug,
+        fixture.namespace,
+      );
+      const lease = actualStore.withRootRevision!;
+      let calls = 0;
+      vi.spyOn(actualStore, 'withRootRevision').mockImplementation(
+        async (root, operation) => {
+          calls += 1;
+          if (calls === leaseNumber) {
+            await actualStore.createRoot({
+              scope: { kind: 'personal' },
+              readPolicy: { kind: 'author-private', ownerId: 'human:other' },
+              adapterId: 'kit-default-store',
+              storeRoot: join(destination, '..'),
+              displayName: 'Private parent',
+            });
+          }
+          return lease(root, operation);
+        },
+      );
+      const embedder = new StubEmbedder(4);
+      const embed = vi.spyOn(embedder, 'embed');
+      const result = await migratePreIndexKnowledge(
+        { dataDir: homeDir, store: actualStore, indexProvider, embedder },
+        { projectSlug: fixture.projectSlug },
+      );
+      expect(calls).toBe(leaseNumber);
+      expect(result.namespaceResults[0]?.status).toBe('error');
+      expect(embed).not.toHaveBeenCalled();
+      const root = (await actualStore.listRoots()).find(
+        (item) => item.storeRoot === destination,
+      )!;
+      expect(
+        await (await actualStore.adapterFor(root.id)).listByType('raw'),
+      ).toHaveLength(expectedRecords);
+    },
+  );
 
   test('migration refuses a destination nested inside a private root', async () => {
     const fixture = seedPreIndexFixture(homeDir, { vectorDim: 4 });
