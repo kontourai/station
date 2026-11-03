@@ -95,18 +95,18 @@ export function BrowserDevicesSection() {
           </>
         )}
       </div>
-      {requestScope ? (
-        <div {...settingsRow('device-setup')} tabIndex={-1}>
-          <p className="settings__field-hint">
-            Device hub, sharing with Projects, and agent device access.
-          </p>
+      <div {...settingsRow('device-setup')} tabIndex={-1}>
+        <p className="settings__field-hint">
+          Device hub, sharing with Projects, and agent device access.
+        </p>
+        {requestScope ? (
           <DeviceSetupEntry
             requestScope={requestScope}
             label="Open device setup"
             variant="secondary"
           />
-        </div>
-      ) : null}
+        ) : null}
+      </div>
     </SettingsSection>
   );
 }

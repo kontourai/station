@@ -263,6 +263,8 @@ const PUBLISHED_SCOPE_BY_ID: Readonly<Record<string, string>> = {
   'default-workspace-isolation': 'station',
   // #4389: where chats without a project run.
   'no-project-chat-folder': 'station',
+  'browser-project-settings': 'station',
+  'device-setup': 'station',
   'device-hosts': 'station',
   'default-approval-mode': 'station',
   'registry-url': 'station',
