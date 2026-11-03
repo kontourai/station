@@ -454,3 +454,52 @@ test('appends a fenced live-CWD selection to the real composer draft without dis
   expect(session.cwd).toHaveBeenCalledTimes(1);
   expect(session.write).not.toHaveBeenCalled();
 });
+
+// Output goes from the store to the view's emulator, never through React
+// state, and a session's state change renders only the panel showing it.
+test('a busy terminal re-renders neither itself nor a panel of another session', async () => {
+  const other = '0f8f0d5e-8a8c-4c71-9b52-3c0f4b3cbd7e';
+  render(
+    <NavigationProvider>
+      <ActiveChatsProvider>
+        <TerminalPanel
+          projectSlug="project-a"
+          workingDir="/workspace"
+          target={target}
+          terminalId={terminalId}
+        />
+        <TerminalPanel
+          projectSlug="project-a"
+          workingDir="/workspace"
+          target={target}
+          terminalId={other}
+        />
+      </ActiveChatsProvider>
+    </NavigationProvider>,
+  );
+  await waitFor(() => expect(FakeSession.instances).toHaveLength(2));
+  const [busy, quiet] = FakeSession.instances as [
+    InstanceType<typeof FakeSession>,
+    InstanceType<typeof FakeSession>,
+  ];
+  act(() => {
+    busy.emit({ state: 'ready', status: 'running' });
+    quiet.emit({ state: 'ready', status: 'running' });
+  });
+  const settled = view.props.length;
+  act(() => {
+    for (let sequence = 1; sequence <= 100; sequence += 1)
+      busy.output('x', sequence);
+  });
+  expect(view.output.filter(([text]) => text === 'x')).toHaveLength(100);
+  expect(view.props.length).toBe(settled);
+
+  act(() => busy.emit({ status: 'exited' }));
+  const rendered = view.props.slice(settled) as ViewProps[];
+  expect(rendered.length).toBeGreaterThan(0);
+  // Every render that followed is the busy session's panel: typing into it
+  // reaches that session and never the quiet one.
+  for (const props of rendered)
+    props.session?.write(new TextEncoder().encode('?'));
+  expect(quiet.write).not.toHaveBeenCalled();
+});
