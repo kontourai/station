@@ -132,6 +132,7 @@ describe('knowledge-index routes', () => {
   }
 
   describe('POST /index/rebuild', () => {
+    const makeAdditionalStoreDir = trackTempDirs();
     test('a registration swapped at the revision boundary never reaches the embedder', async () => {
       const persistence = new FileStorageAdapter(dataDir);
       const actualStore = new KnowledgeStoreProvider(persistence);
@@ -186,7 +187,7 @@ describe('knowledge-index routes', () => {
       const second = await store.createRoot({
         scope: { kind: 'personal' },
         adapterId: 'kit-default-store',
-        storeRoot: mkdtempSync(join(dataDir, 'second-')),
+        storeRoot: makeAdditionalStoreDir('knowledge-index-second-'),
         displayName: 'Second',
       });
       for (const [root, body] of [
@@ -330,7 +331,7 @@ describe('knowledge-index routes', () => {
         storeRoot: storeDir,
         displayName: 'Shared',
       });
-      const privateDir = mkdtempSync(join(dataDir, 'private-'));
+      const privateDir = makeAdditionalStoreDir('knowledge-index-private-');
       const privateRoot = await actualStore.createRoot({
         scope: { kind: 'personal' },
         readPolicy: { kind: 'author-private', ownerId: 'human:other' },
