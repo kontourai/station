@@ -261,6 +261,13 @@ describe('configureRuntimeRoutes hosted station-control MCP composition', () => 
       storeRoot: join(homeDir, 'private'),
       displayName: 'Private',
     });
+    const hostedRoot = await store.createRoot({
+      scope: { kind: 'personal' },
+      readPolicy: { kind: 'author-private', ownerId: 'tenant:alpha' },
+      adapterId: 'kit-default-store',
+      storeRoot: join(homeDir, 'hosted-private'),
+      displayName: 'Hosted private',
+    });
     const security = {
       devicePairing: { environmentId: () => 'test-environment' },
       authorizeCredential: () => true,
@@ -314,11 +321,11 @@ describe('configureRuntimeRoutes hosted station-control MCP composition', () => 
     expect(hostedList.status).toBe(200);
     expect(
       ((await hostedList.json()) as { data: Array<{ id: string }> }).data.some(
-        (item) => item.id === root.id,
+        (item) => item.id === hostedRoot.id,
       ),
     ).toBe(false);
     const read = await hosted.request(
-      `/api/knowledge/roots/${root.id}/records?type=raw`,
+      `/api/knowledge/roots/${hostedRoot.id}/records?type=raw`,
       { headers: hostedHeaders('alpha') },
       loopbackEnv(),
     );
