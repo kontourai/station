@@ -1602,7 +1602,9 @@
 
     "src-server/services/orchestration/__tests__/create-request-claims.test.ts",
 
-    "src-server/services/orchestration/__tests__/create-request-claims.process.test.ts"
+    "src-server/services/orchestration/__tests__/create-request-claims.process.test.ts",
+
+    "src-server/services/orchestration/__tests__/ownership-cascade-gaps.test.ts"
   ],
 
   "checks": [
