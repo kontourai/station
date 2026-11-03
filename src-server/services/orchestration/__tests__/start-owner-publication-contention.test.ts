@@ -254,3 +254,47 @@ test.each(['transient', 'deadline'] as const)(
     }
   },
 );
+
+test('a publication-timeout smoke retains its failed-stop handle without a durable start', async () => {
+  const store = new EventStore(
+    join(makeTempDir('start-smoke-retained-'), 'events.sqlite'),
+  );
+  const adapter = new EchoingAdapter();
+  vi.spyOn(adapter, 'stopSession').mockRejectedValue(new Error('stop failed'));
+  const append = store.appendEvent.bind(store);
+  vi.spyOn(store, 'appendEvent').mockImplementation((event, ...rest) => {
+    if (event.method === 'session.started')
+      throw Object.assign(new Error('database is locked'), {
+        code: 'SQLITE_BUSY',
+      });
+    return append(event, ...rest);
+  });
+  const sessions = new OrchestrationService({
+    adapterRegistry: createGateTestRegistry(adapter),
+    eventBus: new EventBus(),
+    eventStore: store,
+    logger: { debug: vi.fn(), warn: vi.fn() },
+  });
+  sessions.initialize();
+  try {
+    const result = await sessions.runConnectionSmoke({
+      connectionId: 'claude',
+      provider: 'claude',
+      cwd: process.cwd(),
+      timeoutMs: 500,
+    });
+    expect(result).toMatchObject({ ok: false, reasonCode: 'cleanup-failed' });
+    expect(adapter.sessions.size).toBe(1);
+    const retained = store.readSessions();
+    expect(retained).toHaveLength(1);
+    expect(
+      store.latestEventByMethod(retained[0]!.threadId, 'session.started'),
+    ).toBeUndefined();
+    expect(
+      sessions.sessionRecordedOwnerId(retained[0]!.threadId),
+    ).toBeUndefined();
+  } finally {
+    await sessions.shutdown();
+    store.close();
+  }
+});
