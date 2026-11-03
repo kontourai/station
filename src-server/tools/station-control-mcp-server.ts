@@ -273,15 +273,21 @@ export class StationControlToolRegistry {
     description: string,
     shape: Shape,
     callback: ToolCallback<z.ZodObject<Shape>>,
+    options?: { replay: 'safe' | 'unsafe' },
   ) {
     if (!this.offers(name)) return;
     this.catalog?.(name, description, shape);
+    const metadata = stationControlToolMetadata(name);
     return this.disclose(
       name,
       this.server.registerTool(
         name,
         {
-          ...stationControlToolMetadata(name),
+          ...metadata,
+          _meta: {
+            ...metadata._meta,
+            ...(options ? { 'ai.kontour/durable-replay': options.replay } : {}),
+          },
           description,
           inputSchema: z.object(shape),
         },

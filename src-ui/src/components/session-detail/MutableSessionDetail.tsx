@@ -48,6 +48,7 @@ import { SessionDetailAttention } from './SessionDetailAttention';
 import { SessionDetailDiagnostics } from './SessionDetailDiagnostics';
 import { SessionDetailErrors } from './SessionDetailErrors';
 import { SessionDetailHeader } from './SessionDetailHeader';
+import { SessionReplyComposer } from './SessionReplyComposer';
 import { SessionTranscript } from './SessionTranscript';
 import {
   isPeerDelegationRecord,
@@ -146,7 +147,6 @@ export function MutableSessionDetail({
     acknowledgeFailurePending,
     acknowledgeFailureError,
     copySessionId,
-    canSend,
     linkedFlowRun,
     builderRun,
     workflowEntries,
@@ -676,43 +676,22 @@ export function MutableSessionDetail({
       </div>
 
       {!hideGenericCompose && !isPeerRecord && (
-        <>
-          <div className="sessions-detail__compose">
-            <textarea
-              className="sessions-detail__input"
-              placeholder={
-                isDelegated
-                  ? 'Add a follow-up for this task…'
-                  : `Reply to ${agentLabel}…`
-              }
-              aria-label={
-                isDelegated
-                  ? 'Continue delegated task'
-                  : 'Send input to session'
-              }
-              aria-describedby={
-                isStreaming ? 'session-compose-turn-note' : undefined
-              }
-              value={input}
-              disabled={isStreaming}
-              onChange={(e) => setInput(e.target.value)}
-            />
-            <Button
-              variant="primary"
-              disabled={!canSend}
-              onClick={() => sendTurn.mutate({ text: input })}
-            >
-              {sendTurnPending ? 'Sending…' : 'Send'}
-            </Button>
-          </div>
-          {/* Honest limit: there is no mid-turn steering here, and this
-              composer is disabled while a turn runs. Said only then. */}
-          {isStreaming && (
-            <p id="session-compose-turn-note" className="sessions-detail__note">
-              You can reply when the current turn finishes.
-            </p>
-          )}
-        </>
+        <SessionReplyComposer
+          input={input}
+          onInputChange={setInput}
+          onSend={() => sendTurn.mutate({ text: input })}
+          busy={isStreaming}
+          pending={sendTurnPending}
+          disabled={sessionUnanswerable}
+          label={
+            isDelegated ? 'Continue delegated task' : 'Send input to session'
+          }
+          placeholder={
+            isDelegated
+              ? 'Add a follow-up for this task…'
+              : `Reply to ${agentLabel}…`
+          }
+        />
       )}
 
       <ConfirmModal

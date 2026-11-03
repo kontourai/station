@@ -33,6 +33,7 @@ import {
   type CdpTransport,
   LOCAL_BROWSER_HOST_ID,
 } from './browser-host.js';
+import { readBrowserViewportOffset } from './browser-pick.js';
 import {
   ABOUT_BLANK,
   type BrowserUrlRejection,
@@ -401,7 +402,7 @@ export function isValidBrowserZoom(value: unknown): value is number {
   );
 }
 
-function zoomedViewport(
+export function browserEffectiveViewport(
   viewport: BrowserViewport,
   factor: number,
 ): BrowserViewport {
@@ -663,6 +664,42 @@ export class BrowserSessionRegistry {
     return shot;
   }
 
+  /** Capture an annotation image with its stable viewport origin. */
+  async captureAnnotationScreenshot(browserSessionId: string) {
+    const previous = this.inflightShots.get(browserSessionId);
+    const shot = (async () => {
+      if (previous) await previous.catch(() => {});
+      const live = this.liveTarget(browserSessionId);
+      if (!live)
+        throw new BrowserSessionError(
+          'not-live',
+          'The browser is not running.',
+        );
+      const scroll = await readBrowserViewportOffset(live);
+      const image = await this.captureScreenshotOnce(browserSessionId);
+      const after = await readBrowserViewportOffset(live);
+      const target = this.liveTarget(browserSessionId);
+      if (
+        after.x !== scroll.x ||
+        after.y !== scroll.y ||
+        !target ||
+        target.generation !== live.generation ||
+        target.target.targetId !== live.target.targetId ||
+        target.target.cdpSessionId !== live.target.cdpSessionId
+      )
+        throw new BrowserSessionError(
+          'stale-generation',
+          'The page changed during annotation capture.',
+        );
+      return { ...image, scroll };
+    })().finally(() => {
+      if (this.inflightShots.get(browserSessionId) === shot)
+        this.inflightShots.delete(browserSessionId);
+    });
+    this.inflightShots.set(browserSessionId, shot);
+    return shot;
+  }
+
   private async captureScreenshotOnce(
     browserSessionId: string,
   ): Promise<{ mimeType: 'image/png' | 'image/jpeg'; data: Buffer }> {
@@ -852,13 +889,19 @@ export class BrowserSessionRegistry {
         ? (record.zoomFactor ?? 1)
         : 1;
     try {
-      await applyViewport(cdp, session, zoomedViewport(viewport, zoom));
+      await applyViewport(
+        cdp,
+        session,
+        browserEffectiveViewport(viewport, zoom),
+      );
     } catch (error) {
       // All or nothing: a half-applied emulation (new size, old touch mode)
       // must not outlive the refusal. Best effort; the original error wins.
-      await applyViewport(cdp, session, zoomedViewport(previous, zoom)).catch(
-        () => {},
-      );
+      await applyViewport(
+        cdp,
+        session,
+        browserEffectiveViewport(previous, zoom),
+      ).catch(() => {});
       throw error;
     }
     this.requireLive(browserSessionId, record.generation);
@@ -896,12 +939,15 @@ export class BrowserSessionRegistry {
     if (!live)
       throw new BrowserSessionError('not-live', 'The browser is not running.');
     const cdp = live.host.cdp();
-    const previous = zoomedViewport(record.viewport, record.zoomFactor ?? 1);
+    const previous = browserEffectiveViewport(
+      record.viewport,
+      record.zoomFactor ?? 1,
+    );
     try {
       await applyViewport(
         cdp,
         live.target.cdpSessionId,
-        zoomedViewport(record.viewport, factor),
+        browserEffectiveViewport(record.viewport, factor),
         options.guard,
       );
       this.requireLive(browserSessionId, live.generation);
@@ -1472,7 +1518,10 @@ export class BrowserSessionRegistry {
           this.options.stationHome,
           record.profileRef,
         ),
-        viewport: zoomedViewport(record.viewport, record.zoomFactor ?? 1),
+        viewport: browserEffectiveViewport(
+          record.viewport,
+          record.zoomFactor ?? 1,
+        ),
       });
       if (record.state === 'closed') {
         // Closed while opening: nothing may run in a closed session.

@@ -122,7 +122,8 @@ export const HIT_TARGET_AUDIT = `(() => {
     const name = el.getAttribute('aria-label') || (el.textContent || '').trim().slice(0, 30) || el.tagName;
     // What a press at the control's centre lands on, when that is on screen.
     const inView = cx >= 0 && cy >= 0 && cx < innerWidth && cy < innerHeight;
-    const hit = inView ? document.elementFromPoint(cx, cy) : null;
+    const stack = inView ? document.elementsFromPoint(cx, cy) : [];
+    const hit = stack.some((node) => node === el || el.contains(node)) ? stack[0] : null;
     // Wholly beside the viewport: an off-canvas control (a skip link at
     // left:-9999px until focused), not one a clip swallowed on screen.
     const offCanvas = r.right <= 0 || r.left >= innerWidth;

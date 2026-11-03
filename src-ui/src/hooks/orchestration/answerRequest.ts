@@ -2,6 +2,7 @@ import {
   inspectAttentionRequest,
   resolveOrchestrationRequest,
 } from '@kontourai/station-sdk';
+import type { ApiRequestScope } from '@kontourai/station-sdk/client';
 import {
   ChatHttpError,
   StationRequestTimeoutError,
@@ -122,10 +123,16 @@ export function forgetApprovalAnswer(threadId: string, requestId: string) {
 
 export async function inspectApprovalAnswer(
   apiBase: string,
-  reference: { threadId: string; requestId: string; requestEventId: string },
+  reference: {
+    threadId: string;
+    requestId: string;
+    requestEventId: string;
+    requestScope?: ApiRequestScope;
+  },
 ): Promise<'pending' | 'already-settled'> {
   const inspection = await inspectAttentionRequest(apiBase, reference, {
     timeoutMs: 5_000,
+    ...(reference.requestScope ? { requestScope: reference.requestScope } : {}),
   });
   const key = answerKey(apiBase, reference);
   if (inspection.state === 'resolved') {
@@ -172,6 +179,7 @@ export function answerOrchestrationRequest(
     requestEventId?: string;
     decision: 'accept' | 'acceptForSession' | 'decline';
     sessionGrantScope?: 'server';
+    requestScope?: ApiRequestScope;
   },
 ): Promise<OrchestrationAnswerOutcome> {
   const key = answerKey(apiBase, request);
@@ -257,12 +265,14 @@ async function sendAnswer(
     decision: 'accept' | 'acceptForSession' | 'decline';
     /** With `acceptForSession`: widen the grant to the Station browser server. */
     sessionGrantScope?: 'server';
+    requestScope?: ApiRequestScope;
   },
 ): Promise<OrchestrationAnswerOutcome> {
   const viewedContentDigest = viewedContentDigestFor(request);
   try {
     await resolveOrchestrationRequest({
       apiBase,
+      ...(request.requestScope ? { requestScope: request.requestScope } : {}),
       ...(viewedContentDigest ? { viewedContentDigest } : {}),
       threadId: request.threadId,
       requestId: request.requestId,
@@ -299,6 +309,7 @@ async function sendAnswer(
           threadId: request.threadId,
           requestId: request.requestId,
           requestEventId: request.requestEventId,
+          requestScope: request.requestScope,
         });
       } catch {
         /* Observation failure cannot settle or replay the decision. */

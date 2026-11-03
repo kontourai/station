@@ -10,6 +10,7 @@ import {
 } from '../../contexts/ApiBaseContext';
 import { useResolvedThemeMode } from '../../hooks/useResolvedThemeMode';
 import { SkeletonBlock } from '../state';
+import { useChatRequestTarget } from './ChatRequestContext';
 import { HtmlReply } from './HtmlReply';
 
 export function PublishedHtmlReply({
@@ -17,8 +18,11 @@ export function PublishedHtmlReply({
 }: {
   reference: HtmlReplyReference;
 }) {
-  const { apiBase } = useApiBase();
-  const authority = useHostRequestAuthorityScope();
+  const host = useApiBase();
+  const hostAuthority = useHostRequestAuthorityScope();
+  const target = useChatRequestTarget();
+  const apiBase = target?.apiBase ?? host.apiBase;
+  const authority = target?.requestScope ?? hostAuthority;
   const theme = useResolvedThemeMode();
   const query = useQuery({
     queryKey: [

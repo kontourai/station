@@ -1,6 +1,9 @@
 # Verified noncredential prose matches at exact historical locations.
 # The second match repeated the first in its explanatory comment.
 # Neither entry exempts a whole file, commit, or future match.
+# Synthetic redaction-test value, now assembled at runtime; this pins its
+# original historical location only.
+bd378e30b91d1abdf916b0dedbbe908b4d33e213:src-server/services/projects/__tests__/task-device-capture.test.ts:generic-api-key:209
 c48f31f8ce965ee706327a33ffba6cc69638cb87:packages/cli/src/commands/delegate.ts:generic-api-key:1330
 6036d762eee2f8adec304242c93d24f215616a40:.gitleaksignore:generic-api-key:1
 d23831f8a93620c2266ba9851043a256eaf7f17a:packages/cli/src/commands/delegate.ts:generic-api-key:1034
@@ -137,4 +140,11 @@ c8c2b8917321681700ff0e07c948ed0c5b2ab407:src-server/providers/__tests__/codex-ad
 5ab772af8a605bc18bb7adc0de23a1c00ced0ebc:src-server/services/chat-apps/__tests__/chat-app-core.test.ts:discord-client-id:168
 5ab772af8a605bc18bb7adc0de23a1c00ced0ebc:src-server/services/chat-apps/__tests__/chat-app-core.test.ts:discord-client-id:186
 5ab772af8a605bc18bb7adc0de23a1c00ced0ebc:src-server/services/chat-apps/__tests__/chat-app-core.test.ts:discord-client-id:190
+
+# #4470: synthetic pairing-credential test fixture (it base64-decodes to
+# 'BootstrapSecret1234567890abcdefgh'); the file now builds it at runtime.
 84dddacc0a10c4d9a5222ce5104a0f0fb7c63ecd:packages/shared/src/__tests__/triage-context.test.ts:generic-api-key:43
+
+# #4473: Brian approved this exact historical synthetic-fixture fingerprint on 2026-11-02.
+# Mocked peer bearer, not an issued credential; future same-path findings remain scanned.
+82c1480f6c4aebad1b13d1a338f8f3ab29021639:src-server/routes/environments/__tests__/peer-chat-routes.test.ts:generic-api-key:13
