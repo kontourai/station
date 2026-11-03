@@ -822,6 +822,8 @@ test("a script's earlier ended runs do not pile up: only its newest run has a ta
     script('66666666-6666-4666-8666-666666666666', 3, 0),
   ];
   renderPane([]);
-  expect(await screen.findByRole('tab', { name: 'check, Exit 0' })).toBeTruthy();
+  expect(
+    await screen.findByRole('tab', { name: 'check, Exit 0' }),
+  ).toBeTruthy();
   expect(screen.queryByRole('tab', { name: 'check, Exit 3' })).toBeNull();
 });
