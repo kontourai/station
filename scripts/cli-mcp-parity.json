@@ -1602,6 +1602,14 @@
       "exempt": "agent-self",
       "reason": "Resolves as the caller session."
     },
+    "terminal_read": {
+      "exempt": "agent-self",
+      "reason": "Reads the caller's own terminal runs in its own conversation."
+    },
+    "terminal_run": {
+      "exempt": "agent-proposal",
+      "reason": "Agent asks a person to run one command; the person approves each run in the chat, and runs commands directly in the terminal."
+    },
     "track_skill_run": {
       "exempt": "agent-self",
       "reason": "Records the calling agent's own use of a skill."

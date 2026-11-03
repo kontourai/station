@@ -29,6 +29,7 @@ import {
 import {
   readPackageScripts,
   type TerminalCommandProgram,
+  TerminalProgramUnavailable,
 } from './terminal-command-programs.js';
 import {
   resolveTerminalJournalOptions,
@@ -171,7 +172,10 @@ type SessionJournal = Pick<
 
 export class TerminalSessionRefusal extends Error {}
 
-/** A command session's program could not be resolved; the message says why. */
+/**
+ * A command session's program cannot run, with an authored reason: its
+ * directory changed, or `TerminalProgramUnavailable`'s.
+ */
 export class TerminalCommandUnavailable extends TerminalSessionRefusal {}
 
 interface TerminalSessionAuthority<Principal> {
@@ -651,10 +655,10 @@ export class TerminalSessions<Principal> {
         cwd,
       );
     } catch (error) {
-      if (error instanceof TerminalSessionRefusal) throw error;
-      throw new TerminalCommandUnavailable(
-        error instanceof Error ? error.message : String(error),
-      );
+      // Only an authored reason is passed on; anything else stays a failure.
+      if (error instanceof TerminalProgramUnavailable)
+        throw new TerminalCommandUnavailable(error.message);
+      throw error;
     }
   }
 

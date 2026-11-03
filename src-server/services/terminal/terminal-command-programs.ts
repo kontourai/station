@@ -8,6 +8,13 @@ import { readFile, stat } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { ShellLaunch } from './shell-host.js';
 
+/**
+ * A program that cannot be resolved, for a reason the caller may be told.
+ * Every message is authored here; the only interpolations are the requested
+ * script name and the package manager's name.
+ */
+export class TerminalProgramUnavailable extends Error {}
+
 export type TerminalCommandProgram =
   | { kind: 'script'; name: string }
   | { kind: 'run'; command: string };
@@ -52,8 +59,13 @@ async function readPackageJson(
     return null;
   }
   if (size > MAX_PACKAGE_JSON_BYTES)
-    throw new Error('package.json is too large to read');
-  const parsed: unknown = JSON.parse(await readFile(path, 'utf8'));
+    throw new TerminalProgramUnavailable('package.json is too large to read');
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(await readFile(path, 'utf8'));
+  } catch {
+    throw new TerminalProgramUnavailable('package.json is not valid JSON');
+  }
   return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
     ? (parsed as Record<string, unknown>)
     : null;
@@ -133,8 +145,11 @@ export async function resolveTerminalCommandLaunch(
   }
   const { packageManager, scripts } = await readPackageScripts(cwd);
   if (!scripts.some((script) => script.name === program.name))
-    throw new Error(`No package script named "${program.name}"`);
+    throw new TerminalProgramUnavailable(
+      `No package script named "${program.name}"`,
+    );
   const file = await deps.findBinary(packageManager);
-  if (!file) throw new Error(`${packageManager} is not installed`);
+  if (!file)
+    throw new TerminalProgramUnavailable(`${packageManager} is not installed`);
   return { file, args: ['run', program.name], env };
 }
