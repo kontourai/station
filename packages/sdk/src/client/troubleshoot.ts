@@ -3,9 +3,9 @@ import {
   type TroubleshootPrepareRequest,
   type TroubleshootPrepareResponse,
 } from '@kontourai/station-contracts/troubleshoot';
-import { apiErrorMessage } from './api-error-message.js';
+import { envelopeError } from './api-error-message.js';
 import { hasCapability } from './capability.js';
-import { mutateJson, StationHttpError } from './http.js';
+import { mutateJson } from './http.js';
 import { readPublicStationCapabilities } from './publicStationCapabilities.js';
 
 /**
@@ -30,16 +30,13 @@ export async function prepareTroubleshoot(
     { timeoutMs: 30_000 },
     request,
   );
-  const body = (await response.json().catch(() => ({}))) as
-    | TroubleshootPrepareResponse
-    | { success?: false; error?: unknown };
+  const body = (await response.json().catch(() => ({}))) as unknown;
   if (!response.ok)
-    throw new StationHttpError(
-      response.status,
-      apiErrorMessage(
-        body as { error?: unknown },
-        'Troubleshooting could not be prepared.',
-      ),
+    // Keeps the route's refusal `code` (for example `route-too-long`).
+    throw envelopeError(
+      response,
+      body,
+      'Troubleshooting could not be prepared.',
     );
   return body as TroubleshootPrepareResponse;
 }

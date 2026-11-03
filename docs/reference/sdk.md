@@ -4791,7 +4791,7 @@ reads the host's public handshake the same way for `troubleshootPrepare`:
 `prepareTroubleshoot(apiBase, request?)` and `usePrepareTroubleshootMutation()`
 send `POST /api/diagnostics/troubleshoot/prepare` and return its
 `TroubleshootPrepareResponse` (`@kontourai/station-contracts/troubleshoot`);
-a non-ok status throws a `StationHttpError` carrying the route's message. See
+a non-ok status throws a `StationHttpError` built by `envelopeError`, so it keeps the route's status, message and refusal `code`. See
 [troubleshoot with an agent](../design/troubleshoot-in-app.md).
 `PluginCollectionHttpError` is built the same way: it keeps the envelope's
 `code` on the error and on its `envelope`, and keeps the refusal's `details`
