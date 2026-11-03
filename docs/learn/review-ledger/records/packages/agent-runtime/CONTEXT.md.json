@@ -160,7 +160,11 @@
 
     "packages/agent-runtime/src/turn-retention.ts",
 
-    "packages/agent-runtime/src/turn-effects.ts"
+    "packages/agent-runtime/src/turn-effects.ts",
+
+    "packages/agent-runtime/src/turn-references.ts",
+
+    "packages/agent-runtime/src/__tests__/turn-retention.test.ts"
   ],
 
   "checks": []
