@@ -32,10 +32,11 @@ test.each(['delayed events', 'confirmed configuration'])(
         undelivered: [],
       },
     };
+    const startSession = adapter.startSession.bind(adapter);
+    const start = vi.spyOn(adapter, 'startSession');
     if (ordering === 'confirmed configuration') {
-      const start = adapter.startSession.bind(adapter);
-      vi.spyOn(adapter, 'startSession').mockImplementation(async (input) => {
-        const session = await start(input);
+      start.mockImplementation(async (input) => {
+        const session = await startSession(input);
         adapter.events.push({
           eventId: 'adapter-configured',
           provider: adapter.provider,
@@ -87,6 +88,9 @@ test.each(['delayed events', 'confirmed configuration'])(
           capabilityDelivery,
         });
       }
+      if (ordering === 'delayed events') {
+        expect(store.findSessionOwnerUserId('owned-start')).toBeUndefined();
+      }
       const command = {
         type: 'sendTurn' as const,
         input: {
@@ -101,7 +105,25 @@ test.each(['delayed events', 'confirmed configuration'])(
       expect(send).not.toHaveBeenCalled();
       await service.dispatchWithReceipt(command, { userId: 'owner' });
       expect(send).toHaveBeenCalledTimes(1);
-      expect(store.findSessionOwnerUserId('owned-start')).toBe('owner');
+      if (ordering === 'delayed events') {
+        expect(store.findSessionOwnerUserId('owned-start')).toBeUndefined();
+        const input = start.mock.calls[0]?.[0];
+        if (!input) throw new Error('Expected the prepared adapter start');
+        adapter.events.push({
+          eventId: 'adapter-started',
+          provider: adapter.provider,
+          threadId: input.threadId,
+          sessionId: input.threadId,
+          method: 'session.started',
+          createdAt: new Date().toISOString(),
+          metadata: input.metadata,
+        });
+        await vi.waitFor(() =>
+          expect(store.findSessionOwnerUserId('owned-start')).toBe('owner'),
+        );
+      } else {
+        expect(store.findSessionOwnerUserId('owned-start')).toBe('owner');
+      }
     } finally {
       await service.shutdown();
       store.close();
