@@ -591,6 +591,30 @@ test('an exit forgets the settled start', async () => {
   }
 });
 
+test('a start event that settles after teardown is not remembered', async () => {
+  const f = fixture();
+  try {
+    const internals = f.sessions as unknown as {
+      settledStartEvents: Set<string>;
+      sessionAuthz: { settleStartOwner(threadId: string): void };
+    };
+    const settle = vi.spyOn(internals.sessionAuthz, 'settleStartOwner');
+    await f.start('owner', { userId: 'owner' });
+    await f.retrying();
+    await f.sessions.dispatchWithReceipt(
+      { type: 'discardDraft', threadId },
+      { userId: 'owner' },
+    );
+    settle.mockClear();
+    f.release();
+    // The held session.started now settles for a thread that is gone.
+    await vi.waitFor(() => expect(settle).toHaveBeenCalledWith(threadId));
+    expect(internals.settledStartEvents.has(threadId)).toBe(false);
+  } finally {
+    await f.close();
+  }
+});
+
 test('a fork started by its owner admits the owner while its start publish retries', async () => {
   const f = fixture({ thread: 'child', personalAccess: true });
   try {
