@@ -2864,7 +2864,7 @@
 }
 .source-quote-draft__label {
   margin: 0 0 4px;
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
   color: var(--k-text-muted);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -2875,7 +2875,7 @@
   max-height: 70px;
   overflow: auto;
   font-family: var(--k-font-mono);
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }

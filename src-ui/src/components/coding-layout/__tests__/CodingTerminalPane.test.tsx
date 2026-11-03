@@ -796,10 +796,10 @@ test('closing an ended script tab ends nothing on the server and hides it', asyn
     },
   ];
   renderPane([]);
-  await screen.findByRole('tab', { name: 'lint, Done' });
+  await screen.findByRole('tab', { name: 'lint, Exit 0' });
   fireEvent.click(screen.getByRole('button', { name: 'Close lint' }));
   await waitFor(() =>
-    expect(screen.queryByRole('tab', { name: 'lint, Done' })).toBeNull(),
+    expect(screen.queryByRole('tab', { name: 'lint, Exit 0' })).toBeNull(),
   );
   expect(closeProjectTerminal).not.toHaveBeenCalled();
   // The shells keep their names: a script is not a numbered shell.
@@ -822,6 +822,6 @@ test("a script's earlier ended runs do not pile up: only its newest run has a ta
     script('66666666-6666-4666-8666-666666666666', 3, 0),
   ];
   renderPane([]);
-  expect(await screen.findByRole('tab', { name: 'check, Done' })).toBeTruthy();
+  expect(await screen.findByRole('tab', { name: 'check, Exit 0' })).toBeTruthy();
   expect(screen.queryByRole('tab', { name: 'check, Exit 3' })).toBeNull();
 });

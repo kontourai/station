@@ -785,7 +785,7 @@ is the sample plugin.
   binding directory's `package.json` scripts. Choosing one runs it by name as a
   command session (`launch: {kind: 'script', name}`, no PTY), through the
   package manager its `packageManager` field or lockfile names. The script's
-  tab shows Running, Done, Exit N or Failed. Restart resolves the script again
+  tab shows Running, Exit N (positive for 0) or Failed. Restart resolves the script again
   by name under the same id, so the earlier run stays above the new one. An
   ended run keeps its tab until it is closed or the script runs again. The
   view starts a new line at each bare line feed, since a program without a

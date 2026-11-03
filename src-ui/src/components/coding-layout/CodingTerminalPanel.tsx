@@ -12,9 +12,11 @@ import type { TerminalTab } from './types';
 function scriptStatus(tab: TerminalTab): { text: string; tone: SemanticTone } {
   if (tab.status === 'failed') return { text: 'Failed', tone: 'negative' };
   if (tab.status === 'exited') {
-    if (tab.exitCode === 0) return { text: 'Done', tone: 'positive' };
     return typeof tab.exitCode === 'number'
-      ? { text: `Exit ${tab.exitCode}`, tone: 'negative' }
+      ? {
+          text: `Exit ${tab.exitCode}`,
+          tone: tab.exitCode === 0 ? 'positive' : 'negative',
+        }
       : { text: 'Ended', tone: 'neutral' };
   }
   return { text: 'Running', tone: 'active' };

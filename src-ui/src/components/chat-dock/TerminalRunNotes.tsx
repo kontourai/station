@@ -21,9 +21,11 @@ function endedRun(run: TerminalRun): boolean {
 /** How an approved run ended, as a badge. */
 function runOutcome(run: TerminalRun): { value: string; tone: SemanticTone } {
   if (run.state === 'failed') return { value: 'Failed', tone: 'negative' };
-  if (run.exitCode === 0) return { value: 'Done', tone: 'positive' };
   return typeof run.exitCode === 'number'
-    ? { value: `Exit ${run.exitCode}`, tone: 'negative' }
+    ? {
+        value: `Exit ${run.exitCode}`,
+        tone: run.exitCode === 0 ? 'positive' : 'negative',
+      }
     : { value: 'Ended', tone: 'neutral' };
 }
 
