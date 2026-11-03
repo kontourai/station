@@ -15,6 +15,11 @@ import {
   writeFile,
 } from 'node:fs/promises';
 import { join } from 'node:path';
+import type {
+  ProjectTerminalScript,
+  TerminalRun,
+  TerminalSessionRecord,
+} from '@kontourai/station-sdk/client';
 import { type Context, Hono, type Next } from 'hono';
 import { describe, expect, it } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
@@ -23,10 +28,14 @@ import {
   createAgentTerminalRunRoutes,
   createTerminalRunRoutes,
   TERMINAL_RUN_OUTPUT_PAGE_BYTES,
+  type TerminalRunOutput,
 } from '../../../routes/orchestration/terminal-runs.js';
 import { createTerminalSessionRoutes } from '../../../routes/projects/terminal-session-routes.js';
 import { bindStationControlRequestAuthority } from '../../../security/station-control-request-authority.js';
-import { STATION_CONTROL_CALLER_TOKEN_HEADER } from '../../../tools/station-control-shared.js';
+import {
+  STATION_CONTROL_CALLER_TOKEN_HEADER,
+  stationControlCallerPrincipal,
+} from '../../../tools/station-control-shared.js';
 import { InProcessShellHost } from '../shell-host.js';
 import { resolveTerminalCommandLaunch } from '../terminal-command-programs.js';
 import { TerminalRunRequests } from '../terminal-runs.js';
@@ -36,6 +45,14 @@ import {
 } from '../terminal-sessions.js';
 
 const makeTempDir = trackTempDirs();
+
+/** The routes' `{success, data, error}` answer, with the SDK's wire types. */
+type Envelope<T> = { success: boolean; data: T; error?: string };
+async function envelope<T>(response: Response): Promise<Envelope<T>> {
+  return (await response.json()) as Envelope<T>;
+}
+/** `terminal_read`: the run, and once it started, a page of its output. */
+type ReadRun = TerminalRun & Partial<TerminalRunOutput>;
 const posix = process.platform !== 'win32';
 const WAIT = { timeout: 20_000, interval: 50 };
 const project = { id: 'project-a', slug: 'alpha' };
@@ -71,7 +88,10 @@ async function harness(options: { fakePackageManager?: string } = {}) {
       boundOperator: false,
       caller: {
         sessionId: SESSION,
-        principal: { id: 'human:local:operator', elevationEligible: true },
+        principal: stationControlCallerPrincipal(
+          'human:local:operator',
+          'session-owner',
+        ),
         conversationId: c.req.header('x-test-conversation') ?? CONVERSATION,
         assurance: 'bound',
         localProjectId: project.id,
@@ -179,17 +199,12 @@ async function requestRun(app: Hono, command: string, subdirectory?: string) {
     body: JSON.stringify({ command, ...(subdirectory && { subdirectory }) }),
   });
   expect(response.status).toBe(200);
-  return (await response.json()).data as {
-    runId: string;
-    state: string;
-    command: string;
-    cwd: string;
-  };
+  return (await envelope<TerminalRun>(response)).data;
 }
 
 async function readRun(app: Hono, runId: string, query = '') {
   const response = await agent(app, `/${runId}${query}`);
-  return { status: response.status, body: await response.json() };
+  return { status: response.status, body: await envelope<ReadRun>(response) };
 }
 
 describe.runIf(posix)('agent terminal runs', () => {
@@ -209,9 +224,9 @@ describe.runIf(posix)('agent terminal runs', () => {
     expect(finished.exitCode).toBe(0);
     expect(finished.output).toContain('first-run-output');
     // The person still sees how the run they approved ended.
-    const ended = await (
-      await person(app, `/runs?conversationId=${CONVERSATION}`)
-    ).json();
+    const ended = await envelope<{ runs: TerminalRun[] }>(
+      await person(app, `/runs?conversationId=${CONVERSATION}`),
+    );
     expect(ended.data.runs).toMatchObject([
       { runId: first.runId, state: 'exited', exitCode: 0 },
     ]);
@@ -222,14 +237,12 @@ describe.runIf(posix)('agent terminal runs', () => {
     const waited = await readRun(app, second.runId, '?waitSeconds=1');
     expect(waited.body.data.state).toBe('needs_approval');
     expect(await sessions.list(operatorRequest(), thread)).toHaveLength(1);
-    const pending = await (
-      await person(app, `/runs?conversationId=${CONVERSATION}`)
-    ).json();
-    expect(
-      pending.data.runs.map(
-        (run: { runId: string; state: string }) => `${run.runId}:${run.state}`,
-      ),
-    ).toEqual([`${first.runId}:exited`, `${second.runId}:needs_approval`]);
+    const pending = await envelope<{ runs: TerminalRun[] }>(
+      await person(app, `/runs?conversationId=${CONVERSATION}`),
+    );
+    expect(pending.data.runs.map((run) => `${run.runId}:${run.state}`)).toEqual(
+      [`${first.runId}:exited`, `${second.runId}:needs_approval`],
+    );
 
     // Declining it runs nothing, and the decision cannot be reversed.
     expect(
@@ -250,9 +263,9 @@ describe.runIf(posix)('agent terminal runs', () => {
     await symlink(join(root, 'first'), join(root, 'here'));
     const run = await requestRun(app, 'pwd', 'here');
     expect(run.cwd).toBe(join(root, 'first'));
-    const listed = await (
-      await person(app, `/runs?conversationId=${CONVERSATION}`)
-    ).json();
+    const listed = await envelope<{ runs: TerminalRun[] }>(
+      await person(app, `/runs?conversationId=${CONVERSATION}`),
+    );
     expect(listed.data.runs[0]).toMatchObject({
       command: 'pwd',
       cwd: join(root, 'first'),
@@ -263,7 +276,9 @@ describe.runIf(posix)('agent terminal runs', () => {
     await symlink(join(root, 'second'), join(root, 'here'));
     const approved = await person(app, `/runs/${run.runId}/approve`, 'POST');
     expect(approved.status).toBe(409);
-    expect((await approved.json()).error).toBe('Its directory has changed');
+    expect((await envelope<null>(approved)).error).toBe(
+      'Its directory has changed',
+    );
     expect((await readRun(app, run.runId)).body.data.state).toBe('failed');
     expect(await sessions.list(operatorRequest(), thread)).toEqual([]);
     await sessions.dispose();
@@ -324,7 +339,12 @@ describe.runIf(posix)('script runner', () => {
     await writeFile(join(root, 'pnpm-lock.yaml'), '');
 
     const listed = await person(app, '/api/projects/alpha/terminal-scripts');
-    expect(await listed.json()).toEqual({
+    expect(
+      await envelope<{
+        packageManager: string;
+        scripts: ProjectTerminalScript[];
+      }>(listed),
+    ).toEqual({
       success: true,
       data: {
         packageManager: 'pnpm',
@@ -351,7 +371,7 @@ describe.runIf(posix)('script runner', () => {
       body: JSON.stringify({ bindingKey: 'project', script: 'test' }),
     });
     expect(started.status).toBe(200);
-    const { data: record } = await started.json();
+    const { data: record } = await envelope<TerminalSessionRecord>(started);
     expect(record).toMatchObject({
       kind: 'command',
       launch: { kind: 'script', name: 'test' },
