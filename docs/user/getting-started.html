@@ -56,12 +56,12 @@
 <ol>
 <li>Install and launch Station there using the options below.
 </li>
-<li>Open the Station name at the top of the computer’s window and choose <strong>Pair phone</strong>. Check the address before creating the invitation. <strong>Settings → Pairing → Pair device</strong> opens the same screen.
+<li>Open the Station name at the top of the computer’s window and choose <strong>Pair phone</strong>. Station opens straight to a pairing code on a reachable HTTPS address, and lists any other HTTPS addresses to switch to. <strong>Settings → Pairing → Pair device</strong> opens the same screen. Any of your own paired devices with full access can do this, not only the computer.
 </li>
 <li>On a new phone, open Station and choose <strong>Scan pairing QR code</strong>. Scan the invitation from the computer. <strong>Enter a pairing code</strong> is available if the camera cannot be used. Keep the computer running.
 </li>
 </ol>
-<p>Pairing codes require a reachable HTTPS address. The computer can suggest its own configured Tailscale Serve address; choose <strong>Use this address</strong> after checking it. Both devices still need access to that address.</p>
+<p>Scanning a pairing code on the phone needs a reachable HTTPS address, such as the computer's Tailscale HTTPS address, which Station lists first when it is configured. Both devices still need access to that address.</p>
 <p>For local network access, enable <strong>Settings → Pairing → Discover this Station nearby</strong> on the computer, then choose <strong>Find nearby Stations</strong> on the native phone app. Discovery is off by default and shows names and local addresses without granting access. Select the intended computer, confirm the exact address and any unencrypted HTTP warning, request access, and approve on the computer. Android versions before Android 14 offer QR and manual address entry instead. Browser clients do not browse the local network. <strong>Other ways to connect</strong> expands to <strong>Open connection manager</strong>, where you can enter an address when discovery is unavailable or finds nothing.</p>
 <p>If an exchange loses its response or cannot save approved access, Station holds the attempt instead of sending the one-time proof again. Check paired devices on the computer and revoke any unintended access before retiring the held request and creating a fresh invitation.</p>
 <p>A new phone shows the connection welcome until you save a real Station. A saved Station that is offline or needs access keeps its connection recovery controls instead. The welcome does not run workspace queries against an unconfigured endpoint.</p>
