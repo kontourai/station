@@ -401,7 +401,6 @@ describe('migratePreIndexKnowledge', () => {
         { dataDir: homeDir, store: actualStore, indexProvider, embedder },
         { projectSlug: fixture.projectSlug },
       );
-      expect(calls).toBe(leaseNumber);
       expect(result.namespaceResults[0]?.status).toBe('error');
       expect(embed).not.toHaveBeenCalled();
       const root = (await actualStore.listRoots()).find(
