@@ -1411,12 +1411,9 @@ function configureRuntimeSecurity(
         const pairingSource = security.resolvePairingSource?.(credential!);
         const locality = security.resolveCredentialLocality?.(credential!);
         const mintKind = security.resolveCredentialMintKind?.(credential!);
-        // Home-possession credentials already represent the operator in person.
+        // The pairing store owns which devices qualify.
         const ownerStanding =
           authority === 'device-credential' &&
-          deviceId !== undefined &&
-          deviceKind !== 'delegation' &&
-          !locality &&
           security.resolveCredentialOwnerStanding?.(credential!) === true;
         return {
           authority,

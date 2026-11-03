@@ -503,7 +503,7 @@ interface DevicePairingServiceOptions {
    */
   capScope?: (device: PairedDevice) => string;
   /**
-   * Owner standing (owner decision, 2026-11-02): whether this Station's own
+   * Owner-device standing: whether this Station's own
    * paired devices may hold the owner's standing at all. Only a personal
    * Station passes `true`; a hosted tenant never does, because its devices
    * do not belong to the person who runs the host. Omitted means no device
@@ -3749,20 +3749,18 @@ export class DevicePairingService {
   }
 
   /**
-   * Owner standing (owner decision, 2026-11-02): on a personal Station, a
-   * device the owner paired for themself acts as the owner, with the same
-   * standing as Station's own launcher browser on the host.
+   * Owner-device standing (operator-device-access.md D14): on a personal
+   * Station, a device the owner paired for themself acts as the owner, with
+   * the host launcher browser's standing.
    *
-   * It applies only to a device that ALREADY has a shell on this host
-   * (`terminal:operate`) and may drive work (`orchestration:operate`). Such a
-   * device can already do anything the host account can, so this standing
-   * removes refusals rather than adding reach. Never: a read-only or
-   * single-purpose grant, a peer Station's delegation, a personal access
-   * token, a device tied to a person (#3557, whose group caps it), a relay
-   * alias (read-only by construction), a credential minted with
-   * home-possession (already the operator in person), or a device still
-   * finishing relay enrollment. Re-read from the registry on every call, so
-   * a revoke, rebind or scope change applies to the next request.
+   * Only for a device that already has a host shell (`terminal:operate`)
+   * and may drive work (`orchestration:operate`): it can already do what the
+   * host account can, so this removes refusals rather than adding reach.
+   * Never a read-only or single-purpose grant, a delegation, a personal
+   * token, a device tied to a person (#3557), a relay alias, a
+   * home-possession credential (already the operator), or a device still
+   * enrolling. Re-read on every call, so a revoke, rebind or narrowing
+   * applies to the next request.
    */
   credentialHasOwnerStanding(candidate: string): boolean {
     if (!this.#ownerDeviceStanding) return false;

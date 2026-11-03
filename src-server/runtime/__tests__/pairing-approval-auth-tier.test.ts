@@ -11,6 +11,7 @@ import type { CredentialRecoveryGroupProjection } from '@kontourai/station-contr
 import { Hono } from 'hono';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { agentConnectionFixture } from '../../../tests/helpers/connection-fixtures.js';
+import { DEVICE_WITHOUT_HOST_SHELL } from '../../__test-utils__/owner-standing.js';
 import { credentialProfileAppHomeDir } from '../../providers/app-home/credential-profile-registry.js';
 import { createPersonalTokenRoutes } from '../../routes/access/personal-token-routes.js';
 import { createAppHomeRoutes } from '../../routes/connections/app-home.js';
@@ -390,10 +391,9 @@ afterEach(() => {
 describe('pairing approve/deny auth tier over the real boundary (#765 D5)', () => {
   test('a paired browser session is refused as insufficient scope, and its attention read says viewerCanDecide: false up front', async () => {
     const harness = await createHarness();
-    // No host shell, so no owner standing (2026-11-02): an ordinary device.
     const paired = await harness.pairDevice(
       'Paired browser',
-      'orchestration:read orchestration:operate',
+      DEVICE_WITHOUT_HOST_SHELL,
     );
     // The session cookie carries the paired-device credential verbatim; the
     // cookie parser only admits this exact shape.
@@ -785,7 +785,7 @@ test("the desktop home-proven local grant can invite and approve a phone, which 
     credential: string;
     device: PairedDevice;
   };
-  // Owner-device standing (2026-11-02): the phone's default grant carries a
+  // Owner-device standing: the phone's default grant carries a
   // host shell, so it is one of the owner's own devices and may pair the
   // next one, with the host browser's limits (no delegation, no protected
   // scope) and without its stored grant changing.
@@ -1248,7 +1248,7 @@ test('an operator-created invitation grants its assigned access once without a s
     h.security.devicePairing.credentialLocality(device.credential),
   ).toBeUndefined();
   // The invitation carried a host shell, so the device is one of the
-  // owner's own (owner-device standing, 2026-11-02): it may invite the next
+  // owner's own (owner-device standing): it may invite the next
   // device, but never mint a protected promotion.
   expect(
     (

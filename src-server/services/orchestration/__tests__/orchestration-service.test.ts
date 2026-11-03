@@ -4700,10 +4700,6 @@ describe('OrchestrationService', () => {
           createdAt: session.createdAt,
           metadata: input.metadata,
         });
-        await waitFor(
-          () => eventStore.findSessionOwnerUserId(input.threadId),
-          (owner) => owner === input.metadata?.userId,
-        );
         return session;
       });
       const handoffService = new OrchestrationService({
@@ -4744,6 +4740,10 @@ describe('OrchestrationService', () => {
         { userId: 'owner-user' },
       );
       if (root.status !== 'accepted') throw new Error(root.message);
+      expect(
+        eventStore.latestEventByMethod('handoff-conversation', 'session.started')?.payload,
+      ).toMatchObject({ metadata: { userId: 'owner-user' } });
+      expect(handoffService.sessionRecordedOwnerId('handoff-conversation')).toBe('owner-user');
       eventStore.appendEvent({
         eventId: 'handoff-root-complete',
         provider: 'claude',
@@ -4847,6 +4847,10 @@ describe('OrchestrationService', () => {
         { userId: 'owner-user' },
       );
       if (child.status !== 'accepted') throw new Error(child.message);
+      expect(
+        eventStore.latestEventByMethod(first.marker.sessionId, 'session.started')?.payload,
+      ).toMatchObject({ metadata: { userId: 'owner-user' } });
+      expect(handoffService.sessionRecordedOwnerId(first.marker.sessionId)).toBe('owner-user');
       expect(claude.startSession).toHaveBeenNthCalledWith(
         1,
         expect.objectContaining({

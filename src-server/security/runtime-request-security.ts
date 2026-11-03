@@ -114,13 +114,11 @@ export interface RuntimeAuthenticatedRequestPrincipal {
    */
   readonly mintKind?: CredentialMintKind;
   /**
-   * Owner standing (owner decision, 2026-11-02): set by the auth boundary
-   * only for a paired-device credential the pairing store reports as one of
-   * the owner's own devices on a personal Station
+   * Set by the auth boundary only for a device credential the pairing store
+   * reports as one of the owner's own devices
    * (`DevicePairingService.credentialHasOwnerStanding`). Never request
-   * supplied, never set alongside `locality` (a home-possession credential
-   * is already the operator in person), and never a mint-time proof: it
-   * grants no `local-grant` approval or consent custody.
+   * supplied and never a mint-time proof: it grants no `local-grant`
+   * approval or consent custody.
    */
   readonly standing?: 'owner-device';
 }
@@ -436,11 +434,7 @@ export interface RuntimeHttpSecurityOptions {
   resolveCredentialMintKind?: (
     credential: string,
   ) => CredentialMintKind | undefined;
-  /**
-   * Owner standing (2026-11-02): whether a paired-device credential is one of
-   * the owner's own devices on this personal Station. Absent resolves to
-   * none, so a composition that omits it keeps every device as before.
-   */
+  /** Owner-device standing for a device credential; absent means none. */
   resolveCredentialOwnerStanding?: (credential: string) => boolean;
   /**
    * Resolves a peer to a non-identifying device-activity class. Production
@@ -832,15 +826,13 @@ export function isBoundRuntimeLocalOperator(request: Request): boolean {
   return boundLocalOperator.get(request) === true;
 }
 
-/** Whether a principal carries owner-device standing (never for an internal principal). */
+/** Whether a principal carries owner-device standing. */
 export function hasOwnerDeviceStanding(
   principal: RuntimeAuthenticatedRequestPrincipal | undefined,
 ): boolean {
   return (
     principal?.standing === 'owner-device' &&
-    principal.kind !== 'internal' &&
-    principal.authority === 'device-credential' &&
-    principal.deviceKind !== 'delegation'
+    principal.authority === 'device-credential'
   );
 }
 
@@ -860,13 +852,11 @@ export function principalHasOwnerAuthority(
 }
 
 /**
- * Owner standing (owner decision, 2026-11-02): the Station owner, at the
- * host (home-possession) or through one of their own paired devices. Bound
- * by the auth boundary with {@link bindRuntimeLocalOperator}; absent means
- * refuse. Use this for owner AUTHORITY. Use
- * {@link isBoundRuntimeLocalOperator} only where the answer is genuinely
- * "on this host" (presentation as the host device, desktop surfaces).
- * Approval and consent custody keep {@link isBoundLocalGrantMintedOperator}.
+ * The Station owner, at the host (home-possession) or through one of their
+ * own devices. Bound with {@link bindRuntimeLocalOperator}; absent refuses.
+ * Use this for owner authority, {@link isBoundRuntimeLocalOperator} only for
+ * "on this host" (presentation, desktop surfaces), and
+ * {@link isBoundLocalGrantMintedOperator} for approval and consent custody.
  */
 export function isBoundRuntimeOwner(request: Request): boolean {
   return boundOwner.get(request) === true;

@@ -22,6 +22,7 @@ import {
   STATION_HOME_SCHEMA_VERSION,
 } from '@kontourai/station-shared/station-home-schema';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { DEVICE_WITHOUT_HOST_SHELL } from '../../../__test-utils__/owner-standing.js';
 import { createLogger } from '../../../utils/logger.js';
 
 const ENVIRONMENT_SECURITY_RECORD_RELATIVE_PATH = 'security/environment.json';
@@ -942,11 +943,10 @@ describe('EnvironmentSecurityService', () => {
     const service = new EnvironmentSecurityService({ homeDir });
     await service.initialize();
 
-    // No host shell, so no owner standing (2026-11-02): only the explicit
-    // access:approve promotion below opens anything under /api/pairing.
+    // Only the explicit access:approve promotion below opens /api/pairing.
     const offer = service.devicePairing.createOffer({
       endpoint: 'https://station.example.test',
-      scope: 'orchestration:read orchestration:operate',
+      scope: DEVICE_WITHOUT_HOST_SHELL,
     });
     const request = service.devicePairing.requestPairing({
       offerId: offer.offerId,
@@ -1027,11 +1027,10 @@ describe('EnvironmentSecurityService', () => {
       ).toBe(false);
     }
 
-    // And a NON-promoted device without a host shell (so no owner standing)
-    // still gets nothing, even on the leaves.
+    // And a NON-promoted device still gets nothing, even on the leaves.
     const second = service.devicePairing.createOffer({
       endpoint: 'https://station.example.test',
-      scope: 'orchestration:read orchestration:operate',
+      scope: DEVICE_WITHOUT_HOST_SHELL,
     });
     const secondRequest = service.devicePairing.requestPairing({
       offerId: second.offerId,

@@ -645,12 +645,9 @@ export class EnvironmentSecurityService {
     // #3557: never the raw grant: a device tied to a person is capped by
     // that person's Station group, here and in every reader of this.
     const scope = this.#devicePairingService?.effectiveScope(candidate);
-    // Owner standing (2026-11-02): the owner's own device reaches the
-    // `access:manage` route tier, exactly as Station's launcher browser on
-    // the host does. Derived per request, never stored: the device's grant
-    // and the scope string on the wire are unchanged (principals.md R2).
-    // No other tier widens; protected and single-purpose scopes stay as
-    // granted.
+    // An owner device reaches the `access:manage` route tier, as the host
+    // launcher browser does. Derived per request and never stored, so the
+    // grant and the scope on the wire are unchanged (principals.md R2).
     if (
       scope !== undefined &&
       !pairingScopeIncludes(scope, PAIRING_SCOPE_ACCESS_MANAGE) &&
@@ -664,15 +661,8 @@ export class EnvironmentSecurityService {
     return scope;
   }
 
-  /**
-   * Owner standing (owner decision, 2026-11-02): whether `candidate` is one
-   * of the owner's own devices on this personal Station, acting as the owner.
-   * See `DevicePairingService.credentialHasOwnerStanding` for exactly which
-   * devices qualify. The operator credential is not a device and never holds
-   * it (it is already the operator).
-   */
+  /** See `DevicePairingService.credentialHasOwnerStanding`. */
   credentialHasOwnerStanding(candidate: string): boolean {
-    if (this.#hosted) return false;
     return (
       this.#devicePairingService?.credentialHasOwnerStanding(candidate) ?? false
     );
@@ -680,7 +670,6 @@ export class EnvironmentSecurityService {
 
   /** {@link credentialHasOwnerStanding}, by device id, for background work. */
   deviceHasOwnerStanding(deviceId: string): boolean {
-    if (this.#hosted) return false;
     return (
       this.#devicePairingService?.deviceHasOwnerStanding(deviceId) ?? false
     );
