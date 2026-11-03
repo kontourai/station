@@ -93,7 +93,9 @@ describe('the device picker (#1970)', () => {
     await screen.findByRole('heading', { name: 'Android Emulators' });
     const android = within(group(/Android Emulators/));
     expect(android.getByText('No Android emulators')).toBeTruthy();
-    expect(android.getByText(/Create an emulator \(an AVD\)/)).toBeTruthy();
+    expect(
+      android.getByText(/Create one in Android Studio's Device Manager/),
+    ).toBeTruthy();
     expect(screen.queryByText(/No iOS simulators/)).toBeNull();
   });
 
@@ -101,7 +103,9 @@ describe('the device picker (#1970)', () => {
     stubDeviceFetch({ inventory: readyInventory([]) });
     renderInQueryClient(<DeviceWorkspacePane />);
     expect(await screen.findByText(/No iOS simulators/)).toBeTruthy();
-    expect(screen.getByText(/Install Xcode/)).toBeTruthy();
+    expect(
+      screen.getByText(/Add a runtime in Xcode › Settings › Components/),
+    ).toBeTruthy();
     expect(screen.getByText(/No Android emulators/)).toBeTruthy();
   });
 
@@ -137,7 +141,7 @@ describe('the device picker (#1970)', () => {
   test('an unanswering helper is an error with Refresh devices', async () => {
     stubDeviceFetch({ inventory: unavailableInventory('hub-unavailable') });
     renderInQueryClient(<DeviceWorkspacePane />);
-    expect(await screen.findByText(/did not answer/)).toBeTruthy();
+    expect(await screen.findByText('Device helper not answering')).toBeTruthy();
     expect(
       screen.getByRole('button', { name: 'Refresh devices' }),
     ).toBeTruthy();
