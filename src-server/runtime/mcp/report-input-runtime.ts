@@ -105,14 +105,19 @@ export function createReportInputRuntime(owners: {
     abort: AbortController;
     close(): Promise<void>;
   }>();
-  const runtime: ReservedStationInputRuntime = async (
-    request,
-    open,
-    parentSignal,
-    assertCurrent,
+  const invocations = new Set<{
+    abort: AbortController;
+    done: Promise<void>;
+  }>();
+  const invoke = async (
+    abort: AbortController,
+    [
+      request,
+      open,
+      parentSignal,
+      assertCurrent,
+    ]: Parameters<ReservedStationInputRuntime>,
   ) => {
-    requireInput(accepting && retained.size < 128);
-    const abort = new AbortController();
     const signal = AbortSignal.any([parentSignal, abort.signal]);
     const binding = reportInputBindingSchema.parse(
       structuredClone(request.binding),
@@ -184,7 +189,8 @@ export function createReportInputRuntime(owners: {
         scope.current,
       );
     });
-    requireInput(retained.size < 128);
+    requireInput(accepting && retained.size < 128);
+    signal.throwIfAborted();
     const handler = createMcpHandler(() => serverFactory(binding.question), {
       legacy: 'reject',
     });
@@ -359,14 +365,34 @@ export function createReportInputRuntime(owners: {
     await checkCurrent();
     return ledger.finish(binding, result);
   };
+  const runtime: ReservedStationInputRuntime = async (...args) => {
+    requireInput(accepting && invocations.size < 128 && retained.size < 128);
+    const abort = new AbortController();
+    let finish!: () => void;
+    const done = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+    const invocation = { abort, done };
+    invocations.add(invocation);
+    const pending = invoke(abort, args);
+    const retire = () => {
+      invocations.delete(invocation);
+      finish();
+    };
+    void pending.then(retire, retire);
+    return pending;
+  };
   return Object.assign(runtime, {
     async close() {
       accepting = false;
+      const active = [...invocations];
+      for (const invocation of active) invocation.abort.abort();
       const resources = [...retained];
       for (const resource of resources) resource.abort.abort();
       const cleanup = await Promise.allSettled(
         resources.map((resource) => resource.close()),
       );
+      await Promise.all(active.map((invocation) => invocation.done));
       requireInput(cleanup.every((entry) => entry.status === 'fulfilled'));
     },
   });

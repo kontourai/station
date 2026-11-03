@@ -3016,9 +3016,13 @@ most two physical sends, binds one canonical question, and retains its validated
 answer before the SDK sends the answer-bearing request. A completed receipt
 requires the exact retained answer and settled transport cleanup. Reopening
 storage cannot recreate permission to resend. The runtime retains failed-close
-handles until explicit owner cleanup succeeds; owner shutdown fences new work
-and aborts open input before waiting for the same handles. Cleanup retry never
-reissues the tool or completes an uncertain receipt. Input metadata and ledger
+handles until explicit owner cleanup succeeds. Each invocation is tracked before
+its first authorization/evidence await and through its final ledger settlement,
+including after physical MCP retirement. Owner shutdown fences new admission,
+aborts admitted invocations and open resources, and joins both lifetimes before
+returning. Expected invocation refusal is distinct from a failed physical close;
+the latter remains retryable. Cleanup retry never reissues the tool or completes
+an uncertain receipt. Input metadata and ledger
 transactions acquire separate publication-owned Home scopes; the live ledger
 claim stays with the invocation. Physical sends use effect admission that releases
 Home before the asynchronous response or human wait. Input cleanup also retains a
