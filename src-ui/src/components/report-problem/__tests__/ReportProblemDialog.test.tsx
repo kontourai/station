@@ -91,8 +91,12 @@ describe('ReportProblemDialog', () => {
       'https://github.com/kontourai/station/issues/new?',
     );
     const parsed = new URL(String(url));
-    expect(parsed.searchParams.get('title')).toBe('Problem report: /schedule');
-    expect(parsed.searchParams.get('body')).toContain('job never ran');
+    expect(parsed.searchParams.get('template')).toBe('bug-report.yml');
+    expect(parsed.searchParams.get('title')).toBe('bug: problem on /schedule');
+    expect(parsed.searchParams.get('redacted-diagnostic')).toContain(
+      'job never ran',
+    );
+    expect(parsed.searchParams.has('body')).toBe(false);
     expect(target).toBe('_blank');
     expect(features).toContain('noopener');
   });

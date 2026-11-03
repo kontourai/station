@@ -1,0 +1,72 @@
+name: Troubleshoot report
+description: Filed from Station's Troubleshoot flow after an agent investigated the problem. Writing a report yourself? Use Bug Report.
+title: "bug: "
+labels:
+  - reported:troubleshoot
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This form is filled from Station's Troubleshoot flow: **Troubleshoot with an agent** in the app, or `station triage` in a terminal. If you are writing a report by hand, use the Bug Report form instead.
+
+        Do not include secrets, access tokens, private URLs, home-directory paths, customer data, or unredacted logs. Read every field before you submit and redact anything that identifies you or your machine.
+
+        Keep each report to one problem. If the investigation turned up two, file two reports.
+  - type: textarea
+    id: user-impact
+    attributes:
+      label: User impact
+      description: The problem as the person who hit it describes it, and what they could not do because of it.
+    validations:
+      required: true
+  - type: textarea
+    id: diagnosis
+    attributes:
+      label: Diagnosis
+      description: What the investigation found and the evidence behind it, citing logs, diagnostics, and source where they apply. Mark anything unconfirmed as a hypothesis.
+    validations:
+      required: true
+  - type: textarea
+    id: observed-behavior
+    attributes:
+      label: Observed behavior and steps
+      description: The smallest safe steps that show the problem, with what was expected and what happened instead.
+    validations:
+      required: true
+  - type: input
+    id: build-identity
+    attributes:
+      label: Release or build identity
+      description: The Station version, channel, and commit where the problem happened, which can differ from the CLI's version. Write "unknown" if it could not be read.
+      placeholder: "for example: 0.1.11 · stable · abc1234"
+    validations:
+      required: true
+  - type: input
+    id: environment-details
+    attributes:
+      label: Environment
+      description: Operating system, install or deployment type, and the engine and harness versions involved.
+      placeholder: "for example: macOS 15.4, desktop install, engine 1.2.3"
+    validations:
+      required: true
+  - type: textarea
+    id: redacted-diagnostic
+    attributes:
+      label: Redacted diagnostic excerpt
+      description: Only the few redacted log lines or error IDs that support the diagnosis. Never paste a full log.
+      render: shell
+  - type: input
+    id: prior-issue
+    attributes:
+      label: Nearest prior issue
+      description: The closest existing issue and why this report is not a duplicate, or "none found" after searching.
+  - type: textarea
+    id: remedy-applied
+    attributes:
+      label: Remedy applied
+      description: Any fix or workaround already applied to unblock the user, and whether it worked.
+  - type: input
+    id: diagnosed-by
+    attributes:
+      label: Diagnosed by
+      description: The agent, engine, and model that ran the investigation.
