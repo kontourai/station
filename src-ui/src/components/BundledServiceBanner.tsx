@@ -4,6 +4,7 @@ import {
   BANNER_PRIORITY,
   bannerStore,
 } from '../contexts/banner-store';
+import { requestTroubleshoot } from '../lib/troubleshootEvents';
 import type { BundledServerStatus } from '../platform/native';
 
 /** Post-boot desktop local-owner state: informative and actionable, never a gate. */
@@ -131,6 +132,23 @@ export function BundledServiceBanner({
           variant: 'secondary',
           onClick: onOpenConnections,
         },
+        // #4470: a stopped or failed local Station can be diagnosed. With no
+        // Station to prepare a run on, the start flow falls back to Report a
+        // problem and `station triage`.
+        ...(phase === 'failed' || phase === 'stopped'
+          ? [
+              {
+                label: 'Troubleshoot',
+                closesDetails: true,
+                variant: 'secondary' as const,
+                onClick: () =>
+                  requestTroubleshoot({
+                    code: `local-station-${phase}`,
+                    message,
+                  }),
+              },
+            ]
+          : []),
       ],
     });
     return () => bannerStore.dismiss(BANNER_IDS.bundledService);

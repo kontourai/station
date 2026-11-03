@@ -736,6 +736,20 @@
   border-color: var(--accent-primary);
 }
 
+.message__rating-bug {
+  border: none;
+  background: none;
+  padding: 0 var(--k-space-1);
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.message__rating-bug:hover {
+  color: var(--k-text);
+}
+
 .message__rating-reason-label {
   font-size: var(--k-text-sm);
   color: var(--text-muted);
@@ -1491,6 +1505,7 @@
   /* A system notice's recovery action and the Continue under a row a
      restart stopped. */
   .system-event__action.system-event__action,
+  .system-event__troubleshoot.system-event__troubleshoot,
   .interrupted-turn-continue .button.button {
     min-height: 44px;
   }
@@ -2319,6 +2334,12 @@
   color: var(--text-secondary);
   cursor: pointer;
   font-size: var(--k-text-sm);
+  font-style: normal;
+}
+
+.system-event__troubleshoot {
+  margin-top: 6px;
+  margin-left: var(--k-space-2);
   font-style: normal;
 }
 
@@ -3167,6 +3188,10 @@
     min-width: 44px;
     min-height: 44px;
     padding: 10px;
+  }
+
+  .message__rating-bug {
+    min-height: 44px;
   }
 
   .message__copy-btn {

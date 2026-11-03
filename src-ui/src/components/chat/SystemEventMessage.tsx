@@ -1,3 +1,5 @@
+import type { TroubleshootRequest } from '../../lib/troubleshootEvents';
+import { TroubleshootAction } from '../troubleshoot/TroubleshootAction';
 import { LazyMarkdown } from './LazyMarkdown';
 import './chat.css';
 
@@ -12,6 +14,11 @@ interface SystemEventMessageProps {
    * (#797).
    */
   action?: { label: string; onClick: () => void };
+  /**
+   * #4470: the failed turn's facts. When set, the marker offers
+   * "Troubleshoot this", which opens troubleshooting seeded with them.
+   */
+  troubleshoot?: TroubleshootRequest;
 }
 
 export function ChatErrorDetails({ raw }: { raw: string }) {
@@ -28,6 +35,7 @@ export function SystemEventMessage({
   messageKey,
   details,
   action,
+  troubleshoot,
 }: SystemEventMessageProps) {
   return (
     <div
@@ -55,6 +63,15 @@ export function SystemEventMessage({
         >
           {action.label}
         </button>
+      )}
+      {troubleshoot && (
+        <TroubleshootAction
+          size="sm"
+          className="system-event__troubleshoot"
+          request={troubleshoot}
+        >
+          Troubleshoot this
+        </TroubleshootAction>
       )}
     </div>
   );

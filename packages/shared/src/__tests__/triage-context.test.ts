@@ -16,8 +16,10 @@ import {
   MAX_TRIAGE_DOCTOR_CHECKS,
   MAX_TRIAGE_LOG_TAIL_LENGTH,
   MAX_TRIAGE_TEXT_LENGTH,
+  MAX_TROUBLESHOOT_SEED_CONVERSATION_ID_LENGTH,
   MAX_TROUBLESHOOT_SEED_ERROR_LENGTH,
   MAX_TROUBLESHOOT_SEED_ROUTE_LENGTH,
+  MAX_TROUBLESHOOT_SEED_TURN_ID_LENGTH,
   redactTroubleshootReportText,
   serializeTriageContext,
   summarizeTriageDoctor,
@@ -145,6 +147,37 @@ describe('troubleshoot seed admission', () => {
     expect(admitTroubleshootSeed({ route: '/' }).route).toBe('');
   });
 
+  test('accepts conversation and turn ids at their limits and refuses one character more', () => {
+    const conversationId = 'c'.repeat(
+      MAX_TROUBLESHOOT_SEED_CONVERSATION_ID_LENGTH,
+    );
+    const turnId = 't'.repeat(MAX_TROUBLESHOOT_SEED_TURN_ID_LENGTH);
+    expect(admitTroubleshootSeed({ conversationId, turnId })).toMatchObject({
+      conversationId,
+      turnId,
+    });
+    expect(() =>
+      admitTroubleshootSeed({ conversationId: `${conversationId}c` }),
+    ).toThrow(expect.objectContaining({ reason: 'conversation-id-too-long' }));
+    expect(() => admitTroubleshootSeed({ turnId: `${turnId}t` })).toThrow(
+      expect.objectContaining({ reason: 'turn-id-too-long' }),
+    );
+  });
+
+  test('refuses an id with whitespace or a control character', () => {
+    for (const conversationId of ['a b', 'a\nb', 'a\tb', '']) {
+      expect(() => admitTroubleshootSeed({ conversationId })).toThrow(
+        expect.objectContaining({ reason: 'conversation-id-invalid' }),
+      );
+    }
+    expect(() => admitTroubleshootSeed({ turnId: 'turn\u0000' })).toThrow(
+      expect.objectContaining({ reason: 'turn-id-invalid' }),
+    );
+    expect(admitTroubleshootSeed({ turnId: 'provider:abc-1' }).turnId).toBe(
+      'provider:abc-1',
+    );
+  });
+
   test('redacts secrets and paths from an error summary', () => {
     const seed = admitTroubleshootSeed({
       errorSummary: `failed with ${GITHUB_TOKEN} at /Users/alice/x.ts:1:2`,
@@ -211,7 +244,12 @@ function context(): TroubleshootContext {
       serverLogStore: 'unavailable',
       agentRead: 'requires-operator-grant',
     },
-    seed: { route: null, errorSummary: null },
+    seed: {
+      route: null,
+      errorSummary: null,
+      conversationId: null,
+      turnId: null,
+    },
     limits: {
       contextBytes: MAX_TRIAGE_CONTEXT_BYTES,
       doctorChecks: MAX_TRIAGE_DOCTOR_CHECKS,
@@ -239,6 +277,21 @@ describe('validateTroubleshootContext', () => {
           ...context().station,
           name: 'n'.repeat(MAX_TRIAGE_TEXT_LENGTH + 1),
         },
+      }),
+    ).toThrow('invalid bounded values');
+    expect(() =>
+      validateTroubleshootContext({
+        ...context(),
+        seed: {
+          ...context().seed,
+          turnId: 't'.repeat(MAX_TROUBLESHOOT_SEED_TURN_ID_LENGTH + 1),
+        },
+      }),
+    ).toThrow('invalid bounded values');
+    expect(() =>
+      validateTroubleshootContext({
+        ...context(),
+        seed: { ...context().seed, conversationId: 'a\nb' },
       }),
     ).toThrow('invalid bounded values');
   });

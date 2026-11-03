@@ -1,7 +1,9 @@
 import { TROUBLESHOOT_SURFACES } from '@kontourai/station-contracts/troubleshoot';
 import {
+  MAX_TROUBLESHOOT_SEED_CONVERSATION_ID_LENGTH,
   MAX_TROUBLESHOOT_SEED_ERROR_LENGTH,
   MAX_TROUBLESHOOT_SEED_ROUTE_LENGTH,
+  MAX_TROUBLESHOOT_SEED_TURN_ID_LENGTH,
   TroubleshootSeedError,
 } from '@kontourai/station-shared/triage-context';
 import { Hono } from 'hono';
@@ -116,11 +118,13 @@ export function createDiagnosticsRoutes(
               {
                 success: false,
                 error:
-                  'Seed context was refused: the route must be an in-app path, and each field must fit its limit.',
+                  'Seed context was refused: the route must be an in-app path, ids must be printable with no spaces, and each field must fit its limit.',
                 code: error.reason,
                 limits: {
                   route: MAX_TROUBLESHOOT_SEED_ROUTE_LENGTH,
                   errorSummary: MAX_TROUBLESHOOT_SEED_ERROR_LENGTH,
+                  conversationId: MAX_TROUBLESHOOT_SEED_CONVERSATION_ID_LENGTH,
+                  turnId: MAX_TROUBLESHOOT_SEED_TURN_ID_LENGTH,
                 },
               },
               400,

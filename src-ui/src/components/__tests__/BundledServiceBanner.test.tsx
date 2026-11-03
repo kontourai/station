@@ -14,6 +14,7 @@ import {
   bannerStore,
 } from '../../contexts/banner-store';
 import { BundledServiceBanner } from '../BundledServiceBanner';
+import { captureTroubleshootSeeds } from '../troubleshoot/__tests__/captureTroubleshootSeeds';
 
 const baseStatus = {
   phase: 'stopped' as const,
@@ -143,6 +144,60 @@ describe('BundledServiceBanner (station#3079)', () => {
 
     const labels = calls[0]!.actions?.map((action) => action.label) ?? [];
     expect(labels).toContain('Restart Station');
+  });
+
+  // #4470. The banner renderer calls the presented action's `onClick`; this
+  // calls that same handler.
+  test('a stopped or failed local Station offers Troubleshoot seeded with the banner message', () => {
+    window.history.pushState({}, '', '/settings/diagnostics');
+    const capture = captureTroubleshootSeeds();
+    try {
+      const calls = presented();
+      render(
+        <BundledServiceBanner
+          status={{
+            ...baseStatus,
+            phase: 'failed' as const,
+            ownership: 'sidecar' as const,
+            message: 'Local Station exited with code 1.',
+          }}
+          onRestart={vi.fn()}
+          onOpenConnections={vi.fn()}
+        />,
+      );
+      const troubleshoot = calls[0]!.actions?.find(
+        (action) => action.label === 'Troubleshoot',
+      );
+      expect(troubleshoot).toBeDefined();
+      troubleshoot!.onClick();
+      expect(capture.seeds).toEqual([
+        {
+          route: '/settings/diagnostics',
+          errorSummary:
+            'local-station-failed: Local Station exited with code 1.',
+        },
+      ]);
+    } finally {
+      capture.stop();
+      window.history.pushState({}, '', '/');
+    }
+  });
+
+  test('a starting local Station does not offer Troubleshoot', () => {
+    const calls = presented();
+    render(
+      <BundledServiceBanner
+        status={{
+          ...baseStatus,
+          phase: 'starting' as const,
+          ownership: 'sidecar' as const,
+        }}
+        onRestart={vi.fn()}
+        onOpenConnections={vi.fn()}
+      />,
+    );
+    const labels = calls[0]!.actions?.map((action) => action.label) ?? [];
+    expect(labels).not.toContain('Troubleshoot');
   });
 
   test('an unowned home offers no Restart either, and keeps its detail', () => {

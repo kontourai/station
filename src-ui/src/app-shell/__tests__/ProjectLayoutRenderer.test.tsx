@@ -39,6 +39,7 @@ import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { type ReactNode, useEffect } from 'react';
 import { flushSync } from 'react-dom';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { captureTroubleshootSeeds } from '../../components/troubleshoot/__tests__/captureTroubleshootSeeds';
 import { navigationStore } from '../../contexts/navigation-store';
 import { pluginRegistry } from '../../core/PluginRegistry';
 import { deviceSettingsStore } from '../../lib/device-settings-store';
@@ -1196,6 +1197,81 @@ describe('ProjectLayoutRenderer', () => {
     expect(view.container.textContent).toContain('Hosted project-uuid');
     expect(screen.getByText('Review unavailable')).toBeTruthy();
     loadStatus.mockRestore();
+  });
+
+  // #4470.
+  test('a placed pane in an outage offers Troubleshoot seeded with its reason', () => {
+    const catalog = codingCatalog();
+    const descriptor = parseWorkspacePaneDescriptor({
+      version: '1.0',
+      id: 'pane:plugin%3Areview:main',
+      name: 'Review',
+      rendererId: 'renderer:plugin%3Areview:main',
+      renderer: { kind: 'plugin-component', name: 'review.main' },
+      placement: { supportedRegions: ['primary'] },
+      modes: [{ id: 'default', contextRequirement: { project: true } }],
+      provenance: { origin: 'plugin', pluginId: 'review' },
+      lifecycle: { stage: 'stable' },
+    });
+    const instance = parseWorkspacePaneInstance({
+      version: '1.0',
+      descriptorId: 'pane:plugin%3Areview:main',
+      instanceId: 'instance:plugin:project-uuid:review',
+      stateKey: 'state:plugin:project-uuid:review',
+      boundContext: { projectId: 'project-uuid' },
+    });
+    if (!descriptor || !instance)
+      throw new Error('Plugin pane fixture was refused');
+    catalogMock.mockReturnValue({
+      ...catalog,
+      entries: [
+        ...catalog.entries.slice(0, 2),
+        {
+          descriptor,
+          instance,
+          availability: {
+            state: 'temporarily-unavailable',
+            reason: { code: 'health-unavailable', source: 'health' },
+          },
+        },
+      ],
+    });
+    mobileMock.mockReturnValue(false);
+    layoutQueryMock.mockReturnValue({ data: { type: 'coding', config: {} } });
+    render(
+      withQueryClient(
+        <ConnectionsProvider>
+          <ProjectLayoutRenderer
+            projectSlug="project-route"
+            layoutSlug="coding"
+          />
+        </ConnectionsProvider>,
+      ),
+    );
+    drillIntoHostPane();
+    const hostProps = hostMock.mock.lastCall?.[0];
+    if (!hostProps) throw new Error('Coding host did not mount');
+    window.history.pushState({}, '', '/projects/project-route/coding');
+    const capture = captureTroubleshootSeeds();
+    try {
+      render(
+        <ConnectionsProvider>
+          {hostProps.renderPane(instance)}
+        </ConnectionsProvider>,
+      );
+      expect(screen.getByText('Review unavailable')).toBeTruthy();
+      fireEvent.click(screen.getByRole('button', { name: 'Troubleshoot' }));
+      expect(capture.seeds).toEqual([
+        {
+          route: '/projects/project-route/coding',
+          errorSummary:
+            'pane-health-unavailable: Review: The pane is temporarily unavailable. Try again shortly.',
+        },
+      ]);
+    } finally {
+      capture.stop();
+      window.history.pushState({}, '', '/');
+    }
   });
 
   const stackCrumbs = () =>

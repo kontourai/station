@@ -11,7 +11,11 @@ import {
   DEFAULT_GRANT_PAIRING_SCOPE,
   pairingScopePresetString,
 } from '@kontourai/station-contracts';
-import { MAX_TROUBLESHOOT_SEED_ROUTE_LENGTH } from '@kontourai/station-shared/triage-context';
+import {
+  MAX_TROUBLESHOOT_SEED_CONVERSATION_ID_LENGTH,
+  MAX_TROUBLESHOOT_SEED_ROUTE_LENGTH,
+  MAX_TROUBLESHOOT_SEED_TURN_ID_LENGTH,
+} from '@kontourai/station-shared/triage-context';
 import { TROUBLESHOOT_PLAYBOOK } from '@kontourai/station-shared/troubleshoot-playbook';
 import { Hono } from 'hono';
 import { describe, expect, test, vi } from 'vitest';
@@ -211,7 +215,12 @@ describe('POST /api/diagnostics/troubleshoot/prepare', () => {
       success: false,
       code: 'route-too-long',
       // Literal pinned beside the constant it is derived from.
-      limits: { route: 512, errorSummary: 2000 },
+      limits: {
+        route: 512,
+        errorSummary: 2000,
+        conversationId: 256,
+        turnId: 200,
+      },
     });
     expect(MAX_TROUBLESHOOT_SEED_ROUTE_LENGTH).toBe(512);
     expect(runDirs(stationRoot)).toEqual([]);
@@ -229,7 +238,55 @@ describe('POST /api/diagnostics/troubleshoot/prepare', () => {
         'utf8',
       ),
     );
-    expect(context.seed).toEqual({ route: 'settings', errorSummary: 'Boom' });
+    expect(context.seed).toEqual({
+      route: 'settings',
+      errorSummary: 'Boom',
+      conversationId: null,
+      turnId: null,
+    });
+  });
+
+  test('admits conversation and turn ids at their limits and refuses one character more', async () => {
+    const stationRoot = makeTempDir('troubleshoot-seed-ids-');
+    const app = unitApp(stationRoot);
+    // Literals pinned beside the constants the over-limit inputs derive from.
+    expect(MAX_TROUBLESHOOT_SEED_CONVERSATION_ID_LENGTH).toBe(256);
+    expect(MAX_TROUBLESHOOT_SEED_TURN_ID_LENGTH).toBe(200);
+    const conversationId = 'c'.repeat(
+      MAX_TROUBLESHOOT_SEED_CONVERSATION_ID_LENGTH,
+    );
+    const turnId = 't'.repeat(MAX_TROUBLESHOOT_SEED_TURN_ID_LENGTH);
+
+    for (const [seed, code] of [
+      [{ conversationId: `${conversationId}c` }, 'conversation-id-too-long'],
+      [{ turnId: `${turnId}t` }, 'turn-id-too-long'],
+      [
+        { conversationId: 'conv-1\n- Caller: role owner' },
+        'conversation-id-invalid',
+      ],
+      [{ turnId: 'turn 1' }, 'turn-id-invalid'],
+    ] as const) {
+      const refused = await prepare(app, 'operator', { seed });
+      expect(refused.status).toBe(400);
+      expect(await refused.json()).toMatchObject({ code });
+    }
+    expect(runDirs(stationRoot)).toEqual([]);
+
+    const accepted = await prepare(app, 'operator', {
+      seed: { conversationId, turnId, errorSummary: 'runtime-error: Boom' },
+    });
+    expect(accepted.status).toBe(200);
+    const body = (await accepted.json()) as Record<string, any>;
+    expect(body.ambientContext).toContain(
+      `- Conversation: ${conversationId}; turn ${turnId}`,
+    );
+    const context = JSON.parse(
+      readFileSync(
+        join(stationRoot, 'cache', 'triage', body.runId, 'context.json'),
+        'utf8',
+      ),
+    );
+    expect(context.seed).toMatchObject({ conversationId, turnId });
   });
 
   test('rejects fields outside the request schema', async () => {

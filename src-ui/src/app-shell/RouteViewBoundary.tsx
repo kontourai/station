@@ -12,6 +12,7 @@ import {
 } from 'react';
 import { Button } from '../components/Button';
 import { ErrorState } from '../components/state';
+import { TroubleshootAction } from '../components/troubleshoot/TroubleshootAction';
 import { type LocaleContextValue, useLocale } from '../i18n/LocaleContext';
 import { openConnectionsModal } from '../lib/connectionModalEvents';
 import { RoutePendingSkeleton } from './RoutePendingSkeleton';
@@ -44,6 +45,22 @@ export function classifyRouteFailure(error: unknown): RouteFailureKind {
     }
   }
   return 'view';
+}
+
+/**
+ * The failure's code and message for the Troubleshoot action. The HTTP
+ * status is the code a Station error has; anything else uses its error name.
+ * The start flow keeps only the message's first line and redacts it.
+ */
+export function routeFailureTroubleshootRequest(error: unknown): {
+  code?: string;
+  message?: string;
+} {
+  if (error instanceof StationHttpError)
+    return { code: `HTTP ${error.status}`, message: error.message };
+  if (error instanceof Error)
+    return { code: error.name || 'Error', message: error.message };
+  return { code: 'view-failed' };
 }
 
 interface RouteErrorBoundaryState {
@@ -158,6 +175,11 @@ class RouteErrorBoundary extends Component<
                 <Button variant="secondary" onClick={this.retry}>
                   {this.props.message('route.retryAction')}
                 </Button>
+                <TroubleshootAction
+                  request={routeFailureTroubleshootRequest(this.state.error)}
+                >
+                  {this.props.message('route.troubleshootAction')}
+                </TroubleshootAction>
               </>
             }
           />
@@ -168,9 +190,16 @@ class RouteErrorBoundary extends Component<
           title={this.props.message('route.generic.title')}
           description={this.props.message('route.generic.description')}
           action={
-            <Button variant="primary" onClick={this.retry}>
-              {this.props.message('route.retryAction')}
-            </Button>
+            <>
+              <Button variant="primary" onClick={this.retry}>
+                {this.props.message('route.retryAction')}
+              </Button>
+              <TroubleshootAction
+                request={routeFailureTroubleshootRequest(this.state.error)}
+              >
+                {this.props.message('route.troubleshootAction')}
+              </TroubleshootAction>
+            </>
           }
         />
       );

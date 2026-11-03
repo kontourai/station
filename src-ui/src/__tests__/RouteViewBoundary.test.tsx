@@ -12,6 +12,7 @@ import {
   RouteViewBoundary,
 } from '../app-shell/RouteViewBoundary';
 import { routeTransitionStore } from '../app-shell/route-transition-store';
+import { captureTroubleshootSeeds } from '../components/troubleshoot/__tests__/captureTroubleshootSeeds';
 import { OPEN_CONNECTIONS_MODAL_EVENT } from '../lib/connectionModalEvents';
 
 class ThrowingView extends Component<{ error?: unknown }> {
@@ -249,6 +250,57 @@ describe('RouteViewBoundary', () => {
       );
       expect(opened).toHaveBeenCalled();
       window.removeEventListener(OPEN_CONNECTIONS_MODAL_EVENT, opened);
+    });
+
+    // #4470. Placed before the test below, which replaces `window.location`.
+    test('a view failure offers Troubleshoot seeded with the route and the error', () => {
+      vi.spyOn(console, 'error').mockImplementation(() => undefined);
+      window.history.pushState({}, '', '/activity/all?session=secret#x');
+      const capture = captureTroubleshootSeeds();
+      try {
+        render(
+          <RouteViewBoundary routeKey="activity:all">
+            <ThrowingView
+              error={
+                new TypeError(
+                  "Cannot read properties of undefined (reading 'id')\n    at View (/Users/alice/app.tsx:1:2)",
+                )
+              }
+            />
+          </RouteViewBoundary>,
+        );
+        fireEvent.click(screen.getByRole('button', { name: 'Troubleshoot' }));
+        expect(capture.seeds).toEqual([
+          {
+            route: '/activity/all',
+            errorSummary:
+              "TypeError: Cannot read properties of undefined (reading 'id')",
+          },
+        ]);
+      } finally {
+        capture.stop();
+        window.history.pushState({}, '', '/');
+      }
+    });
+
+    test('an authority failure offers Troubleshoot seeded with its HTTP status', () => {
+      vi.spyOn(console, 'error').mockImplementation(() => undefined);
+      window.history.pushState({}, '', '/settings');
+      const capture = captureTroubleshootSeeds();
+      try {
+        render(
+          <RouteViewBoundary routeKey="settings">
+            <ThrowingView error={new StationHttpError(403, 'forbidden')} />
+          </RouteViewBoundary>,
+        );
+        fireEvent.click(screen.getByRole('button', { name: 'Troubleshoot' }));
+        expect(capture.seeds).toEqual([
+          { route: '/settings', errorSummary: 'HTTP 403: forbidden' },
+        ]);
+      } finally {
+        capture.stop();
+        window.history.pushState({}, '', '/');
+      }
     });
 
     test('a view failure retries by remounting the route, not by reloading', () => {

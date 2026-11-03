@@ -344,13 +344,18 @@ revoked grant lookup denies the read.
 ### Preparing an in-app troubleshooting run (#4470)
 
 - **`POST /api/diagnostics/troubleshoot/prepare`** — body
-  `{ surface?: 'desktop'|'web'|'mobile'|'unknown', seed?: { route?, errorSummary? } }`
+  `{ surface?: 'desktop'|'web'|'mobile'|'unknown', seed?: { route?, errorSummary?, conversationId?, turnId? } }`
   (strict, at most 16 KiB). Writes an owner-only run under
   this Station's home, `<home>/cache/triage/<uuid>`, and returns the run id, the Station
   Assistant id, a bounded ambient seed, an opening message and display facts.
   The `/api/diagnostics` POST tier (`orchestration:operate`) applies; every
-  agent caller is refused with 403; a seed route over 512 characters or an
-  error summary over 2,000 characters is refused with 400, a closed `code` (`route-too-long`, `route-not-in-app`, `error-summary-too-long`) and both limits. Advertised by the
+  agent caller is refused with 403. A seed route over 512 characters, an
+  error summary over 2,000 characters, a conversation id over 256 characters
+  or a turn id over 200 characters is refused with 400, as is an id with
+  whitespace or a control character. The response carries a closed `code`
+  (`route-too-long`, `route-not-in-app`, `error-summary-too-long`,
+  `conversation-id-too-long`, `conversation-id-invalid`, `turn-id-too-long`,
+  `turn-id-invalid`) and every limit. Advertised by the
   `troubleshootPrepare` capability flag. Types:
   `@kontourai/station-contracts/troubleshoot`. See
   [troubleshoot with an agent](../design/troubleshoot-in-app.md).

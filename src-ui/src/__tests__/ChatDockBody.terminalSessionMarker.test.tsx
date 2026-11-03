@@ -141,6 +141,7 @@ vi.mock('../components/chat/QueuedMessages', () => ({
 }));
 
 import { ChatDockBody } from '../components/chat-dock/ChatDockBody';
+import { captureTroubleshootSeeds } from '../components/troubleshoot/__tests__/captureTroubleshootSeeds';
 import { PreviewProvider } from '../contexts/PreviewContext';
 import type { ChatSession } from '../types';
 
@@ -475,6 +476,75 @@ describe('ChatDockBody terminal-session marker (station#1827)', () => {
       ),
     ).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Start new chat' })).toBeNull();
+  });
+
+  // #4470: a failed turn offers "Troubleshoot this", seeded with the
+  // conversation, the failed turn and the raw (redacted) error.
+  test('a failed turn offers Troubleshoot this, seeded with the conversation, turn and error', async () => {
+    window.history.pushState({}, '', '/chat?draft=secret');
+    const capture = captureTroubleshootSeeds();
+    try {
+      const session = buildSession({
+        conversationId: 'conversation-failed',
+        messages: [
+          {
+            role: 'user',
+            content: 'summarise the repo',
+            timestamp: 1,
+            turnId: 'turn-failed-1',
+          } as any,
+          {
+            role: 'user',
+            content:
+              '[SYSTEM_EVENT] [CHAT_ERROR:engine-turn-failed] Engine exited with code 1 using token ghp_A1b2C3d4E5A1b2C3d4E5A1b2C3d4E5A1b2C3d4E5',
+            timestamp: 2,
+            turnId: 'turn-failed-1',
+          } as any,
+        ],
+      });
+      renderDock(session, vi.fn());
+      fireEvent.click(
+        await screen.findByRole(
+          'button',
+          { name: 'Troubleshoot this' },
+          { timeout: LAZY_TRANSCRIPT_TIMEOUT_MS },
+        ),
+      );
+      expect(capture.seeds).toHaveLength(1);
+      const seed = capture.seeds[0]!;
+      expect(seed).toMatchObject({
+        route: '/chat',
+        conversationId: 'conversation-failed',
+        turnId: 'turn-failed-1',
+      });
+      expect(seed.errorSummary).toMatch(
+        /^engine-turn-failed: Engine exited with code 1 using token /,
+      );
+      expect(seed.errorSummary).not.toContain('ghp_A1b2C3d4E5');
+    } finally {
+      capture.stop();
+      window.history.pushState({}, '', '/');
+    }
+  });
+
+  test('a replayed conversation’s failed turn does not offer Troubleshoot this', async () => {
+    const session = buildSession({
+      replay: true,
+      messages: [
+        {
+          role: 'user',
+          content: '[SYSTEM_EVENT] [CHAT_ERROR] Stream aborted by client',
+          timestamp: 2,
+        } as any,
+      ],
+    } as Partial<ChatSession>);
+    renderDock(session, vi.fn());
+    await screen.findByText(/aborted|stopped|interrupted/i, undefined, {
+      timeout: LAZY_TRANSCRIPT_TIMEOUT_MS,
+    });
+    expect(
+      screen.queryByRole('button', { name: 'Troubleshoot this' }),
+    ).toBeNull();
   });
 
   test('a rejected New chat surfaces its reason instead of dying silently', async () => {
