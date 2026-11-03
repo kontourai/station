@@ -283,7 +283,7 @@ describe('RouteViewBoundary', () => {
       }
     });
 
-    test('an authority failure offers Troubleshoot seeded with its HTTP status', () => {
+    test('an authority failure offers Troubleshoot in its menu, seeded with the HTTP status', () => {
       vi.spyOn(console, 'error').mockImplementation(() => undefined);
       window.history.pushState({}, '', '/settings');
       const capture = captureTroubleshootSeeds();
@@ -293,7 +293,14 @@ describe('RouteViewBoundary', () => {
             <ThrowingView error={new StationHttpError(403, 'forbidden')} />
           </RouteViewBoundary>,
         );
-        fireEvent.click(screen.getByRole('button', { name: 'Troubleshoot' }));
+        // Two labelled actions at most (#3045): Troubleshoot is in the menu.
+        expect(
+          screen.queryByRole('button', { name: 'Troubleshoot' }),
+        ).toBeNull();
+        fireEvent.click(
+          screen.getByRole('button', { name: 'More actions for this view' }),
+        );
+        fireEvent.click(screen.getByRole('menuitem', { name: 'Troubleshoot' }));
         expect(capture.seeds).toEqual([
           { route: '/settings', errorSummary: 'HTTP 403: forbidden' },
         ]);

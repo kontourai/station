@@ -41,13 +41,13 @@ surfaces whose sibling controls are native buttons or banner actions call
 
 | Surface | Action | Code sent |
 | --- | --- | --- |
-| Route error boundary ([`RouteViewBoundary`](../../src-ui/src/app-shell/RouteViewBoundary.tsx)), view and authority failures | Troubleshoot | `HTTP <status>`, else the error name |
-| Every error-tone toast, at the one renderer ([`NotificationContainer`](../../src-ui/src/components/notifications/NotificationContainer.tsx)); the flow's own `troubleshoot-*` toasts excluded | Troubleshoot | none; the message only |
+| Route error boundary ([`RouteViewBoundary`](../../src-ui/src/app-shell/RouteViewBoundary.tsx)): beside Try again for a view failure; in the **More actions** menu for an authority failure, whose row already has two actions | Troubleshoot | `HTTP <status>`, else the error name |
+| Error-tone toasts with fewer than two actions, at the one renderer ([`NotificationContainer`](../../src-ui/src/components/notifications/NotificationContainer.tsx)); the flow's own `troubleshoot-*` toasts excluded | Troubleshoot | none; the message only |
 | A placed pane in `temporarily-unavailable` ([`ProjectLayoutRenderer`](../../src-ui/src/app-shell/ProjectLayoutRenderer.tsx)), and the same state's card explanation ([`WorkspacePaneAvailabilityList`](../../src-ui/src/workspace-panes/WorkspacePaneAvailabilityList.tsx)); not while the renderer is still loading or when extension access is the cause | Troubleshoot | `pane-<reason code>` |
 | Unsupported layout tab ([`layouts/index.tsx`](../../src-ui/src/layouts/index.tsx)) | Troubleshoot | `unsupported-layout-tab` |
 | An engine that never connected ([`NotConnectedEngineDetail`](../../src-ui/src/views/NotConnectedEngineDetail.tsx)) | Troubleshoot | `engine-<failure phase>` |
 | The chat dock's "This agent is unavailable" banner ([`ChatDockBody`](../../src-ui/src/components/chat-dock/ChatDockBody.tsx)) | Troubleshoot | the unavailable-fix kind; the conversation id |
-| The local-Station banner when it is `stopped` or `failed` ([`BundledServiceBanner`](../../src-ui/src/components/BundledServiceBanner.tsx)) | Troubleshoot | `local-station-<phase>` |
+| The local-Station banner when it is `stopped` or `failed` and offers no Restart (an unresolved owner or a fail-closed home) ([`BundledServiceBanner`](../../src-ui/src/components/BundledServiceBanner.tsx)) | Troubleshoot | `local-station-<phase>` |
 | A failed turn's `[CHAT_ERROR]` marker, not in a replay ([`ChatDockBody`](../../src-ui/src/components/chat-dock/ChatDockBody.tsx) through [`SystemEventMessage`](../../src-ui/src/components/chat/SystemEventMessage.tsx)) | Troubleshoot this | the marker's error code; conversation and turn ids |
 | A thumbs-down rating ([`MessageRating`](../../src-ui/src/components/chat/message-bubble/MessageRating.tsx)) | This looks like a Station bug | `reply-marked-station-bug`; conversation and turn ids |
 
@@ -61,13 +61,17 @@ Duplicates are left to the playbook, which tells the assistant to prefer
 adding evidence to a matching open issue over filing a new one. That is an
 instruction, not a check.
 
-Every action is always shown. When troubleshooting is unavailable (no engine
+A row shows at most two labelled actions (#3045), so a toast that already has
+two, and a banner that offers Restart, do not get Troubleshoot.
+
+Where it is offered, the action is always shown. When troubleshooting is unavailable (no engine
 for the Station Assistant, or no `troubleshootPrepare` capability), the start
 flow falls back exactly as it does for the help menu.
 
 **Not covered.** Error text shown without an error toast or one of the
 surfaces above: inline `ErrorState` panels in individual views, warning-tone
-toasts, tool-activity failure toasts, the connection and compatibility
+toasts, error toasts that already carry two actions, a local-Station banner
+that offers Restart, tool-activity failure toasts, the connection and compatibility
 banners, other workspace-pane failure states (for example "Workspace pane
 cannot mount"), and the new-chat picker's engine states.
 

@@ -1228,10 +1228,12 @@ Diagnostics.
 Where Station shows an error, a **Troubleshoot** action starts the same
 conversation with that error already attached:
 
-- a view that stopped working, and every error notification;
+- a view that stopped working (under **More actions** when Station refused
+  the view), and an error notification;
 - a pane that is temporarily unavailable, and a layout tab Station can't show;
 - an engine that isn't connected, and an agent that can't run;
-- a local Station that stopped or failed to start;
+- a local Station that stopped or failed when **Restart Station** isn't
+  offered;
 - a reply that failed (**Troubleshoot this**);
 - a reply you rated thumbs-down, through **This looks like a Station bug**.
   Your rating is saved as usual; the bug report isn't added to it.

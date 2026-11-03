@@ -208,6 +208,24 @@ describe('NotificationContainer', () => {
       }
     });
 
+    test('an error toast that already has two actions does not get a third', () => {
+      notifications = [
+        {
+          id: 'two-actions',
+          type: 'error',
+          message: 'Could not install the plugin.',
+          timestamp: Date.now(),
+          dismissed: false,
+          actions: [
+            { label: 'Retry', onClick: vi.fn() },
+            { label: 'Open Plugins', onClick: vi.fn() },
+          ],
+        },
+      ];
+      render(<NotificationContainer />);
+      expect(screen.queryByRole('button', { name: 'Troubleshoot' })).toBeNull();
+    });
+
     test('warning toasts and the troubleshooting flow’s own error toasts do not offer it', () => {
       notifications = [
         {

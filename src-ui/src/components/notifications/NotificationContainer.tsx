@@ -122,11 +122,13 @@ function ToastCard({
     };
   }, [notification.id, isApproval, isPairing]);
   const shortcut = getSessionShortcut(notification.sessionId);
-  // #4470: every error toast offers Troubleshoot here, at the one renderer,
-  // rather than at each of the call sites that raise one. The flow's own
-  // failure toasts are excluded, or troubleshooting would offer itself.
+  // #4470: error toasts offer Troubleshoot here, at the one renderer, rather
+  // than at each of the call sites that raise one. Not when the toast already
+  // has two actions (#3045), and not on the flow's own failure toasts, or
+  // troubleshooting would offer itself.
   const troubleshootable =
     notification.type === 'error' &&
+    (notification.actions?.length ?? 0) < 2 &&
     !notification.dedupeKey?.startsWith('troubleshoot-');
   const message = notification.message.trim();
   const firstLine = message.split(/\r?\n/, 1)[0] ?? message;

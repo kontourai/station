@@ -132,10 +132,12 @@ export function BundledServiceBanner({
           variant: 'secondary',
           onClick: onOpenConnections,
         },
-        // #4470: a stopped or failed local Station can be diagnosed. With no
-        // Station to prepare a run on, the start flow falls back to Report a
-        // problem and `station triage`.
-        ...(phase === 'failed' || phase === 'stopped'
+        // #4470: a stopped or failed local Station can be diagnosed. Offered
+        // when Restart is not, which keeps the row at two actions (#3045) and
+        // covers the case the banner has no fix for. With no Station to
+        // prepare a run on, the start flow falls back to Report a problem and
+        // `station triage`.
+        ...(!canRestart && (phase === 'failed' || phase === 'stopped')
           ? [
               {
                 label: 'Troubleshoot',
