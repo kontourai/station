@@ -26,9 +26,11 @@ what happened: a point-in-time JSON replay and a live SSE feed.
 
 For a new Session that announces `session.started` before its adapter start
 returns, an accepted start awaits that event’s durable commit. A per-thread
-commit signal yields while publication retries; after five seconds without
-confirmation, the command returns `indeterminate`, attempts provider cleanup,
-and retains no in-memory start-owner send authority. Inspect the Session before
+commit signal yields while publication retries. If the announcement settles
+without a durable append, or five seconds pass without confirmation, the command
+returns `indeterminate`, attempts provider cleanup, and retains no in-memory
+start-owner send authority. Event settlement and failed-start cleanup share the
+same interim-owner revocation path. Inspect the Session before
 retrying. Adapters that defer their `session.started` announcement until after
 the adapter start returns retain their deferred-start semantics: acceptance
 does not promise that later event is already durable, and the accepted owner

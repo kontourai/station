@@ -322,22 +322,19 @@ export function browserPaneApi(apiBase: string, fetcher: BrowserFetch) {
         `${root}/sessions/${enc(id)}/recordings/${enc(recordingId)}/video`,
         { signal },
       );
+      const unavailable = () =>
+        new BrowserApiError(
+          response.status,
+          'recording-unavailable',
+          undefined,
+        );
       if (
         !response.ok ||
         !(response.headers.get('content-type') ?? '').startsWith('video/webm')
       )
-        throw new BrowserApiError(
-          response.status,
-          'recording-unavailable',
-          undefined,
-        );
+        throw unavailable();
       const reader = response.body?.getReader();
-      if (!reader)
-        throw new BrowserApiError(
-          response.status,
-          'recording-unavailable',
-          undefined,
-        );
+      if (!reader) throw unavailable();
       const parts: Uint8Array<ArrayBuffer>[] = [];
       let total = 0;
       try {
@@ -352,12 +349,7 @@ export function browserPaneApi(apiBase: string, fetcher: BrowserFetch) {
         await reader.cancel().catch(() => {});
         throw error;
       }
-      if (!total)
-        throw new BrowserApiError(
-          response.status,
-          'recording-unavailable',
-          undefined,
-        );
+      if (!total) throw unavailable();
       return new Blob(parts, { type: 'video/webm' });
     },
     /** The page as an image (PNG, or JPEG for a very large page). */

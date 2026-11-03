@@ -81,7 +81,11 @@ vi.mock('../../../live-surface/LiveSurfaceCanvas', () => ({
 }));
 
 import { activeChatsStore } from '../../../contexts/active-chats-store';
-import { KeyboardShortcutsProvider } from '../../../contexts/KeyboardShortcutsContext';
+import {
+  evaluateShortcutWhen,
+  KeyboardShortcutsProvider,
+  useShortcutRegistry,
+} from '../../../contexts/KeyboardShortcutsContext';
 import { navigationStore } from '../../../contexts/navigation-store';
 import { browserFloatSourceKey } from '../../../float-over-chat/floatSource';
 import {
@@ -190,6 +194,7 @@ function renderPane(
   });
   const wrap = (node: ReactNode) => (
     <KeyboardShortcutsProvider>
+      <RegistryProbe />
       <QueryClientProvider client={client}>{node}</QueryClientProvider>
     </KeyboardShortcutsProvider>
   );
@@ -220,14 +225,47 @@ async function chooseFromMenu(
   role: 'menuitem' | 'menuitemradio' = 'menuitem',
 ) {
   fireEvent.click(
-    await screen.findByRole('button', { name: 'More browser actions' }),
+    await screen.findByRole('button', { name: /^More browser actions/ }),
   );
   const menu = await screen.findByRole('menu', {
-    name: 'More browser actions',
+    name: /^More browser actions/,
   });
   const item = within(menu).getByRole(role, { name }) as HTMLButtonElement;
   await waitFor(() => expect(item.disabled).toBe(false));
   fireEvent.click(item);
+}
+
+let registry: ReturnType<typeof useShortcutRegistry> | null = null;
+function RegistryProbe() {
+  registry = useShortcutRegistry();
+  return null;
+}
+
+/**
+ * Run a Browser command through the shortcut registry the command palette
+ * lists: the registered handler, only while it is enabled and its `when`
+ * holds. This does not drive the palette's own UI. Focus inside the pane
+ * first, which is what makes Browser commands current.
+ */
+async function runRegisteredCommand(id: string) {
+  act(() =>
+    (
+      screen.getByRole('button', {
+        name: /^More browser actions/,
+      }) as HTMLButtonElement
+    ).focus(),
+  );
+  let handler: (() => void) | undefined;
+  await waitFor(() => {
+    const shortcut = registry
+      ?.getAllShortcuts()
+      .find((entry) => entry.id === id);
+    expect(shortcut).toBeTruthy();
+    expect(shortcut!.disabled).toBe(false);
+    expect(!shortcut!.when || evaluateShortcutWhen(shortcut!.when)).toBe(true);
+    handler = shortcut!.handler;
+  });
+  act(() => handler!());
 }
 
 describe('BrowserPane honest states', () => {
@@ -292,7 +330,7 @@ describe('BrowserPane honest states', () => {
         ),
       });
       await screen.findByTestId('live-canvas');
-      fireEvent.click(screen.getByRole('button', { name: 'Float over chat' }));
+      await chooseFromMenu('Float over chat');
       const request = takeFloatRequest();
       expect(request?.source).toMatchObject({
         kind: 'browser',
@@ -315,7 +353,7 @@ describe('BrowserPane honest states', () => {
     }
   });
 
-  test('screenshot to chat menu hands the image to the active Project chat', async () => {
+  test('the registered Screenshot to chat command hands the image to the active Project chat', async () => {
     const received = vi.fn(async (files: File[]) => ({
       added: files.length,
       errors: [],
@@ -344,7 +382,7 @@ describe('BrowserPane honest states', () => {
           }),
       });
       await screen.findByTestId('live-canvas');
-      await chooseFromMenu('Screenshot to chat');
+      await runRegisteredCommand('browser.screenshotChat');
       await waitFor(() => expect(received).toHaveBeenCalledOnce());
       expect(received.mock.calls[0]![0][0]).toMatchObject({
         name: 'browser-screenshot.png',
@@ -551,7 +589,11 @@ describe('BrowserPane honest states', () => {
     );
     expect(await screen.findByText(/view only/i)).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Open' })).toBeNull();
-    expect(await screen.findByText('Nothing open yet')).toBeTruthy();
+    expect(
+      screen.queryByRole('heading', {
+        name: 'Enter a URL or pick a local server',
+      }),
+    ).toBeNull();
   });
   test('address shortcut runs through the registry while Browser chrome has focus', async () => {
     renderPane({
@@ -1194,78 +1236,115 @@ describe('BrowserPane Chromium acquisition (D3)', () => {
   });
 });
 
-describe('BrowserPane local targets (D7, operator only)', () => {
-  const suggestion = {
-    host: 'localhost',
-    port: 5173,
-    label: 'vite',
-    pid: 4242,
-    processName: 'node',
-    commandLine: 'node vite --token ********',
-    cwd: '/work/alpha',
-    selected: false,
-    warnings: ['may-proxy'],
-  };
-
-  test('lists shared servers, offers unselected suggestions, and shares one only on its own click', async () => {
-    const { calls } = renderPane({
-      'GET /api/browser/projects/alpha/access': OPERATOR_ACCESS,
-      [`GET /api/browser/sessions/${SESSION}?view=summary`]: ok(sessionView()),
-      'GET /api/browser/projects/alpha/local-targets': ok([
-        {
-          id: 'lt_00000000-0000-4000-8000-000000000001',
-          host: '127.0.0.1',
-          port: 3001,
-          label: 'api',
-          addedBy: 'operator',
-          addedAt: '2026-09-22T12:00:00.000Z',
-        },
-      ]),
-      'GET /api/browser/projects/alpha/local-target-suggestions': ok({
-        state: 'ok',
-        suggestions: [suggestion],
+describe('Browser empty state', () => {
+  test('says what to do and opens a shared local server, IPv6 included, in one click', async () => {
+    const { calls, onAttach } = renderPane(
+      {
+        'GET /api/browser/projects/alpha/access': OPERATOR_ACCESS,
+        'GET /api/browser/sessions?projectSlug=alpha': ok([]),
+        'GET /api/browser/projects/alpha/local-targets': ok([
+          {
+            id: 'lt_00000000-0000-4000-8000-000000000002',
+            host: '::1',
+            port: 5173,
+            label: 'vite',
+            addedBy: 'operator',
+            addedAt: '2026-09-22T12:00:00.000Z',
+          },
+        ]),
+        'POST /api/browser/sessions': ok(sessionView(), 201),
+      },
+      { kind: 'new' },
+    );
+    expect(
+      await screen.findByRole('heading', {
+        name: 'Enter a URL or pick a local server',
       }),
-      'POST /api/browser/projects/alpha/local-targets': ok(
-        { id: 'lt_x', ...suggestion, addedBy: 'operator', addedAt: 'x' },
-        201,
-      ),
-      'DELETE /api/browser/projects/alpha/local-targets/lt_00000000-0000-4000-8000-000000000001':
-        ok({}),
-    });
-    await chooseFromMenu('Local servers');
-    expect(await screen.findByText('api — 127.0.0.1:3001')).toBeTruthy();
-    expect(
-      calls.some((c) => c.path.endsWith('/local-target-suggestions')),
-    ).toBe(false);
-    fireEvent.click(screen.getByRole('button', { name: 'Find local servers' }));
-    const share = await screen.findByRole('button', {
-      name: "Share vite :5173 with this Project's admins",
-    });
-    expect(screen.getByText(/pid 4242/)).toBeTruthy();
-    expect(screen.getByText('Folder: /work/alpha')).toBeTruthy();
-    expect(screen.getByText('node vite --token ********')).toBeTruthy();
-    expect(screen.getByText(/may proxy other addresses/)).toBeTruthy();
-    // Nothing is shared by finding it.
-    expect(
-      calls.some(
-        (c) => c.method === 'POST' && c.path.endsWith('/local-targets'),
-      ),
-    ).toBe(false);
-    fireEvent.click(share);
+    ).toBeTruthy();
+    // No empty session list beside it: one instruction, one place to act.
+    expect(screen.queryByRole('heading', { name: 'Sessions' })).toBeNull();
+    const servers = await screen.findByRole('list', { name: 'Local servers' });
+    fireEvent.click(within(servers).getByRole('button', { name: /vite/ }));
     await waitFor(() =>
       expect(
-        calls.find(
-          (c) => c.method === 'POST' && c.path.endsWith('/local-targets'),
-        )?.body,
-      ).toEqual({ host: 'localhost', port: 5173, label: 'vite' }),
+        (
+          calls.find(
+            (c) => c.method === 'POST' && c.path === '/api/browser/sessions',
+          )?.body as { url?: string } | undefined
+        )?.url,
+      ).toBe('http://[::1]:5173/'),
     );
-    fireEvent.click(screen.getByRole('button', { name: 'Stop sharing api' }));
-    await waitFor(() =>
-      expect(calls.some((c) => c.method === 'DELETE')).toBe(true),
-    );
+    await waitFor(() => expect(onAttach).toHaveBeenCalledWith(SESSION));
   });
+});
 
-  test('a Project admin never sees the local servers control', async () => {
+describe('Browser commands in the shortcut registry', () => {
+  test('console, sessions, rotate, stop loading, float and Browser settings each run as a registered command', async () => {
+    const release = registerFloatHost();
+    const navigate = vi
+      .spyOn(navigationStore, 'navigate')
+      .mockImplementation(() => {});
+    try {
+      const { calls } = renderPane({
+        'GET /api/browser/projects/alpha/access': OPERATOR_ACCESS,
+        [`GET /api/browser/sessions/${SESSION}?view=summary`]: ok(
+          sessionView(),
+        ),
+        'GET /api/browser/sessions?projectSlug=alpha': ok([sessionView()]),
+        [`GET /api/browser/sessions/${SESSION}/console`]: ok({
+          entries: [],
+          dropped: 0,
+          latestSeq: 0,
+          generation: 1,
+          capturing: true,
+        }),
+        [`POST /api/browser/sessions/${SESSION}/viewport`]: ok(sessionView()),
+        [`POST /api/browser/sessions/${SESSION}/history`]: ok(sessionView()),
+      });
+      await screen.findByTestId('live-canvas');
+      await runRegisteredCommand('browser.console');
+      expect(
+        await screen.findByRole('region', { name: 'Console' }),
+      ).toBeTruthy();
+      await runRegisteredCommand('browser.sessions');
+      expect(
+        await screen.findByRole('heading', { name: 'Sessions' }),
+      ).toBeTruthy();
+      await runRegisteredCommand('browser.rotate');
+      await waitFor(() =>
+        expect(calls.some((c) => c.path.endsWith('/viewport'))).toBe(true),
+      );
+      await runRegisteredCommand('browser.stop');
+      await waitFor(() =>
+        expect(
+          calls.some(
+            (c) =>
+              c.path.endsWith('/history') &&
+              (c.body as { action: string }).action === 'stop',
+          ),
+        ).toBe(true),
+      );
+      await runRegisteredCommand('browser.float');
+      expect(takeFloatRequest()?.source).toMatchObject({
+        kind: 'browser',
+        browserSessionId: SESSION,
+      });
+      await runRegisteredCommand('browser.settings');
+      expect(navigate).toHaveBeenCalledWith(
+        '/settings',
+        expect.objectContaining({ view: 'advanced', project: 'alpha' }),
+      );
+    } finally {
+      release();
+    }
+  });
+});
+
+describe('BrowserPane settings link (D4, D7)', () => {
+  test('Browser settings… opens Settings › Advanced › Browser & devices on this Project', async () => {
+    const navigate = vi
+      .spyOn(navigationStore, 'navigate')
+      .mockImplementation(() => {});
     renderPane({
       'GET /api/browser/projects/alpha/access': ADMIN_ACCESS,
       [`GET /api/browser/sessions/${SESSION}?view=summary`]: ok(
@@ -1273,79 +1352,35 @@ describe('BrowserPane local targets (D7, operator only)', () => {
       ),
     });
     await screen.findByTestId('live-canvas');
+    await chooseFromMenu('Browser settings…');
+    expect(navigate).toHaveBeenCalledWith('/settings', {
+      view: 'advanced',
+      highlight: 'browser-project-settings',
+      project: 'alpha',
+    });
+  });
+
+  test('the ⋯ menu no longer carries the agent access or local servers panels', async () => {
+    renderPane({
+      'GET /api/browser/projects/alpha/access': OPERATOR_ACCESS,
+      [`GET /api/browser/sessions/${SESSION}?view=summary`]: ok(sessionView()),
+    });
+    await screen.findByTestId('live-canvas');
     fireEvent.click(
-      await screen.findByRole('button', { name: 'More browser actions' }),
+      await screen.findByRole('button', { name: /^More browser actions/ }),
     );
     const menu = await screen.findByRole('menu', {
-      name: 'More browser actions',
+      name: /^More browser actions/,
     });
     expect(
-      within(menu).getByRole('menuitem', { name: 'Sessions' }),
-    ).toBeTruthy();
+      within(menu).queryByRole('menuitem', { name: 'Agent access' }),
+    ).toBeNull();
     expect(
       within(menu).queryByRole('menuitem', { name: 'Local servers' }),
     ).toBeNull();
-  });
-});
-
-describe('BrowserPane agent access (D4)', () => {
-  test('a Project admin sees the JavaScript permission off, with what it hands over, and turns it on', async () => {
-    const { calls } = renderPane({
-      'GET /api/browser/projects/alpha/access': ADMIN_ACCESS,
-      [`GET /api/browser/sessions/${SESSION}?view=summary`]: ok(
-        sessionView({ principalKey: 'principal:admin', reach: 'project' }),
-      ),
-      'GET /api/browser/projects/alpha/settings': ok({
-        browserEvaluate: false,
-      }),
-      'PUT /api/browser/projects/alpha/settings': ok({
-        browserEvaluate: true,
-        updatedBy: 'principal:admin',
-      }),
-    });
-    await chooseFromMenu('Agent access');
-    const toggle = await screen.findByRole('switch', {
-      name: "Let agents run JavaScript in this Project's pages",
-    });
-    expect(toggle.getAttribute('aria-checked')).toBe('false');
-    // #2425: the state is also said in words beside the switch (hidden from
-    // assistive tech, which reads aria-checked), not by colour alone.
-    const switchState = () =>
-      toggle
-        .closest('.station-toggle-field')
-        ?.querySelector('.station-toggle__state');
-    expect(switchState()?.textContent).toBe('Off');
-    expect(switchState()?.getAttribute('aria-hidden')).toBe('true');
-    // The disclosure is the switch's own description (S6).
-    const description = document.getElementById(
-      toggle.getAttribute('aria-describedby') ?? '',
-    );
-    expect(description?.textContent).toMatch(/cookies and local storage/);
-    expect(description?.textContent).toMatch(/keep running/);
-    fireEvent.click(toggle);
-    await waitFor(() =>
-      expect(
-        calls.find((c) => c.method === 'PUT' && c.path.endsWith('/settings'))
-          ?.body,
-      ).toEqual({ browserEvaluate: true }),
-    );
-    await waitFor(() =>
-      expect(
-        screen
-          .getByRole('switch', {
-            name: "Let agents run JavaScript in this Project's pages",
-          })
-          .getAttribute('aria-checked'),
-      ).toBe('true'),
-    );
     expect(
-      screen
-        .getByRole('switch', {
-          name: "Let agents run JavaScript in this Project's pages",
-        })
-        .closest('.station-toggle-field')
-        ?.querySelector('.station-toggle__state')?.textContent,
-    ).toBe('On');
+      within(menu).getByRole('menuitem', { name: 'Browser settings…' }),
+    ).toBeTruthy();
   });
 });
 
@@ -1448,9 +1483,7 @@ describe('BrowserPane wave 2 fix round', () => {
     // Re-render (any state change) after the baseline is taken: an old
     // dialog must still not be announced.
     await chooseFromMenu('Sessions');
-    await screen.findByRole('heading', {
-      name: 'Browser sessions in this Project',
-    });
+    await screen.findByRole('heading', { name: 'Sessions' });
     expect(screen.queryByText(/The page showed a dialog/)).toBeNull();
   });
 

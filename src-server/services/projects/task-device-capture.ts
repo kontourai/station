@@ -247,6 +247,9 @@ export class TaskDeviceCapture {
         'capture-unavailable',
         'Device session changed.',
       );
+    const installation = selected.services.sessions.latestInstallation?.(
+      selected.session.sessionId,
+    );
     return {
       current: selected.isCurrent,
       data: {
@@ -261,12 +264,8 @@ export class TaskDeviceCapture {
         },
         app: {
           appId,
-          installation: (() => {
-            const value = selected.services.sessions.latestInstallation?.(
-              selected.session.sessionId,
-            );
-            return value?.metadata.appId === appId ? value : null;
-          })(),
+          installation:
+            installation?.metadata.appId === appId ? installation : null,
           revision: null,
         },
         logs: sample

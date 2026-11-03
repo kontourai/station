@@ -22,11 +22,12 @@ import type {
 import type { BrowserConsoleSnapshot } from '../services/browser/browser-console-log.js';
 import type { BrowserViewport } from '../services/browser/browser-host.js';
 import type { BrowserHumanRecording } from '../services/browser/browser-human-recording.js';
+import type { HumanTaskPreparation } from '../services/browser/browser-human-task-clip.js';
 import {
   LocalTargetError,
   type LocalTargetStore,
 } from '../services/browser/browser-local-targets.js';
-import type { BrowserNetworkLog } from '../services/browser/browser-network-log.js';
+import type { BrowserNetworkSnapshot } from '../services/browser/browser-network-log.js';
 import { pickBrowserElement } from '../services/browser/browser-pick.js';
 import type { BrowserProjectSettingsStore } from '../services/browser/browser-project-settings.js';
 import {
@@ -71,6 +72,25 @@ const EXPERIENCE_DISABLED = {
   error: 'Enable Browser experience in Settings → Advanced → Feature previews.',
   code: 'feature_preview_disabled',
   previewId: 'browser-experience',
+  settingsPath: '/settings?view=feature-previews&highlight=feature-previews',
+} as const;
+
+interface CapturedView {
+  viewport: BrowserViewport;
+  zoomFactor?: number;
+}
+
+/** A capture is valid only for the viewport and zoom it was taken at. */
+const sameView = (a: CapturedView, b: CapturedView) =>
+  a.viewport.width === b.viewport.width &&
+  a.viewport.height === b.viewport.height &&
+  (a.zoomFactor ?? 1) === (b.zoomFactor ?? 1);
+
+const ARTIFACTS_DISABLED = {
+  success: false,
+  error: 'Enable Browser artifacts in Feature previews.',
+  code: 'feature_preview_disabled',
+  previewId: 'browser-artifacts',
   settingsPath: '/settings?view=feature-previews&highlight=feature-previews',
 } as const;
 
@@ -143,9 +163,7 @@ export interface BrowserRoutesDeps {
     browserSessionId: string,
     after?: number,
     limit?: number,
-  ): Promise<
-    (ReturnType<BrowserNetworkLog['read']> & { generation: number }) | undefined
-  >;
+  ): Promise<BrowserNetworkSnapshot | undefined>;
   networkPreviewEnabled?: () => boolean;
   humanRecordings?: BrowserHumanRecording;
   recordingAdmissionKey?(context: Context): string | undefined;
@@ -153,9 +171,7 @@ export interface BrowserRoutesDeps {
     request: Request,
     conversationId: string,
     browser: BrowserSessionRecord,
-  ): Promise<
-    import('../services/browser/browser-human-task-clip.js').HumanTaskPreparation
-  >;
+  ): Promise<HumanTaskPreparation>;
   acquisition: Pick<ChromiumAcquisition, 'status' | 'startDownload'>;
   localTargets: Pick<LocalTargetStore, 'list' | 'add' | 'remove'>;
   /** Per-Project browser permissions (D4). Absent: the routes are not served. */
@@ -548,18 +564,7 @@ export function createBrowserRoutes(deps: BrowserRoutesDeps) {
   };
 
   const recordingPreview = async (c: Context, next: () => Promise<void>) => {
-    if (!deps.networkPreviewEnabled?.())
-      return c.json(
-        {
-          success: false,
-          code: 'feature_preview_disabled',
-          previewId: 'browser-artifacts',
-          settingsPath:
-            '/settings?view=feature-previews&highlight=feature-previews',
-          error: 'Enable Browser artifacts in Feature previews.',
-        },
-        404,
-      );
+    if (!deps.networkPreviewEnabled?.()) return c.json(ARTIFACTS_DISABLED, 404);
     await next();
   };
   app.use('/sessions/:browserSessionId/recordings', recordingPreview);
@@ -1053,18 +1058,7 @@ export function createBrowserRoutes(deps: BrowserRoutesDeps) {
     );
     if (found.status !== 200) return c.json(refuse(found.status), found.status);
     if (!deps.isRequestPrincipalCurrent(c.req.raw)) return c.json(denied, 403);
-    if (!deps.networkPreviewEnabled?.())
-      return c.json(
-        {
-          success: false,
-          error: 'Enable Browser artifacts in Feature previews.',
-          code: 'feature_preview_disabled',
-          previewId: 'browser-artifacts',
-          settingsPath:
-            '/settings?view=feature-previews&highlight=feature-previews',
-        },
-        404,
-      );
+    if (!deps.networkPreviewEnabled?.()) return c.json(ARTIFACTS_DISABLED, 404);
     if (
       (!deps.isAgentRequest || deps.isAgentRequest(c.req.raw)) &&
       deps.projectSettings?.get(found.session.projectId).browserEvaluate !==
@@ -1115,18 +1109,7 @@ export function createBrowserRoutes(deps: BrowserRoutesDeps) {
     if (!deps.isRequestPrincipalCurrent(c.req.raw)) return c.json(denied, 403);
     if (!deps.isAgentRequest || deps.isAgentRequest(c.req.raw))
       return c.json(denied, 403);
-    if (!deps.networkPreviewEnabled?.())
-      return c.json(
-        {
-          success: false,
-          error: 'Enable Browser artifacts in Feature previews.',
-          code: 'feature_preview_disabled',
-          previewId: 'browser-artifacts',
-          settingsPath:
-            '/settings?view=feature-previews&highlight=feature-previews',
-        },
-        404,
-      );
+    if (!deps.networkPreviewEnabled?.()) return c.json(ARTIFACTS_DISABLED, 404);
     const body = await readJsonObject(c.req.raw, [
       'x',
       'y',
@@ -1188,9 +1171,7 @@ export function createBrowserRoutes(deps: BrowserRoutesDeps) {
         target.target.targetId !== live.target.targetId ||
         target.target.cdpSessionId !== live.target.cdpSessionId ||
         current.session.generation !== body.generation ||
-        current.session.viewport.width !== found.session.viewport.width ||
-        current.session.viewport.height !== found.session.viewport.height ||
-        (current.session.zoomFactor ?? 1) !== (found.session.zoomFactor ?? 1)
+        !sameView(current.session, found.session)
       )
         return c.json({ success: false, code: 'stale-generation' }, 409);
       return c.json({
@@ -1242,9 +1223,7 @@ export function createBrowserRoutes(deps: BrowserRoutesDeps) {
         !deps.isRequestPrincipalCurrent(c.req.raw) ||
         !deps.networkPreviewEnabled?.() ||
         current.session.generation !== found.session.generation ||
-        current.session.viewport.width !== found.session.viewport.width ||
-        current.session.viewport.height !== found.session.viewport.height ||
-        (current.session.zoomFactor ?? 1) !== (found.session.zoomFactor ?? 1)
+        !sameView(current.session, found.session)
       )
         return c.json({ success: false, code: 'stale-generation' }, 409);
       return c.json({

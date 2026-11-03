@@ -92,17 +92,34 @@ describe('the device picker (#1970)', () => {
     renderInQueryClient(<DeviceWorkspacePane />);
     await screen.findByRole('heading', { name: 'Android Emulators' });
     const android = within(group(/Android Emulators/));
-    expect(android.getByText('No Android emulators found.')).toBeTruthy();
-    expect(android.getByText(/Create an emulator \(an AVD\)/)).toBeTruthy();
-    expect(screen.queryByText(/No iOS simulators found/)).toBeNull();
+    expect(android.getByText('No Android emulators')).toBeTruthy();
+    expect(
+      android.getByText(/Create one in Android Studio's Device Manager/),
+    ).toBeTruthy();
+    expect(screen.queryByText(/No iOS simulators/)).toBeNull();
   });
 
   test('no devices at all: both platform hints', async () => {
     stubDeviceFetch({ inventory: readyInventory([]) });
     renderInQueryClient(<DeviceWorkspacePane />);
-    expect(await screen.findByText(/No iOS simulators found/)).toBeTruthy();
-    expect(screen.getByText(/Install Xcode/)).toBeTruthy();
-    expect(screen.getByText(/No Android emulators found/)).toBeTruthy();
+    expect(await screen.findByText(/No iOS simulators/)).toBeTruthy();
+    expect(
+      screen.getByText(/Add a runtime in Xcode › Settings › Components/),
+    ).toBeTruthy();
+    expect(screen.getByText(/No Android emulators/)).toBeTruthy();
+    // With nothing to start, the heading does not ask the person to start one.
+    expect(screen.getByRole('heading', { name: 'Devices' })).toBeTruthy();
+    expect(
+      screen.queryByRole('heading', { name: 'Start a simulator' }),
+    ).toBeNull();
+  });
+
+  test('devices that are all stopped: the heading says to start one', async () => {
+    stubDeviceFetch({ inventory: readyInventory([STOPPED_AVD]) });
+    renderInQueryClient(<DeviceWorkspacePane />);
+    expect(
+      await screen.findByRole('heading', { name: 'Start a simulator' }),
+    ).toBeTruthy();
   });
 
   test('Refresh devices re-reads the list', async () => {
@@ -125,7 +142,9 @@ describe('the device picker (#1970)', () => {
   test('an unconfigured host renders the setup slot, with no retry', async () => {
     stubDeviceFetch({ inventory: unavailableInventory('not-configured') });
     const { container } = renderInQueryClient(<DeviceWorkspacePane />);
-    expect(await screen.findByText(/Set up device inspection/)).toBeTruthy();
+    expect(
+      await screen.findByText(/Set up devices to start a simulator/),
+    ).toBeTruthy();
     expect(
       container.querySelector('[data-slot="device-setup"]'),
     ).not.toBeNull();
@@ -135,7 +154,7 @@ describe('the device picker (#1970)', () => {
   test('an unanswering helper is an error with Refresh devices', async () => {
     stubDeviceFetch({ inventory: unavailableInventory('hub-unavailable') });
     renderInQueryClient(<DeviceWorkspacePane />);
-    expect(await screen.findByText(/did not answer/)).toBeTruthy();
+    expect(await screen.findByText('Device helper not answering')).toBeTruthy();
     expect(
       screen.getByRole('button', { name: 'Refresh devices' }),
     ).toBeTruthy();
