@@ -536,6 +536,10 @@ export class EnvironmentSecurityService {
   resolveGrantedScope(candidate: string): string | undefined {
     if (this.verifyOperatorCredential(candidate))
       return DEFAULT_GRANT_PAIRING_SCOPE;
+    return this.#resolveDeviceGrantedScope(candidate);
+  }
+
+  #resolveDeviceGrantedScope(candidate: string): string | undefined {
     // #3557: never the raw grant: a device tied to a person is capped by
     // that person's Station group, here and in every reader of this.
     const scope = this.#devicePairingService?.effectiveScope(candidate);
@@ -729,7 +733,7 @@ export class EnvironmentSecurityService {
     // Assessment must never turn a structurally supplied activity into a write.
     const request = { method: route.method, path: route.path };
     if (!this.#authorizeDeviceCredential(candidate, request)) return undefined;
-    const grantedScope = this.#devicePairingService?.effectiveScope(candidate);
+    const grantedScope = this.#resolveDeviceGrantedScope(candidate);
     return grantedScope === undefined
       ? undefined
       : Object.freeze({ operator: false, grantedScope });

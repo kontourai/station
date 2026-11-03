@@ -1481,7 +1481,9 @@ export function runtimeRequestPrincipalMayAccessHttpRoute(
       capability.scope,
       { method, path },
       assessed.operator === true,
-      principal.locality === 'home-possession',
+      principal.locality === 'home-possession' ||
+        (principal.authority === 'device-credential' &&
+          security.credentialHasOwnerStanding?.(principal.credential) === true),
     );
   }
   if (!security.authorizeCredential(principal.credential, { method, path })) {
