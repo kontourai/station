@@ -509,14 +509,22 @@ export class StationReportGroupRuntime {
     command: ReportGroupInputSyncInput,
   ) {
     context = this.bindRequest(context);
-    const text = await this.#renewal.recoverAnswerContext(
-      context,
-      groupId,
-      command.seatId,
-      command.renewalOperationKey,
-    );
-    const { renewalOperationKey: _renewalOperationKey, ...sync } = command;
-    return this.sync(context, groupId, { ...sync, text });
+    return this.#withRoundsPublication(context, async (publication) => {
+      const text = await this.#renewal.recoverAnswerContext(
+        context,
+        groupId,
+        command.seatId,
+        command.renewalOperationKey,
+        publication,
+      );
+      const { renewalOperationKey: _renewalOperationKey, ...sync } = command;
+      return this.#sync(
+        this.bindRequest(context),
+        groupId,
+        { ...sync, text },
+        publication,
+      );
+    });
   }
 
   async sync(
@@ -525,21 +533,30 @@ export class StationReportGroupRuntime {
     command: ReportGroupContextSyncInput,
   ) {
     context = this.bindRequest(context);
-    return this.#withRoundsPublication(context, async (publication) => {
-      const result = await this.#continuation.sync(
-        context,
-        groupId,
-        command,
-        publication,
-      );
-      const historical = await this.#custody.inspectForMutation(
-        context,
-        groupId,
-        publication,
-      );
-      if (!historical) throw new StationReportCustodyUnavailable();
-      return { replayed: result.replayed, group: view(historical) };
-    });
+    return this.#withRoundsPublication(context, (publication) =>
+      this.#sync(context, groupId, command, publication),
+    );
+  }
+
+  async #sync(
+    context: RuntimeSourceRequestContext,
+    groupId: string,
+    command: ReportGroupContextSyncInput,
+    publication: ReportRoundsPublication,
+  ) {
+    const result = await this.#continuation.sync(
+      context,
+      groupId,
+      command,
+      publication,
+    );
+    const historical = await this.#custody.inspectForMutation(
+      context,
+      groupId,
+      publication,
+    );
+    if (!historical) throw new StationReportCustodyUnavailable();
+    return { replayed: result.replayed, group: view(historical) };
   }
   async finalizeContinuation(
     context: RuntimeSourceRequestContext,

@@ -14,84 +14,22 @@ import { DelegationRoundsTransactionUncertainError } from '@kontourai/flow-agent
 import { recoverReportGroupAccounting } from '@kontourai/station-sdk/client';
 import { prepareFileMutationOwner } from '@kontourai/station-shared/lifecycle-events';
 import { Hono } from 'hono';
-import { onTestFinished, test, vi } from 'vitest';
-import { createGateTestRegistry } from '../../../__test-utils__/orchestration-gate-test-harness.js';
-import { StationAgentAdapter } from '../../../providers/adapters/station-agent-adapter.js';
+import { test, vi } from 'vitest';
 import { createReportGroupRoutes } from '../../../routes/orchestration/report-groups.js';
-import { isRuntimePublicationParticipant } from '../../../runtime/bootstrap/runtime-publication-participant.js';
-import { StationRuntime } from '../../../runtime/bootstrap/station-runtime.js';
 import {
   bindRuntimeLocalOperator,
   getRuntimeAuthenticatedRequestPrincipal,
   setRuntimeAuthenticatedRequestPrincipal,
 } from '../../../security/runtime-request-security.js';
-import { ApprovalRegistry } from '../../approvals/approval-registry.js';
 import { HomeWriterUnavailableError } from '../../ssh/home-writer-owner.js';
 import { StationDelegationPersistence } from '../delegation-group-persistence.js';
-import { EventBus } from '../event-bus.js';
 import { EventStore } from '../event-store.js';
-import { OrchestrationService } from '../orchestration-service.js';
-import { createSessionAgentResolver } from '../session-agent-resolution.js';
 import { StationReportGroupCustody } from '../station-report-group-custody.js';
 import { StationReportGroupRuntime } from '../station-report-group-runtime.js';
 import { createReportFlow } from './delegation-source-fixtures/flow.js';
-import {
-  installControl,
-  NOW,
-  requestFor,
-  setup,
-} from './delegation-source-fixtures/report.js';
+import { requestFor } from './delegation-source-fixtures/report.js';
 import { controlledTextStream } from './delegation-source-fixtures/streamed-text.js';
-
-async function recoveryFixture() {
-  const h = await setup();
-  vi.useFakeTimers({ toFake: ['Date'] });
-  vi.setSystemTime(NOW);
-  onTestFinished(() => {
-    vi.useRealTimers();
-  });
-  installControl(h);
-  const bus = new EventBus();
-  const eventStore = new EventStore(
-    join(h.f.root, 'accounting-recovery.sqlite'),
-  );
-  const logger = { debug() {}, warn() {} };
-  const relay = vi.fn<typeof fetch>(async () => {
-    throw Error('reserved request must not relay');
-  });
-  const adapter = new StationAgentAdapter({
-    apiBase: 'http://report-control.test',
-    hasAgent: () => true,
-    eventBus: bus,
-    approvalRegistry: new ApprovalRegistry(logger, { eventBus: bus }),
-    fetch: relay,
-  });
-  const orchestration = new OrchestrationService({
-    adapterRegistry: createGateTestRegistry(adapter),
-    eventBus: bus,
-    eventStore,
-    logger,
-    resolveSessionAgent: createSessionAgentResolver({
-      loadAgentSpec: (slug) => h.f.loader.loadAgent(slug),
-      resolveToolServer: async () => null,
-      resolveSkillDir: async () => null,
-    }),
-  });
-  const runtimeOwner = new StationRuntime({ projectHomeDir: h.f.home });
-  const publicationParticipant = Reflect.get(
-    runtimeOwner,
-    'runtimePublicationParticipant',
-  );
-  assert.ok(isRuntimePublicationParticipant(publicationParticipant));
-  const owners = {
-    publicationParticipant,
-    runtime: h.preparationOwners.runtime,
-    orchestration,
-    rawFetch: h.rawFetch,
-    delegationAttemptClaimStore: h.delegationAttemptClaimStore,
-  };
-  return { h, adapter, orchestration, eventStore, owners, relay, runtimeOwner };
-}
+import { recoveryFixture } from './report-recovery-fixture.js';
 
 test('accounting recovery refuses aborted admission and resumes a Dispatch-only commit after expiry and Session deletion without another invocation or reservation', async () => {
   const { h, adapter, orchestration, eventStore, owners, relay, runtimeOwner } =
