@@ -51,6 +51,7 @@
   flex: 0 1 auto;
   flex-direction: column;
   gap: var(--k-space-3);
+  min-height: 44px;
   padding-block: clamp(0px, calc(10cqh - 2rem), var(--k-space-4));
 }
 .new-chat-draft__lead {
@@ -117,4 +118,11 @@
 }
 .new-chat-modal .start-composer__box {
   gap: clamp(var(--k-space-1), 2cqh, var(--k-space-3));
+}
+
+@container new-chat-draft (max-height: 24rem) {
+  .new-chat-modal .start-composer__destination h2,
+  .new-chat-modal .start-composer__without-project {
+    flex-basis: auto;
+  }
 }

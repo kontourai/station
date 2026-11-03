@@ -85,7 +85,7 @@ function StartAttachButton({ onAdd }: { onAdd: (files: File[]) => void }) {
         multiple
         accept={START_FILE_ACCEPT}
         onChange={handleFileSelect}
-        className="attachment-input"
+        hidden
         tabIndex={-1}
         aria-hidden="true"
       />
