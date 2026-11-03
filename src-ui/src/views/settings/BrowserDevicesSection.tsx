@@ -57,7 +57,7 @@ export function BrowserDevicesSection() {
 
   return (
     <SettingsSection
-      icon="◎"
+      icon="◉"
       title="Browser & devices"
       id="section-browser-devices"
     >

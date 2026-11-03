@@ -236,7 +236,7 @@ export function BrowserSessionList({
       ) : sessions.data.length === 0 ? (
         <Empty
           variant="compact"
-          label="No sessions yet"
+          label="Nothing open yet"
           description="Sessions you or an agent open appear here."
         />
       ) : (
