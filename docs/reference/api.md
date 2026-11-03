@@ -6947,10 +6947,11 @@ See [the user journey](../guides/monitoring.md#connect-a-personal-source-in-insi
 This source contract has not established installed/native/release acceptance.
 
 
-## Reviewed Project context and learning previews
+## Reviewed Project context and learning
 
-These personal-host routes are off by default. They require the operator in
-person; Station Control cannot create its own working rules or learning grants.
+These personal-host routes require the operator in person; Station Control cannot
+create its own working rules or learning grants. Working configuration requires no
+preview switch; learning review and reviewed tariffs remain default-off previews.
 Older hosts or disabled previews return unavailable/preview guidance.
 
 | Method | Path | Operation |

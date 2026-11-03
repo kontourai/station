@@ -1,5 +1,4 @@
 import {
-  PROJECT_WORKING_CONFIGURATION_PREVIEW,
   type ProjectWorkingConfigurationView,
   type ProjectWorkingDraft,
 } from '@kontourai/station-contracts/project-working-configuration';
@@ -14,23 +13,11 @@ import { useId, useState } from 'react';
 import { ActionRow } from '../../components/ActionRow';
 import { Button } from '../../components/Button';
 import { Empty, ErrorState, SkeletonBlock } from '../../components/state';
-import { useSurfaceVisibilityFlags } from '../../hooks/useSurfaceVisibilityFlags';
 import { useUnsavedGuard } from '../../hooks/useUnsavedGuard';
 import { errorText } from '../../utils/errorText';
 import './ProjectWorkingConfiguration.css';
 
-export function ProjectWorkingConfiguration(props: {
-  slug: string;
-  projectId: string;
-  authority: ApiRequestScope;
-}) {
-  const visible = useSurfaceVisibilityFlags();
-  return visible.has(PROJECT_WORKING_CONFIGURATION_PREVIEW) ? (
-    <WorkingConfigurationEditor {...props} />
-  ) : null;
-}
-
-function WorkingConfigurationEditor({
+export function ProjectWorkingConfiguration({
   slug,
   projectId,
   authority,

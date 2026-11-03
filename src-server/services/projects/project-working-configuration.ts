@@ -99,12 +99,12 @@ export class ProjectWorkingConfigurationRefusal extends Error {
   }
 }
 export type ProjectWorkingAuthority = () => boolean | Promise<boolean>;
-type Context = { projectId: string; cwd: string };
-const refuse = (
+type Context = { projectId: string; cwd?: string };
+function refuse(
   code: ConstructorParameters<typeof ProjectWorkingConfigurationRefusal>[0],
-): never => {
+): never {
   throw new ProjectWorkingConfigurationRefusal(code);
-};
+}
 const current = async (authority: ProjectWorkingAuthority) => {
   if (!(await authority())) refuse('unavailable');
 };
@@ -155,6 +155,7 @@ export class ProjectWorkingConfigurationService {
   ): Promise<ProjectWorkingConfigurationView> {
     await current(authority);
     const context = await this.resolveContext(slug);
+    if (!context.cwd) refuse('unavailable');
     const root = await realpath(context.cwd);
     const rootStat = await stat(root);
     if (!rootStat.isDirectory()) refuse('unavailable');
@@ -377,7 +378,7 @@ export class ProjectWorkingConfigurationService {
       }
       if (source.kind === 'ci')
         for (const match of source.text.matchAll(
-          /^\s*-?\s*run:\s*([^|>\r\n][^\r\n]*)$/gm,
+          /^\s*-?\s*run:[ \t]*([^|>#\s][^\r\n]*)$/gm,
         ))
           if (match[1]!.trim().length <= 512)
             suggested.validationCommands.push({
@@ -397,6 +398,7 @@ export class ProjectWorkingConfigurationService {
     );
     await current(authority);
     const latest = await this.resolveContext(slug);
+    if (!latest.cwd) refuse('unavailable');
     const latestStat = await stat(await realpath(latest.cwd));
     if (
       latest.projectId !== context.projectId ||
@@ -492,13 +494,19 @@ export class ProjectWorkingConfigurationService {
     authority: ProjectWorkingAuthority,
     focusPaths: readonly string[] = [],
   ): Promise<ProjectWorkingContext> {
-    const view = await this.discover(slug, authority);
-    if (!view.current)
+    await current(authority);
+    const context = await this.resolveContext(slug);
+    const saved = this.read(context.projectId);
+    await current(authority);
+    if (!saved)
       return {
         state: 'unconfigured',
         text: 'Project working configuration has not been reviewed. Repository-specific rules and validation defaults are unknown; inspect the source before acting.',
         omittedRules: 0,
       };
+    const view = await this.discover(slug, authority);
+    if (!view.current || view.projectId !== context.projectId)
+      refuse('unavailable');
     if (view.stale) refuse('stale');
     const { draft, revision, sourceDigest } = view.current;
     const sources = new Map(

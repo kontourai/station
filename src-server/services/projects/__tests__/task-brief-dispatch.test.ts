@@ -516,6 +516,72 @@ describe('Task dispatch delivers the Task brief with the first turn', () => {
     ).not.toHaveBeenCalled();
   });
 
+  test('a Task started before working configuration promotion can continue without guidance, but refuses newly reviewed rules', async () => {
+    writeFileSync(join(tmp, 'AGENTS.md'), 'Preserve intentional edits.');
+    const configuration = new ProjectWorkingConfigurationService(
+      tmp,
+      async () => ({
+        projectId: BRIEF_PROJECT_LOCAL_ID,
+        cwd: tmp,
+      }),
+    );
+    let promoted = false;
+    const { sessionId } = await dispatch('codex', {
+      workingConfiguration: () =>
+        promoted
+          ? configuration.forTask('brief-project', () => true)
+          : Promise.resolve({ state: 'disabled', text: '', omittedRules: 0 }),
+    });
+    const adapter = adapters.find((entry) => entry.provider === 'codex')!;
+    await service.dispatch({
+      type: 'sendTurn',
+      input: { threadId: sessionId, input: 'Before promotion.' },
+    });
+    await waitFor(
+      () =>
+        eventStore
+          .listEvents(sessionId)
+          .filter((event) => event.method === 'turn.completed').length === 1,
+    );
+    promoted = true;
+    await service.dispatch({
+      type: 'sendTurn',
+      input: {
+        threadId: sessionId,
+        input: 'After promotion without reviewed rules.',
+      },
+    });
+    await waitFor(
+      () =>
+        eventStore
+          .listEvents(sessionId)
+          .filter((event) => event.method === 'turn.completed').length === 2,
+    );
+    const view = await configuration.discover('brief-project', () => true);
+    await configuration.apply(
+      'brief-project',
+      {
+        expectedProjectId: view.projectId,
+        expectedRevision: 0,
+        sourceDigest: view.sourceDigest,
+        operationId: randomUUID(),
+        draft: view.suggested,
+      },
+      'human:local:operator',
+      () => true,
+    );
+    await expect(
+      service.dispatch({
+        type: 'sendTurn',
+        input: {
+          threadId: sessionId,
+          input: 'New guidance requires a refreshed execution.',
+        },
+      }),
+    ).rejects.toThrow(/context/i);
+    expect(adapter.sendTurn).toHaveBeenCalledTimes(2);
+  });
+
   test('a fresh Task execution delivers reviewed Project rules, acceptance and lazy evidence with the existing memory brief at the actual engine boundary', async () => {
     writeFileSync(join(tmp, 'AGENTS.md'), 'Keep intentional edits.');
     const configuration = new ProjectWorkingConfigurationService(
