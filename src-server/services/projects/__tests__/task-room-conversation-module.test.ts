@@ -634,7 +634,7 @@ test('a terminal runtime error publishes the failed room line without another re
       ]);
     });
     expect(await f.agentCount()).toBe(0);
-    expect(f.failures).toEqual([]);
+    expect(f.failures, inspect(f.failures)).toEqual([]);
   } finally {
     await f.close();
   }
@@ -662,7 +662,7 @@ test('room requests start the Task and publish canonical answers and continued t
     if (body.data.kind !== 'recorded')
       throw new Error('Request was not recorded');
     const sessionId = body.data.record.sessionId;
-    expect(f.failures).toEqual([]);
+    expect(f.failures, inspect(f.failures)).toEqual([]);
     expect(body.data.record.state, JSON.stringify(body)).toBe('dispatched');
     expect(f.adapter.turns[0].input).toContain('# Task brief: Make the room');
     expect(f.adapter.turns[0].input).toContain('Brief shortened to fit');
@@ -843,7 +843,7 @@ test('room requests start the Task and publish canonical answers and continued t
     });
     expect(forbidden.status).toBe(403);
     expect(f.adapter.turns).toHaveLength(3);
-    expect(f.failures).toEqual([]);
+    expect(f.failures, inspect(f.failures)).toEqual([]);
   } finally {
     await f.close();
   }
@@ -916,7 +916,7 @@ test('an exact raw Session with a successor refuses a room reply with 403 before
     await f.conversation.reconcile(f.task.id);
     expect(
       (await f.history()).some((record) => record.causationId === 'turn-1'),
-      JSON.stringify(f.failures),
+      inspect(f.failures),
     ).toBe(true);
     const root = f.store.conversationForSession(sessionId)!;
     const started = f.store
@@ -1034,7 +1034,7 @@ test('a continuation failure after admission posts no human reply', async () => 
     await f.conversation.reconcile(f.task.id);
     expect(
       (await f.history()).some((record) => record.causationId === 'turn-1'),
-      JSON.stringify(f.failures),
+      inspect(f.failures),
     ).toBe(true);
     const send = vi
       .spyOn(f.adapter, 'sendTurn')
@@ -1159,7 +1159,7 @@ test.each(['initial', 'reply'] as const)(
           record.body.text === 'Immediate canonical answer',
       );
       expect(prompt).toBeDefined();
-      expect(answer, JSON.stringify(f.failures)).toBeDefined();
+      expect(answer, inspect(f.failures)).toBeDefined();
       expect(prompt!.envelope.seq).toBeLessThan(answer!.envelope.seq);
     } finally {
       vi.restoreAllMocks();
@@ -1210,7 +1210,7 @@ test.each([undefined, 'room-reply:forged-dock-send'])(
       expect(JSON.stringify(history)).not.toContain(
         'Private second-turn answer',
       );
-      expect(f.failures).toEqual([]);
+      expect(f.failures, inspect(f.failures)).toEqual([]);
     } finally {
       await f.close();
     }
@@ -1464,7 +1464,7 @@ test('Task images reach the provider on requests and same-session replies and re
     const result = await readJson<{ data: TaskRoomWorkOutcome }>(response);
     if (result.data.kind !== 'recorded')
       throw new Error('Request not recorded');
-    expect(result.data.record.state, JSON.stringify(f.failures)).toBe(
+    expect(result.data.record.state, inspect(f.failures)).toBe(
       'dispatched',
     );
     expect(f.adapter.turns).toHaveLength(1);
