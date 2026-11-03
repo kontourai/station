@@ -113,9 +113,9 @@ plugin admission stays refused. No request-supplied principal, cwd or
 executable is accepted.
 
 [TerminalChannelConnection](../../src-server/services/terminal/terminal-channel-connection.ts)
-serializes open, attach, list, input, resize, close and detach. Only adjacent
-resizes on the same channel coalesce; input and lifecycle commands are barriers.
-Restart is refused until the session service owns explicit restart semantics.
+serializes open, attach, list, input, resize, restart, close and detach. Only
+adjacent resizes on the same channel coalesce; input and lifecycle commands are
+barriers. Restart answers `done` with `restartedAfterSeq` (see Sessions below).
 The [wire contract](../../packages/contracts/src/terminal-transport.ts) carries
 input/output as UTF-8 binary frames with a 13-byte header (one-byte kind,
 four-byte channel, eight-byte sequence, big-endian). JSON controls and the
@@ -554,8 +554,10 @@ tab's launch profile is re-resolved, never stored); an optional relative
 one the current directory must still be inside that root. The old run ends,
 the journal is sealed so the next run starts a new segment (a journal reopened
 by a supervisor workload starts one too), and the record carries
-`restart: {count, afterSeq, at}`. Command sessions and server-owned launches
-are refused: no program is stored for them.
+`restart: {count, afterSeq, at}`. The new run drops the previous run's end
+time and `hostStopped` marker, so its own exit dates age expiry and decides
+whether it is restored after a host restart. Command sessions and server-owned
+launches are refused: no program is stored for them.
 
 ### Journal
 
