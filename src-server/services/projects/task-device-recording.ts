@@ -2,12 +2,11 @@ import { randomUUID } from 'node:crypto';
 import { BROWSER_RECORD_MAX_DURATION_MS } from '../../tools/station-browser-policy.js';
 import type { TaskReviewAccess } from '../orchestration/project-task-room-runtime.js';
 import { TaskBrowserCaptureError } from './task-browser-capture.js';
-import {
-  type RecordingSource,
-  TASK_RECORDING_MAX_ACTIVE,
-  type TaskBrowserRecording,
-  TaskBrowserRecordingError,
+import type {
+  RecordingSource,
+  TaskBrowserRecording,
 } from './task-browser-recording.js';
+import { TaskBrowserRecordingError } from './task-recording-errors.js';
 
 const RETAIN_MS = 5 * 60_000;
 const MAX_RETAINED = 100;
@@ -31,7 +30,10 @@ export class TaskDeviceRecording {
   private readonly jobs = new Map<string, Job>();
   private closed = false;
   constructor(
-    private readonly recorder: Pick<TaskBrowserRecording, 'recordSource'>,
+    private readonly recorder: Pick<
+      TaskBrowserRecording,
+      'admit' | 'recordSource'
+    >,
   ) {}
   private key(access: TaskReviewAccess): string {
     if (access.write.author.kind !== 'person' || !access.write.beforeCommit())
@@ -73,14 +75,7 @@ export class TaskDeviceRecording {
         'Recording duration is out of bounds.',
       );
     this.prune();
-    const active = [...this.jobs.values()].filter(
-      (job) => job.finishedAt === undefined,
-    );
-    if (
-      this.closed ||
-      active.length >= TASK_RECORDING_MAX_ACTIVE ||
-      active.filter((job) => job.key === key).length >= 2
-    )
+    if (this.closed)
       throw new TaskBrowserCaptureError(
         'capture-unavailable',
         'Recording capacity is exhausted.',
@@ -95,51 +90,60 @@ export class TaskDeviceRecording {
       status: { state: 'starting' },
       done: Promise.resolve(),
     };
+    const releaseAdmission = this.recorder.admit(access);
     this.jobs.set(id, job);
-    job.done = this.recorder
-      .recordSource(
-        access,
-        {
-          ...input,
-          signal: cancel.signal,
-          stopSignal: stop.signal,
-          onStarted: () => {
-            if (!stop.signal.aborted && !cancel.signal.aborted)
-              job.status = { state: 'recording' };
+    try {
+      job.done = this.recorder
+        .recordSource(
+          access,
+          {
+            ...input,
+            releaseAdmission,
+            signal: cancel.signal,
+            stopSignal: stop.signal,
+            onStarted: () => {
+              if (!stop.signal.aborted && !cancel.signal.aborted)
+                job.status = { state: 'recording' };
+            },
           },
-        },
-        resolveSource,
-      )
-      .then(
-        (manifest) => {
-          job.status = cancel.signal.aborted
-            ? { state: 'cancelled' }
-            : manifest.source.commit && manifest.source.recording
-              ? {
-                  state: 'completed',
-                  result: {
-                    walkthroughId: manifest.id,
-                    commit: manifest.source.commit,
-                  },
-                }
-              : { state: 'failed', code: 'recording-unavailable' };
-        },
-        (error: unknown) => {
-          job.status = cancel.signal.aborted
-            ? { state: 'cancelled' }
-            : {
-                state: 'failed',
-                code:
-                  error instanceof TaskBrowserRecordingError ||
-                  error instanceof TaskBrowserCaptureError
-                    ? error.code
-                    : 'recording-unavailable',
-              };
-        },
-      )
-      .finally(() => {
-        job.finishedAt = Date.now();
-      });
+          resolveSource,
+        )
+        .then(
+          (manifest) => {
+            job.status = cancel.signal.aborted
+              ? { state: 'cancelled' }
+              : manifest.source.commit && manifest.source.recording
+                ? {
+                    state: 'completed',
+                    result: {
+                      walkthroughId: manifest.id,
+                      commit: manifest.source.commit,
+                    },
+                  }
+                : { state: 'failed', code: 'recording-unavailable' };
+          },
+          (error: unknown) => {
+            job.status = cancel.signal.aborted
+              ? { state: 'cancelled' }
+              : {
+                  state: 'failed',
+                  code:
+                    error instanceof TaskBrowserRecordingError ||
+                    error instanceof TaskBrowserCaptureError
+                      ? error.code
+                      : 'recording-unavailable',
+                };
+          },
+        )
+        .finally(() => {
+          releaseAdmission();
+          job.finishedAt = Date.now();
+        });
+    } catch (error) {
+      this.jobs.delete(id);
+      releaseAdmission();
+      throw error;
+    }
     return { id, ...job.status };
   }
   status(access: TaskReviewAccess, id: string) {

@@ -2022,6 +2022,13 @@ the chat title identifies the conversation rather than opening a second list.
 Selecting a chat, an imported session, or New chat reveals that destination.
 A failed open keeps the Inbox visible and reports the failure. Durable Tasks
 still open their task details through canonical navigation.
+Selecting a Task reveals its Overview and closes the covering chat/dock view;
+retained work chats remain available. The Inbox groups authorized primary,
+independent Task-room and explicitly linked work chats under their Task.
+Direct Task association takes precedence over delegated-chat grouping; a chat
+associated with multiple Tasks remains separate. A Task's recorded
+`in_progress` status does not establish a running engine. The working count
+counts distinct running chats, including folded children, and excludes Task rows.
 Pending opens cannot replace a later selection or New chat draft. Cross-project
 routing occurs only after the reader's focus guard accepts the destination.
 

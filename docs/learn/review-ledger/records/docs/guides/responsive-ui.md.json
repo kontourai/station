@@ -142,7 +142,11 @@
 
     "src-ui/src/components/ComposerChoice.tsx",
 
-    "src-ui/src/components/ComposerChoice.css"
+    "src-ui/src/components/ComposerChoice.css",
+
+    "src-ui/src/__tests__/ChatDockHeader.identityGeometry.test.tsx",
+
+    "src-ui/src/__tests__/ChatDock.engineSwitchGate.test.tsx"
   ],
 
   "checks": [

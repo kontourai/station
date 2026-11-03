@@ -669,8 +669,9 @@ are optional alternatives to **Start your first chat**. Both save the same selec
 
 On a phone, the dock starts at **Inbox** unless you open a specific
 conversation. A conversation opens full screen; **Restore chat size** in the
-chat bar shrinks it to a peek and **Full screen chat** grows it back. The menu
-drawer lists your recent chats. Its Inbox icon returns to the work list; the chat title stays
+chat bar shrinks it to a peek and **Full screen chat** grows it back or opens it
+directly from the collapsed bar. The menu drawer lists places and Projects.
+The chat bar's Inbox icon returns to the work list; the chat title stays
 as context. Search opens from the magnifier. Your search, list position and
 unsent message stay in place when switching back to a conversation. Collapse
 and reopen restore the last view. Use the compose icon at the right of the
@@ -684,7 +685,10 @@ for creating a project, including a short first-project prompt when empty.
 
 In **Inbox**, delegated work folds under its recorded parent.
 Expand the subtask count to read the children; children that need you stay
-visible. Task-owned chats appear under their Task as sessions. **Show work**
+visible. Authorized work chats appear under their Task, including independent
+Agent requests and linked conversations. A chat associated with several Tasks
+stays separate. Select a Task to reveal Overview or a work chat to read its
+conversation. Running counts include actual chats, not the Task's status. **Show work**
 filters by project or Station and stays selected on this device. It starts at
 **All work**; **Current project** follows the project whose page you are on,
 and shows all work anywhere else. If work needs

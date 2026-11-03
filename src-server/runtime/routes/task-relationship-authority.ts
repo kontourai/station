@@ -15,6 +15,7 @@ export function createTaskRelationshipAuthority(deps: {
     | 'resolveConversationOpen'
     | 'currentConversationSessionId'
     | 'canUserReadConversation'
+    | 'canUserReadSession'
   >;
   events?: Pick<
     EventStore,
@@ -34,13 +35,13 @@ export function createTaskRelationshipAuthority(deps: {
   const requests = new WeakMap<Request, () => boolean>();
   return {
     isCurrent: (request) => requests.get(request)?.() === true,
-    async authorityForRequest(request, conversationId) {
+    async authorityForRequest(request, conversationId, target) {
       if (!deps.current(request)) return undefined;
       const path = new URL(request.url).pathname.match(
         /^\/api\/tasks\/([^/]+)\//,
       );
-      if (!path) return undefined;
-      const taskId = decodeURIComponent(path[1]!);
+      if (!path && !target) return undefined;
+      const taskId = target?.taskId ?? decodeURIComponent(path![1]!);
       const task = deps.graph.readTask(taskId);
       const project = task && canonical(task.projectId);
       if (!task || !project) return undefined;
@@ -76,7 +77,7 @@ export function createTaskRelationshipAuthority(deps: {
         { taskId, taskCreatedAt: task.createdAt },
         access,
       );
-      const candidates = new Set<string>();
+      const candidates = new Set<string>(target?.conversationIds);
       if (conversationId) candidates.add(conversationId);
       else if (
         request.method === 'GET' &&
@@ -112,8 +113,17 @@ export function createTaskRelationshipAuthority(deps: {
         )
           continue;
         const child = deps.sessions.currentConversationSessionId(id);
-        if (opened.currentSessionId !== child || !deps.events) continue;
-        const lineage = JSON.stringify(deps.events.conversationSessions(id));
+        if (!deps.events) continue;
+        const links = deps.events.conversationSessions(id);
+        const tail = links.at(-1);
+        // Conversation open may describe the authorized predecessor of an
+        // unstarted continuation. Only that exact reserved tail lacks scope metadata.
+        const reservedChild =
+          opened.currentSessionId !== child &&
+          tail?.sessionId === child &&
+          tail.predecessorSessionId === opened.currentSessionId;
+        if (opened.currentSessionId !== child && !reservedChild) continue;
+        const lineage = JSON.stringify(links);
         const ownership = () => {
           if (
             deps.events!.conversationForSession(id)?.conversationId &&
@@ -129,6 +139,7 @@ export function createTaskRelationshipAuthority(deps: {
               'session.started',
               'session.configured',
             ]);
+            if (reservedChild && sessionId === child) return !event;
             const payload = event?.payload;
             if (
               !payload ||
@@ -157,7 +168,13 @@ export function createTaskRelationshipAuthority(deps: {
             deps.sessions.currentConversationSessionId(id) === child &&
             JSON.stringify(deps.events!.conversationSessions(id)) === lineage &&
             ownership() &&
-            deps.sessions.canUserReadConversation(id, reader),
+            (reservedChild
+              ? links.every(
+                  (link) =>
+                    link.sessionId === child ||
+                    deps.sessions.canUserReadSession(link.sessionId, reader),
+                )
+              : deps.sessions.canUserReadConversation(id, reader)),
         );
       }
       return current() ? access : undefined;

@@ -934,7 +934,7 @@ function buildDurableTaskItem(task: TaskListRecord): HomeWorkItem {
     title: task.title,
     projectLabel: task.projectId || 'Project unavailable',
     projectSlug: task.projectId || undefined,
-    agentLabel: task.agentId || 'No agent assigned',
+    agentLabel: task.agentId || 'Task',
     modelLabel: 'Model unavailable',
     updatedAt: timestamp(task.updatedAt),
     lifecycleLabel: taskLifecycleLabel(task),

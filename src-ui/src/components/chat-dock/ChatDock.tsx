@@ -745,9 +745,11 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
   });
   const taskItemsPending =
     orchestrationSessionsStatus === 'pending' ||
+    durableTasks.isPending ||
     inventory.isPending ||
     !agentsLoaded;
-  const taskItemsFailed = orchestrationSessionsFailed || inventory.isError;
+  const taskItemsFailed =
+    orchestrationSessionsFailed || inventory.isError || durableTasks.isError;
   const refetchInventory = inventory.refetch;
   const refetchTasks = durableTasks.refetch;
   const refetchRemote = remoteInboxSessions.refetch;
@@ -3596,12 +3598,14 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                     }
               }
               extentToggle={
-                isFullscreenPlacement || !isPaneOpen
+                isFullscreenPlacement
                   ? null
                   : {
-                      maximized: isDockMaximized,
+                      maximized: isPaneOpen && isDockMaximized,
                       onToggle: () =>
-                        applyDockSnap(isDockMaximized ? 'half' : 'full'),
+                        applyDockSnap(
+                          isPaneOpen && isDockMaximized ? 'half' : 'full',
+                        ),
                     }
               }
               // Shared creation action opens a draft without starting an engine.

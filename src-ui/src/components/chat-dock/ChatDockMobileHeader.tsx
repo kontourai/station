@@ -184,6 +184,8 @@ export function ChatDockMobileHeader({
   const projectTriggerRef = useRef<HTMLButtonElement>(null);
   const chatActionsTriggerRef = useRef<HTMLButtonElement>(null);
   const activityDescriptionId = useId();
+  const collapsedExtent =
+    dockToggle?.state === 'collapsed' ? extentToggle : null;
   // The dot on ⋯ used to be decoration only: an unexplained orange mark on
   // the chat-actions button. It means chats (this one included) are working
   // or have unread replies — the sheet's Chats row is where they are — so it
@@ -221,19 +223,25 @@ export function ChatDockMobileHeader({
             type="button"
             className="app-toolbar__icon-btn chat-dock__mobile-header-icon"
             aria-label={
-              dockToggle.state === 'collapsed' ? 'Expand chat' : 'Collapse chat'
+              collapsedExtent
+                ? 'Full screen chat'
+                : dockToggle.state === 'collapsed'
+                  ? 'Expand chat'
+                  : 'Collapse chat'
             }
             data-no-dock-drag=""
             onClick={
-              dockToggle.state === 'collapsed'
-                ? dockToggle.onExpand
-                : dockToggle.onCollapse
+              collapsedExtent
+                ? collapsedExtent.onToggle
+                : dockToggle.state === 'collapsed'
+                  ? dockToggle.onExpand
+                  : dockToggle.onCollapse
             }
           >
-            <ArrowDownGlyph />
+            {collapsedExtent ? <ExpandGlyph /> : <ArrowDownGlyph />}
           </button>
         ) : null}
-        {extentToggle && (
+        {extentToggle && !collapsedExtent && (
           <button
             type="button"
             className="app-toolbar__icon-btn chat-dock__mobile-header-icon chat-dock__mobile-extent"

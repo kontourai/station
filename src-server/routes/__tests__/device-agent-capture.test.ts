@@ -27,7 +27,7 @@ import { EventStore } from '../../services/orchestration/event-store.js';
 import { ProjectTaskRoomRuntime } from '../../services/orchestration/project-task-room-runtime.js';
 import { TaskReviewSend } from '../../services/orchestration/task-review-send.js';
 import { TaskBrowserCapture } from '../../services/projects/task-browser-capture.js';
-import type { TaskBrowserRecording } from '../../services/projects/task-browser-recording.js';
+import { TaskBrowserRecording } from '../../services/projects/task-browser-recording.js';
 import { TaskCaptureBlobStore } from '../../services/projects/task-capture-blob-store.js';
 import { TaskDeviceCapture } from '../../services/projects/task-device-capture.js';
 import { TaskDeviceRecording } from '../../services/projects/task-device-recording.js';
@@ -270,7 +270,9 @@ async function harness(
   const recordingStarted = new Promise<void>((resolve) => {
     recordingReady = resolve;
   });
+  const recordingAdmission = new TaskBrowserRecording({} as never);
   const recordingManager = new TaskDeviceRecording({
+    admit: (access) => recordingAdmission.admit(access),
     recordSource: async (
       _access,
       input,
@@ -513,6 +515,43 @@ test('person selects and captures a host-qualified Device session in Review', as
   );
   expect(denied.status).toBe(503);
   expect(h.shots()).toBe(1);
+});
+
+test('Device recording start refuses shared capacity immediately and releases after failure', async () => {
+  const h = await harness();
+  const path =
+    '/api/tasks/task-a/review/device-recordings?projectSlug=capture-demo';
+  const start = () =>
+    h.app.request(path, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        sourceSessionId: `local:${h.id}`,
+        durationMs: 1000,
+      }),
+    });
+  const first = await start();
+  const firstData = (await first.json()) as { data: { id: string } };
+  expect(first.status).toBe(202);
+  await h.recordingStarted;
+  expect((await start()).status).toBe(202);
+  const refused = await start();
+  expect(refused.status).toBe(503);
+  expect(await refused.json()).toMatchObject({
+    success: false,
+    code: 'recording-unavailable',
+  });
+  await h.app.request(
+    `/api/tasks/task-a/review/device-recordings/${firstData.data.id}/stop`,
+    { method: 'POST' },
+  );
+  await vi.waitFor(async () => {
+    const response = await h.app.request(
+      `/api/tasks/task-a/review/device-recordings/${firstData.data.id}`,
+    );
+    expect(await response.json()).toMatchObject({ data: { state: 'failed' } });
+  });
+  expect((await start()).status).toBe(202);
 });
 
 test('a person recording job is Task-scoped and reports a recorder failure after stop', async () => {
