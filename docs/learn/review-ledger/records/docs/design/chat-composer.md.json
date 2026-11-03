@@ -255,6 +255,7 @@
     "src-ui/src/utils/modelCapabilities.ts",
 
     "src-ui/src/__tests__/useChatInput.engineModelGate.test.tsx",
+
     "src-server/routes/environments/peer-chat-routes.ts",
 
     "src-server/routes/environments/__tests__/peer-chat-routes.test.ts",
