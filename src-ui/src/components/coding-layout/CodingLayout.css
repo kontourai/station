@@ -374,6 +374,11 @@
 }
 
 @media (max-width: 768px), (max-height: 540px) and (pointer: coarse) {
+  .coding-terminal-connection .button {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
   .coding-layout__terminal {
     min-height: 0;
     max-height: none;
@@ -829,9 +834,3 @@
   font-size: var(--k-text-sm);
 }
 
-@media (max-width: 768px) {
-  .coding-terminal-connection .button {
-    min-height: 44px;
-    min-width: 44px;
-  }
-}
