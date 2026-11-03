@@ -385,6 +385,42 @@ describe('migratePreIndexKnowledge', () => {
     expect(result.namespaceResults[0]?.status).toBe('error');
     expect(embed).not.toHaveBeenCalled();
     expect(await actualStore.listRoots()).toEqual([]);
+    expect(existsSync(join(homeDir, '.storage-transactions'))).toBe(false);
+  });
+
+  test('empty discovered namespaces require a revision-aware provider', async () => {
+    const base = join(homeDir, 'projects', 'acme', 'knowledge');
+    mkdirSync(join(base, 'missing'), { recursive: true });
+    mkdirSync(join(base, 'empty'), { recursive: true });
+    writeFileSync(join(base, 'empty', 'metadata.json'), '[]');
+    const actualStore = new KnowledgeStoreProvider(
+      new FileStorageAdapter(homeDir),
+    );
+    const legacyProvider = Object.assign(Object.create(indexProvider), {
+      supportsRootRevision: false,
+    });
+    const embedder = new StubEmbedder(4);
+    const refused = await migratePreIndexKnowledge(
+      {
+        dataDir: homeDir,
+        store: actualStore,
+        indexProvider: legacyProvider,
+        embedder,
+      },
+      { projectSlug: 'acme' },
+    );
+    expect(refused.namespaceResults.map((result) => result.status)).toEqual([
+      'error',
+      'error',
+    ]);
+    expect(await actualStore.listRoots()).toEqual([]);
+    expect(existsSync(join(homeDir, '.storage-transactions'))).toBe(false);
+    const supported = await migratePreIndexKnowledge(
+      { dataDir: homeDir, store: actualStore, indexProvider, embedder },
+      { projectSlug: 'acme' },
+    );
+    expect(supported.namespaceResults).toEqual([]);
+    expect(await actualStore.listRoots()).toEqual([]);
   });
 
   test.each([
