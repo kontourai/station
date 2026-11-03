@@ -338,6 +338,8 @@ interface SessionCommandDependencies {
       adapter: ProviderAdapterShape,
       tenant: TenantExecutionContext | undefined,
       startInput: OrchestrationStartSessionInput,
+      /** The dispatching principal; undefined for an internal start. */
+      startedBy: string | undefined,
     ): void;
   };
   launchPolicy: {
@@ -769,6 +771,7 @@ export function createSessionCommandModule(
             adapter,
             context.tenantExecutionContext,
             startInput,
+            context.userId,
           );
           deps.launchPolicy.logStarted(adapter, startInput);
           await deps.bindings.bind(startInput, internal);

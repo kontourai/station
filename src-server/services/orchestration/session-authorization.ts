@@ -83,15 +83,29 @@ export class SessionAuthorization {
    */
   private readonly sessionOwnerCache = new Map<string, string>();
   /**
-   * threadId -> the owner an accepted start stamped (`metadata.userId`),
-   * until the store resolves the thread's durable owner. The
-   * adapter's `session.started` echoes that metadata and becomes the durable
+   * threadId -> the owner a fresh accepted start stamped (`metadata.userId`)
+   * while that start's own `session.started` has not yet settled (#4480).
+   * The adapter echoes that metadata, and the echo becomes the durable
    * owner, but it reaches the store through the observed-event publish,
    * which retries asynchronously under SQLite contention (#3560). Without
-   * this, a command sent right after an accepted start (a delegation's
-   * initial turn) can reach the command gate first and be refused as
-   * "Session not found" (#4480). Command gate only, never the positive
-   * cache, and the thread's teardown drops it.
+   * this, a command sent right after the start (a delegation's initial
+   * turn) can reach the command gate first and be refused as "Session not
+   * found".
+   *
+   * The entry is consulted only when the store has no durable owner, never
+   * enters the positive cache, and never answers a read (SSE, transcript,
+   * `canReadSession`). It is dropped when the start's `session.started`
+   * settles, whether appended, declined or abandoned after retries; when an
+   * owner-bearing `session.configured` or a `session.exited` is appended;
+   * when a failed start is cleaned up; and on thread teardown. A start whose
+   * `session.started` already settled never binds one.
+   *
+   * Every `canReadSessionForCommand` caller sees it: `dispatchWithReceipt`'s
+   * pre-dispatch gate and its in-command rechecks (the native `sendTurn`
+   * generation check, `steerChildWork`, `respondToRequest`), the start
+   * reattach (`sessionState.canRead`), attached-session adoption,
+   * `canUserMutateSession`, `retireNeverRanSession`, the discard/delete
+   * member gate, and `authorizeDurableStationTurn`.
    */
   private readonly startOwners = new Map<string, string>();
   private readonly sessionOwnerCacheMaxEntries: number;
@@ -140,6 +154,11 @@ export class SessionAuthorization {
   /** C12's start hook: the accepted start's stamped owner, pending its event. */
   bindStartOwner(threadId: string, ownerUserId: string): void {
     this.startOwners.set(threadId, ownerUserId);
+  }
+
+  /** The start's `session.started` settled, or the session ended: see `startOwners`. */
+  settleStartOwner(threadId: string): void {
+    this.startOwners.delete(threadId);
   }
 
   /**
@@ -229,9 +248,9 @@ export class SessionAuthorization {
    * `eventStore.listEvents(threadId)` per call was a 50x N amplification on
    * a streaming burst. Session ownership is established exactly once, by
    * whichever `session.started`/`session.configured` event first carries a
-   * `metadata.userId` for a threadId (stamped server-side from the
-   * authenticated caller at `startSession` dispatch — see
-   * `orchestration.ts`'s `/commands` route), and every later command
+   * `metadata.userId` for a threadId (stamped into the start input by the
+   * server code that starts the session, from its resolved principal; the
+   * `/commands` route accepts no `startSession`), and every later command
    * against that thread already requires `canReadSession` to pass for the
    * SAME owner (`dispatchWithReceipt`'s pre-dispatch check), so no later
    * event can legitimately carry a different owner. `sessionOwnerCache`
@@ -459,12 +478,9 @@ export class SessionAuthorization {
     );
   }
 
-  /** The durable owner, else the owner an accepted start stamped. */
+  /** The durable owner, else a pending start's stamped owner (`startOwners`). */
   private commandOwnerUserId(threadId: string): string | undefined {
-    const durable = this.sessionOwnerUserId(threadId);
-    if (durable === undefined) return this.startOwners.get(threadId);
-    this.startOwners.delete(threadId);
-    return durable;
+    return this.sessionOwnerUserId(threadId) ?? this.startOwners.get(threadId);
   }
 
   /**
