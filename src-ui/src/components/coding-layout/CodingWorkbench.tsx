@@ -116,7 +116,7 @@ import './CodingWorkbench.css';
 /** Whether keyboard focus is in something that edits text. */
 /**
  * Whether focus is in an editor that owns these keys itself — CodeMirror
- * (⌘[ outdents), xterm, a contenteditable rich editor — whose own handler
+ * (⌘[ outdents), the terminal, a contenteditable rich editor — whose own handler
  * takes the key. There the stack declines. A plain input, textarea or the
  * composer does not own ⌘[ or Alt+←: off macOS, Alt+← there is the browser's
  * Back, which would leave the layout, so the stack handles the chord instead.
@@ -126,7 +126,7 @@ function focusInKeyOwningEditor(): boolean {
   if (!(focused instanceof Element)) return false;
   return Boolean(
     focused.closest(
-      '[contenteditable=""], [contenteditable="true"], .cm-editor, .xterm',
+      '[contenteditable=""], [contenteditable="true"], .cm-editor, .station-terminal',
     ),
   );
 }
@@ -400,16 +400,30 @@ export function CodingWorkbench({
   const rootRef = useRef<HTMLDivElement>(null);
   const [fittedHeight, setFittedHeight] = useState<number | null>(null);
   useLayoutEffect(() => {
-    if (!isMobile || !rootRef.current) {
+    const root = rootRef.current;
+    if (!isMobile || !root) {
       setFittedHeight(null);
       return;
     }
-    const top = rootRef.current.getBoundingClientRect().top;
-    const available = Math.max(
-      0,
-      visualViewport.offsetTop + visualViewport.height - top,
-    );
-    setFittedHeight((current) => (current === available ? current : available));
+    const measure = () => {
+      const top = root.getBoundingClientRect().top;
+      const available = Math.max(
+        0,
+        visualViewport.offsetTop + visualViewport.height - top,
+      );
+      setFittedHeight((current) =>
+        current === available ? current : available,
+      );
+    };
+    measure();
+    // Chrome above the stack can settle after the first measure (the page
+    // shell finishing its own layout); the host box resizes when it does, and
+    // a top measured before that left the stack short of the window.
+    const host = root.parentElement;
+    if (!host || typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(host);
+    return () => observer.disconnect();
   }, [isMobile, visualViewport.height, visualViewport.offsetTop]);
   const [chatTitle, setChatTitle] = useState('Chat');
   const chatPageRef = useRef<HTMLElement>(null);
@@ -739,8 +753,8 @@ export function CodingWorkbench({
   // The fold crossed the other way with the lower panel open: below it the
   // Terminal is a drill-in, so it becomes the page (in place — the reader
   // did not navigate) rather than vanishing with the lower panel. Its tabs
-  // and their server-side processes carry across the remount; xterm's local
-  // scrollback does not.
+  // and their server-side processes carry across the remount; output
+  // replays from the server's journal.
   const wasWide = useRef(wide);
   useLayoutEffect(() => {
     const was = wasWide.current;

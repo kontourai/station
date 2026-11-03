@@ -90,80 +90,65 @@ vi.mock('../../../hooks/useIsMobile', async (original) => ({
   useIsMobile: () => false,
 }));
 
-const { FakeFitAddon, FakeTerminal } = vi.hoisted(() => {
-  class FakeTerminal {
-    static instances: FakeTerminal[] = [];
-    cols = 80;
-    rows = 24;
-    selection = '';
-    selectionListener: (() => void) | null = null;
-    loadAddon = vi.fn();
-    open = vi.fn();
-    write = vi.fn();
-    reset = vi.fn();
-    dispose = vi.fn();
-    focus = vi.fn();
-    dataListener: ((data: string) => void) | null = null;
-    onData = vi.fn((listener: (data: string) => void) => {
-      this.dataListener = listener;
-      return { dispose: vi.fn() };
-    });
-    onSelectionChange = vi.fn((listener: () => void) => {
-      this.selectionListener = listener;
-      return { dispose: vi.fn() };
-    });
-    hasSelection = vi.fn(() => Boolean(this.selection));
-    getSelection = vi.fn(() => this.selection);
-    options: { theme?: Record<string, string> } & Record<string, unknown>;
+type ViewSessionLike = {
+  subscribe(listener: {
+    output(bytes: Uint8Array, kind: 'replay' | 'live'): void;
+  }): () => void;
+  write(bytes: Uint8Array): boolean;
+};
+type ViewProps = {
+  session: ViewSessionLike | null;
+  fontSize?: number;
+  touchKeys?: boolean;
+  notices?: boolean;
+  onAddToChat?(text: string): void;
+};
 
-    constructor(options: Record<string, unknown> = {}) {
-      this.options = { ...options };
-      FakeTerminal.instances.push(this);
-    }
+/** What the reduced TerminalView received: its props and session output. */
+const view = vi.hoisted(() => ({
+  props: [] as unknown[],
+  output: [] as [string, string][],
+}));
 
-    select(text: string) {
-      this.selection = text;
-      this.selectionListener?.();
-    }
-    written(): string {
-      return this.write.mock.calls
-        .map(([value]) =>
-          typeof value === 'string' ? value : new TextDecoder().decode(value),
-        )
-        .join('');
-    }
-  }
-
-  class FakeFitAddon {
-    static instances: FakeFitAddon[] = [];
-    static dimensions = { cols: 80, rows: 24 };
-    constructor() {
-      FakeFitAddon.instances.push(this);
-    }
-    proposeDimensions = vi.fn(() => FakeFitAddon.dimensions);
-    fit = vi.fn(() =>
-      Object.assign(FakeTerminal.instances.at(-1)!, FakeFitAddon.dimensions),
+// The public TerminalView, reduced to what the panel relies on: it renders
+// the session it is given, as the real one does, and records what it saw.
+vi.mock('@kontourai/station-sdk/terminal-view', async (original) => {
+  const { useEffect } = await import('react');
+  function FakeTerminalView(props: ViewProps) {
+    view.props.push(props);
+    useEffect(
+      () =>
+        props.session?.subscribe({
+          output: (bytes, kind) =>
+            view.output.push([new TextDecoder().decode(bytes), kind]),
+        }),
+      [props.session],
     );
+    return null;
   }
-
-  return { FakeTerminal, FakeFitAddon };
+  return {
+    ...(await original<
+      typeof import('@kontourai/station-sdk/terminal-view')
+    >()),
+    TerminalView: FakeTerminalView,
+  };
 });
+
+function latestView(): ViewProps {
+  const props = view.props.at(-1) as ViewProps | undefined;
+  if (!props) throw new Error('TerminalView never rendered');
+  return props;
+}
+
+/** Input as the view sends it: encoder bytes for the session. */
+function typeInView(text: string): boolean {
+  return latestView().session?.write(new TextEncoder().encode(text)) ?? false;
+}
+
 const originalScrollTo = Object.getOwnPropertyDescriptor(
   HTMLElement.prototype,
   'scrollTo',
 );
-
-vi.mock('@xterm/xterm', () => ({ Terminal: FakeTerminal }));
-vi.mock('@xterm/addon-fit', () => ({ FitAddon: FakeFitAddon }));
-
-class FakeResizeObserver {
-  static instances: FakeResizeObserver[] = [];
-  constructor(readonly callback: () => void) {
-    FakeResizeObserver.instances.push(this);
-  }
-  observe = vi.fn();
-  disconnect = vi.fn();
-}
 
 const target = { projectId: 'project-a-id', bindingKey: 'project' };
 const terminalId = '62b97fa1-b690-4d77-82b1-747dc86d3c11';
@@ -174,16 +159,13 @@ beforeEach(() => {
     value: vi.fn(),
   });
   FakeSession.instances = [];
-  FakeTerminal.instances = [];
-  FakeFitAddon.instances = [];
-  FakeFitAddon.dimensions = { cols: 80, rows: 24 };
-  FakeResizeObserver.instances = [];
+  view.props = [];
+  view.output = [];
   store.failure = undefined;
   activeChatsStore.removeChat('chat-a');
   chatDraftsStore.clear('chat-a');
   activeChatsStore.initChat('chat-a');
   navigationStore.setActiveChat('chat-a');
-  vi.stubGlobal('ResizeObserver', FakeResizeObserver);
   vi.stubGlobal('matchMedia', () => ({ matches: false }));
 });
 
@@ -223,7 +205,7 @@ async function connectTerminal() {
   await waitFor(() => expect(FakeSession.instances).toHaveLength(1));
   const session = FakeSession.instances[0]!;
   act(() => session.emit({ state: 'ready', status: 'running' }));
-  return { session, terminal: FakeTerminal.instances[0]! };
+  return { session };
 }
 
 // The glyph size follows the app's one mobile breakpoint, including its
@@ -236,7 +218,17 @@ test.each([
     matches: mobile && query === MOBILE_MEDIA_QUERY,
   }));
   renderTerminal();
-  expect(FakeTerminal.instances[0]?.options?.fontSize).toBe(fontSize);
+  expect(latestView().fontSize).toBe(fontSize);
+});
+
+test('renders through the public TerminalView and leaves connection notices to the panel', async () => {
+  renderTerminal();
+  await connectTerminal();
+  const props = latestView();
+  expect(props.session).not.toBeNull();
+  // The panel reports connection state with its own Reconnect action.
+  expect(props.notices).toBe(false);
+  expect(typeof props.onAddToChat).toBe('function');
 });
 
 test('attaches an existing session by id and unmount detaches without closing it', async () => {
@@ -292,15 +284,16 @@ test('unowned saved history still yields a fresh shell', async () => {
   expect(screen.queryByText('Terminal access was refused.')).toBeNull();
 });
 
-test('writes session output and typed input through the store, and reports exit', async () => {
+test('session output reaches the view, typed input reaches the store, and exit is reported', async () => {
   renderTerminal();
-  const { session, terminal } = await connectTerminal();
+  const { session } = await connectTerminal();
   act(() => session.output('hello from the shell'));
-  expect(terminal.written()).toContain('hello from the shell');
-  act(() => terminal.dataListener?.('ls\r'));
+  expect(view.output).toContainEqual(['hello from the shell', 'live']);
+  act(() => {
+    expect(typeInView('ls\r')).toBe(true);
+  });
   expect(session.write).toHaveBeenCalledWith('ls\r');
   act(() => session.emit({ status: 'exited' }));
-  expect(terminal.written()).toContain('[terminal exited]');
   expect(screen.getByRole('alert').textContent).toContain(
     'The shell has exited.',
   );
@@ -370,23 +363,23 @@ test('an attach-only view without a session id never opens a shell', async () =>
 
 test('scans one selection spanning two PTY reads without redacting the live terminal', async () => {
   renderTerminal();
-  const { terminal } = await connectTerminal();
+  const { session } = await connectTerminal();
   const credential = ['ghp_', 'a'.repeat(36)].join('');
   const firstRead = `token=${credential.slice(0, 12)}`;
   const secondRead = credential.slice(12);
+  act(() => session.output(firstRead, 1));
+  act(() => session.output(secondRead, 2));
 
-  terminal.write(firstRead);
-  terminal.write(secondRead);
-  await act(() => terminal.select(`${firstRead}${secondRead}`));
-
-  expect(screen.getByRole('button', { name: 'Send to chat' })).toBeTruthy();
-  fireEvent.click(screen.getByRole('button', { name: 'Send to chat' }));
+  // The view hands over its one complete selection.
+  await act(async () =>
+    latestView().onAddToChat?.(`${firstRead}${secondRead}`),
+  );
 
   expect((await screen.findByRole('alert')).textContent).toContain(
     'Selection contains a credential',
   );
-  expect(terminal.write).toHaveBeenCalledWith(firstRead);
-  expect(terminal.write).toHaveBeenCalledWith(secondRead);
+  // The live terminal still shows exactly what the shell wrote.
+  expect(view.output.map(([text]) => text)).toEqual([firstRead, secondRead]);
   expect(chatDraftsStore.get('chat-a')).toBe('');
   expect(activeChatsStore.getSnapshot()['chat-a']?.input).toBe('');
 });
@@ -400,10 +393,9 @@ test.each([
   'native asset selection with query "$query" has credential refusal=$blocked',
   async ({ query, blocked }) => {
     renderTerminal();
-    const { terminal } = await connectTerminal();
+    await connectTerminal();
     const selection = `http://station-plugin.localhost/api/plugins/demo/bundle.js${query}`;
-    await act(() => terminal.select(selection));
-    fireEvent.click(screen.getByRole('button', { name: 'Send to chat' }));
+    await act(async () => latestView().onAddToChat?.(selection));
     if (blocked) {
       expect((await screen.findByRole('alert')).textContent).toContain(
         'Selection contains a credential',
@@ -428,10 +420,9 @@ test('appends a fenced live-CWD selection to the real composer draft without dis
   activeChatsStore.updateChat('chat-a', { input: 'Keep this existing draft.' });
   chatDraftsStore.set('chat-a', 'Keep this existing draft.');
   renderTerminal();
-  const { session, terminal } = await connectTerminal();
+  const { session } = await connectTerminal();
 
-  await act(() => terminal.select('build failed'));
-  fireEvent.click(screen.getByRole('button', { name: 'Send to chat' }));
+  await act(async () => latestView().onAddToChat?.('build failed'));
 
   const expected = [
     'Keep this existing draft.',
@@ -447,100 +438,4 @@ test('appends a fenced live-CWD selection to the real composer draft without dis
   // The working directory came from the session, and nothing was typed.
   expect(session.cwd).toHaveBeenCalledTimes(1);
   expect(session.write).not.toHaveBeenCalled();
-});
-
-test('copies the complete terminal selection', async () => {
-  const writeText = vi.fn(async () => undefined);
-  Object.assign(navigator, { clipboard: { writeText } });
-  renderTerminal();
-  const { terminal } = await connectTerminal();
-
-  await act(() => terminal.select('copy exactly this'));
-  fireEvent.click(screen.getByRole('button', { name: 'Copy' }));
-
-  await waitFor(() =>
-    expect(writeText).toHaveBeenCalledWith('copy exactly this'),
-  );
-});
-
-test('repaints the canvas from the terminal variables when the root theme changes', async () => {
-  // The real cascade shape: the variables differ per root attribute, and the
-  // terminal must re-read them, since xterm paints a canvas CSS cannot reach.
-  const sheet = document.createElement('style');
-  sheet.textContent = `
-    .coding-terminal { --terminal-background: #1a1a2e; --terminal-foreground: #e0e0e0; }
-    [data-theme="light"] .coding-terminal { --terminal-background: #ffffff; --terminal-foreground: #24292f; }
-    [data-color-theme="latte"] .coding-terminal { --terminal-background: #eff1f5; }
-  `;
-  document.head.append(sheet);
-  const root = document.documentElement;
-  root.setAttribute('data-theme', 'dark');
-  try {
-    renderTerminal();
-    const { terminal } = await connectTerminal();
-    expect(terminal.options.theme).toMatchObject({
-      background: '#1a1a2e',
-      foreground: '#e0e0e0',
-    });
-
-    await act(async () => {
-      root.setAttribute('data-theme', 'light');
-    });
-    await waitFor(() =>
-      expect(terminal.options.theme).toMatchObject({
-        background: '#ffffff',
-        foreground: '#24292f',
-      }),
-    );
-
-    await act(async () => {
-      root.setAttribute('data-color-theme', 'latte');
-    });
-    await waitFor(() =>
-      expect(terminal.options.theme?.background).toBe('#eff1f5'),
-    );
-  } finally {
-    sheet.remove();
-    root.removeAttribute('data-color-theme');
-    root.setAttribute('data-theme', 'dark');
-  }
-});
-
-test('coalesces resize bursts into the latest size once per frame and cancels pending work on unmount', async () => {
-  const frames = new Map<number, FrameRequestCallback>();
-  let frameId = 0;
-  vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
-    frames.set(++frameId, callback);
-    return frameId;
-  });
-  vi.stubGlobal('cancelAnimationFrame', (id: number) => frames.delete(id));
-  const flush = () =>
-    act(() => {
-      const pending = [...frames.values()];
-      frames.clear();
-      pending.forEach((callback) => callback(0));
-    });
-  const mounted = renderTerminal();
-  const { session } = await connectTerminal();
-  const observer = FakeResizeObserver.instances.at(-1)!;
-  const fit = FakeFitAddon.instances.at(-1)!.fit;
-  flush();
-  fit.mockClear();
-  session.resize.mockClear();
-  observer.callback();
-  observer.callback();
-  observer.callback();
-  expect(frames.size).toBe(1);
-  flush();
-  expect(fit).not.toHaveBeenCalled();
-  FakeFitAddon.dimensions = { cols: 90, rows: 30 };
-  observer.callback();
-  observer.callback();
-  flush();
-  expect(fit).toHaveBeenCalledTimes(1);
-  expect(session.resize).toHaveBeenLastCalledWith(90, 30);
-  expect(session.resize).toHaveBeenCalledTimes(2);
-  observer.callback();
-  mounted.unmount();
-  expect(frames.size).toBe(0);
 });

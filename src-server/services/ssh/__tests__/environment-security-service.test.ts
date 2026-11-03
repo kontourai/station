@@ -62,7 +62,7 @@ interface EnvironmentSecurityServiceInstance {
       granted: boolean,
       approval: { kind: string },
     ): { id: string; scope: string };
-    createOffer(input: { endpoint: string }): {
+    createOffer(input: { endpoint: string; scope?: string }): {
       offerId: string;
       challenge: string;
     };
@@ -942,8 +942,11 @@ describe('EnvironmentSecurityService', () => {
     const service = new EnvironmentSecurityService({ homeDir });
     await service.initialize();
 
+    // No host shell, so no owner standing (2026-11-02): only the explicit
+    // access:approve promotion below opens anything under /api/pairing.
     const offer = service.devicePairing.createOffer({
       endpoint: 'https://station.example.test',
+      scope: 'orchestration:read orchestration:operate',
     });
     const request = service.devicePairing.requestPairing({
       offerId: offer.offerId,
@@ -1024,9 +1027,11 @@ describe('EnvironmentSecurityService', () => {
       ).toBe(false);
     }
 
-    // And a NON-promoted device still gets nothing, even on the leaves.
+    // And a NON-promoted device without a host shell (so no owner standing)
+    // still gets nothing, even on the leaves.
     const second = service.devicePairing.createOffer({
       endpoint: 'https://station.example.test',
+      scope: 'orchestration:read orchestration:operate',
     });
     const secondRequest = service.devicePairing.requestPairing({
       offerId: second.offerId,

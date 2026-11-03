@@ -343,6 +343,42 @@ const SETTINGS_CATALOG_SOURCE = [
     section: 'host-runtime',
     configKeys: ['terminalShell'],
   },
+  // #3994: terminal history retention, one row per setting.
+  {
+    id: 'terminal-history',
+    title: 'Keep terminal history',
+    section: 'host-runtime',
+    keywords: ['retention journal scrollback disk usage clear'],
+    configKeys: ['terminalHistoryEnabled'],
+  },
+  {
+    id: 'terminal-history-location',
+    title: 'Terminal history location',
+    section: 'host-runtime',
+    keywords: ['retention journal directory folder move'],
+    configKeys: ['terminalHistoryDirectory'],
+  },
+  {
+    id: 'terminal-history-max-age',
+    title: 'Terminal history maximum age',
+    section: 'host-runtime',
+    keywords: ['retention journal days expire'],
+    configKeys: ['terminalHistoryMaxAgeDays'],
+  },
+  {
+    id: 'terminal-history-per-terminal',
+    title: 'Terminal history per terminal',
+    section: 'host-runtime',
+    keywords: ['retention journal size limit mib'],
+    configKeys: ['terminalHistoryMaxTerminalMiB'],
+  },
+  {
+    id: 'terminal-history-total',
+    title: 'Terminal history total',
+    section: 'host-runtime',
+    keywords: ['retention journal size limit mib budget'],
+    configKeys: ['terminalHistoryMaxTotalMiB'],
+  },
   {
     id: 'mcp-ui-host',
     title: 'MCP UI host',

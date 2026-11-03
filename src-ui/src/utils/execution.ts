@@ -795,9 +795,17 @@ export function buildProviderOptions(
     };
   }
   if (agentConnectionId === 'codex') {
+    const effort = runtimeOptions?.effort ?? runtimeOptions?.reasoningEffort;
     return {
-      reasoningEffort: runtimeOptions?.reasoningEffort ?? 'medium',
-      fastMode: runtimeOptions?.fastMode === true,
+      ...(typeof effort === 'string' ? { reasoningEffort: effort } : {}),
+      ...(runtimeOptions?.serviceTier === undefined &&
+      runtimeOptions?.fastMode === true
+        ? { fastMode: true }
+        : {}),
+      ...(runtimeOptions?.serviceTier === null ||
+      typeof runtimeOptions?.serviceTier === 'string'
+        ? { serviceTier: runtimeOptions.serviceTier }
+        : {}),
     };
   }
   return {};
@@ -849,7 +857,7 @@ export function resolveAgentExecution(
     modelSource:
       agent.execution?.modelId || agent.model ? 'agent default' : 'unknown',
     providerOptions: buildProviderOptions(
-      agentConnectionId,
+      agent.engineConnectionType ?? agentConnectionId,
       agent.execution?.runtimeOptions,
     ),
   };

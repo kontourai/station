@@ -109,6 +109,7 @@ import {
   UI_IMMUTABLE_ASSET_PATTERN,
   uiDocumentContentSecurityPolicy,
 } from '@kontourai/station-shared/ui-document-policy';
+import { WORKLOAD_HOST_BUNDLE_NAME } from '@kontourai/station-supervisor/protocol';
 import {
   publishActiveLocalStation,
   removeOwnedActiveLocalStation,
@@ -5661,6 +5662,89 @@ export async function restart(opts: StopOptions = {}): Promise<void> {
   }
   throw new Error(
     `The supervisor of ${record.instanceId} refused the restart (${final.reason ?? 'no reason given'}).`,
+  );
+}
+
+/** What `station doctor` reports about one running instance's shell host (#3994). */
+export interface TerminalShellHostReport {
+  instanceId: string;
+  /** The PTY workload host bundle beside the server bundle the supervisor runs. */
+  hostBundle: boolean;
+  supervised: boolean;
+  /**
+   * `granted`: shells are supervisor workloads and survive core restarts.
+   * `not-granted`: the supervisor answered without granting `workloads`.
+   * `unknown`: it did not answer, or predates reporting grants.
+   */
+  workloads: 'granted' | 'not-granted' | 'unknown';
+  /** The supervisor's workload host is configured and running. */
+  hostAvailable: boolean | null;
+  detail: string;
+}
+
+/**
+ * The shell host of each running instance: whether its supervisor granted
+ * the core `workloads`, and whether the PTY host bundle is present. Read-only:
+ * it reclaims no stale record and only asks a supervisor for its status.
+ */
+export function inspectTerminalShellHosts(
+  projectHome: string | undefined,
+): TerminalShellHostReport[] {
+  return listRunningInstances({ reclaimStale: false, projectHome }).map(
+    (record) => {
+      const serverDir = resolveBuildPaths(record.instanceId).server;
+      const hostBundle = [CWD, record.cwd].some((root) =>
+        existsSync(join(root, serverDir, WORKLOAD_HOST_BUNDLE_NAME)),
+      );
+      const base = {
+        instanceId: record.instanceId,
+        hostBundle,
+        supervised: record.supervised === true,
+      };
+      if (!record.supervised)
+        return {
+          ...base,
+          workloads: 'not-granted' as const,
+          hostAvailable: null,
+          detail: 'started without the supervisor',
+        };
+      const result = requestSupervisorSync(
+        supervisorTarget(record),
+        'status',
+        5_000,
+      );
+      const reply = result.messages.find(
+        (message) => message.type === 'status.result',
+      );
+      if (reply?.type !== 'status.result')
+        return {
+          ...base,
+          workloads: 'unknown' as const,
+          hostAvailable: null,
+          detail: `supervisor did not report its status: ${result.detail || 'no answer'}`,
+        };
+      const { active, workloadHost } = reply.status;
+      if (!active || active.capabilities === undefined)
+        return {
+          ...base,
+          workloads: 'unknown' as const,
+          hostAvailable: workloadHost?.available ?? null,
+          detail: active
+            ? 'supervisor predates reporting granted capabilities'
+            : 'no active core generation',
+        };
+      const granted = active.capabilities.includes('workloads');
+      return {
+        ...base,
+        workloads: granted ? ('granted' as const) : ('not-granted' as const),
+        hostAvailable: workloadHost?.available ?? null,
+        detail: granted
+          ? 'shells are supervisor workloads'
+          : workloadHost?.available === false
+            ? 'the supervisor has no workload host'
+            : 'the core did not ask for workloads',
+      };
+    },
   );
 }
 

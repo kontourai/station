@@ -113,12 +113,23 @@ export interface RuntimeAuthenticatedRequestPrincipal {
    * require `local-grant` therefore fail closed on them.
    */
   readonly mintKind?: CredentialMintKind;
+  /**
+   * Owner standing (owner decision, 2026-11-02): set by the auth boundary
+   * only for a paired-device credential the pairing store reports as one of
+   * the owner's own devices on a personal Station
+   * (`DevicePairingService.credentialHasOwnerStanding`). Never request
+   * supplied, never set alongside `locality` (a home-possession credential
+   * is already the operator in person), and never a mint-time proof: it
+   * grants no `local-grant` approval or consent custody.
+   */
+  readonly standing?: 'owner-device';
 }
 const authenticatedRequestPrincipals = new WeakMap<
   Request,
   RuntimeAuthenticatedRequestPrincipal
 >();
 const boundLocalOperator = new WeakMap<Request, boolean>();
+const boundOwner = new WeakMap<Request, boolean>();
 const boundLocalGrantMintedOperator = new WeakMap<Request, boolean>();
 export function setRuntimeAuthenticatedRequestPrincipal(
   request: Request,
@@ -423,6 +434,12 @@ export interface RuntimeHttpSecurityOptions {
   resolveCredentialMintKind?: (
     credential: string,
   ) => CredentialMintKind | undefined;
+  /**
+   * Owner standing (2026-11-02): whether a paired-device credential is one of
+   * the owner's own devices on this personal Station. Absent resolves to
+   * none, so a composition that omits it keeps every device as before.
+   */
+  resolveCredentialOwnerStanding?: (credential: string) => boolean;
   /**
    * Resolves a peer to a non-identifying device-activity class. Production
    * passes the verified ingress resolver; a missing resolver records activity
@@ -767,6 +784,10 @@ export function bindRuntimeLocalOperator(
 ): boolean {
   const local = localRuntimeCaller.evaluate({ principal });
   boundLocalOperator.set(request, local);
+  // Owner standing binds at the same single write point, so a withdrawal or
+  // re-stamp moves both flags together. It never feeds the local-grant flag
+  // below: an owner device holds no mint-time possession proof.
+  boundOwner.set(request, local || hasOwnerDeviceStanding(principal));
   // The stricter approve-capable flag (archive#3677 PR 3) is bound at the
   // same single write point: local AND minted via the local-grant secret
   // file. A ui-bootstrap mint, the internal-token principal, and every
@@ -807,6 +828,46 @@ export function withdrawInternalHomePossession(request: Request): void {
 /** Bound by the auth boundary; absent means redact (fail closed). */
 export function isBoundRuntimeLocalOperator(request: Request): boolean {
   return boundLocalOperator.get(request) === true;
+}
+
+/** Whether a principal carries owner-device standing (never for an internal principal). */
+export function hasOwnerDeviceStanding(
+  principal: RuntimeAuthenticatedRequestPrincipal | undefined,
+): boolean {
+  return (
+    principal?.standing === 'owner-device' &&
+    principal.kind !== 'internal' &&
+    principal.authority === 'device-credential' &&
+    principal.deviceKind !== 'delegation'
+  );
+}
+
+/**
+ * Whether a principal holds the Station owner's authority: home-possession
+ * (the operator in person on this host) or owner-device standing (one of the
+ * owner's own paired devices). The principal-level mirror of
+ * {@link isBoundRuntimeOwner}, for seams that read a principal directly.
+ */
+export function principalHasOwnerAuthority(
+  principal: RuntimeAuthenticatedRequestPrincipal | undefined,
+): boolean {
+  return (
+    principal?.locality === 'home-possession' ||
+    hasOwnerDeviceStanding(principal)
+  );
+}
+
+/**
+ * Owner standing (owner decision, 2026-11-02): the Station owner, at the
+ * host (home-possession) or through one of their own paired devices. Bound
+ * by the auth boundary with {@link bindRuntimeLocalOperator}; absent means
+ * refuse. Use this for owner AUTHORITY. Use
+ * {@link isBoundRuntimeLocalOperator} only where the answer is genuinely
+ * "on this host" (presentation as the host device, desktop surfaces).
+ * Approval and consent custody keep {@link isBoundLocalGrantMintedOperator}.
+ */
+export function isBoundRuntimeOwner(request: Request): boolean {
+  return boundOwner.get(request) === true;
 }
 
 /**
@@ -1354,6 +1415,8 @@ export interface CurrentRuntimeRequestPrincipalSecurity {
     request: { method: string; path: string },
   ): boolean;
   resolveGrantedScope(credential: string): string | undefined;
+  /** Live owner standing; absent means none (fail closed). */
+  credentialHasOwnerStanding?(credential: string): boolean;
 }
 
 export function isRuntimeRequestPrincipalCurrent(
@@ -1408,7 +1471,9 @@ export function runtimeRequestPrincipalMayAccessHttpRoute(
       capability.scope,
       { method, path },
       security.verifyOperatorCredential?.(principal.credential) === true,
-      principal.locality === 'home-possession',
+      principal.locality === 'home-possession' ||
+        (principal.authority === 'device-credential' &&
+          security.credentialHasOwnerStanding?.(principal.credential) === true),
     )
   );
 }

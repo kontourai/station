@@ -16,7 +16,6 @@ const NATIVE_MENU_TARGETS = [
   `input${NON_TEXT_INPUTS}`,
   'textarea',
   '[contenteditable]:not([contenteditable="false"])',
-  '.xterm',
 ].join(', ');
 
 /**
@@ -35,9 +34,6 @@ const NATIVE_MENU_TARGETS = [
  * - A text-entry target: Cut, Copy, Paste, spelling and the input method live
  *   in the native menu, and Station has no replacement for them. A checkbox,
  *   radio, range or button input has none of those, so it is not one.
- * - The terminal (`.xterm`): xterm.js moves its hidden textarea under the
- *   pointer on `contextmenu` so the native menu offers Copy and Paste, but the
- *   event's target is the rows it drew, not that textarea.
  * - A press ON the selected text: the user selected it and asked for the menu
  *   that acts on it (Copy, Look Up, Share).
  */

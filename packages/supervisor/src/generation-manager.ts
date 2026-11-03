@@ -569,6 +569,7 @@ export class GenerationManager {
       state: gen.state,
       bootId: gen.bootId,
       port: gen.port,
+      ...(gen.workloadsGranted ? { capabilities: ['workloads'] } : {}),
     };
   }
 

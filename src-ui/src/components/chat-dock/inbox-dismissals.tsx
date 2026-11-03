@@ -137,7 +137,7 @@ export function InboxDismissUndo({ children }: { children: ReactNode }) {
     () => {
       if (
         document.activeElement?.closest(
-          'input, textarea, select, [contenteditable], [role="textbox"], .xterm',
+          'input, textarea, select, [contenteditable], [role="textbox"], .station-terminal',
         )
       )
         return false;
