@@ -6645,7 +6645,9 @@ hidden. Replayed journal output updates the screen with the reply writer and
 bell detached. A session handed to a mounted view resets the emulator to a
 fresh terminal before its replay, so a reattach draws its history once. Keys
 the view does not keep, ⌘ chords on a Mac and Ctrl+Shift letters elsewhere,
-are left to the page. The [WebGL2 renderer](../../packages/sdk/src/terminal-view/render/webgl2-renderer.ts)
+are left to the page. Its theme observer and the app's root-theme store share
+[`rootThemeSignature`](../../packages/sdk/src/theme-signature.ts), which skips
+geometry-only style writes, and an unchanged palette is not re-sent. The [WebGL2 renderer](../../packages/sdk/src/terminal-view/render/webgl2-renderer.ts)
 draws instanced rectangles and atlas glyphs, survives context loss and
 releases its context while hidden; a [canvas 2D renderer](../../packages/sdk/src/terminal-view/render/canvas2d-renderer.ts)
 is the fallback. [Box drawing](../../packages/sdk/src/terminal-view/render/box-drawing.ts)
