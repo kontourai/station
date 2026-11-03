@@ -53,6 +53,34 @@ input with `group_preparation_unavailable` (two starts, one model fetch and one
 input invocation); direct Flow misses its lost-adoption fault at 130297ms, beyond
 the unchanged 120-second budget. Both shutdowns complete. No unchanged rerun follows.
 
+One bounded pass-through diagnostic at `633121387df` identifies expiry as the
+first preparation refusal in that observed run. Both known handles still match
+their original owner and Request, neither Request is aborted, and close occurs
+only afterward. All observed Home acquisitions succeed. Across each observed run,
+including its cleanup, totals are roughly 306000–364000 opens for Home lock/guard
+files and 143000–176000 environment-record reads. Refusal occurs at the unchanged
+120-second boundary. Instrumentation
+and host scheduling affect timing; asynchronous totals overlap and native SQLite
+I/O is not measured. This does not attribute every earlier generic503 or establish
+recoverable time. The original test and temporary helper were restored/removed
+exactly after that one run; both diagnostic callers remain FAIL.
+
+Source tracing also reproduced uncertainty raised during the canonical raw lookup:
+a real re-entrant write publishes another Device's revocation, its cleanup fails,
+and the target grant remains active. Repair `d6c0366ebed` checks the sticky outcome
+flag again after lookup, outside the catch, before independent policy is visited.
+The old code fails the new case alone; 46 focused checks pass with repair. Removing
+only the closing check reproduces that failure with29 controls passing; exact
+restoration passes all30 owner cases. Callback/registry load ordering is preserved.
+
+General guard splitting and retained-descriptor shortcuts are not adopted. A
+separate raw-origin owner contract is a concrete design candidate: only adjacent
+entry validations before the already-guarded raw query could be coalesced inside
+an actual owner-issued synchronous region, while complete assertions, signer
+reads, callback ordering and the independent security port remain. That API,
+its filesystem failure semantics and any performance benefit remain unimplemented
+and unqualified. No purity flag, shared Home primitive or deadline extension follows.
+
 The responding-request settlement gap is repaired at `26445f1466c`, followed by
 resource classification at `44c3c85ad29`. The original source check and the live
 responding-request closure now reach the synchronous canonical settlement after

@@ -3079,7 +3079,11 @@ reads may reuse confirmed durability only while the private observation's full
 file witness and store-directory signature remain identical. They still reread
 and validate authority, revocation, expiry, configuration and source. Reopened
 custody or a changed witness must flush and reconfirm before use; an orphan
-record's existence is not a durability receipt.
+record's existence is not a durability receipt. The canonical local-grant scope
+reader checks registry outcome certainty before and after lookup. A re-entrant
+publication failure during the configured clock callback refuses before the
+independent policy port is consulted, even when another Device was changed and
+the target grant remains active.
 
 The [runtime credential owner](../../src-server/runtime/conversation/runtime-fenced-credential-observation.ts)
 issues this private SDK lease inside the actual Agent configuration read queue.
