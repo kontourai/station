@@ -184,6 +184,45 @@ function validateBugForm(form, findings) {
   }
 }
 
+const TROUBLESHOOT_LABEL = 'reported:troubleshoot';
+
+/**
+ * The Troubleshoot flow prefills this form by field id, so a renamed or
+ * dropped id silently empties part of every agent-filed report.
+ */
+function validateTroubleshootForm(form, findings) {
+  const source = serializedForm(form);
+  if (!PRIVACY_WARNING.test(source)) {
+    findings.push(
+      'Troubleshoot form must warn reporters not to include private or unredacted diagnostics.',
+    );
+  }
+  for (const id of [
+    'user-impact',
+    'diagnosis',
+    'observed-behavior',
+    'build-identity',
+    'environment-details',
+  ]) {
+    requiredField(form, id, findings, 'Troubleshoot form');
+  }
+  for (const id of [
+    'redacted-diagnostic',
+    'prior-issue',
+    'remedy-applied',
+    'diagnosed-by',
+  ]) {
+    if (!fieldById(form, id))
+      findings.push(`Troubleshoot form must include '${id}'.`);
+  }
+  if (
+    !Array.isArray(form.labels) ||
+    !form.labels.includes(TROUBLESHOOT_LABEL)
+  ) {
+    findings.push(`Troubleshoot form must apply '${TROUBLESHOOT_LABEL}'.`);
+  }
+}
+
 function validateFormLabels(form, formName, findings) {
   if (!Array.isArray(form.labels)) {
     findings.push(`${formName} must define a labels array.`);
@@ -551,10 +590,15 @@ export function collectPublicContributionSurfaceFindings({
     path('.github/ISSUE_TEMPLATE/feature-request.yml'),
     read,
   );
+  const troubleshoot = parseYamlDocument(
+    path('.github/ISSUE_TEMPLATE/troubleshoot-report.yml'),
+    read,
+  );
   for (const [name, parsed] of [
     ['Issue-template config', config],
     ['Bug form', bug],
     ['Feature form', feature],
+    ['Troubleshoot form', troubleshoot],
   ]) {
     if (parsed.error) findings.push(`${name}: ${parsed.error}`);
   }
@@ -566,6 +610,10 @@ export function collectPublicContributionSurfaceFindings({
   if (feature.document) {
     validateFeatureForm(feature.document, findings);
     validateFormLabels(feature.document, 'Feature form', findings);
+  }
+  if (troubleshoot.document) {
+    validateTroubleshootForm(troubleshoot.document, findings);
+    validateFormLabels(troubleshoot.document, 'Troubleshoot form', findings);
   }
 
   const prTemplate = readText(path('.github/pull_request_template.md'), read);

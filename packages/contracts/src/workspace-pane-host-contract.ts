@@ -185,6 +185,86 @@ export interface RelatedPaneOpenRequest {
 }
 
 /**
+ * The closed built-in terminal target (docs/design/terminal.md, "Plugins").
+ * Station renders it; a plugin only names which terminal. `binding` is a
+ * session `bindingKey` (`project` or `thread:<id>`) that must fall inside the
+ * caller's captured Project on its Station, or the host answers
+ * `context-mismatch`. It carries no working directory: the server decides the
+ * cwd from the binding.
+ *
+ * Exactly one of `terminalId` (open an existing terminal; needs
+ * `terminal:observe`, read-only without `terminal:operate`) and `new` (start
+ * one; needs `terminal:operate`) is present. A pane or plugin grant never
+ * implies terminal access.
+ */
+export interface RelatedTerminalOpenRequest {
+  kind: 'terminal';
+  binding: string;
+  terminalId?: string;
+  new?: { profile?: string };
+}
+
+/** Anything a plugin may ask its host to open as a related pane. */
+export type RelatedPaneOpenTarget =
+  | RelatedPaneOpenRequest
+  | RelatedTerminalOpenRequest;
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+const BINDING = /^(?:project|thread:[A-Za-z0-9_.:-]{1,200})$/;
+const PROFILE = /^[a-z0-9][a-z0-9-]{0,63}$/;
+
+/**
+ * Closed decode of a terminal target: refused (null) past its bounds or
+ * with any field the contract does not define, never trimmed.
+ */
+export function decodeRelatedTerminalOpenRequest(
+  value: unknown,
+): RelatedTerminalOpenRequest | null {
+  if (typeof value !== 'object' || value === null || Array.isArray(value))
+    return null;
+  const request = value as Record<string, unknown>;
+  if (
+    !Object.keys(request).every((key) =>
+      ['kind', 'binding', 'terminalId', 'new'].includes(key),
+    ) ||
+    request.kind !== 'terminal' ||
+    typeof request.binding !== 'string' ||
+    !BINDING.test(request.binding)
+  )
+    return null;
+  const hasId = request.terminalId !== undefined;
+  const hasNew = request.new !== undefined;
+  if (hasId === hasNew) return null;
+  if (hasId) {
+    if (
+      typeof request.terminalId !== 'string' ||
+      !UUID.test(request.terminalId)
+    )
+      return null;
+    return {
+      kind: 'terminal',
+      binding: request.binding,
+      terminalId: request.terminalId,
+    };
+  }
+  const created = request.new;
+  if (typeof created !== 'object' || created === null || Array.isArray(created))
+    return null;
+  const options = created as Record<string, unknown>;
+  if (!Object.keys(options).every((key) => key === 'profile')) return null;
+  if (
+    options.profile !== undefined &&
+    (typeof options.profile !== 'string' || !PROFILE.test(options.profile))
+  )
+    return null;
+  return {
+    kind: 'terminal',
+    binding: request.binding,
+    new: options.profile !== undefined ? { profile: options.profile } : {},
+  };
+}
+
+/**
  * Where the host showed a related pane, chosen from the descriptor's role
  * and the device: `beside` its source, as a `child` screen with a way back
  * (a phone), or with the Tools (`tool`). `sheet` is reserved for the
@@ -285,7 +365,12 @@ export interface RelatedPaneTarget {
  */
 export interface PaneRelatedPanesHost {
   version: 1;
-  open(request: RelatedPaneOpenRequest): Promise<RelatedPaneOpenOutcome>;
+  /**
+   * A host that predates the terminal target answers it
+   * `unavailable: invalid-request` or `unsupported`; it never opens an
+   * empty pane.
+   */
+  open(request: RelatedPaneOpenTarget): Promise<RelatedPaneOpenOutcome>;
   reveal(handle: string): Promise<RelatedPaneRevealOutcome>;
   /** Asks the related pane's unsaved-changes guard before closing it. */
   close(handle: string): Promise<RelatedPaneCloseOutcome>;

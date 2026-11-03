@@ -5,7 +5,7 @@ import type {
   PaneRelatedPanesHost,
   PaneSkillExperienceHost,
   PaneUnavailableReason,
-  RelatedPaneOpenRequest,
+  RelatedPaneOpenTarget,
   WorkspacePaneHostContract,
 } from '@kontourai/station-contracts/workspace-pane-host-contract';
 import { type ReactNode, useCallback, useEffect, useMemo, useRef } from 'react';
@@ -532,7 +532,7 @@ export function useFramePaneHost(options: FramePaneHostOptions): FramePaneHost {
         );
         const operation: Promise<unknown> =
           related.member === 'open'
-            ? scoped.open(params.request as RelatedPaneOpenRequest)
+            ? scoped.open(params.request as RelatedPaneOpenTarget)
             : related.member === 'reveal'
               ? scoped.reveal(handle as string)
               : related.member === 'close'

@@ -38,6 +38,7 @@ const PUBLIC_QUERY_DOMAINS = [
   'featurePreviews',
   'integrationStatus',
   'workloadBudgets',
+  'terminalHistory',
   'flowRuns',
   'peerCredentials',
   'peerEnrollments',

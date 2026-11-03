@@ -1141,6 +1141,27 @@ non-operator members is a separate program and is not widened here.
   WebSocket path to Station; the client refuses raw terminal egress there
   before minting a ticket. That egress stays closed until a broker transport
   for the socket exists and this model is updated.
+- **Agent commands and restart.** On a personal host an ACP engine's
+  terminals are command sessions in the same store, recorded under the
+  agent session's Project (or a reserved `.agent-terminals` Project) and its
+  `thread:<id>` binding. The operator, and their own devices with
+  `terminal:observe`, can therefore read an agent command's sanitized output,
+  and with `terminal:operate` type into its input; no other principal gains
+  either. The agent's requested directory must lie inside its session's
+  directory. `restart` requires `terminal:operate`, re-resolves the launch
+  profile instead of storing a program, keeps the directory inside the
+  binding, and refuses command sessions and server-owned launches.
+- **History and restore (#3994).** `GET /api/terminal/history` needs
+  `terminal:observe` and `DELETE` needs `terminal:operate`, both refusing
+  personal tokens and requiring the same operator test; usage lists only
+  sessions the caller may observe and clearing only those it may operate. The
+  usage answer names the history directory, a host path the operator already
+  sees in Settings. Moving that directory is a settings write an agent is
+  refused; it must be absolute. A shell reopened after its host restarted is a
+  login shell in its recorded directory, only while its Project exists; no
+  command, agent or server-owned launch is replayed. `adopt` on the existing
+  open route grants nothing new: it returns a running shell in the same
+  binding under the same operate check.
 
 ### Owner-device standing (2026-11-02)
 
