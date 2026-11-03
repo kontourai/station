@@ -86,7 +86,17 @@
 
     "src-ui/src/components/MobileWelcomeBoundary.tsx",
 
-    "src-ui/src/components/OnboardingGate.tsx"
+    "src-ui/src/components/OnboardingGate.tsx",
+
+    "src-server/services/connections/connection-service.ts",
+
+    "src-server/providers/app-home/credential-profile-env.ts",
+
+    "src-server/providers/auth/native-authentication-context.ts",
+
+    "src-server/services/orchestration/recovery-dispatch-adapter.ts",
+
+    "src-server/services/orchestration/session-recovery-coordinator.ts"
   ],
 
   "checks": [
