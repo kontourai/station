@@ -119,8 +119,12 @@ follow-up and live qualification remain open. Source controls do not establish p
 device acceptance; the [report-group API](../../reference/api.md#report-groups)
 records the current candidate and its limits.
 Metadata-only continuation finalization is currently unavailable and its preview
-is not offered. The installed Flow winner-authentication contract does not
-qualify Station's unfinished publication-exclusion composition.
+is not offered. The [publication owner](../../../src-server/services/orchestration/report-rounds-publication.ts)
+binds Flow's exact parent lease to operation-owned Home custody. Transaction
+facades borrow that lease; fresh Home scopes serve the preliminary and final
+metadata reads. Failed cleanup remains owned until a retry confirms release.
+The runtime qualification guard remains false. Installed Flow winner
+authentication does not establish Station serving readiness.
 
 ### Sealed-source Sessions
 
