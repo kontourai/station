@@ -41,6 +41,7 @@ import {
 import { FileAttentionSnoozeStore } from '../attention-snooze-store.js';
 
 const now = '2026-07-23T12:00:00.000Z';
+const makeOwnerAttentionTempDir = trackTempDirs();
 
 function baseSession(overrides: Record<string, unknown> = {}) {
   return {
@@ -2061,7 +2062,7 @@ describe('AttentionProjectionService', () => {
       });
 
       test('an owner phone dismissal survives reload for every owner device without clearing another person', async () => {
-        const dataDir = mkdtempSync(join(tmpdir(), 'station-phone-attention-'));
+        const dataDir = makeOwnerAttentionTempDir('station-phone-attention-');
         const isOwnerDevice = (id: string) =>
           id === 'owner-phone' || id === 'owner-desktop';
         const sessions = [
