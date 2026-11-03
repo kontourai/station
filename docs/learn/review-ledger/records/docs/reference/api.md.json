@@ -638,6 +638,8 @@
 
     "src-server/services/terminal/terminal-tickets.ts",
 
+    "src-server/runtime/routes/task-inbox-projection.ts",
+
     "src-server/services/orchestration/create-request-claims.ts",
 
     "src-server/services/orchestration/__tests__/create-request-claims.test.ts"

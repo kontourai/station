@@ -573,6 +573,11 @@ export interface TaskWorkChatsResult {
   chats: { conversationId: string; revision: number }[];
 }
 
+/** Request-authorized presentation links; never persisted as Task assignment. */
+export interface TaskWorkChatPresentation {
+  readonly workChatConversationIds?: readonly string[];
+}
+
 export interface TaskRecord {
   id: string;
   projectId: string;

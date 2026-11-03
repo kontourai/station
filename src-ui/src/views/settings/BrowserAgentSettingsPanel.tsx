@@ -5,12 +5,11 @@ import {
   type BrowserPaneApi,
   browserPaneKeys,
   describeBrowserFailure,
-} from './browserPaneApi';
+} from '../../workspace-panes/browser-pane/browserPaneApi';
 
 /**
- * What agents may do in this Project's browser (#90 D4). The operator or a
- * Project admin decides; the permission is off until they turn it on, and
- * the description says plainly what turning it on hands over.
+ * Whether agents may run JavaScript in this Project's browser (#90 D4). Off
+ * until the operator or a Project admin turns it on.
  */
 export function BrowserAgentSettingsPanel({
   apiBase,
@@ -36,37 +35,34 @@ export function BrowserAgentSettingsPanel({
 
   return (
     <section
-      className="browser-pane__panel"
+      className="browser-settings__panel"
       aria-labelledby="browser-agent-settings-heading"
     >
-      <h3 id="browser-agent-settings-heading">Agent access</h3>
+      <h3 id="browser-agent-settings-heading">Agent JavaScript</h3>
       {settings.isPending ? (
-        <SkeletonBlock count={1} label="Loading agent access" />
+        <SkeletonBlock count={1} label="Loading agent JavaScript setting" />
       ) : settings.isError ? (
         <ErrorState
-          title="Agent access could not be read"
+          title="The agent JavaScript setting could not be read"
           description={describeBrowserFailure(settings.error)}
         />
       ) : (
-        <div className="browser-pane__list-item">
+        <div className="browser-settings__item">
           <span>
             <strong>Let agents run JavaScript in this Project's pages</strong>
-            <span id={descriptionId} className="browser-pane__hint">
-              A script an agent runs acts as the page itself: it can read what
-              the page shows, its cookies and local storage, and anything the
-              signed-in site can reach, and it can keep running in the page
-              after the agent's call ends. Off by default. Agents can still
-              read, click and type without it: Station checks that nothing
-              covers an element before clicking it, but a page that moves things
-              on a timer can still redirect a click, and a browser step that
-              timed out may still finish later.
+            <span id={descriptionId} className="browser-settings__hint">
+              A script acts as you on the signed-in site: it can read the page,
+              cookies and local storage, and keep running after the call ends.
             </span>
+            <details className="browser-settings__details">
+              <summary>Details</summary>
+              <p className="browser-settings__hint">
+                Agents can still read, click and type. A page that moves things
+                on a timer can redirect a click, and a timed-out step may still
+                finish.
+              </p>
+            </details>
           </span>
-          {/* #2425/#2441: the shared Toggle already tells the state by more
-              than colour (the thumb's side, an outlined or filled track).
-              This switch hands the browser to agents, so it also says the
-              state in a word; that word is aria-hidden because the switch's
-              own aria-checked is what assistive tech reads. */}
           <Toggle
             checked={settings.data.browserEvaluate}
             disabled={update.isPending}

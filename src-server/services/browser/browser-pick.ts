@@ -200,25 +200,30 @@ async function pick(
       bySession = new Map();
       worlds.set(cdp, bySession);
     }
-    let cached = bySession.get(session);
-    if (
-      !cached ||
-      cached.frameId !== before.id ||
-      cached.loaderId !== before.loaderId
-    ) {
-      bySession.delete(session);
+    const sessionWorlds = bySession;
+    const createWorld = async () => {
+      sessionWorlds.delete(session);
       const world = await send<{ executionContextId?: number }>(
         'Page.createIsolatedWorld',
         { frameId: before.id, worldName: 'station-browser-pick' },
       );
       if (!world.executionContextId)
         throw new Error('Page context unavailable.');
-      cached = {
+      const created = {
         frameId: before.id!,
         loaderId: before.loaderId!,
         contextId: world.executionContextId,
       };
-      bySession.set(session, cached);
+      sessionWorlds.set(session, created);
+      return created;
+    };
+    let cached = bySession.get(session);
+    if (
+      !cached ||
+      cached.frameId !== before.id ||
+      cached.loaderId !== before.loaderId
+    ) {
+      cached = await createWorld();
       if (bySession.size > 32) bySession.delete(bySession.keys().next().value!);
     }
     const resolve = (contextId: number) =>
@@ -238,22 +243,7 @@ async function pick(
         )
       )
         throw error;
-      bySession.delete(session);
-      const world = await send<{ executionContextId?: number }>(
-        'Page.createIsolatedWorld',
-        {
-          frameId: before.id,
-          worldName: 'station-browser-pick',
-        },
-      );
-      if (!world.executionContextId)
-        throw new Error('Page context unavailable.');
-      cached = {
-        frameId: before.id!,
-        loaderId: before.loaderId!,
-        contextId: world.executionContextId,
-      };
-      bySession.set(session, cached);
+      cached = await createWorld();
       resolved = await resolve(cached.contextId);
     }
     if (!resolved.object?.objectId) throw new Error('Element unavailable.');
@@ -351,10 +341,7 @@ async function pick(
         shot.data.length > Math.ceil((MAX_IMAGE_BYTES * 4) / 3) + 4
       )
         throw new Error('Element image unavailable.');
-      const image =
-        typeof shot.data === 'string'
-          ? Buffer.from(shot.data, 'base64')
-          : Buffer.alloc(0);
+      const image = Buffer.from(shot.data, 'base64');
       if (
         image.length > MAX_IMAGE_BYTES ||
         !image

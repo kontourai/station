@@ -684,7 +684,10 @@ for creating a project, including a short first-project prompt when empty.
 
 In **Inbox**, delegated work folds under its recorded parent.
 Expand the subtask count to read the children; children that need you stay
-visible. Task-owned chats appear under their Task as sessions. **Show work**
+visible. Authorized work chats appear under their Task, including independent
+Agent requests and linked conversations. A chat associated with several Tasks
+stays separate. Select a Task to reveal Overview or a work chat to read its
+conversation. Running counts include actual chats, not the Task's status. **Show work**
 filters by project or Station and stays selected on this device. It starts at
 **All work**; **Current project** follows the project whose page you are on,
 and shows all work anywhere else. If work needs

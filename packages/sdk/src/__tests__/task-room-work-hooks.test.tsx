@@ -11,6 +11,8 @@ import {
 } from '../client/http';
 import { TaskRoomWorkNotSentError } from '../client/task-room-work';
 import { useAppendProjectTaskRoomHumanMessageMutation } from '../query-domains/projectTaskRooms';
+import { useTasksQuery } from '../query-domains/taskGraph';
+import { useSetTaskWorkChatMutation } from '../query-domains/taskRelationships';
 import { useSubmitTaskRoomAgentRequestMutation } from '../query-domains/taskRoomWork';
 
 const apiBase = 'https://room.test';
@@ -76,7 +78,15 @@ test('the real request mutation refreshes readiness and refuses another create w
   const scope = { apiBase, authorityKey: 'room-a', isCurrent: () => true };
   setClientCredentialResolver(() => credential(scope.isCurrent));
   let ready = true;
+  let dispatched = false;
   const fetcher = vi.fn<typeof fetch>(async (url) => {
+    if (String(url).endsWith('/api/tasks'))
+      return response([
+        {
+          id: 'task-1',
+          workChatConversationIds: dispatched ? ['task:123'] : [],
+        },
+      ]);
     if (String(url).endsWith('/delegations/options'))
       return response({
         environment: { id: 'current', name: 'This Station', kind: 'current' },
@@ -103,7 +113,8 @@ test('the real request mutation refreshes readiness and refuses another create w
         kind: 'available',
         records: [],
       });
-    if (String(url).endsWith('/delegations'))
+    if (String(url).endsWith('/delegations')) {
+      dispatched = true;
       return response({
         kind: 'recorded',
         replayed: false,
@@ -119,33 +130,99 @@ test('the real request mutation refreshes readiness and refuses another create w
           state: 'dispatched',
         },
       });
+    }
     throw new Error(`Unexpected request: ${String(url)}`);
   });
   vi.stubGlobal('fetch', fetcher);
   const { result } = renderHook(
-    () =>
-      useSubmitTaskRoomAgentRequestMutation(
+    () => ({
+      tasks: useTasksQuery(undefined, { requestScope: scope }),
+      mutation: useSubmitTaskRoomAgentRequestMutation(
         'task-1',
         incarnation,
         'demo',
         scope,
       ),
+    }),
     { wrapper: wrapper() },
   );
+  await waitFor(() =>
+    expect(result.current.tasks.data?.[0].workChatConversationIds).toEqual([]),
+  );
   await act(async () => {
-    await expect(result.current.mutateAsync(input)).resolves.toMatchObject({
+    await expect(
+      result.current.mutation.mutateAsync(input),
+    ).resolves.toMatchObject({
       kind: 'recorded',
     });
   });
+  await waitFor(() =>
+    expect(result.current.tasks.data?.[0].workChatConversationIds).toEqual([
+      'task:123',
+    ]),
+  );
   ready = false;
   await act(async () => {
-    await expect(result.current.mutateAsync(input)).rejects.toBeInstanceOf(
-      TaskRoomWorkNotSentError,
-    );
+    await expect(
+      result.current.mutation.mutateAsync(input),
+    ).rejects.toBeInstanceOf(TaskRoomWorkNotSentError);
   });
   expect(
     fetcher.mock.calls.filter(([url]) => String(url).endsWith('/delegations')),
   ).toHaveLength(1);
+});
+
+test('linking and unlinking a work chat refreshes an already mounted Task list', async () => {
+  const scope = { apiBase, authorityKey: 'room-a', isCurrent: () => true };
+  setClientCredentialResolver(() => credential(scope.isCurrent));
+  const task = { taskId: 'task-1', taskCreatedAt: incarnation };
+  let linked = false;
+  const fetcher = vi.fn<typeof fetch>(async (url, init) => {
+    if (String(url).endsWith('/api/tasks'))
+      return response([
+        {
+          id: task.taskId,
+          workChatConversationIds: linked ? ['work-chat'] : [],
+        },
+      ]);
+    if (String(url).endsWith('/work-chats')) {
+      linked = init?.method === 'POST';
+      return response({
+        task,
+        conversationId: 'work-chat',
+        linked,
+        revision: linked ? 1 : 2,
+      });
+    }
+    throw new Error(`Unexpected request: ${String(url)}`);
+  });
+  vi.stubGlobal('fetch', fetcher);
+  const { result } = renderHook(
+    () => ({
+      tasks: useTasksQuery(undefined, { requestScope: scope }),
+      mutation: useSetTaskWorkChatMutation(scope),
+    }),
+    { wrapper: wrapper() },
+  );
+  await waitFor(() =>
+    expect(result.current.tasks.data?.[0].workChatConversationIds).toEqual([]),
+  );
+  for (const value of [true, false]) {
+    await act(async () => {
+      await result.current.mutation.mutateAsync({
+        operationId: `link-${value}`,
+        task,
+        conversationId: 'work-chat',
+        linked: value,
+        expectedRevision: value ? 0 : 1,
+      });
+    });
+    await waitFor(() =>
+      expect(result.current.tasks.data?.[0].workChatConversationIds).toEqual(
+        value ? ['work-chat'] : [],
+      ),
+    );
+  }
 });
 
 test('a scoped human message ignores ambient Home selection and carries the exact incarnation', async () => {

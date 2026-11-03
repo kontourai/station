@@ -32,11 +32,8 @@ import {
 import { TaskBrowserRecordingError } from './task-recording-errors.js';
 import { publishTaskRecording } from './task-recording-publication.js';
 
-export { TaskBrowserRecordingError } from './task-recording-errors.js';
-
 const MAX_RAW_FRAME_BYTES = 64 * 1024 * 1024;
 const MAX_FRAMES = 300;
-export const TASK_RECORDING_MAX_ACTIVE = 4;
 const ENCODE_TIMEOUT_MS = 60_000;
 const CLEANUP_TIMEOUT_MS = 10_000;
 
@@ -270,12 +267,12 @@ type RecordingInput = {
   stopSignal?: AbortSignal;
   onStarted?: () => void;
   admissionKey?: string;
+  releaseAdmission?: () => void;
 };
 
 /** Records through a shared live surface, leaving other viewers attached. */
 export class TaskBrowserRecording {
   private readonly jobs = new Set<{
-    key: string;
     controller: AbortController;
     done: Promise<void>;
   }>();
@@ -394,33 +391,9 @@ export class TaskBrowserRecording {
     );
   }
 
-  async recordSource(
-    access: TaskReviewAccess,
-    input: RecordingInput,
-    resolveSource: () => Promise<RecordingSource>,
-  ) {
-    if (input.signal?.aborted) throw cancelled();
-    if (input.stopSignal?.aborted) throw cancelled();
-    if (
-      !Number.isSafeInteger(input.durationMs) ||
-      input.durationMs < 1 ||
-      input.durationMs > BROWSER_RECORD_MAX_DURATION_MS ||
-      (input.maxBytes !== undefined &&
-        (!Number.isSafeInteger(input.maxBytes) ||
-          input.maxBytes < 1 ||
-          input.maxBytes > BROWSER_RECORD_MAX_ENCODED_BYTES))
-    )
-      throw new TaskBrowserRecordingError(
-        'invalid-request',
-        'Recording duration or byte limit is out of bounds.',
-      );
-    if (!this.enabled())
-      throw new TaskBrowserRecordingError(
-        'feature_preview_disabled',
-        'Enable Walkthroughs in feature previews.',
-      );
+  admit(access: TaskReviewAccess, admissionKey?: string): () => void {
     const key =
-      input.admissionKey ??
+      admissionKey ??
       (access.write.author.kind === 'person'
         ? access.write.author.principalId
         : access.write.author.sessionId);
@@ -429,6 +402,42 @@ export class TaskBrowserRecording {
       throw new TaskBrowserRecordingError(
         'recording-unavailable',
         'Recording capacity is exhausted.',
+      );
+    return release;
+  }
+
+  async recordSource(
+    access: TaskReviewAccess,
+    input: RecordingInput,
+    resolveSource: () => Promise<RecordingSource>,
+  ) {
+    let release = input.releaseAdmission;
+    try {
+      if (input.signal?.aborted || input.stopSignal?.aborted) throw cancelled();
+      if (!this.enabled())
+        throw new TaskBrowserRecordingError(
+          'feature_preview_disabled',
+          'Enable Walkthroughs in feature previews.',
+        );
+      assertRecordingBounds(input);
+      release ??= this.admit(access, input.admissionKey);
+      return await this.recordAdmitted(access, input, resolveSource);
+    } finally {
+      release?.();
+    }
+  }
+
+  private async recordAdmitted(
+    access: TaskReviewAccess,
+    input: RecordingInput,
+    resolveSource: () => Promise<RecordingSource>,
+  ) {
+    if (input.signal?.aborted) throw cancelled();
+    if (input.stopSignal?.aborted) throw cancelled();
+    if (!this.enabled())
+      throw new TaskBrowserRecordingError(
+        'feature_preview_disabled',
+        'Enable Walkthroughs in feature previews.',
       );
     const controller = new AbortController();
     const signal = controller.signal;
@@ -440,7 +449,7 @@ export class TaskBrowserRecording {
       finish = (error) => (error === undefined ? resolve() : reject(error));
     });
     void done.catch(() => {});
-    const job = { key, controller, done };
+    const job = { controller, done };
     this.jobs.add(job);
     let offSurface: (() => void) | undefined;
     let cleanupFailure: unknown;
@@ -756,9 +765,25 @@ export class TaskBrowserRecording {
         offSurface?.();
       } finally {
         this.jobs.delete(job);
-        release();
         finish(cleanupFailure);
       }
     }
   }
+}
+
+/** Input bounds, checked before a recording takes a capacity slot. */
+function assertRecordingBounds(input: RecordingInput) {
+  if (
+    !Number.isSafeInteger(input.durationMs) ||
+    input.durationMs < 1 ||
+    input.durationMs > BROWSER_RECORD_MAX_DURATION_MS ||
+    (input.maxBytes !== undefined &&
+      (!Number.isSafeInteger(input.maxBytes) ||
+        input.maxBytes < 1 ||
+        input.maxBytes > BROWSER_RECORD_MAX_ENCODED_BYTES))
+  )
+    throw new TaskBrowserRecordingError(
+      'invalid-request',
+      'Recording duration or byte limit is out of bounds.',
+    );
 }

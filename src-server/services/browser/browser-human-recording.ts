@@ -182,14 +182,8 @@ export class BrowserHumanRecording {
   }
 
   status(id: string, owner: string, sessionId: string, generation: number) {
-    const job = this.jobs.get(id);
-    if (
-      !job ||
-      job.owner !== owner ||
-      job.sessionId !== sessionId ||
-      job.generation !== generation
-    )
-      return undefined;
+    const job = this.owned(id, owner, sessionId, generation);
+    if (!job) return undefined;
     return {
       id: job.id,
       state: job.state,
@@ -208,14 +202,8 @@ export class BrowserHumanRecording {
     sessionId: string,
     generation: number,
   ): boolean {
-    const job = this.jobs.get(id);
-    if (
-      !job ||
-      job.owner !== owner ||
-      job.sessionId !== sessionId ||
-      job.generation !== generation
-    )
-      return false;
+    const job = this.owned(id, owner, sessionId, generation);
+    if (!job) return false;
     if (job.state === 'encoding' || job.state === 'ready') return true;
     if (!['starting', 'recording'].includes(job.state)) return false;
     job.stop.abort();
@@ -228,14 +216,8 @@ export class BrowserHumanRecording {
     sessionId: string,
     generation: number,
   ): boolean {
-    const job = this.jobs.get(id);
-    if (
-      !job ||
-      job.owner !== owner ||
-      job.sessionId !== sessionId ||
-      job.generation !== generation
-    )
-      return false;
+    const job = this.owned(id, owner, sessionId, generation);
+    if (!job) return false;
     job.cancel.abort();
     job.stop.abort();
     void job.done.finally(() => this.remove(id));
@@ -248,17 +230,8 @@ export class BrowserHumanRecording {
     sessionId: string,
     generation: number,
   ): Buffer | undefined {
-    const job = this.jobs.get(id);
-    if (
-      !job ||
-      job.owner !== owner ||
-      job.sessionId !== sessionId ||
-      job.generation !== generation ||
-      job.state !== 'ready' ||
-      !job.bytes
-    )
-      return undefined;
-    return job.bytes;
+    const job = this.owned(id, owner, sessionId, generation);
+    return job?.state === 'ready' ? job.bytes : undefined;
   }
 
   publishTask(
@@ -268,12 +241,9 @@ export class BrowserHumanRecording {
     generation: number,
     request: Request,
   ) {
-    const job = this.jobs.get(id);
+    const job = this.owned(id, owner, sessionId, generation);
     if (
       !job ||
-      job.owner !== owner ||
-      job.sessionId !== sessionId ||
-      job.generation !== generation ||
       job.state !== 'ready' ||
       job.task.kind !== 'ready' ||
       !job.bytes ||
@@ -314,16 +284,8 @@ export class BrowserHumanRecording {
   }
 
   contact(id: string, owner: string, sessionId: string, generation: number) {
-    const job = this.jobs.get(id);
-    if (
-      !job ||
-      job.owner !== owner ||
-      job.sessionId !== sessionId ||
-      job.generation !== generation ||
-      job.state !== 'ready'
-    )
-      return undefined;
-    return job.contact;
+    const job = this.owned(id, owner, sessionId, generation);
+    return job?.state === 'ready' ? job.contact : undefined;
   }
 
   async dispose(): Promise<void> {
@@ -343,6 +305,22 @@ export class BrowserHumanRecording {
         this.cleanupFailures,
         'Recording staging cleanup failed.',
       );
+  }
+
+  /** A job is visible only to its owner, for the session generation it recorded. */
+  private owned(
+    id: string,
+    owner: string,
+    sessionId: string,
+    generation: number,
+  ): Job | undefined {
+    const job = this.jobs.get(id);
+    return job &&
+      job.owner === owner &&
+      job.sessionId === sessionId &&
+      job.generation === generation
+      ? job
+      : undefined;
   }
 
   private remove(id: string) {

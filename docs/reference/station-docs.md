@@ -222,6 +222,8 @@ are separate integration requirements.
 
 A task carries typed references — to files, artifacts, receipts, sessions, runs, or external work items — and those references preserve exact identity. Similar titles or paths are not treated as correlation.
 
+The Inbox groups a Task's authorized work chats beneath its outcome, including independent Task-room Agent requests and linked conversations. A chat associated with several Tasks stays separate. Selecting a Task reveals Overview; selecting a work chat opens that conversation. Running counts reflect actual chats rather than Task status.
+
 The Task workspace opens on **Overview**, with status, completion criteria, subtasks and kept deliverables. **Conversation** is the shared Task discussion, **Plan** holds the autosaved document, and **Work chats** opens separately authorized Agent conversations. **Details** retains workspace bindings, changed files, on-demand Basis, receipts and exact Session correlation. Opening the Task makes the viewer present. Explicit Agent requests can publish answers into the personal Task conversation. The Project shared-work projection includes human messages and the document, not Agent answers. An admitted member of the exact shared Task can also read the personal Task room's published history, including room-published Agent answers; private Session access remains separately authorized. Linking a child Task or work chat does not publish it, grant access or complete its parent.
 
 With the **Chat apps** Feature Preview on, expand **Details → Written to the
