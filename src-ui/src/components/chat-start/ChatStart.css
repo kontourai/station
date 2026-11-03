@@ -129,9 +129,7 @@
   gap: clamp(var(--k-space-1), 2cqh, var(--k-space-3));
 }
 
-@container new-chat-draft (max-height: 24rem) {
-  .new-chat-modal .start-composer__destination h2,
-  .new-chat-modal .start-composer__without-project {
-    flex-basis: auto;
-  }
+.new-chat-modal .start-composer__destination h2,
+.new-chat-modal .start-composer__without-project {
+  flex-basis: auto;
 }
