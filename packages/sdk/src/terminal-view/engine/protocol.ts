@@ -43,6 +43,8 @@ export type EngineRequest =
   | { type: 'select-all' }
   | { type: 'clear-selection' }
   | { type: 'clear' }
+  /** Back to a fresh terminal: the next output replays from the start. */
+  | { type: 'reset' }
   | { type: 'query'; id: number; query: EngineQuery }
   | { type: 'dispose' };
 

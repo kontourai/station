@@ -111,6 +111,8 @@ export class TerminalController {
   private measured = false;
   private session: TerminalViewSession | null = null;
   private unsubscribeSession: (() => void) | null = null;
+  /** The engine holds output from an earlier attachment. */
+  private drawn = false;
   private readonly cleanups: (() => void)[] = [];
   private pendingFrame: Frame | null = null;
   private rafHandle = 0;
@@ -284,17 +286,22 @@ export class TerminalController {
 
   private attachSession(session: TerminalViewSession): void {
     this.unsubscribeSession?.();
+    // A new attachment replays its terminal from the oldest retained output,
+    // so the screen an earlier one drew would show that history twice.
+    if (this.drawn) this.engine?.send({ type: 'reset' });
+    this.drawn = false;
     this.unsubscribeSession = session.subscribe({
       output: (bytes, kind) => {
         // The session owns these bytes: it hands the same array to every view
         // of the session and keeps it for views that subscribe later.
         // Transferring it would detach it under them, so the worker gets a copy.
         const owned = bytes.slice();
+        this.drawn = true;
         this.engine?.send({ type: 'write', bytes: owned, mode: kind }, [
           owned.buffer,
         ]);
       },
-      reset: () => this.engine?.send({ type: 'clear' }),
+      reset: () => this.engine?.send({ type: 'reset' }),
       state: (state, detail) => {
         this.update({ session: state });
         if (state === 'exited')

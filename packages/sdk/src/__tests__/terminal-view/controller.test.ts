@@ -285,6 +285,33 @@ describe('TerminalController', () => {
     }
   });
 
+  // "Reconnect terminal" and a read-only change keep the view and hand it a
+  // fresh attachment, which replays the journal from its start. Without a
+  // reset first, the history drew again under the screen it had restored.
+  it('restores a reattached session from its replay once, without the old screen', async () => {
+    const writeText = vi.fn(async (_text: string) => undefined);
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText },
+    });
+    const first = sharedSession();
+    const { controller } = await startController(first);
+    first.output('$ make\r\nbuilt\r\n');
+    controller.setSession(null);
+    const reattached = sharedSession();
+    reattached.output('$ make\r\nbuilt\r\n');
+    reattached.output('$ ls\r\nREADME\r\n');
+    controller.setSession(reattached.session);
+    await vi.waitFor(async () => {
+      controller.selectAll();
+      expect(await controller.copy()).toBe(true);
+      const text = String(writeText.mock.lastCall?.[0]);
+      expect(text).toContain('README');
+      expect(text.match(/built/g)).toHaveLength(1);
+    });
+    controller.dispose();
+  });
+
   // A dock region put away keeps its view mounted with no box; sizing the
   // shared shell from it squeezed every other view to two columns.
   it('never sizes the session from a view with no box', async () => {
