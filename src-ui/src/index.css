@@ -6318,6 +6318,13 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
     -webkit-overflow-scrolling: touch;
   }
 
+  .session-model-picker > .responsive-dialog-header {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background: var(--k-bg);
+  }
+
   .responsive-dialog-header strong,
   .background-tasks-sheet__header h2,
   .tool-call-batch-sheet__title {
@@ -8800,7 +8807,7 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
 
 .new-chat-modal__model-picker {
   position: relative;
-  width: min(420px, 100%);
+  width: min(820px, 100%);
 }
 
 .new-chat-modal__model-picker .session-model-picker {
