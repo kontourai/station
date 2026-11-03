@@ -392,6 +392,11 @@ describe('localTriageLogFacts', () => {
     expect(homeRelativePath(join(userHome, 'a', 'b'), userHome)).toBe('~/a/b');
   });
 
+  test('an unavailable home directory withholds the location instead of failing', () => {
+    expect(homeRelativePath('/anything', null)).toBeNull();
+    expect(homeRelativePath('/anything', '')).toBeNull();
+  });
+
   test('a symlink leading out of the home is withheld', () => {
     const userHome = tempRoot();
     const outside = tempRoot();

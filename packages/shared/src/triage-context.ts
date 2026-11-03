@@ -366,9 +366,17 @@ function canonicalPath(path: string): string {
  * when it is outside that home (another user's home, a system path, or a
  * symlink leading out). Compared on resolved paths, not on a name pattern.
  */
+function currentUserHome(): string | null {
+  try {
+    return homedir() || null;
+  } catch {
+    return null;
+  }
+}
+
 export function homeRelativePath(
   path: string,
-  userHome: string = homedir(),
+  userHome: string | null = currentUserHome(),
 ): string | null {
   if (!userHome) return null;
   const rel = relative(canonicalPath(userHome), canonicalPath(path));
@@ -401,7 +409,9 @@ export function localTriageLogFacts(
 function isHomeRelativeDirectory(value: string): boolean {
   if (value.length > MAX_TRIAGE_TEXT_LENGTH) return false;
   if (value === '~') return true;
-  if (!value.startsWith('~/')) return false;
+  // The producer always writes `/`; a backslash is a Windows separator that
+  // could hide a `..` segment from the split below.
+  if (!value.startsWith('~/') || value.includes('\\')) return false;
   return value
     .slice(2)
     .split('/')

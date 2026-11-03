@@ -1004,6 +1004,7 @@ describe('station triage', () => {
       '~other/private/logs',
       '~/a/./b',
       '~//x',
+      '~/a\\..\\..\\outside',
     ]) {
       expect(() =>
         validateTriageContext({
