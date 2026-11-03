@@ -5,6 +5,14 @@ import {
 } from '../effective-model-metadata.js';
 
 describe('effectiveModelMetadata', () => {
+  test('acknowledges an explicit speed reset without inventing other null controls', () => {
+    expect(
+      effectiveModelMetadata('model', { serviceTier: null, effort: null }),
+    ).toEqual({
+      effectiveModel: 'model',
+      effectiveModelOptions: { serviceTier: null },
+    });
+  });
   test('keeps bounded model controls and excludes unrelated provider data', () => {
     expect(
       effectiveModelMetadata(' sonnet ', {

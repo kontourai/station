@@ -190,10 +190,6 @@ export function HomeSurface({
       {model.firstSession ? (
         <header className="home-view__welcome">
           <h1>Start your first conversation</h1>
-          <p>
-            Choose an agent, write what you need, and start. Add a Project when
-            you want to work with files.
-          </p>
         </header>
       ) : (
         <h1 className="sr-only">{OVERVIEW_PRODUCT_NAME}</h1>
@@ -203,7 +199,7 @@ export function HomeSurface({
       <div
         className={`home-view__start${hasWork ? ' home-view__start--compact' : ''}`}
       >
-        <HomeStartComposer compact={hasWork} />
+        <HomeStartComposer compact={hasWork || model.firstSession} />
       </div>
       {hasWork ? (
         <>

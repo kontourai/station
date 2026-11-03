@@ -10,7 +10,7 @@ const MODEL_OPTION_KEYS = [
 ] as const;
 
 type EffectiveModelOptionKey = (typeof MODEL_OPTION_KEYS)[number];
-type EffectiveModelOptionValue = string | number | boolean;
+type EffectiveModelOptionValue = string | number | boolean | null;
 
 function boundedOptionValue(
   value: unknown,
@@ -67,6 +67,10 @@ export function effectiveModelMetadata(
   > = {};
   const options = modelOptions as Record<string, unknown> | undefined;
   for (const key of MODEL_OPTION_KEYS) {
+    if (key === 'serviceTier' && options?.[key] === null) {
+      effectiveModelOptions[key] = null;
+      continue;
+    }
     const value = boundedOptionValue(options?.[key]);
     if (value !== undefined) effectiveModelOptions[key] = value;
   }

@@ -343,6 +343,25 @@ describe('useSendMessage canonical ExecutionTarget path', () => {
     activeChatsStore.removeChat(sessionId);
   });
 
+  it('refuses the ordinary local send path for an invalid saved remote destination', async () => {
+    activeChatsStore.updateChat(sessionId, { peerChatInvalid: true });
+    const onError = vi.fn();
+    const { result } = renderHook(() =>
+      useSendMessage('http://api.test', undefined, onError),
+    );
+    await act(async () => {
+      expect(
+        await result.current(sessionId, 'codex', undefined, 'Run here'),
+      ).toBe(false);
+    });
+    expect(sendExecutionMessageMock).not.toHaveBeenCalled();
+    expect(onError).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: 'Send this message from the remote chat composer.',
+      }),
+    );
+  });
+
   it('does not enqueue rendered MCP prompt text without its origin after an unanswered send', async () => {
     sendExecutionMessageMock.mockRejectedValueOnce(
       new TypeError('Failed to fetch'),

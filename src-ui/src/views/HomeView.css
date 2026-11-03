@@ -391,12 +391,6 @@
   font-size: var(--k-text-2xl);
   line-height: var(--k-leading-tight);
 }
-.home-view__welcome p {
-  margin: 0;
-  color: var(--k-text-muted);
-  line-height: var(--k-leading-normal);
-}
-
 /* #3628: the person's coordinator, pinned under the start form. */
 .home-view__coordinator {
   grid-column: 1 / -1;

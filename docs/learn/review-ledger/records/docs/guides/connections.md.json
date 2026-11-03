@@ -418,7 +418,17 @@
 
     "packages/contracts/src/connection-recovery.ts",
 
-    "src-ui/src/components/chat-dock/UsageLimitBanner.tsx"
+    "src-ui/src/components/chat-dock/UsageLimitBanner.tsx",
+
+    "src-server/providers/adapters/codex-models.ts",
+
+    "src-server/providers/__tests__/codex-adapter.test.ts",
+
+    "src-server/services/connections/connection-service-helpers.ts",
+
+    "src-server/services/connections/__tests__/connection-service-helpers.pure.test.ts",
+
+    "packages/contracts/src/tool.ts"
   ],
 
   "checks": [
