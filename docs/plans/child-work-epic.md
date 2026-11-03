@@ -25,7 +25,28 @@ passes. The unchanged original callers failed twice at the earlier checkpoint
 with stale approval replies; that ordering failure has a focused pre-fix/fixed
 control, but the final merged full callers are not yet qualified.
 
-The generic declared-`none` composer explanation is integrated at `c1dfd3e9892`.
+Independent source review at `0cf4104501b` requests changes for one P1:
+the responding request's live guard does not reach canonical settlement after
+the new waits. Rechecking the original source request does not prove a separate
+answering request remains authorized. The mixed-timeout diagnostic is not a
+reproduction. This repair and meaningful real-request withdrawal proof remain
+required before full-caller acceptance.
+
+The follow-up at `9c5d56be964` and `fe501806bf0` adds a separate optional,
+deny-only `queuedFollowUp` Session declaration. Saved sealed metadata projects
+the denial through point/list/event-page reads; ordinary adapter defaults and
+ordinary Queue remain unchanged. Both Steer and Queue are disabled for sealed
+Sessions, Send/Enter cannot submit the refused follow-up, and the note now leads
+with the limitation and report/group controls in plain words. Sixteen browser
+cases, 36 SDK cases, 89 server/route cases, 15 adapter-conformance cases and the
+appropriate UI/e2e/server-test type lanes pass in their recorded scopes. The
+Queue-only enabling mutant fails its intended disabled-option assertions at both
+widths; restored browser verification and the new four-shot visual handback are
+in progress. This is fixture/source evidence, not live-provider or native proof.
+Older SDK profile decoders may reject the new optional cell; the SDK reference
+records the client-update requirement for these restricted Sessions.
+
+The earlier generic declared-`none` explanation was integrated at `c1dfd3e9892`.
 Its isolated landed-#4457 browser selection passes 14 cases, with real composer
 captures at 390/1440 in light/dark, UI/e2e types, fixture guard and lint passing.
 The initial missing-SSE-projection failure and two incorrectly declared emulated
