@@ -30,6 +30,9 @@ personal mode; hosted reads fail closed. Existing root policies are unchanged.
 Private-root mutations through these routes require the operator credential or
 home-possession authority, and refuse agent calls;
 Project Task learning and automatic Project tool discovery exclude these roots.
+In personal mode, an authorized agent acts for the owner recorded in its durable
+Session and may read that owner’s private roots. A pending start alone grants no
+such access.
 The operator must also be an authorized reader to rebuild a private root's
 index. Private roots cannot be attached to a Project through legacy attachment.
 Older Station versions cannot read a registry containing this new policy.

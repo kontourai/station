@@ -526,6 +526,8 @@ describe('configureRuntimeRoutes: station-control reads act for the calling sess
       eventBus,
       monitoringEvents,
       knowledge,
+      orchestration,
+      home,
       memory,
       aProject,
       bProject,
@@ -1367,6 +1369,62 @@ describe('configureRuntimeRoutes: station-control reads act for the calling sess
         await (await knowledge.adapterFor(privateRoot.id)).listByType('raw')
       ).map((record) => record.title),
     ).toEqual(['A-PROJECT-NOTE']);
+  });
+
+  test('private knowledge refuses an agent with only a pending start owner', async () => {
+    const { knowledge, orchestration, home } = await setup();
+    const root = await knowledge.createRoot({
+      scope: { kind: 'personal' },
+      readPolicy: { kind: 'author-private', ownerId: B },
+      adapterId: 'kit-default-store',
+      storeRoot: join(home, 'knowledge', 'b-private'),
+      displayName: 'B private',
+    });
+    const adapter = await knowledge.adapterFor(root.id);
+    const recordId = await adapter.create({
+      type: 'raw',
+      title: 'B private record',
+      body: 'B private body',
+      category: 'reference',
+      provenance: { agent: 'fixture' },
+    });
+    const pending = orchestration as unknown as {
+      sessionAuthz: { bindStartOwner(threadId: string, ownerId: string): void };
+    };
+    pending.sessionAuthz.bindStartOwner('b-pending-agent', B);
+    const caller: Caller = {
+      session: 'b-pending-agent',
+      channel: 'sdk-in-process',
+    };
+    const roots = await asTool(caller, '/api/knowledge/roots');
+    expect(roots.code).toBe('station_control_role_required');
+    const path = `/api/knowledge/roots/${encodeURIComponent(root.id)}/records`;
+    expect((await asTool(caller, `${path}?type=raw`)).code).toBe(
+      'station_control_role_required',
+    );
+    expect(
+      (await asTool(caller, `${path}/${encodeURIComponent(recordId)}`)).code,
+    ).toBe('station_control_role_required');
+    expect(
+      (
+        await asTool(caller, path, {
+          method: 'POST',
+          body: JSON.stringify({
+            type: 'raw',
+            title: 'Attempt',
+            body: 'Attempt',
+            category: 'reference',
+            provenance: { agent: 'fixture' },
+          }),
+        })
+      ).code,
+    ).toBe('station_control_role_required');
+    expect(await adapter.listByType('raw')).toHaveLength(1);
+    const durable = await asTool(
+      B_CALLERS['bound B'],
+      `${path}/${encodeURIComponent(recordId)}`,
+    );
+    expect(durable.data.body).toBe('B private body');
   });
 
   test('Knowledge member ingress reads its owner’s store and refuses all record writes', async () => {
