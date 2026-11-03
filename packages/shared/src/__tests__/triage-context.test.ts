@@ -184,6 +184,14 @@ describe('redactTroubleshootReportText', () => {
     ).toBe('remote [REDACTED_URL]');
   });
 
+  test('a remote with a long user name is still redacted', () => {
+    expect(
+      redactTroubleshootReportText(
+        `${'x'.repeat(70)}@github.com:acme/secret-product`,
+      ),
+    ).toBe('[REDACTED_URL]');
+  });
+
   test('a long run with no remote is scanned in linear time', () => {
     // 80k chars: the old per-position retry took ~5.5 s here (quadratic); the
     // bounded pattern takes ~0 ms. A blocking regex cannot be interrupted by a
