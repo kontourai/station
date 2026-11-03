@@ -518,9 +518,12 @@ describe('SessionModelPicker', () => {
     const onOuterClose = vi.fn();
     renderNestedPicker(onOuterClose);
 
-    fireEvent.keyDown(screen.getByPlaceholderText('Search models…'), {
-      key: 'Escape',
-    });
+    fireEvent.keyDown(
+      screen.getByRole('searchbox', { name: 'Search models' }),
+      {
+        key: 'Escape',
+      },
+    );
 
     expect(screen.queryByRole('dialog', { name: 'Model' })).toBeNull();
     expect(screen.getByRole('dialog', { name: 'New Chat' })).toBeTruthy();
@@ -593,9 +596,12 @@ describe('SessionModelPicker', () => {
     trigger.focus();
     fireEvent.click(trigger);
 
-    fireEvent.keyDown(screen.getByPlaceholderText('Search models…'), {
-      key: 'Escape',
-    });
+    fireEvent.keyDown(
+      screen.getByRole('searchbox', { name: 'Search models' }),
+      {
+        key: 'Escape',
+      },
+    );
 
     await waitFor(() => expect(document.activeElement).toBe(trigger));
   });
@@ -615,7 +621,7 @@ describe('SessionModelPicker', () => {
       name: 'Model',
     });
     const close = screen.getByRole('button', { name: 'Close model picker' });
-    const search = screen.getByPlaceholderText('Search models…');
+    const search = screen.getByPlaceholderText('Search all models…');
     const focusable = Array.from(
       picker.querySelectorAll<HTMLElement>(
         'button:not(:disabled), input:not(:disabled), select:not(:disabled), textarea:not(:disabled), [href], [tabindex]:not([tabindex="-1"])',
@@ -710,7 +716,49 @@ describe('SessionModelPicker', () => {
     expect(screen.queryByRole('option', { name: /No surface/ })).toBeNull();
     expect(screen.queryByRole('option', { name: /Empty surface/ })).toBeNull();
     expect(screen.queryByRole('option', { name: /Abort only/ })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Clear filters' }));
+    expect(screen.getAllByRole('option')).toHaveLength(5);
+    expect(
+      screen
+        .getByRole('button', { name: 'Vision' })
+        .getAttribute('aria-pressed'),
+    ).toBe('false');
+    expect(document.activeElement).toBe(
+      screen.getByRole('searchbox', { name: 'Search models' }),
+    );
   });
+
+  test.each([undefined, 'codex'])(
+    'offers Current engine only for an active engine route (%s)',
+    (currentExecutionAgentId) => {
+      renderPicker({
+        currentExecutionAgentId,
+        models: [
+          { id: 'direct', name: 'Direct model', providerId: 'openai' },
+          {
+            id: 'engine',
+            name: 'Engine model',
+            providerId: 'codex',
+            executionAgentId: 'codex',
+            engineName: 'Codex',
+          },
+        ],
+      });
+      const collection = screen.queryByRole('button', {
+        name: 'Current engine',
+      });
+      if (!currentExecutionAgentId) {
+        expect(collection).toBeNull();
+        expect(screen.getAllByRole('option')).toHaveLength(2);
+      } else {
+        fireEvent.click(screen.getByRole('button', { name: 'Current engine' }));
+        expect(screen.getAllByRole('option')).toHaveLength(1);
+        expect(
+          screen.getByRole('option', { name: /Engine model/ }),
+        ).toBeTruthy();
+      }
+    },
+  );
 
   // The picker used to fetch Bedrock's pricing endpoint and render the result
   // beside the selected model whatever its provider, so an OpenAI or Ollama
@@ -757,7 +805,7 @@ describe('SessionModelPicker', () => {
       ],
     });
 
-    fireEvent.change(screen.getByPlaceholderText('Search models…'), {
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Search models' }), {
       target: { value: 'bedrock' },
     });
     expect(screen.getByRole('option', { name: /Claude Sonnet/ })).toBeTruthy();

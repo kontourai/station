@@ -152,7 +152,8 @@ export function SessionModelPicker({
       available: true,
     },
     { id: 'recents', name: 'Recent', icon: <TimeGlyph />, available: true },
-    ...(models.some((model) => model.engineName)
+    ...(currentExecutionAgentId &&
+    models.some((model) => model.executionAgentId === currentExecutionAgentId)
       ? [
           {
             id: 'current-engine',
@@ -486,7 +487,7 @@ export function SessionModelPicker({
                           aria-label="Search models"
                           className="session-model-picker__search"
                           type="search"
-                          placeholder="Search models…"
+                          placeholder="Search all models…"
                           value={query}
                           onChange={(event) => {
                             setQuery(event.target.value);
@@ -544,6 +545,16 @@ export function SessionModelPicker({
                           {visibleModels.length}{' '}
                           {visibleModels.length === 1 ? 'model' : 'models'}
                         </span>
+                        {visibleModels.length > 0 &&
+                          (query.trim() || capabilityFilters.length > 0) && (
+                            <Button
+                              variant="ghost"
+                              className="session-model-picker__clear-filters"
+                              onClick={clearFilters}
+                            >
+                              Clear filters
+                            </Button>
+                          )}
                       </div>
                       <div
                         className="session-model-picker__models"
@@ -552,9 +563,6 @@ export function SessionModelPicker({
                       >
                         {modelSections.map((section) =>
                           section.kind === 'model' ? (
-                            // A fieldset IS role="group", which is what a listbox
-                            // accepts around its options; the legend names the model
-                            // whose routes these are.
                             <fieldset
                               key={`model:${section.canonicalId}`}
                               className="session-model-picker__model-group"
@@ -577,7 +585,7 @@ export function SessionModelPicker({
                             title={emptyTitle}
                             description={
                               emptyFavorites && !query.trim()
-                                ? 'Star a model to keep it here, or clear filters to browse.'
+                                ? 'Star a model to find it here.'
                                 : 'Clear filters to see all models.'
                             }
                           />
