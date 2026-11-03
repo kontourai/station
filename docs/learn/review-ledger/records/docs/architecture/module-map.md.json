@@ -942,8 +942,6 @@
 
     "src-ui/src/workspace-panes/browser-pane/BrowserAcquisitionPanel.tsx",
 
-    "src-ui/src/workspace-panes/browser-pane/BrowserAgentSettingsPanel.tsx",
-
     "src-ui/src/workspace-panes/browser-pane/BrowserPane.tsx",
 
     "src-ui/src/workspace-panes/browser-pane/BrowserSetup.tsx",
@@ -1600,7 +1598,9 @@
 
     "packages/contracts/src/connection-recovery.ts",
 
-    "src-ui/src/components/chat-dock/UsageLimitBanner.tsx"
+    "src-ui/src/components/chat-dock/UsageLimitBanner.tsx",
+
+    "src-ui/src/views/settings/BrowserAgentSettingsPanel.tsx"
   ],
 
   "checks": [
