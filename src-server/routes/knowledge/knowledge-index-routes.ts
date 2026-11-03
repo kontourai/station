@@ -57,6 +57,10 @@ interface KnowledgeIndexRouteDeps {
    * roots are unaffected.
    */
   mayBuildSessionBackedRoot?: (request: Request) => boolean;
+  mayBuildPrivateRoot?: (
+    request: Request,
+    root: KnowledgeStoreRoot,
+  ) => boolean | Promise<boolean>;
   /**
    * #2377 slice B: whether this request may see a search hit from `root`,
    * decided BEFORE the record is read (a hit carries its title and excerpt).
@@ -178,6 +182,8 @@ export function createKnowledgeIndexRoutes(deps: KnowledgeIndexRouteDeps) {
         : (await deps.store.listRoots()).map((root) => root.id);
 
       const privateRoots = new Map<string, KnowledgeStoreRoot>();
+      const snapshots = new Map<string, KnowledgeStoreRoot>();
+      const selectedRootIds: string[] = [];
       const isOperator = deps.mayBuildSessionBackedRoot?.(c.req.raw) ?? false;
       for (const rootId of rootIds) {
         const kind = await knowledgeRootReadKind(deps.store, rootId);
@@ -191,49 +197,94 @@ export function createKnowledgeIndexRoutes(deps: KnowledgeIndexRouteDeps) {
           if (
             !isOperator ||
             !root ||
-            !deps.mayReadHitRoot ||
-            !(await deps.mayReadHitRoot(c.req.raw, root))
-          )
+            root.readPolicy?.kind !== 'author-private' ||
+            !deps.mayBuildPrivateRoot ||
+            !(await deps.mayBuildPrivateRoot(c.req.raw, root))
+          ) {
+            if (requestedRootId)
+              return c.json(
+                { success: false, error: 'Knowledge root access denied.' },
+                403,
+              );
+            continue;
+          }
+          if (!deps.store.withRootRevision)
             return c.json(
-              { success: false, error: 'Knowledge root access denied.' },
-              403,
+              {
+                success: false,
+                error: 'Knowledge root revision is unavailable.',
+              },
+              503,
             );
           privateRoots.set(rootId, root);
+          snapshots.set(rootId, root);
+        } else {
+          const root = await deps.store.getRoot(rootId);
+          if (root?.readPolicy !== undefined) {
+            if (requestedRootId)
+              return c.json(
+                { success: false, error: 'Knowledge root access denied.' },
+                403,
+              );
+            continue;
+          }
+          if (root) snapshots.set(rootId, root);
         }
+        selectedRootIds.push(rootId);
       }
 
       const roots: RebuildRootReport[] = [];
-      for (const rootId of rootIds) {
+      for (const rootId of selectedRootIds) {
         const expected = privateRoots.get(rootId);
         if (
           !expected &&
           (await knowledgeRootReadKind(deps.store, rootId)) === 'author-private'
-        )
-          return c.json(
-            { success: false, error: 'Knowledge root access denied.' },
-            403,
-          );
+        ) {
+          if (requestedRootId)
+            return c.json(
+              { success: false, error: 'Knowledge root access denied.' },
+              403,
+            );
+          continue;
+        }
         if (expected) {
           const current = await deps.store.getRoot(rootId);
           if (
             !current ||
             knowledgeRootIncarnationKey(current) !==
               knowledgeRootIncarnationKey(expected) ||
-            !deps.mayReadHitRoot ||
-            !(await deps.mayReadHitRoot(c.req.raw, current))
-          )
-            return c.json(
-              { success: false, error: 'Knowledge root access denied.' },
-              403,
-            );
+            !deps.mayBuildPrivateRoot ||
+            !(await deps.mayBuildPrivateRoot(c.req.raw, current))
+          ) {
+            if (requestedRootId)
+              return c.json(
+                { success: false, error: 'Knowledge root access denied.' },
+                403,
+              );
+            privateRoots.delete(rootId);
+            continue;
+          }
         }
         try {
-          const result = await runAsIndexer(() =>
-            deps.indexProvider.rebuildRoot(rootId, {
-              store: deps.store,
-              embedder,
-            }),
-          );
+          const snapshot = snapshots.get(rootId);
+          const build = async () => {
+            if (
+              expected &&
+              (!deps.mayBuildPrivateRoot ||
+                !(await deps.mayBuildPrivateRoot(c.req.raw, expected)))
+            )
+              throw new Error('Knowledge root access ended.');
+            return runAsIndexer(() =>
+              deps.indexProvider.rebuildRoot(rootId, {
+                store: deps.store,
+                embedder,
+              }),
+            );
+          };
+          const result =
+            snapshot && deps.store.withRootRevision
+              ? await deps.store.withRootRevision(snapshot, build)
+              : await build();
           roots.push({
             rootId,
             status: 'ok',
@@ -241,6 +292,24 @@ export function createKnowledgeIndexRoutes(deps: KnowledgeIndexRouteDeps) {
             chunks: result.chunks,
           });
         } catch (e: unknown) {
+          const current = await deps.store.getRoot(rootId);
+          if (
+            (expected || current?.readPolicy !== undefined) &&
+            (!current ||
+              !expected ||
+              knowledgeRootIncarnationKey(current) !==
+                knowledgeRootIncarnationKey(expected) ||
+              !deps.mayBuildPrivateRoot ||
+              !(await deps.mayBuildPrivateRoot(c.req.raw, current)))
+          ) {
+            if (requestedRootId)
+              return c.json(
+                { success: false, error: 'Knowledge root access denied.' },
+                403,
+              );
+            privateRoots.delete(rootId);
+            continue;
+          }
           // A racing concurrent rebuild for this SAME root aborts the whole request
           // with 409 (caught by the outer catch below) rather than being downgraded
           // to a per-root error — the caller should retry the whole request, not
@@ -483,9 +552,8 @@ export function createKnowledgeIndexRoutes(deps: KnowledgeIndexRouteDeps) {
           ? body.projectSlug
           : undefined;
 
-      // Migration only ever builds the kit-default-store roots it creates
-      // for pre-index namespaces (`ensureMigrationRoot`), never a
-      // session-backed root, so it runs as the caller, not the indexer.
+      // Migration may reuse a root at its managed destination. Its owner
+      // refuses a private registration and uses the registration lease when available.
       const result = await migratePreIndexKnowledge(
         {
           dataDir: deps.dataDir,

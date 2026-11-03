@@ -10803,6 +10803,8 @@ export function configureRuntimeRoutes(
       store: context.knowledgeStoreProvider,
       runAsIndexer: runAsKnowledgeIndexer,
       mayBuildSessionBackedRoot,
+      mayBuildPrivateRoot: (request, root) =>
+        mayUseKnowledgeRoot(request, root, 'edit'),
       // #2377 slice B: a station-control agent's hits follow its session
       // owner's access to each root. Every other caller is unchanged.
       mayReadHitRoot: (request, root) =>

@@ -129,7 +129,12 @@ just because you deleted the index file and want it back.
 ./station knowledge reindex
 ```
 
-Rebuilds every registered store root. Example output:
+Attempts the registered roots. An inaccessible author-private
+root is omitted from an all-roots rebuild; naming it explicitly is refused.
+Private-root rebuild requires host-operator mutation authority and access under
+the root's owner rule. A rebuild holds the registration lease while reading and
+embedding that root, so a slow or stalled embedding provider can delay registry
+changes. A private rebuild is refused when the lease is unavailable. Example output:
 
 ```
 Reindexed root root:personal: 42 record(s), 118 chunk(s).

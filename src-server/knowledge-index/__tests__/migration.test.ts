@@ -40,6 +40,7 @@ import type { IEmbeddingProvider } from '@kontourai/station-contracts/knowledge-
 import type { KnowledgeStoreRoot } from '@kontourai/station-contracts/knowledge-store';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { KnowledgeStoreProvider } from '../../knowledge-store/knowledge-store-provider.js';
+import { knowledgeStoreRootPathForNamespace } from '../../knowledge-store/namespace-compat.js';
 import { knowledgeMigrationOps } from '../../telemetry/metrics.js';
 import { knowledgeEmbeddingIdentity } from '../embedding-identity.js';
 import { migratePreIndexKnowledge } from '../migrate-pre-index-knowledge.js';
@@ -332,6 +333,32 @@ describe('migratePreIndexKnowledge', () => {
     expect(existsSync(join(homeDir, 'vectordb'))).toBe(false);
     expect(existsSync(join(homeDir, 'knowledge-stores'))).toBe(false);
     expect(await store.listRoots()).toEqual([]);
+  });
+
+  test('migration refuses a private root occupying the legacy destination', async () => {
+    const fixture = seedPreIndexFixture(homeDir, { vectorDim: 4 });
+    const privateRoot = await store.createRoot({
+      scope: { kind: 'personal' },
+      readPolicy: { kind: 'author-private', ownerId: 'human:other' },
+      adapterId: 'kit-default-store',
+      storeRoot: knowledgeStoreRootPathForNamespace(
+        homeDir,
+        fixture.projectSlug,
+        fixture.namespace,
+      ),
+      displayName: 'Private',
+    });
+    const embedder = new StubEmbedder(4);
+    const embed = vi.spyOn(embedder, 'embed');
+    const result = await migratePreIndexKnowledge(
+      { dataDir: homeDir, store, indexProvider, embedder },
+      { projectSlug: fixture.projectSlug },
+    );
+    expect(result.namespaceResults[0]?.status).toBe('error');
+    expect(
+      await (await store.adapterFor(privateRoot.id)).listByType('raw'),
+    ).toEqual([]);
+    expect(embed).not.toHaveBeenCalled();
   });
 
   // ── (b) Data-carrying ────────────────────────────────────────────────────────────────────

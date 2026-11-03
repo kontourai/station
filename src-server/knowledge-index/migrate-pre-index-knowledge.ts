@@ -210,9 +210,12 @@ async function ensureMigrationRoot(
     projectSlug,
     namespace,
   );
-  const existing = (await store.listRoots()).find(
+  const matches = (await store.listRoots()).filter(
     (root) => root.storeRoot === storeRoot,
   );
+  if (matches.some((root) => root.readPolicy !== undefined))
+    throw new Error('Migration destination is unavailable.');
+  const existing = matches[0];
   if (existing) return existing;
 
   return store.createRoot({
@@ -288,55 +291,67 @@ async function migrateNamespace(
     namespace,
     vectorNamespace,
   );
-  const adapter = await store.adapterFor(root.id);
+  const migrateIntoRoot = async (
+    adapter: Awaited<ReturnType<KnowledgeStoreProvider['adapterFor']>>,
+  ) => {
+    if (
+      (await store.listRoots()).some(
+        (entry) =>
+          entry.storeRoot === root.storeRoot && entry.readPolicy !== undefined,
+      )
+    )
+      throw new Error('Migration destination is unavailable.');
+    let namespaceDocsMigrated = 0;
 
-  let namespaceDocsMigrated = 0;
+    for (const doc of docs) {
+      const existingRecord = await adapter.get(doc.id);
+      if (existingRecord) {
+        observeMigration('noop', 'already-migrated');
+        continue;
+      }
 
-  for (const doc of docs) {
-    const existingRecord = await adapter.get(doc.id);
-    if (existingRecord) {
-      observeMigration('noop', 'already-migrated');
-      continue;
+      const body = resolvePreIndexDocBody(
+        snapshot.contentById.get(doc.id) ?? null,
+        doc,
+        preIndexVectorDocs,
+      );
+      if (!body.trim()) {
+        observeMigration('noop', 'no-content');
+        continue;
+      }
+
+      await adapter.create({
+        id: doc.id,
+        type: 'raw',
+        title: doc.filename || doc.path || doc.id,
+        body,
+        category: 'migrated-knowledge',
+        tags: ['pre-index-import'],
+        provenance: {
+          agent: 'import:pre-index-knowledge',
+          note: `migrated from pre-index vectordb namespace ${vectorNamespace}`,
+        },
+      });
+      namespaceDocsMigrated += 1;
+      observeMigration('write', 'created');
     }
 
-    const body = resolvePreIndexDocBody(
-      snapshot.contentById.get(doc.id) ?? null,
-      doc,
-      preIndexVectorDocs,
-    );
-    if (!body.trim()) {
-      observeMigration('noop', 'no-content');
-      continue;
-    }
-
-    await adapter.create({
-      id: doc.id,
-      type: 'raw',
-      title: doc.filename || doc.path || doc.id,
-      body,
-      category: 'migrated-knowledge',
-      tags: ['pre-index-import'],
-      provenance: {
-        agent: 'import:pre-index-knowledge',
-        note: `migrated from pre-index vectordb namespace ${vectorNamespace}`,
-      },
+    // Re-derive the whole root from its records with the current embedder.
+    const rebuildResult = await indexProvider.rebuildRoot(root.id, {
+      store,
+      embedder,
     });
-    namespaceDocsMigrated += 1;
-    observeMigration('write', 'created');
-  }
+    const chunksIndexed = rebuildResult.chunks;
 
-  // Re-derive the whole root from its records with the current embedder.
-  const rebuildResult = await indexProvider.rebuildRoot(root.id, {
-    store,
-    embedder,
-  });
-  const chunksIndexed = rebuildResult.chunks;
-
-  return {
-    documentsMigrated: namespaceDocsMigrated,
-    chunksIndexed,
-    vectorNamespace,
+    return {
+      documentsMigrated: namespaceDocsMigrated,
+      chunksIndexed,
+      vectorNamespace,
+    };
   };
+  return store.withRootRevision
+    ? store.withRootRevision(root, migrateIntoRoot)
+    : migrateIntoRoot(await store.adapterFor(root.id));
 }
 
 /**
