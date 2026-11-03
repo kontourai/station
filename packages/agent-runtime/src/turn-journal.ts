@@ -1439,7 +1439,7 @@ export function openSqliteAgentJournal(options: {
                   ?.freelist_count,
               ) > 0
             )
-              database.exec('PRAGMA incremental_vacuum(16)');
+              database.exec('PRAGMA incremental_vacuum(4)');
             invalidateAgentValidation(database);
           }
           return answer;
