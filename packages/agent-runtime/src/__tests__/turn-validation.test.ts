@@ -3,6 +3,7 @@ import { mkdtempDisposableSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { constants, DatabaseSync } from 'node:sqlite';
+import { deflateSync } from 'node:zlib';
 import { afterEach, expect, it } from 'vitest';
 import {
   auditSqliteAgentJournal,
@@ -537,7 +538,7 @@ it('growing request histories share immutable chunks and refuse damaged chunk by
     .prepare(
       'UPDATE agent_steps_body_chunks SET wire=?,byte_length=? WHERE digest=(SELECT digest FROM agent_steps_body_chunks LIMIT 1)',
     )
-    .run(changed, Buffer.byteLength(changed));
+    .run(deflateSync(changed), Buffer.byteLength(changed));
   f.database.exec(bodyChunkDefinitions[1]);
   await expect(f.lease.assertCurrent()).rejects.toThrow('CHUNK_DAMAGED');
 });

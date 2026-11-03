@@ -326,22 +326,27 @@ function putBlock(
   let append =
     previous &&
     Number(previous.last_ordinal) + 1 === incomingAddress.ordinal &&
-    Number(previous.last_ordinal) -
-      Number(previous.first_ordinal) +
-      1 +
-      frames.length <=
-      1024;
+    Number(previous.last_ordinal) - Number(previous.first_ordinal) + 1 < 1024;
+  let remainder: AgentFrame[] = [];
   if (previous && append) {
     const prior = parseBlock(previous);
-    if (
-      [...prior, ...frames].reduce(
-        (sum, frame) => sum + Buffer.byteLength(frame.wire),
-        0,
-      ) >
-      64 * 1024
-    )
-      append = false;
-    else frames = [...prior, ...frames];
+    let bytes = prior.reduce(
+      (n, frame) => n + Buffer.byteLength(frame.wire),
+      0,
+    );
+    let take = 0;
+    while (
+      take < frames.length &&
+      prior.length + take < 1024 &&
+      bytes + Buffer.byteLength(frames[take]!.wire) <= 128 * 1024
+    ) {
+      bytes += Buffer.byteLength(frames[take]!.wire);
+      take++;
+    }
+    if (take) {
+      remainder = frames.slice(take);
+      frames = [...prior, ...frames.slice(0, take)];
+    } else append = false;
   }
   const first = frames[0]!;
   const last = frames.at(-1)!;
@@ -395,6 +400,7 @@ function putBlock(
       ]),
     );
     if (changed.changes !== 1) throw new Error('DURABLE_AGENT_FRAME_DAMAGED');
+    if (remainder.length) putBlock(database, turnId, remainder);
     return;
   }
   agentStatement(
