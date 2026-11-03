@@ -828,6 +828,8 @@ export function configureRuntimeSupportServices(
         context.environmentSecurityService.devicePairing.deviceLocality(
           deviceId,
         ),
+      deviceHasOwnerStanding: (deviceId) =>
+        context.environmentSecurityService.deviceHasOwnerStanding(deviceId),
       listSessionReadModel: (authority) =>
         context.orchestrationService.listSessionReadModel(authority),
       listProjectionEvents: (threadIds) => {

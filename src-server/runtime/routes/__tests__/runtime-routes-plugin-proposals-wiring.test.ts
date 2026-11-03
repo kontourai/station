@@ -222,7 +222,13 @@ describe('#2323 S5 plugin proposal gates over the production composition', () =>
     );
     await result.kitLifecycleReady;
 
-    /** A real paired device, of the given kind, with the given preset. */
+    /**
+     * A real paired device, of the given kind, with the given preset. A
+     * person's phone here uses the `delegation` preset's scopes (read and
+     * operate, no host shell) on a `device` grant: an ordinary paired device
+     * that is not the owner's own (owner-device standing needs a shell,
+     * 2026-11-02).
+     */
     const pair = (
       name: string,
       kind: 'device' | 'delegation',
@@ -289,7 +295,7 @@ describe('#2323 S5 plugin proposal gates over the production composition', () =>
     const { pair, request, homeDir } = await setup();
     mkdirSync(join(homeDir, 'plugins', 'installed-plugin'));
     const delegation = pair('Peer: box-b', 'delegation', 'delegation');
-    const person = pair('Phone', 'device', 'standard');
+    const person = pair('Phone', 'device', 'delegation');
     const install = {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -349,7 +355,7 @@ describe('#2323 S5 plugin proposal gates over the production composition', () =>
       rationale: 'Adds the pulse pane.',
       author: { principal: 'agent' },
     });
-    const person = pair('Phone', 'device', 'standard');
+    const person = pair('Phone', 'device', 'delegation');
     const delegation = pair('Peer: box-b', 'delegation', 'delegation');
     // Station's own agent caller resolves as the operator (home possession),
     // and still reads nothing (#2323 S5 delta review). Since #2377 slice A the
@@ -421,7 +427,7 @@ describe('#2323 S5 plugin proposal gates over the production composition', () =>
   });
   test('#2323 S4: plugin source status is mounted and scoped: a paired person and Station’s internal caller get 404, the operator gets the list', async () => {
     const { pair, request, operatorCredential, app } = await setup();
-    const person = pair('Phone', 'device', 'standard');
+    const person = pair('Phone', 'device', 'delegation');
     const hidden = await request(person, '/api/plugin-sources');
     // 404 from the handler, not a pairing-scope refusal: an unmapped family
     // would answer 403 before the handler ran.

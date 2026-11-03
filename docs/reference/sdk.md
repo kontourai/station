@@ -5378,10 +5378,11 @@ it is a metadata mismatch precondition, never an authorization grant or immutabl
 incarnation. Identically restored registrations can share the same key.
 
 The GET endpoint is `/api/knowledge/roots/:rootId/records/:id/source-observation`.
-It requires a currently authorized, middleware-bound home-possession credential,
+It requires a currently authorized, middleware-bound home-possession credential
+or owner-device standing,
 current route scope, single-operator deployment without tenant-scoped execution,
 and the exact registered personal `kit-default-store` root.
-Ordinary operator or paired remote credentials do not confer this capability.
+Ordinary operator or other paired remote credentials do not confer this capability.
 The constructor policy and route recheck authority before publishing the result.
 Other roots and credentials receive an identity-free restricted outcome.
 
@@ -6010,7 +6011,7 @@ The hook polls every 30 seconds while enabled and refreshes stale data on mount/
 HTTP 401/403 stops polling; explicit retry can reauthorize the read. A consumer
 must hide cached data on an error or lost authority, as the Profile operator
 panel does. A query key is not an operator grant. The server requires the bound
-home-possession local operator on a personal host; hosted deployments and tenant
+Station owner (home-possession or owner-device standing) on a personal host; hosted deployments and tenant
 workers are refused. Ordinary usage/rescan responses omit the person breakdown.
 
 The [monitoring guide](../guides/monitoring.md#operator-view-of-this-instance)

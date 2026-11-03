@@ -52,6 +52,8 @@ export interface NotificationDeliveryWiringDeps {
     listDevices(): PairedDevice[];
     /** Mint-time home-possession, so a device reads as its own requests do. */
     deviceLocality(deviceId: string): 'home-possession' | undefined;
+    /** Owner standing, so an owner device reads as its own requests do. */
+    deviceHasOwnerStanding?(deviceId: string): boolean;
   };
   webPushService: Pick<WebPushService, 'send'>;
   canUserReadSession(
@@ -133,6 +135,7 @@ export function wireNotificationDelivery(
         pairedDevicePrincipal(
           device,
           deps.devicePairing.deviceLocality(device.id),
+          deps.devicePairing.deviceHasOwnerStanding?.(device.id) === true,
         ).id,
       operatorPrincipalId: LOCAL_OPERATOR_PRINCIPAL_ID,
       // Personal mode only (delivery is off in hosted mode), minted the way

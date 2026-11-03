@@ -31,6 +31,8 @@ export interface AgentActivitySessionReaderDeps {
   listDevices(): PairedDevice[];
   /** Mint-time home-possession (`DevicePairingService.deviceLocality`). */
   deviceLocality(deviceId: string): 'home-possession' | undefined;
+  /** Owner standing (`DevicePairingService.deviceHasOwnerStanding`). */
+  deviceHasOwnerStanding?(deviceId: string): boolean;
   listSessionReadModel(
     authority: SessionReadAuthority,
   ): Promise<OrchestrationSessionSummary[]>;
@@ -52,6 +54,7 @@ export function createAgentActivitySessionReader(
     const principal = pairedDevicePrincipal(
       device,
       deps.deviceLocality(device.id),
+      deps.deviceHasOwnerStanding?.(device.id) === true,
     );
     return {
       principalId: principal.id,

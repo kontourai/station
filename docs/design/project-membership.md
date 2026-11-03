@@ -74,7 +74,8 @@ membership. See [peer pairing](station-peer-pairing.md) and
 human, agent, service and tenant attribution. The
 [request composition](../../src-server/runtime/routes/runtime-routes.ts)
 without an account session prefers verified ingress identity, then verified
-operator authority, then device identity. Consequently, the same device can
+operator authority (including owner-device standing, which skips the ingress
+identity), then device identity. Consequently, the same device can
 resolve to a tailnet principal on one route and a device principal on another.
 For the exact account, pairing and membership surfaces listed in the
 [deployment authentication guide](../guides/deployment-authentication.md), a
@@ -179,7 +180,8 @@ operator authority, separate from any membership. Until then, the
 administration read `GET .../access` is refused with `403
 project_access_forbidden`, as it is for a non-manager. That refusal carries
 `ProjectAccessRefusalDetails` (#4302). The service reads the sharing state only
-after the caller has human authority and current operator credentials or a
+after the caller has human authority and current operator credentials,
+home-possession or owner-device standing, or a
 Device-bound operator passkey session, and passes HTTP admission for
 `POST .../access/enable`, including pairing scope and the account-bound Device gate. That caller learns `off` (and that it can enable)
 or `on`. Everyone else gets `undisclosed`, the same for a shared, unshared or

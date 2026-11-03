@@ -158,7 +158,9 @@ legs remain outside its scope.
 `GET /api/operator/telemetry-companion/prerequisites` is an uncached read for
 the operator or an explicitly promoted human operator device, excluding
 agent-originated, internal-token and delegation callers. It probes the selected
-local container host. Paired callers need `orchestration:read` and explicit
+local container host. One of the owner's own devices with
+[owner-device standing](../../docs/security/remote-access-threat-model.md#owner-device-standing-2026-11-02)
+counts as the operator. Other paired callers need `orchestration:read` and explicit
 `telemetry:manage` promotion plus verified operator role; neither scope replaces
 operator authorization. The
 route checks current operator authority before probing and before returning its

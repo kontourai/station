@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { requestMayBeAnAgent } from '../../security/coding-authority.js';
-import { isBoundRuntimeLocalOperator } from '../../security/runtime-request-security.js';
+import { isBoundRuntimeOwner } from '../../security/runtime-request-security.js';
 import { stationControlRequestAuthority } from '../../security/station-control-request-authority.js';
 import type { DiagnosticsService } from '../../services/infra/diagnostics-service.js';
 import {
@@ -112,10 +112,10 @@ export function createDiagnosticsRoutes(
         ...(until !== undefined ? { until } : {}),
         ...(limit !== undefined ? { limit } : {}),
         ...(q !== undefined ? { q } : {}),
-        // One derivation, bound by the auth boundary: mint-time
-        // `locality: 'home-possession'`. Absent (or a second call that
-        // skipped the boundary) fails closed to redacted.
-        redact: !isBoundRuntimeLocalOperator(c.req.raw),
+        // One derivation, bound by the auth boundary: the owner (mint-time
+        // `locality: 'home-possession'` or owner-device standing). Absent (or a
+        // second call that skipped the boundary) fails closed to redacted.
+        redact: !isBoundRuntimeOwner(c.req.raw),
       };
 
       const result = await logReader.query(options);

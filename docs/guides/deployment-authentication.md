@@ -143,7 +143,8 @@ no field for one. Only the operator, who already controls the Station home
 and its credentials, can change it.
 
 The operator enables sharing in a Project's **People and access** section,
-on the host or from an eligible paired browser signed in with an operator passkey,
+on the host, from one of their own devices with owner-device standing, or from
+an eligible paired browser signed in with an operator passkey,
 which confirms each enable with the passkey
 ([Turn on Project sharing from a paired browser](operator-passkeys.md#turn-on-project-sharing-from-a-paired-browser)).
 Before sharing is on, an eligible caller sees **Sharing is off** and **Enable Project sharing**.
@@ -610,8 +611,10 @@ Read the current administration response for its exact Project scope and member
 revisions before submitting a change. Current membership must independently
 permit the action: an operate grant does not turn a viewer into an admin, and
 ownership transfer remains owner-only. Enabling sharing needs Station operator
-authority: the operator credential, a `home-possession` grant, or an operator
-passkey session that confirms that enable with a fresh passkey on the consent
+authority: the operator credential, a `home-possession` grant, one of the
+owner's own devices with
+[owner-device standing](../security/remote-access-threat-model.md#owner-device-standing-2026-11-02),
+or an operator passkey session that confirms that enable with a fresh passkey on the consent
 origin. A Project role never grants it. `GET .../access/enablement` reports
 which of these applies to the caller.
 Stale revisions and replaced Project scopes refuse rather than overwrite.
