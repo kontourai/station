@@ -106,8 +106,16 @@ export async function retentionBacklog(turns: number, effects: number) {
   const seedStarted = performance.now();
   const f = await turnFixture();
   try {
+    console.info(
+      'retention phase',
+      JSON.stringify({ phase: 'seed', event: 'start', turns, effects }),
+    );
     await seedRetentionBacklog(f, turns, effects);
     const seedMs = performance.now() - seedStarted;
+    console.info(
+      'retention phase',
+      JSON.stringify({ phase: 'seed', event: 'complete', seedMs }),
+    );
     expect(
       Number(
         f.database
@@ -130,6 +138,10 @@ export async function retentionBacklog(turns: number, effects: number) {
       return constants.SQLITE_OK;
     });
     f.advance(8 * 24 * 60 * 60 * 1000);
+    console.info(
+      'retention phase',
+      JSON.stringify({ phase: 'drain', event: 'start', turns, effects }),
+    );
     const drainStarted = performance.now();
     const opens: number[] = [];
     const settles: number[] = [];
