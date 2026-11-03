@@ -216,6 +216,16 @@ describe('Vitest resource manifest', () => {
     }
   }, 70_000);
 
+  it('keeps the small retention case ordinary and the full backlog process-heavy', () => {
+    const groups = repositoryDiscovery.groups;
+    expect(groups.ordinary).toContain(
+      'packages/agent-runtime/src/__tests__/turn-retention.test.ts',
+    );
+    expect(groups.processHeavy).toContain(
+      'packages/agent-runtime/src/__tests__/turn-retention.process.test.ts',
+    );
+  });
+
   it('keeps every current direct child-process importer out of ordinary', () => {
     const groups = repositoryDiscovery.groups;
     for (const file of PROCESS_HEAVY_VITEST_FILES) {

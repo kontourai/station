@@ -245,6 +245,16 @@ capability profiles, performance or release. See [CONTEXT.md](CONTEXT.md) for
 owners and [ADR 0005](../../docs/adr/0005-require-a-second-consumer-before-extraction.md)
 for the package boundary.
 
+Retention setup and drain are measured separately. The ordinary case covers
+10 turns ×80 effects; `turn-retention.process.test.ts` covers 60×80 in the
+process-heavy lane. Setup batches the production writer's normal row writes
+into one FULL transaction, then reopens and audits the journal. A small fidelity
+case compares all agent rows with individually committed commands, normalizing
+only generated affinity UUIDs, and verifies fewer native commits. Setup batching
+does not qualify per-command crash durability; separate SIGKILL probes own that
+proof. The drain uses real idle retention with unchanged 50 ms open/settle bounds
+and a separate 30-second total drain bound.
+
 First native dispatch compares the complete supported tool/schema order and
 sampling/configuration template with the retained entry, including known
 framework defaults. Volt tool schemas use the same pinned public Zod/AI SDK

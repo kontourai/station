@@ -47,9 +47,6 @@ export const SHARED_OUTPUT_VITEST_FILES = Object.freeze([
 // changes the system under test or turns their correctness bound into a
 // scheduler-contention measurement.
 export const PROCESS_EXCLUSIVE_VITEST_FILES = Object.freeze([
-  // The 4,800-effect WAL/FULL fixture asserts a 50 ms main-thread maintenance bound.
-  'packages/agent-runtime/src/__tests__/turn-retention.test.ts',
-
   // Checks prompt closure and the room's real 15-second idle recheck bound.
   'src-server/runtime/routes/__tests__/runtime-routes-task-room-members.test.ts',
   // #4204 measures main-thread approval latency while a real room worker
@@ -144,6 +141,8 @@ export const COORDINATOR_EXCLUSIVE_VITEST_FILES = Object.freeze([
 // has measured — and the branch that reds is then whichever one happened to
 // add the next spawn, not the design that made the deadline fragile.
 export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
+  // Full 4,800-effect WAL/FULL retention backlog; the small case stays ordinary.
+  'packages/agent-runtime/src/__tests__/turn-retention.process.test.ts',
   // Creates a private FIFO and reads it in a bounded child so a blocking regression cannot hang Vitest.
   'src-server/services/identity/__tests__/account-sharing-setting.test.ts',
   // Isolated repair caller owns real Git children, private journals, and an actual Task graph.
