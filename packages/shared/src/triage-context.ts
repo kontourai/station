@@ -677,7 +677,10 @@ export function validateTroubleshootContext(value: TroubleshootContext): void {
 
 const REDACTED = '[REDACTED]';
 const REDACTED_URL = '[REDACTED_URL]';
-const URL_PATTERN = /\b[a-z][a-z0-9+.-]{1,20}:\/\/[^\s<>"'`)\]]+/gi;
+// Group 1 is the URL; group 2 is a `)`/`]` run that may still be URL text
+// (`?title=a)secret`). A redacted URL takes that run with it.
+const URL_PATTERN_SOURCE =
+  /\b([a-z][a-z0-9+.-]{1,20}:\/\/[^\s<>"'`)\]]+)([)\]][^\s<>"'`]*)?/.source;
 // The only locations a public bug report may keep verbatim: Station's own
 // public repository and docs site. Any other GitHub path can name a private
 // repository or issue, so it is replaced like a LAN, tailnet, or pairing URL.
@@ -690,7 +693,8 @@ const PUBLIC_DOCS_SITE = {
 /**
  * Returns the normalized URL when it is public, else null. The URL is parsed
  * rather than prefix-matched: `kontourai/station/../other/repo` normalizes to
- * another repository, and keeping the raw text would leak that name.
+ * another repository, and keeping the raw text would leak that name. Only the
+ * origin and path are kept: a query or fragment can carry any other URL.
  */
 function publicReportUrl(raw: string): string | null {
   let url: URL;
@@ -702,19 +706,34 @@ function publicReportUrl(raw: string): string | null {
   if (url.protocol !== 'https:' || url.username || url.password) return null;
   const segments = url.pathname.split('/').filter(Boolean);
   const host = url.hostname.toLowerCase();
+  const kept = `${url.origin}${url.pathname}`;
   if (host === 'github.com') {
     const [owner, repo] = segments;
     if (!owner || !repo) return null;
     const name = `${owner}/${repo.replace(/\.git$/i, '')}`.toLowerCase();
-    return PUBLIC_GITHUB_REPOSITORIES.has(name) ? url.href : null;
+    return PUBLIC_GITHUB_REPOSITORIES.has(name) ? kept : null;
   }
   if (
     host === PUBLIC_DOCS_SITE.host &&
     segments[0]?.toLowerCase() === PUBLIC_DOCS_SITE.firstSegment
   ) {
-    return url.href;
+    return kept;
   }
   return null;
+}
+
+function redactReportUrls(text: string): string {
+  return text.replace(
+    new RegExp(URL_PATTERN_SOURCE, 'gi'),
+    (_match, url: string, tail: string | undefined) => {
+      const kept = publicReportUrl(url);
+      if (kept === null) return REDACTED_URL;
+      // After a kept URL the run is ordinary text, which may hold another URL.
+      return tail
+        ? kept + tail.charAt(0) + redactReportUrls(tail.slice(1))
+        : kept;
+    },
+  );
 }
 // Station's pairing and device credentials are 32 random bytes in base64url
 // (43 characters). Requiring upper, lower and digit keeps commit SHAs, UUIDs
@@ -738,10 +757,7 @@ export function redactTroubleshootReportText(text: string): string {
   if (typeof text !== 'string') {
     throw new TypeError('troubleshoot report redaction requires a string');
   }
-  let result = redactSecrets(text).replace(
-    URL_PATTERN,
-    (url) => publicReportUrl(url) ?? REDACTED_URL,
-  );
+  let result = redactReportUrls(redactSecrets(text));
   result = result.replace(OPAQUE_CREDENTIAL_PATTERN, REDACTED);
   for (const pattern of HOME_PATH_PATTERNS)
     result = result.replace(pattern, '~');

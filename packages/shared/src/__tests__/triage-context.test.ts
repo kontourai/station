@@ -109,6 +109,40 @@ describe('redactTroubleshootReportText', () => {
       expect(redacted).not.toContain('secret-product');
     }
   });
+
+  test('a kept Station link cannot carry other text in its query, fragment or trailing brackets', () => {
+    const cases: Array<[string, string]> = [
+      [
+        'see https://github.com/kontourai/station/issues/1?next=https://github.com/acme/secret-product',
+        'see https://github.com/kontourai/station/issues/1',
+      ],
+      [
+        'see https://github.com/kontourai/station/issues/1#secret-product',
+        'see https://github.com/kontourai/station/issues/1',
+      ],
+      [
+        'see https://github.com/acme/private/issues/1?title=a)secret-product here',
+        'see [REDACTED_URL] here',
+      ],
+      [
+        'see [link](https://github.com/acme/secret-product/issues/1) here',
+        'see [link]([REDACTED_URL] here',
+      ],
+      [
+        'see (https://github.com/kontourai/station/issues/1)https://github.com/acme/secret-product',
+        'see (https://github.com/kontourai/station/issues/1)[REDACTED_URL]',
+      ],
+      [
+        'see [link](https://github.com/kontourai/station/issues/1).',
+        'see [link](https://github.com/kontourai/station/issues/1).',
+      ],
+    ];
+    for (const [input, expected] of cases) {
+      const redacted = redactTroubleshootReportText(input);
+      expect(redacted).toBe(expected);
+      expect(redacted).not.toContain('secret-product');
+    }
+  });
 });
 
 describe('troubleshoot seed admission', () => {
