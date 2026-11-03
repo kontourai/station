@@ -11,7 +11,10 @@ import {
   type SessionReadAuthority,
 } from '@kontourai/station-contracts/tenancy';
 import type { OrchestrationService } from '../orchestration/orchestration-service.js';
-import type { ProjectTaskRoomRuntime } from '../orchestration/project-task-room-runtime.js';
+import {
+  type ProjectTaskRoomRuntime,
+  TaskRoomAnswerUnavailableError,
+} from '../orchestration/project-task-room-runtime.js';
 import { ReceiverExecutionRefusal } from './project-contribution-service.js';
 import type { TaskGraphService } from './task-graph-service.js';
 import type {
@@ -38,12 +41,6 @@ interface Dependencies {
     sessionId: string,
   ): { taskId: string; projectId: string } | undefined | null;
   authorityForOwner(ownerId: string): SessionReadAuthority;
-}
-
-export class TaskRoomAnswerUnavailableError extends Error {
-  constructor() {
-    super('Completed Task answer is unavailable.');
-  }
 }
 
 /** Room conversation effects compose TaskGraph, the request journal, and canonical Sessions. */
@@ -367,7 +364,7 @@ export class TaskRoomConversationModule {
         this.deps.authorityForOwner(ownerOperatorId),
       );
       if (answer.status === 'unavailable')
-        throw new TaskRoomAnswerUnavailableError();
+        throw new TaskRoomAnswerUnavailableError(sessionId, event.turnId!);
       if (answer.status !== 'found') continue;
       const text = answer.message.parts
         .flatMap((part) => (part.type === 'text' ? [part.text] : []))

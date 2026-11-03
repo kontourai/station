@@ -65,6 +65,7 @@ import { renderSystemdUnit } from '../commands/service-systemd.js';
 import { plutilJson } from './helpers/launchd-plist-fixture.js';
 import {
   reapAllLongRunningFixtureChildren,
+  reapLongRunningFixtureChild,
   spawnLongRunningFixtureChild,
 } from './helpers/longrunning-fixture-child.js';
 
@@ -7696,12 +7697,71 @@ describe('uiRequestHandler (static UI server SPA fallback + reverse proxy)', () 
 // `globalThis.__name` shim in `buildUiServerScript` is what's asserted, not
 // this test's own transform.
 describe('buildUiServerScript output runs as a real standalone node -e process (code-review M2)', () => {
+  const makeUiDir = trackTempDirs();
+
+  function spawnUiScript(script: string) {
+    // Observe the child's real listener; a peer's HTTP response is not readiness.
+    const observeListening = `
+      (() => {
+        const http = require('node:http');
+        const createServer = http.createServer;
+        http.createServer = function (...args) {
+          const server = Reflect.apply(createServer, this, args);
+          server.once('listening', () => process.send({ port: server.address().port }));
+          return server;
+        };
+      })();
+    `;
+    const child = spawn(process.execPath, ['-e', observeListening + script], {
+      stdio: ['ignore', 'ignore', 'pipe', 'ipc'],
+      windowsHide: true,
+      env: {
+        ...process.env,
+        STATION_INTERNAL_API_TOKEN: 'test-only-internal-api-token',
+      },
+    });
+    let stderr = '';
+    child.stderr?.on('data', (chunk) => {
+      stderr += String(chunk);
+    });
+    const listening = new Promise<number>((resolve, reject) => {
+      const deadline = setTimeout(
+        () => reject(new Error(`UI child did not listen: ${stderr}`)),
+        5000,
+      );
+      child.once('message', (message: unknown) => {
+        clearTimeout(deadline);
+        if (
+          typeof message === 'object' &&
+          message !== null &&
+          'port' in message &&
+          typeof message.port === 'number' &&
+          Number.isInteger(message.port) &&
+          message.port > 0 &&
+          message.port <= 65535
+        ) {
+          resolve(message.port);
+        } else {
+          reject(new Error('UI child did not report a bound port'));
+        }
+      });
+      child.once('error', (error) => {
+        clearTimeout(deadline);
+        reject(error);
+      });
+      child.once('close', (code, signal) => {
+        clearTimeout(deadline);
+        reject(new Error(`UI child exited (${code}, ${signal}): ${stderr}`));
+      });
+    });
+    return { child, listening, stderr: () => stderr };
+  }
+
   it('spawns the generated script as a child process and makes one proxied request + one static request against it', async () => {
     const http = await import('node:http');
-    const { spawn } = await import('node:child_process');
     const lifecycle = await import('../commands/lifecycle.js');
 
-    const uiDir = mkdtempSync(join(tmpdir(), 'station-ui-spawn-'));
+    const uiDir = makeUiDir('station-ui-spawn-');
     writeFileSync(
       join(uiDir, 'index.html'),
       '<head></head><body>real-spawn-app</body>',
@@ -7739,29 +7799,18 @@ describe('buildUiServerScript output runs as a real standalone node -e process (
     const upstreamPort =
       typeof upstreamAddr === 'object' && upstreamAddr ? upstreamAddr.port : 0;
 
-    const uiPort = 39999 + (process.pid % 500);
     const script = lifecycle.buildUiServerScript({
       hostedTenantAuthorities: { 'alpha.example.test': 'alpha' },
       uiDir,
       upstreamPort,
-      uiPort,
+      uiPort: 0,
+      host: '127.0.0.1',
     });
 
-    const child = spawn(process.execPath, ['-e', script], {
-      stdio: ['ignore', 'pipe', 'pipe'],
-      windowsHide: true,
-      env: {
-        ...process.env,
-        STATION_INTERNAL_API_TOKEN: 'test-only-internal-api-token',
-      },
-    });
-
-    let stderr = '';
-    child.stderr?.on('data', (chunk) => {
-      stderr += String(chunk);
-    });
+    const server = spawnUiScript(script);
 
     try {
+      const uiPort = await server.listening;
       const request = (path: string, headers: Record<string, string> = {}) =>
         new Promise<{ body: string; status: number }>((resolve, reject) => {
           const client = nodeRequest(
@@ -7783,20 +7832,7 @@ describe('buildUiServerScript output runs as a real standalone node -e process (
           client.on('error', reject);
           client.end();
         });
-      // Wait for the spawned server to come up (bounded poll, not a fixed
-      // sleep — real process startup time varies).
-      const deadline = Date.now() + 5000;
-      let up = false;
-      while (Date.now() < deadline && !up) {
-        try {
-          const probe = await request('/');
-          if (probe.status === 200) up = true;
-        } catch {
-          await new Promise((r) => setTimeout(r, 100));
-        }
-      }
-      expect(up).toBe(true);
-      expect(stderr).toBe('');
+      expect(server.stderr()).toBe('');
 
       const staticRes = await request('/');
       expect(staticRes.status).toBe(200);
@@ -7808,7 +7844,7 @@ describe('buildUiServerScript output runs as a real standalone node -e process (
       const proxiedBody = JSON.parse(proxiedRes.body);
       expect(proxiedBody).toEqual({ ready: true });
       expect(upstreamTenant).toBe('alpha');
-      expect(stderr).toBe('');
+      expect(server.stderr()).toBe('');
 
       // The envelope, out of the real spawned process: an upstream that dropped
       // the connection. Same bytes the browser's derivation reads.
@@ -7818,7 +7854,7 @@ describe('buildUiServerScript output runs as a real standalone node -e process (
         ready: false,
         status: 'unavailable',
       });
-      expect(stderr).toBe('');
+      expect(server.stderr()).toBe('');
 
       const degradedRes = await request('/api/system/readiness', {
         'x-station-readiness-budget-ms': '300',
@@ -7828,25 +7864,25 @@ describe('buildUiServerScript output runs as a real standalone node -e process (
         ready: false,
         status: 'degraded',
       });
-      expect(stderr).toBe('');
+      expect(server.stderr()).toBe('');
     } finally {
-      child.kill('SIGKILL');
-      upstream.close();
-      rmSync(uiDir, { recursive: true, force: true });
+      await reapLongRunningFixtureChild(server.child);
+      upstream.closeAllConnections();
+      await new Promise<void>((resolve) => upstream.close(() => resolve()));
     }
   }, 15_000);
 
   it('the globalThis.__name shim neutralizes an esbuild/keepNames-style __name(...)-wrapped binding spliced into the real generated script (code-review M2 residual-gap tripwire)', async () => {
-    const { spawn } = await import('node:child_process');
     const lifecycle = await import('../commands/lifecycle.js');
 
-    const uiDir = mkdtempSync(join(tmpdir(), 'station-ui-name-shim-'));
+    const uiDir = makeUiDir('station-ui-name-shim-');
     writeFileSync(join(uiDir, 'index.html'), '<head></head><body>app</body>');
 
     const script = lifecycle.buildUiServerScript({
       uiDir,
       upstreamPort: 1, // unused — this probe never proxies a request
-      uiPort: 0, // placeholder, replaced per-attempt below
+      uiPort: 0,
+      host: '127.0.0.1',
     });
     const shimLiteral =
       'globalThis.__name = globalThis.__name || ((fn) => fn);';
@@ -7864,121 +7900,70 @@ describe('buildUiServerScript output runs as a real standalone node -e process (
     const probeStatement =
       'const stationNameShimProbe = __name(function stationNameShimProbe() { return 1; }, "stationNameShimProbe");';
 
-    async function runProbe(
-      scriptSource: string,
-      port: number,
-    ): Promise<{ up: boolean; stderr: string }> {
-      const withPort = scriptSource.replace(
-        /listen\(0,["']0\.0\.0\.0["']\)/,
-        `listen(${port},"0.0.0.0")`,
-      );
-      const child = spawn(process.execPath, ['-e', withPort], {
-        stdio: ['ignore', 'pipe', 'pipe'],
-        windowsHide: true,
-      });
-      let stderr = '';
-      child.stderr?.on('data', (chunk) => {
-        stderr += String(chunk);
-      });
-      try {
-        const deadline = Date.now() + 3000;
-        let up = false;
-        while (Date.now() < deadline && !up) {
-          try {
-            const res = await fetch(`http://127.0.0.1:${port}/`);
-            if (res.status === 200) up = true;
-          } catch {
-            await new Promise((r) => setTimeout(r, 100));
-          }
-        }
-        // Give a crashed process time to flush stderr even when it never
-        // came up.
-        if (!up) await new Promise((r) => setTimeout(r, 200));
-        return { up, stderr };
-      } finally {
-        child.kill('SIGKILL');
-      }
-    }
-
-    const portWithShim = 40899 + (process.pid % 300);
-    const portWithoutShim = portWithShim + 300;
-
+    const withShim = script.replace(
+      shimLiteral,
+      `${shimLiteral}\n${probeStatement}`,
+    );
+    const withShimServer = spawnUiScript(withShim);
     try {
       // With the shim present (real production shape): the __name(...)
       // call is neutralized and the server starts cleanly.
-      const withShim = script.replace(
-        shimLiteral,
-        `${shimLiteral}\n${probeStatement}`,
-      );
-      const withShimResult = await runProbe(withShim, portWithShim);
-      expect(withShimResult.stderr).toBe('');
-      expect(withShimResult.up).toBe(true);
-
-      // Negative control: without the shim, the same __name(...) call
-      // crashes the standalone process with a ReferenceError — proving the
-      // positive assertion above is meaningful (the shim is doing real
-      // work), not a tautology.
-      const withoutShim = script
-        .replace(shimLiteral, '')
-        .replace('const http=', `${probeStatement}\n    const http=`);
-      const withoutShimResult = await runProbe(withoutShim, portWithoutShim);
-      expect(withoutShimResult.up).toBe(false);
-      expect(withoutShimResult.stderr).toContain('__name is not defined');
+      const port = await withShimServer.listening;
+      expect((await fetch(`http://127.0.0.1:${port}/`)).status).toBe(200);
+      expect(withShimServer.stderr()).toBe('');
     } finally {
-      rmSync(uiDir, { recursive: true, force: true });
+      await reapLongRunningFixtureChild(withShimServer.child);
+    }
+
+    // Negative control: without the shim, the same __name(...) call
+    // crashes the standalone process with a ReferenceError — proving the
+    // positive assertion above is meaningful (the shim is doing real
+    // work), not a tautology.
+    const withoutShim = script
+      .replace(shimLiteral, '')
+      .replace('const http=', `${probeStatement}\n    const http=`);
+    const withoutShimServer = spawnUiScript(withoutShim);
+    try {
+      await expect(withoutShimServer.listening).rejects.toThrow(
+        '__name is not defined',
+      );
+      expect(withoutShimServer.child.exitCode).toBe(1);
+    } finally {
+      await reapLongRunningFixtureChild(withoutShimServer.child);
     }
   }, 15_000);
 
-  const makeUiDir = trackTempDirs();
-
   it('serves the nonce-bound __API_BASE__ bootstrap from the spawned script when an override is configured', async () => {
-    const { spawn } = await import('node:child_process');
     const lifecycle = await import('../commands/lifecycle.js');
 
     const uiDir = makeUiDir('station-ui-override-');
     writeFileSync(join(uiDir, 'index.html'), '<head></head><body>app</body>');
-    const uiPort = 41499 + (process.pid % 300);
-    const child = spawn(
-      process.execPath,
-      [
-        '-e',
-        lifecycle.buildUiServerScript({
-          uiDir,
-          apiBaseOverride: 'http://example-override:9999',
-          upstreamPort: 1, // unused: this probe never proxies a request
-          uiPort,
-        }),
-      ],
-      { stdio: ['ignore', 'ignore', 'pipe'], windowsHide: true },
+    const server = spawnUiScript(
+      lifecycle.buildUiServerScript({
+        uiDir,
+        apiBaseOverride: 'http://example-override:9999',
+        upstreamPort: 1, // unused: this probe never proxies a request
+        uiPort: 0,
+        host: '127.0.0.1',
+      }),
     );
-    let stderr = '';
-    child.stderr?.on('data', (chunk) => {
-      stderr += String(chunk);
-    });
 
     try {
-      let res: Response | null = null;
-      const deadline = Date.now() + 5000;
-      while (Date.now() < deadline && !res) {
-        try {
-          res = await fetch(`http://127.0.0.1:${uiPort}/`);
-        } catch {
-          await new Promise((r) => setTimeout(r, 100));
-        }
-      }
-      expect(stderr).toBe('');
-      expect(res?.status).toBe(200);
-      const body = await res!.text();
+      const uiPort = await server.listening;
+      const res = await fetch(`http://127.0.0.1:${uiPort}/`);
+      expect(server.stderr()).toBe('');
+      expect(res.status).toBe(200);
+      const body = await res.text();
       const nonce = /<script nonce="([^"]+)">/.exec(body)?.[1];
       expect(nonce).toBeTruthy();
       expect(body).toBe(
         `<head><script nonce="${nonce}">window.__API_BASE__="http://example-override:9999";document.currentScript.remove()</script></head><body>app</body>`,
       );
-      expect(res!.headers.get('content-security-policy')).toContain(
+      expect(res.headers.get('content-security-policy')).toContain(
         `'nonce-${nonce}'`,
       );
     } finally {
-      child.kill('SIGKILL');
+      await reapLongRunningFixtureChild(server.child);
     }
   }, 15_000);
 });

@@ -78,10 +78,21 @@ export function useInboxWorkingCount(
 ): number {
   const scope = useInboxScope(items, now, workFacts);
   const groups = useInboxGroups(scope.items, now, workFacts);
-  return groups
-    .flatMap((group) => group.items)
-    .filter(
-      (item) =>
-        workStatus(item, now, workFacts?.get(item.id)).lane === 'running',
-    ).length;
+  const working = new Set<string>();
+  for (const group of groups) {
+    for (const root of group.items) {
+      for (const item of [root, ...(group.childrenById?.get(root.id) ?? [])]) {
+        if (
+          item.kind !== 'task' &&
+          workStatus(item, now, workFacts?.get(item.id)).lane === 'running'
+        )
+          working.add(
+            item.kind === 'remote-session'
+              ? item.id
+              : (item.conversationId ?? item.id),
+          );
+      }
+    }
+  }
+  return working.size;
 }

@@ -165,7 +165,7 @@ describe('systemd service backend', () => {
     expect(unit).toContain('TimeoutStopSec=165');
     expect(unit).toContain('KillMode=mixed');
     expect(unit).toContain('NoNewPrivileges=true');
-    expect(unit).toContain('PrivateTmp=true');
+    expect(unit).toContain('PrivateTmp=false');
     expect(unit).toContain('Environment=STATION_SERVICE_MANAGED=1');
     const assignments = unit
       .split(/\r?\n/u)

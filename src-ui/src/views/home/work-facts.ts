@@ -278,26 +278,30 @@ export function buildWorkFacts({
       facts.set(child.id, { ...facts.get(child.id), runRootId: root.id });
     }
   }
+  const taskById = new Map(tasks.map((task) => [task.id, task]));
+  const taskItems = items.filter((item) => item.kind === 'task');
   for (const item of items) {
-    if (
-      item.kind === 'task' ||
-      item.kind === 'remote-session' ||
-      facts.get(item.id)?.runRootId
-    )
-      continue;
-    const owners = items.filter(
-      (candidate) =>
-        candidate.kind === 'task' &&
-        candidate.taskSessionId &&
-        [
-          item.id,
-          item.chatSessionId,
-          item.orchestrationThreadId,
-          ...(item.orchestrationThreadIds ?? []),
-        ].includes(candidate.taskSessionId),
+    if (item.kind === 'task' || item.kind === 'remote-session') continue;
+    const identities = new Set([
+      item.id,
+      item.chatSessionId,
+      item.conversationId,
+      item.orchestrationThreadId,
+      ...(item.orchestrationThreadIds ?? []),
+    ]);
+    const owners = taskItems.filter((candidate) =>
+      [
+        candidate.taskSessionId,
+        ...(taskById.get(candidate.id)?.workChatConversationIds ?? []),
+      ].some((id) => id !== undefined && identities.has(id)),
     );
     if (owners.length === 1)
       facts.set(item.id, { ...facts.get(item.id), runRootId: owners[0].id });
+    else if (owners.length > 1) {
+      const entry = { ...facts.get(item.id) };
+      delete entry.runRootId;
+      facts.set(item.id, entry);
+    }
   }
   return facts;
 }

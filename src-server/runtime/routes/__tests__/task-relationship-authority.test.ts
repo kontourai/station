@@ -1,3 +1,4 @@
+import { ok } from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { sessionReadAuthorityFromRequest } from '@kontourai/station-contracts/tenancy';
@@ -7,12 +8,15 @@ import { afterEach, expect, test, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { FileStorageAdapter } from '../../../domain/file-storage-adapter.js';
 import { createTaskRelationshipRoutes } from '../../../routes/orchestration/task-relationships.js';
+import { createTaskRoutes } from '../../../routes/orchestration/tasks.js';
 import { DeploymentAuthenticationService } from '../../../services/identity/deployment-authentication-service.js';
 import { createLocalAccountProvider } from '../../../services/identity/local-account-provider.js';
 import { EventBus } from '../../../services/orchestration/event-bus.js';
 import { EventStore } from '../../../services/orchestration/event-store.js';
 import { OrchestrationService } from '../../../services/orchestration/orchestration-service.js';
 import { TaskGraphService } from '../../../services/projects/task-graph-service.js';
+import { TaskRoomWorkModule } from '../../../services/projects/task-room-work-module.js';
+import { createTaskInboxProjection } from '../task-inbox-projection.js';
 import { createTaskRelationshipAuthority } from '../task-relationship-authority.js';
 
 const temp = trackTempDirs();
@@ -93,10 +97,29 @@ async function fixture(current: () => boolean = () => true) {
     mayRead: () => live,
     mayEdit: () => live,
   });
-  const app = new Hono().route(
-    '/api/tasks',
-    createTaskRelationshipRoutes(graph, adapters),
-  );
+  const work = new TaskRoomWorkModule(join(home, 'room-requests.json'));
+  const inbox = createTaskInboxProjection({
+    graph,
+    work,
+    events: store,
+    relationships: adapters,
+    projects: () =>
+      storage.listProjects().map((p) => storage.getProject(p.slug)),
+  });
+  const app = new Hono()
+    .route('/api/tasks', createTaskRelationshipRoutes(graph, adapters))
+    .route(
+      '/api/tasks',
+      createTaskRoutes(graph, {
+        taskDispatcher: {
+          dispatch: async () => ({
+            kind: 'failed',
+            reason: 'No dispatch in this reader fixture',
+          }),
+        },
+        workChatConversations: inbox,
+      }),
+    );
   const input = (id: string) => ({
     operationId: `link-${id}`,
     task: { taskId: task.id, taskCreatedAt: task.createdAt },
@@ -116,6 +139,7 @@ async function fixture(current: () => boolean = () => true) {
     );
   return {
     home,
+    work,
     storage,
     project,
     graph,
@@ -309,3 +333,129 @@ test.each([
     expect(readFileSync(path, 'utf8')).toBe(before);
   },
 );
+
+test('Task list groups authorized independent room requests and linked chats without assigning a primary Session', async () => {
+  const h = await fixture();
+  expect((await h.link('chat')).status).toBe(200);
+  const start = vi.fn(async (sessionId: string) => {
+    h.seed(sessionId);
+    expect(
+      await h.store.bindProjectTaskRoomExecution({
+        projectId: h.task.projectId,
+        taskId: h.task.id,
+        sessionId,
+      }),
+    ).toEqual({ kind: 'bound' });
+    return { sessionId };
+  });
+  const result = await h.work.submit(
+    h.task.id,
+    'owner',
+    {
+      operationId: 'room-request',
+      agentId: 'station',
+      prompt: 'Investigate this outcome',
+    },
+    async () => ({
+      projectId: h.project.id,
+      projectSlug: h.project.slug,
+      roomProjectId: h.task.projectId,
+      taskCreatedAt: h.task.createdAt,
+      requesterId: 'owner',
+    }),
+    start,
+  );
+  if (result.kind !== 'recorded') throw new Error('Request did not dispatch');
+  const read = async (principal: string) => {
+    const response = await h.app.request('/api/tasks', {
+      headers: { principal },
+    });
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      data: { id: string; workChatConversationIds?: string[] }[];
+    };
+    const task = body.data.find((task) => task.id === h.task.id);
+    ok(task, 'Task list omitted the requested Task');
+    return task;
+  };
+  expect(await read('owner')).toMatchObject({
+    workChatConversationIds: expect.arrayContaining([
+      'chat',
+      result.record.sessionId,
+    ]),
+  });
+  expect((await read('owner')).workChatConversationIds).toHaveLength(2);
+  expect((await read('other')).workChatConversationIds).toEqual([]);
+  expect(h.graph.readTask(h.task.id)?.sessionId).toBeUndefined();
+  expect(start).toHaveBeenCalledOnce();
+  h.store.reserveNextConversationSession({
+    conversationId: result.record.sessionId,
+    predecessorSessionId: result.record.sessionId,
+    proposedSessionId: 'failed-successor',
+    createdAt: '2026-10-02T00:00:00.000Z',
+  });
+  h.store.appendEvent({
+    eventId: 'failed-successor-exit',
+    threadId: 'failed-successor',
+    sessionId: 'failed-successor',
+    provider: 'claude',
+    method: 'session.exited',
+    createdAt: '2026-10-02T00:00:00.000Z',
+    reason: 'stopped',
+  });
+  expect(h.store.readSessionByThread('failed-successor')).toBeUndefined();
+  expect(
+    await h.sessions.resolveConversationOpen(
+      result.record.sessionId,
+      sessionReadAuthorityFromRequest('owner', undefined, undefined),
+    ),
+  ).toMatchObject({
+    status: 'resolved',
+    currentSessionId: result.record.sessionId,
+  });
+  expect((await read('owner')).workChatConversationIds).toEqual(
+    expect.arrayContaining(['chat', result.record.sessionId]),
+  );
+  expect((await read('other')).workChatConversationIds).toEqual([]);
+  h.store.upsertSession({
+    provider: 'claude',
+    threadId: 'failed-successor',
+    status: 'closed',
+    createdAt: '2026-10-02T00:00:00.000Z',
+    updatedAt: '2026-10-02T00:00:00.000Z',
+  });
+  expect(h.store.readSessionByThread('failed-successor')?.status).toBe(
+    'closed',
+  );
+  expect(
+    await h.sessions.resolveConversationOpen(
+      result.record.sessionId,
+      sessionReadAuthorityFromRequest('owner', undefined, undefined),
+    ),
+  ).toMatchObject({
+    status: 'resolved',
+    currentSessionId: result.record.sessionId,
+  });
+  expect((await read('owner')).workChatConversationIds).toEqual(
+    expect.arrayContaining(['chat', result.record.sessionId]),
+  );
+  h.store.appendEvent({
+    eventId: 'failed-successor-reconfigured',
+    threadId: 'failed-successor',
+    sessionId: 'failed-successor',
+    provider: 'claude',
+    method: 'session.configured',
+    createdAt: '2026-10-02T00:00:00.000Z',
+    metadata: { projectSlug: 'foreign' },
+  });
+  expect((await read('owner')).workChatConversationIds).toEqual(['chat']);
+  const open = h.sessions.resolveConversationOpen.bind(h.sessions);
+  vi.spyOn(h.sessions, 'resolveConversationOpen').mockImplementationOnce(
+    async (...args) => {
+      const outcome = await open(...args);
+      h.revoke();
+      return outcome;
+    },
+  );
+  expect((await read('owner')).workChatConversationIds).toEqual([]);
+});
