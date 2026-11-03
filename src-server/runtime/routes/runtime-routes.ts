@@ -10650,14 +10650,19 @@ export function configureRuntimeRoutes(
     if (authority) knowledgeReadAuthorities.set(c.req.raw, authority);
     await next();
   });
-  const privateMemoryPreview = context.featurePreviews.bind({
-    id: 'private-memory',
-    label: 'Private memory',
-    description:
-      'Create a private memory store and inspect proposed memories. Memory can contain personal information.',
-  });
+  const privateMemoryPreview = isPersonalHost
+    ? context.featurePreviews.bind({
+        id: 'private-memory',
+        label: 'Private memory',
+        description:
+          'Create a private memory store and inspect proposed memories. Memory can contain personal information.',
+      })
+    : undefined;
   const memoryEnabled = () =>
-    privateMemoryPreview.select({ enabled: () => true, disabled: () => false });
+    privateMemoryPreview?.select({
+      enabled: () => true,
+      disabled: () => false,
+    }) === true;
   const memoryRootManager = new MemoryRootManager(
     context.knowledgeStoreProvider,
     context.storageAdapter,

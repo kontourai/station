@@ -240,6 +240,48 @@ describe('configureRuntimeRoutes hosted station-control MCP composition', () => 
     }
   });
 
+  test('hosted runtimes do not offer or enable private memory', async () => {
+    const home = makeTempDir('station-hosted-memory-');
+    const registryPath = join(home, 'tenants.json');
+    writeFileSync(
+      registryPath,
+      JSON.stringify({
+        schemaVersion: 1,
+        tenants: [{ id: 'alpha', authority: 'alpha.example.test' }],
+      }),
+    );
+    process.env[registryFileEnv] = registryPath;
+    const previews = new FeaturePreviewRegistry(
+      home,
+      createLogger({ name: 'hosted-memory-test', level: 'error' }),
+    );
+    const persistence = new FileStorageAdapter(home);
+    const app = new Hono();
+    bindOperatorPrincipal(app);
+    await configureRuntimeRoutes(
+      runtimeContext(app, home, {
+        featurePreviews: previews,
+        storageAdapter: persistence,
+        knowledgeStoreProvider: new KnowledgeStoreProvider(persistence),
+      }),
+    );
+    expect(
+      previews.list().some((preview) => preview.id === 'private-memory'),
+    ).toBe(false);
+    for (const [path, method] of [
+      ['/api/knowledge/memory/root', 'POST'],
+      ['/api/knowledge/memory/proposals', 'POST'],
+      ['/api/knowledge/memory/proposals', 'GET'],
+    ] as const) {
+      const response = await app.request(
+        path,
+        { method, headers: hostedHeaders('alpha') },
+        loopbackEnv(),
+      );
+      expect(response.status).toBe(404);
+    }
+  });
+
   test('author-private root is visible to its personal owner but refused in hosted mode', async () => {
     const homeDir = makeTempDir('station-private-hosted-');
     const registryPath = join(homeDir, 'tenants.json');

@@ -1,4 +1,4 @@
-import { existsSync } from 'node:fs';
+import { existsSync, unlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import { sessionReadAuthorityFromRequest } from '@kontourai/station-contracts/tenancy';
 import { afterEach, describe, expect, test, vi } from 'vitest';
@@ -24,6 +24,18 @@ const current = () => {};
 afterEach(() => vi.unstubAllEnvs());
 
 describe('private memory root', () => {
+  test('refuses a root whose Corpus binding has disappeared', async () => {
+    const home = makeTempDir('station-memory-binding-');
+    vi.stubEnv('STATION_HOME', home);
+    const persistence = new FileStorageAdapter(home);
+    const store = new KnowledgeStoreProvider(persistence);
+    const manager = new MemoryRootManager(store, persistence, home, () => true);
+    const root = await manager.ensureRoot(owner, current);
+    const adapter = await store.adapterFor(root.id);
+    unlinkSync(join(root.storeRoot, '.corpus-root-id'));
+    await expect(adapter.listByType('raw')).rejects.toThrow();
+    await expect(manager.ensureRoot(owner, current)).rejects.toThrow();
+  });
   test('registers an owner-private Corpus root and keeps proposals out of records', async () => {
     const home = makeTempDir('station-private-memory-');
     vi.stubEnv('STATION_HOME', home);

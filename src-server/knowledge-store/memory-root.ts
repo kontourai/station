@@ -2,6 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { lstatSync, realpathSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import {
+  assertAdapterBoundTo,
   type KitRecord as CorpusRecord,
   type CreateInput,
   KitDefaultStoreAdapter,
@@ -104,8 +105,7 @@ export class MemoryRootManager {
       },
       create: async ({ storeRoot }) =>
         reader(this.corpus(storeRoot), () => {
-          if (!this.enabled())
-            throw new Error('Private memory is unavailable.');
+          this.corpus(storeRoot);
         }),
     });
   }
@@ -143,7 +143,10 @@ export class MemoryRootManager {
     if (!this.enabled()) throw new Error('Private memory is unavailable.');
     assertExistingPathInside(this.home, path, 'Private memory root');
     const existing = this.adapters.get(path);
-    if (existing) return existing;
+    if (existing) {
+      assertAdapterBoundTo(existing, path);
+      return existing;
+    }
     const home = this.home;
     const adapter = new KitDefaultStoreAdapter({
       storeRoot: path,
@@ -178,6 +181,7 @@ export class MemoryRootManager {
         };
       },
     });
+    assertAdapterBoundTo(adapter, path);
     this.adapters.set(path, adapter);
     return adapter;
   }
@@ -208,7 +212,12 @@ export class MemoryRootManager {
     const path = join(this.home, 'knowledge', 'memory', hash);
     assertExistingPathInside(this.home, path, 'Private memory root');
     const existing = await this.store.getRoot(id);
-    if (existing) return this.verify(existing, owner, path);
+    if (existing)
+      return this.bindRegisteredRoot(
+        this.verify(existing, owner, path),
+        authority,
+        assertCurrent,
+      );
     const root: KnowledgeStoreRoot = {
       id,
       scope: { kind: 'personal' },
@@ -228,15 +237,40 @@ export class MemoryRootManager {
           assertCurrent();
         },
       });
-      return root;
+      return await this.bindRegisteredRoot(root, authority, assertCurrent);
     } catch (error) {
       if (!(error instanceof FileStorageConflictError)) throw error;
       const current = await this.store.getRoot(id);
       if (!current) throw error;
       this.requireOwner(authority);
       assertCurrent();
-      return this.verify(current, owner, path);
+      return this.bindRegisteredRoot(
+        this.verify(current, owner, path),
+        authority,
+        assertCurrent,
+      );
     }
+  }
+
+  private async bindRegisteredRoot(
+    root: KnowledgeStoreRoot,
+    authority: SessionReadAuthority | undefined,
+    assertCurrent: () => void,
+  ): Promise<KnowledgeStoreRoot> {
+    if (!this.store.withRootRevision)
+      throw new Error('Private memory revision is unavailable.');
+    const check = () => {
+      this.requireOwner(authority);
+      assertCurrent();
+    };
+    check();
+    return withKnowledgeWriteAuthority(root.storeRoot, check, () =>
+      this.store.withRootRevision!(root, async () => {
+        check();
+        this.corpus(root.storeRoot);
+        return root;
+      }),
+    );
   }
 
   private verify(

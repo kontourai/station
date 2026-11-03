@@ -136,6 +136,9 @@ query. Reusing a key for different input is refused. Pending proposals are not
 records and are not indexed or returned by ordinary Knowledge search. Ordinary
 record mutation routes cannot write directly into this root. Review decisions,
 distillation and erasure are separate work and are not provided by this preview.
+Optional `provenance.source_refs` identify transcript sources for attribution;
+they neither grant transcript access nor serve as review evidence. Station checks
+the Corpus root binding when opening the registered root and before cached reads.
 
 ## `./station knowledge reindex` — (re)build the index
 

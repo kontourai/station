@@ -51,6 +51,28 @@ const proposalInput = z
           .object({
             agent: z.string().min(1),
             source_ids: z.array(z.string()).optional(),
+            source_refs: z
+              .array(
+                z
+                  .object({
+                    kind: z.literal('session-transcript'),
+                    harness: z.string().min(1),
+                    session_id: z.string().min(1),
+                    transcript_ref: z.string().min(1),
+                    sitting_id: z.string().min(1).optional(),
+                    range: z
+                      .object({
+                        start: z.number().int().positive(),
+                        end: z.number().int().positive(),
+                      })
+                      .strict()
+                      .refine((range) => range.end >= range.start)
+                      .optional(),
+                  })
+                  .strict(),
+              )
+              .max(256)
+              .optional(),
             session_id: z.string().optional(),
             note: z.string().optional(),
           })

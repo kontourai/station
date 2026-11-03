@@ -76,7 +76,18 @@ test('memory routes require the preview and owner, and expose proposals only exp
       title: 'Proposed',
       body: 'private proposal',
       category: 'memory',
-      provenance: { agent: 'test' },
+      provenance: {
+        agent: 'test',
+        source_refs: [
+          {
+            kind: 'session-transcript',
+            harness: 'test',
+            session_id: 'session-1',
+            transcript_ref: 'transcript-1',
+            range: { start: 2, end: 4 },
+          },
+        ],
+      },
     },
     evidence: { agent: 'test', proposal: 'evidence' },
   };
@@ -112,7 +123,13 @@ test('memory routes require the preview and owner, and expose proposals only exp
   const listed = await app.request('/memory/proposals', { headers });
   expect(await listed.json()).toMatchObject({
     success: true,
-    data: [{ id, state: 'pending' }],
+    data: [
+      {
+        id,
+        state: 'pending',
+        candidate: { provenance: input.candidate.provenance },
+      },
+    ],
   });
   const adapter = await store.adapterFor(root.id);
   expect(await adapter.listByType('raw', { includeRetired: true })).toEqual([]);
