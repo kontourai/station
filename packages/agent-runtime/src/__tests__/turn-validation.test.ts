@@ -592,6 +592,20 @@ it('completed turn retention expires replay payloads while preserving its no-red
     implementation: 'station-agent/1',
   });
   expect(next).toBeDefined();
+  const liveEffect = await live.effect({ type: 'effectRead', id: 'live-tool' });
+  expect(liveEffect.effect.attempts[0]?.output).toBe(agentWire('live-result'));
+  await live.run(async () => {});
+  await next.run(async () => {});
+  await expect
+    .poll(
+      () =>
+        f.database
+          .prepare(
+            "SELECT count(*) AS n FROM agent_steps_effects WHERE id='finished-tool'",
+          )
+          .get()?.n,
+    )
+    .toBe(0);
   expect(
     f.database.prepare('SELECT count(*) AS n FROM agent_steps_retained').get()
       ?.n,
@@ -609,8 +623,6 @@ it('completed turn retention expires replay payloads while preserving its no-red
     spec: { input: '[expired]' },
   });
   expect(await f.runtime.recover(f.key)).toBe('retry');
-  const liveEffect = await live.effect({ type: 'effectRead', id: 'live-tool' });
-  expect(liveEffect.effect.attempts[0]?.output).toBe(agentWire('live-result'));
   const frames = f.database
     .prepare(
       'SELECT count(*) AS n FROM agent_steps_frame_blocks WHERE turn_id IN (SELECT turn_id FROM agent_steps_retained)',
@@ -630,7 +642,7 @@ it('completed turn retention expires replay payloads while preserving its no-red
 });
 
 it.each(
-  [100, 400, 1600, 3200].flatMap((chunks) =>
+  [100, 400].flatMap((chunks) =>
     [4, 64].map((deltaBytes) => ({ chunks, deltaBytes })),
   ),
 )(

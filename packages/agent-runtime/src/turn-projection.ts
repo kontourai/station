@@ -464,23 +464,43 @@ export function readAgentFrame(
   turnId: string,
   id: string,
 ) {
+  return readAgentFrameBatch(database, turnId, [id])[0];
+}
+
+/** Decode each authoritative block once for this read, after participant writes. */
+export function readAgentFrameBatch(
+  database: DatabaseSync,
+  turnId: string,
+  ids: readonly string[],
+) {
   const expired = expiredFrames(database, turnId);
-  if (expired) return expired.find((frame) => frame.id === id);
+  if (expired) return ids.map((id) => expired.find((frame) => frame.id === id));
   if (!blockFormat(database)) {
-    const row = agentStatement(
-      database,
-      'SELECT * FROM agent_steps_frames WHERE turn_id=? AND id=?',
-    ).get(turnId, id);
-    return row ? parseFrame(row) : undefined;
+    return ids.map((id) => {
+      const row = agentStatement(
+        database,
+        'SELECT * FROM agent_steps_frames WHERE turn_id=? AND id=?',
+      ).get(turnId, id);
+      return row ? parseFrame(row) : undefined;
+    });
   }
-  const address = frameAddress(id);
-  const block = agentStatement(
-    database,
-    'SELECT * FROM agent_steps_frame_blocks WHERE turn_id=? AND group_id=? AND first_ordinal<=? ORDER BY first_ordinal DESC LIMIT 1',
-  ).get(turnId, storedFrameGroup(address.group), address.ordinal);
-  return block && Number(block.last_ordinal) >= address.ordinal
-    ? parseBlock(block).find((frame) => frame.id === id)
-    : undefined;
+  const blocks = new Map<string, Map<string, AgentFrame>>();
+  return ids.map((id) => {
+    const address = frameAddress(id);
+    const block = agentStatement(
+      database,
+      'SELECT * FROM agent_steps_frame_blocks WHERE turn_id=? AND group_id=? AND first_ordinal<=? ORDER BY first_ordinal DESC LIMIT 1',
+    ).get(turnId, storedFrameGroup(address.group), address.ordinal);
+    if (!block || Number(block.last_ordinal) < address.ordinal)
+      return undefined;
+    const key = `${address.group}:${block.first_ordinal}`;
+    let frames = blocks.get(key);
+    if (!frames) {
+      frames = new Map(parseBlock(block).map((frame) => [frame.id, frame]));
+      blocks.set(key, frames);
+    }
+    return frames.get(id);
+  });
 }
 export function readAgentFrames(
   database: DatabaseSync,

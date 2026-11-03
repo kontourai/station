@@ -71,6 +71,7 @@ import {
   projectAgentFrame,
   projectAgentFrames,
   readAgentFrame,
+  readAgentFrameBatch,
   readAgentFrames,
 } from './turn-projection.js';
 import {
@@ -1213,14 +1214,65 @@ export function openSqliteAgentJournal(options: {
       canonical(turn),
     );
   };
+  let maintenance: ReturnType<typeof setImmediate> | undefined;
+  let maintenanceNow = 0;
+  let maintenanceError: unknown;
+  const scheduleMaintenance = () => {
+    if (closed || maintenance) return;
+    maintenance = setImmediate(() => {
+      maintenance = undefined;
+      if (closed || !database.isOpen || database.isTransaction) return;
+      // Admission and every turn command run synchronously between these callbacks.
+      if (
+        agentStatement(
+          database,
+          'SELECT 1 FROM agent_steps_turns WHERE active=1 LIMIT 1',
+        ).get()
+      )
+        return;
+      const busyTimeout = Number(
+        agentStatement(database, 'PRAGMA busy_timeout').get()?.timeout ?? 0,
+      );
+      try {
+        database.exec('PRAGMA busy_timeout=0');
+        database.exec('BEGIN IMMEDIATE');
+        const changed = withAgentReferences(database, () =>
+          retainAgentTurns(database, maintenanceNow, performance.now() + 10),
+        );
+        const vacuum =
+          !changed &&
+          Number(
+            agentStatement(database, 'PRAGMA freelist_count').get()
+              ?.freelist_count,
+          ) > 0;
+        if (vacuum) database.exec('PRAGMA incremental_vacuum(1)');
+        if (changed || vacuum) invalidateAgentValidation(database);
+        database.exec('COMMIT');
+        if (changed || vacuum) scheduleMaintenance();
+      } catch (error) {
+        if (database.isTransaction) database.exec('ROLLBACK');
+        invalidateAgentValidation(database);
+        if (
+          !(
+            error instanceof Error &&
+            /(?:database|table).*locked|SQLITE_BUSY/.test(error.message)
+          )
+        )
+          maintenanceError = error;
+      } finally {
+        database.exec(`PRAGMA busy_timeout=${busyTimeout}`);
+      }
+    });
+    maintenance.unref();
+  };
   return {
     async execute(
       raw: AtomicCommand<AgentJournalProtocol>,
       context: AgentJournalContext,
     ): Promise<AgentJournalResult> {
       if (closed) throw new Error('DURABLE_AGENT_STORAGE_CLOSED');
+      if (maintenanceError) throw maintenanceError;
       const command = commandSchema.parse(raw);
-      const maintenanceDeadline = performance.now() + 24;
       const clock = () => {
         const before = agentStatement(
           database,
@@ -1429,26 +1481,6 @@ export function openSqliteAgentJournal(options: {
           const answer = decide();
           if (command.type === 'effectComplete' && answer.kind === 'effect')
             compactAgentBodies(database, performance.now() + 2);
-          if (
-            (command.type === 'open' || command.type === 'settle') &&
-            answer.kind === 'owned'
-          ) {
-            const changed = retainAgentTurns(
-              database,
-              clock(),
-              Math.min(maintenanceDeadline, performance.now() + 20),
-            );
-            if (
-              changed &&
-              performance.now() < maintenanceDeadline &&
-              Number(
-                agentStatement(database, 'PRAGMA freelist_count').get()
-                  ?.freelist_count,
-              ) > 0
-            )
-              database.exec('PRAGMA incremental_vacuum(1)');
-            if (changed) invalidateAgentValidation(database);
-          }
           return answer;
         });
         if (
@@ -1487,11 +1519,13 @@ export function openSqliteAgentJournal(options: {
         )
           throw new Error('DURABLE_AGENT_PARTICIPANT_CHANGED_STATE');
         if (participants.length > 0 && answer.kind === 'frames') {
-          for (const frame of answer.frames)
-            if (
-              canonical(readAgentFrame(database, idOf(key), frame.id)) !==
-              canonical(frame)
-            )
+          const stored = readAgentFrameBatch(
+            database,
+            idOf(key),
+            answer.frames.map((frame) => frame.id),
+          );
+          for (const [index, frame] of answer.frames.entries())
+            if (!stored[index] || canonical(stored[index]) !== canonical(frame))
               throw new Error('DURABLE_AGENT_PARTICIPANT_CHANGED_STATE');
         }
         if (trackMembership) {
@@ -1544,7 +1578,12 @@ export function openSqliteAgentJournal(options: {
             throw new Error('DURABLE_AGENT_PARTICIPANT_CHANGED_STATE');
         }
         acceptAgentValidation(database, idOf(key));
+        const maintain =
+          (command.type === 'open' || command.type === 'settle') &&
+          answer.kind === 'owned';
+        if (maintain) maintenanceNow = clock();
         database.exec('COMMIT');
+        if (maintain) scheduleMaintenance();
         return copyAgentAnswer(answer);
       } catch (error) {
         if (database.isTransaction) database.exec('ROLLBACK');
@@ -1554,6 +1593,7 @@ export function openSqliteAgentJournal(options: {
     },
     async close() {
       closed = true;
+      if (maintenance) clearImmediate(maintenance);
     },
   };
 }

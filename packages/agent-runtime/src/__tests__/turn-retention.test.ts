@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { writeFileSync } from 'node:fs';
 import { constants } from 'node:sqlite';
+import { setImmediate } from 'node:timers/promises';
 import { afterEach, expect, it } from 'vitest';
 import { turnFixture } from './turn-fixture.js';
 
@@ -85,9 +86,23 @@ it('retention bounds open and settle while draining 60 terminal turns with 80 ef
       implementation: 'station-agent/1',
     });
     opens.push(performance.now() - started);
+    if (pass === 0) {
+      await setImmediate();
+      expect(
+        f.database
+          .prepare('SELECT count(*) AS n FROM agent_steps_retained')
+          .get()?.n,
+      ).toBe(0);
+      expect(
+        f.database
+          .prepare('SELECT count(*) AS n FROM agent_steps_effects')
+          .get()?.n,
+      ).toBe(4800);
+    }
     started = performance.now();
     await lease.run(async () => {});
     settles.push(performance.now() - started);
+    for (let idle = 0; idle < 4; idle++) await setImmediate();
     const remaining = Number(
       f.database
         .prepare(
