@@ -673,7 +673,8 @@ promising more than it does:
   preview. Native plugin asset URLs retain `/api/plugins/<name>/<asset>` and
   source coordinates while dropping queries and fragments; capability query
   values are also redacted. A harmless prefix such as `Error:` does not hide
-  later credential fields. Quoted values end at their closing quote; unquoted
+  later credential fields. Quoted values end at a closing quote followed by
+  whitespace, a query delimiter or the end of the input; unquoted
   values may contain spaces and end at a following assignment, flag, query
   delimiter or line ending. An unquoted secret can therefore consume trailing
   diagnostic text as well as the credential. Quote a credential value when its
