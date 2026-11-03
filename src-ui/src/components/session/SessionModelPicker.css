@@ -341,10 +341,6 @@
   border-color: var(--k-action);
   background: var(--k-panel-raised);
 }
-.session-model-picker .model-runtime-choices label:has(input:focus-visible) {
-  outline: 2px solid var(--k-focus);
-  outline-offset: -3px;
-}
 .session-model-picker .model-runtime-choices input {
   accent-color: var(--k-action);
 }

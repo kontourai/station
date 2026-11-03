@@ -210,12 +210,12 @@ describe('SessionModelPicker', () => {
     renderPicker();
     fireEvent.click(screen.getByRole('button', { name: 'Favorites' }));
     expect(screen.getByText('No favorite models yet.')).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Clear filter' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Browse all models' }));
     const search = screen.getByRole('searchbox', { name: 'Search models' });
     expect(document.activeElement).toBe(search);
     fireEvent.change(search, { target: { value: 'no such model' } });
     expect(screen.getByText('Nothing matches your search.')).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Clear filter' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Browse all models' }));
     fireEvent.keyDown(search, { key: 'ArrowDown' });
     const firstModel = screen.getByRole('option', { name: /GPT-5.6/ });
     expect(document.activeElement).toBe(firstModel);
@@ -726,6 +726,30 @@ describe('SessionModelPicker', () => {
     expect(document.activeElement).toBe(
       screen.getByRole('searchbox', { name: 'Search models' }),
     );
+  });
+
+  test('clears capability filters without leaving Favorites', () => {
+    renderPicker({
+      models: [
+        { id: 'vision', name: 'Vision model', supportsVision: true },
+        { id: 'text', name: 'Text model' },
+        { id: 'other', name: 'Other model' },
+      ],
+    });
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Add Vision model to favorites' }),
+    );
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Add Text model to favorites' }),
+    );
+    const favorites = screen.getByRole('button', { name: 'Favorites' });
+    fireEvent.click(favorites);
+    fireEvent.click(screen.getByRole('button', { name: 'Vision' }));
+    expect(screen.getAllByRole('option')).toHaveLength(1);
+    fireEvent.click(screen.getByRole('button', { name: 'Clear filters' }));
+    expect(screen.getAllByRole('option')).toHaveLength(2);
+    expect(favorites.getAttribute('aria-pressed')).toBe('true');
+    expect(screen.queryByRole('option', { name: /Other model/ })).toBeNull();
   });
 
   test.each([undefined, 'codex'])(

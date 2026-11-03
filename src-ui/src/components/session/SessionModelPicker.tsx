@@ -134,9 +134,12 @@ export function SessionModelPicker({
   );
   const clearFilters = () => {
     setQuery('');
-    setProviderFilter('all');
     setCapabilityFilters([]);
     searchRef.current?.focus();
+  };
+  const browseAllModels = () => {
+    setProviderFilter('all');
+    clearFilters();
   };
   const navigationChoices: (ModelProviderOption & { icon: ReactNode })[] = [
     {
@@ -563,6 +566,9 @@ export function SessionModelPicker({
                       >
                         {modelSections.map((section) =>
                           section.kind === 'model' ? (
+                            // A fieldset IS role="group", which is what a listbox
+                            // accepts around its options; the legend names the model
+                            // whose routes these are.
                             <fieldset
                               key={`model:${section.canonicalId}`}
                               className="session-model-picker__model-group"
@@ -580,13 +586,14 @@ export function SessionModelPicker({
                           <FilteredEmpty
                             query={query}
                             noun="models"
-                            onClear={clearFilters}
+                            onClear={browseAllModels}
+                            clearLabel="Browse all models"
                             variant="compact"
                             title={emptyTitle}
                             description={
                               emptyFavorites && !query.trim()
                                 ? 'Star a model to find it here.'
-                                : 'Clear filters to see all models.'
+                                : ''
                             }
                           />
                         )}
