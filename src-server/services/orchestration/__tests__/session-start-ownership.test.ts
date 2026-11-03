@@ -1,4 +1,5 @@
 import { join } from 'node:path';
+import type { SessionCapabilityDeliveryMetadata } from '@kontourai/station-contracts/provider';
 import { expect, test, vi } from 'vitest';
 import {
   createGateTestRegistry,
@@ -23,8 +24,13 @@ test.each(['delayed events', 'confirmed configuration'])(
       label: 'home-media',
       endpoint: 'https://proxy.example:8317',
     };
-    const capabilityDelivery = {
-      tools: { requested: true, delivered: true, channel: 'mcp' },
+    const capabilityDelivery: SessionCapabilityDeliveryMetadata = {
+      toolServers: {
+        source: 'agent',
+        requested: ['inventory'],
+        delivered: ['inventory'],
+        undelivered: [],
+      },
     };
     if (ordering === 'confirmed configuration') {
       const start = adapter.startSession.bind(adapter);

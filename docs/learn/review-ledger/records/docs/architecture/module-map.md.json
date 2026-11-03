@@ -1604,7 +1604,9 @@
 
     "src-server/services/orchestration/__tests__/create-request-claims.process.test.ts",
 
-    "src-server/services/orchestration/__tests__/ownership-cascade-gaps.test.ts"
+    "src-server/services/orchestration/__tests__/ownership-cascade-gaps.test.ts",
+
+    "src-server/services/orchestration/__tests__/session-start-ownership.test.ts"
   ],
 
   "checks": [
