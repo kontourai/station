@@ -44,8 +44,13 @@ Station has no `port + 1` terminal listener; the SDK no longer exports
 Both return a `TerminalSession`, the narrow interface a renderer consumes:
 `terminalId`, `state` (`connecting`, `replaying`, `ready`, `reconnecting`,
 `failed`, `detached`), `status`, `readOnly`, `error`; `subscribe({output,
-reset, change})`, `write(data)`, `resize(cols, rows)`, `cwd()`, `close()` and
-`detach()`. A new subscriber first receives the retained output (256 KiB per
+reset, change})`, `write(data)`, `resize(cols, rows)`, `cwd()`,
+`restart({subdirectory?})`, `close()` and `detach()`. `restart` runs the
+session's program again under the same id (a shell, an agent tab, or a package
+script resolved again by name) and resolves with `{restartedAfterSeq}`; the new
+run's output follows on the same session, with no reattach. It needs operate
+authority and rejects with `refused` for an agent's command or a server-owned
+launch. A new subscriber first receives the retained output (256 KiB per
 session by default), then live output; `reset` means earlier output is gone.
 Input is coalesced per animation frame and held until replay is acknowledged;
 resize is latest-wins. After a dropped socket the store reconnects with backoff
@@ -75,9 +80,9 @@ A `list` record's `launch` also names a command session's program:
 agent's approved command; such records carry `kind: 'command'` and, once
 ended, `exitCode`. The script runner (#3994) is
 `listProjectTerminalScripts(apiBase, projectSlug)` (`{packageManager,
-scripts: [{name, command}]}`, or null on a host without it),
-`runProjectTerminalScript(apiBase, projectSlug, name)` (`{terminalId}`) and
-`restartProjectTerminalSession(apiBase, projectSlug, terminalId, bindingKey?)`.
+scripts: [{name, command}]}`, or null on a host without it) and
+`runProjectTerminalScript(apiBase, projectSlug, name)` (`{terminalId}`);
+a script restarts through its session's `restart()`.
 `closeProjectTerminalSession(apiBase, projectSlug, terminalId, bindingKey)`
 ends a session in any binding the caller may operate.
 

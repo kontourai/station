@@ -39,7 +39,8 @@ const { executeCodingCommand, store, FakeSession } = vi.hoisted(() => {
     listeners = new Set<Listener>();
     write = vi.fn((_data: string) => this.state === 'ready');
     resize = vi.fn();
-    cwd = vi.fn(async () => '/workspace/live');
+    cwd = vi.fn(async (): Promise<string | null> => '/workspace/live');
+    restart = vi.fn(async () => ({ restartedAfterSeq: 4 }));
     close = vi.fn(async () => undefined);
     detach = vi.fn(() => {
       this.state = 'detached';
@@ -459,12 +460,13 @@ test('adds the selection as a terminal chip with the live directory, leaving the
   expect(session.write).not.toHaveBeenCalled();
 });
 
-test('a script view starts each line at a bare line feed, across reads, and offers Restart once it ends', async () => {
-  const restart = vi.fn();
+test('a script view starts each line at a bare line feed, across reads, and restarts its own session once it ends', async () => {
+  const onRestarted = vi.fn();
   renderTerminal({
     command: true,
     attachOnly: true,
-    ended: { message: 'check exited with code 3.', restart },
+    ended: { message: 'check exited with code 3.', restartable: true },
+    onRestarted,
   });
   const { session } = await connectTerminal();
   act(() => session.output('checking...\nfound\r', 1));
@@ -477,7 +479,33 @@ test('a script view starts each line at a bare line feed, across reads, and offe
     'check exited with code 3.',
   );
   fireEvent.click(screen.getByRole('button', { name: 'Restart' }));
-  expect(restart).toHaveBeenCalledTimes(1);
+  await waitFor(() => expect(onRestarted).toHaveBeenCalledTimes(1));
+  expect(session.restart).toHaveBeenCalledTimes(1);
+  // The same view continues: the new run is running, so the notice goes.
+  act(() => session.emit({ status: 'running' }));
+  expect(screen.queryByRole('alert')).toBeNull();
+});
+
+test('a refused restart says why and keeps the ended notice', async () => {
+  renderTerminal({
+    command: true,
+    attachOnly: true,
+    ended: { message: 'check exited with code 3.', restartable: true },
+  });
+  const { session } = await connectTerminal();
+  session.restart.mockRejectedValue(
+    new Error('This terminal cannot be restarted'),
+  );
+  act(() => session.emit({ status: 'exited' }));
+  fireEvent.click(await screen.findByRole('button', { name: 'Restart' }));
+  await waitFor(() =>
+    expect(
+      screen
+        .getAllByRole('alert')
+        .map((alert) => alert.textContent)
+        .join(' '),
+    ).toContain('Unable to restart: This terminal cannot be restarted'),
+  );
 });
 
 test('a shell view passes its output through unchanged', async () => {

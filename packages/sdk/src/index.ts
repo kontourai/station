@@ -247,7 +247,6 @@ export {
   listProjectViews,
   openOrAdoptProjectShell,
   type ProjectTerminalScript,
-  restartProjectTerminalSession,
   runProjectTerminalScript,
 } from './client/projects';
 export {

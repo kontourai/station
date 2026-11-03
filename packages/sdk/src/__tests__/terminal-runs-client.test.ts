@@ -1,7 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   listProjectTerminalScripts,
-  restartProjectTerminalSession,
   runProjectTerminalScript,
 } from '../client/projects';
 import {
@@ -71,7 +70,7 @@ describe('terminal run and script runner clients (#3994)', () => {
     );
   });
 
-  it('lists, runs and restarts package scripts in the Project binding', async () => {
+  it('lists and runs package scripts in the Project binding', async () => {
     vi.mocked(fetch).mockResolvedValueOnce(json(404, { success: false }));
     await expect(
       listProjectTerminalScripts('http://s.test', 'alpha'),
@@ -85,14 +84,5 @@ describe('terminal run and script runner clients (#3994)', () => {
     expect(
       JSON.parse(String(vi.mocked(fetch).mock.calls[1]![1]?.body)),
     ).toEqual({ bindingKey: 'project', script: 'test' });
-    vi.mocked(fetch).mockResolvedValueOnce(
-      json(200, { success: true, data: {} }),
-    );
-    await restartProjectTerminalSession('http://s.test', 'alpha', 't-1');
-    const [url, init] = vi.mocked(fetch).mock.calls[2]!;
-    expect(String(url)).toBe(
-      'http://s.test/api/projects/alpha/terminal-sessions/t-1/restart',
-    );
-    expect(JSON.parse(String(init?.body))).toEqual({ bindingKey: 'project' });
   });
 });

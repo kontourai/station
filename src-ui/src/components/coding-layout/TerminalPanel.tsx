@@ -51,6 +51,7 @@ export function TerminalPanel({
   readOnly = false,
   command = false,
   ended,
+  onRestarted,
 }: {
   projectSlug: string;
   workingDir: string;
@@ -73,7 +74,9 @@ export function TerminalPanel({
   /** A program without a terminal (a script), which writes bare line feeds. */
   command?: boolean;
   /** What to say once the program ends, and how to run it again (a script). */
-  ended?: { message: string; restart?: () => void };
+  ended?: { message: string; restartable: boolean };
+  /** The session's program was run again (`ended.restartable`). */
+  onRestarted?: () => void;
   /** True when this is the visible terminal tab; only then does it accept
    * externally-injected input (e.g. "Send to terminal" from the file tree). */
   isActive?: boolean;
@@ -187,6 +190,7 @@ export function TerminalPanel({
         setWsError('The shell has exited.');
         return;
       }
+      setExited(false);
       setWsError(
         current.state === 'reconnecting' ? 'Terminal reconnecting…' : null,
       );
@@ -262,6 +266,19 @@ export function TerminalPanel({
         error instanceof Error
           ? error.message
           : 'Output was not added to chat.',
+      );
+    }
+  };
+
+  // The same session runs its program again; its new output follows here.
+  const restart = async () => {
+    try {
+      await sessionRef.current?.restart();
+      setHandoffError(null);
+      onRestarted?.();
+    } catch (error) {
+      setHandoffError(
+        `Unable to restart: ${error instanceof Error ? error.message : 'try again.'}`,
       );
     }
   };
@@ -347,8 +364,8 @@ export function TerminalPanel({
       {wsError ? (
         <div className="coding-terminal-connection" role="alert">
           <span>{(exited && ended?.message) || wsError}</span>
-          {exited && ended?.restart ? (
-            <button type="button" onClick={ended.restart}>
+          {exited && ended?.restartable && sessionRef.current ? (
+            <button type="button" onClick={() => void restart()}>
               Restart
             </button>
           ) : (

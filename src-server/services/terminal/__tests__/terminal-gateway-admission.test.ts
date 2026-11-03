@@ -594,6 +594,39 @@ describe('terminal gateway admission (#3994)', () => {
       });
   });
 
+  test('TerminalSession.restart() runs an ended script again by name in the same view, and refuses an agent command', async () => {
+    await start();
+    const { record } = await sessions.openCommand('operator', scope, {
+      program: { kind: 'script', name: 'test' },
+    });
+    spawned.at(-1)!.write('exit');
+    const store = storeFor('operator');
+    const view = store.attach(scope, record.terminalId);
+    await expect.poll(() => view.status).toBe('exited');
+    const before = spawned.length;
+    const { restartedAfterSeq } = await view.restart();
+    expect(restartedAfterSeq).toBeGreaterThanOrEqual(0);
+    expect(spawned).toHaveLength(before + 1);
+    expect(spawned.at(-1)?.launch).toEqual({
+      file: 'package-manager',
+      args: ['run', 'test'],
+    });
+    await expect.poll(() => view.status).toBe('running');
+    const [listed] = (await store.list(scope)).filter(
+      (item) => item.terminalId === record.terminalId,
+    );
+    expect(listed).toMatchObject({ status: 'running' });
+
+    const agentRun = await sessions.openCommand('operator', scope, {
+      program: { kind: 'run', command: 'echo hi' },
+    });
+    const agentView = store.attach(scope, agentRun.record.terminalId);
+    await expect.poll(() => agentView.state).toBe('ready');
+    await expect(agentView.restart()).rejects.toMatchObject({
+      code: 'refused',
+    });
+  });
+
   test('a server-owned launch exits with its code and is attachable by id', async () => {
     await start();
     const signIn = {

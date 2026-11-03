@@ -48,9 +48,7 @@ export function CodingTerminalPanel({
   onCloseTab,
   closingTabIds = new Set(),
   closeErrors = {},
-  onRestartTab,
-  restartErrors = {},
-  restarts = {},
+  onTabRestarted,
   notice,
   onToggleTabMode,
   canTogglePTY,
@@ -83,10 +81,8 @@ export function CodingTerminalPanel({
   /** Per-tab close errors remain visible and can be retried. */
   closeErrors?: Readonly<Record<string, string>>;
   /** Runs a script tab's program again under the same session. */
-  onRestartTab?: (id: string) => void | Promise<void>;
-  restartErrors?: Readonly<Record<string, string>>;
-  /** How many times each tab restarted; a restart starts a new view. */
-  restarts?: Readonly<Record<string, number>>;
+  /** A script tab's program was run again. */
+  onTabRestarted?: (id: string) => void;
   /** A failure that belongs to no tab (a script that did not start). */
   notice?: string | null;
   onToggleTabMode: (id: string) => void;
@@ -312,22 +308,6 @@ export function CodingTerminalPanel({
         </div>
       ) : null}
       {tabs.map((tab) =>
-        restartErrors[tab.id] ? (
-          <div
-            className="coding-layout__terminal-close-error"
-            key={`restart-error-${tab.id}`}
-            role="alert"
-          >
-            <span>
-              Unable to restart {tab.label}: {restartErrors[tab.id]}
-            </span>
-            <button type="button" onClick={() => onRestartTab?.(tab.id)}>
-              Retry restart
-            </button>
-          </div>
-        ) : null,
-      )}
-      {tabs.map((tab) =>
         closeErrors[tab.id] ? (
           <div
             className="coding-layout__terminal-close-error"
@@ -384,19 +364,16 @@ export function CodingTerminalPanel({
                   target={
                     projectId ? { projectId, bindingKey: 'project' } : undefined
                   }
-                  viewKey={
-                    restarts[tab.id] ? `${tab.id}:${restarts[tab.id]}` : tab.id
-                  }
+                  viewKey={tab.id}
                   terminalId={tab.terminalId}
                   {...(tab.type === 'script' && {
                     attachOnly: true,
                     command: true,
                     ended: {
                       message: scriptEndedText(tab),
-                      ...(onRestartTab && {
-                        restart: () => onRestartTab(tab.id),
-                      }),
+                      restartable: true,
                     },
+                    onRestarted: () => onTabRestarted?.(tab.id),
                   })}
                   legacyTerminalId={tab.legacyTerminalId}
                   launch={

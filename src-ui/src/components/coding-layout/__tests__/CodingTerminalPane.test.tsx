@@ -108,14 +108,6 @@ vi.mock('@kontourai/station-sdk', () => ({
     });
     return { terminalId };
   },
-  restartProjectTerminalSession: async (...args: [string, string, string]) => {
-    await scripts.restart(...args);
-    for (const record of server.records)
-      if (record.terminalId === args[2]) {
-        record.status = 'running';
-        delete record.exitCode;
-      }
-  },
   // The service ends the session; the list keeps it, ended.
   closeProjectTerminal: async (...args: [string, string, string]) => {
     const result = await closeProjectTerminal(...args);
@@ -147,13 +139,15 @@ vi.mock('../TerminalPanel', async () => {
       onOpened,
       viewKey,
       ended,
+      onRestarted,
     }: {
       terminalId?: string;
       target?: { projectId: string; bindingKey: string };
       launch?: unknown;
       onOpened?: (terminalId: string) => void;
       viewKey?: string;
-      ended?: { message: string; restart?: () => void };
+      ended?: { message: string; restartable: boolean };
+      onRestarted?: () => void;
     }) => {
       const projectId = target?.projectId;
       useEffect(() => {
@@ -177,8 +171,20 @@ vi.mock('../TerminalPanel', async () => {
         <div>
           Terminal renderer without a snapshot
           {/* The real view offers this once the program has ended. */}
-          {ended?.restart ? (
-            <button type="button" onClick={ended.restart}>
+          {ended?.restartable && terminalId ? (
+            <button
+              type="button"
+              onClick={async () => {
+                // The view restarts its own session, as the real one does.
+                await scripts.restart(terminalId);
+                for (const record of server.records)
+                  if (record.terminalId === terminalId) {
+                    record.status = 'running';
+                    delete record.exitCode;
+                  }
+                onRestarted?.();
+              }}
+            >
               Restart
             </button>
           ) : null}
@@ -765,17 +771,12 @@ test('a package script runs from the "+" picker in its own tab, shows how it end
     ),
   ).toBeTruthy();
 
-  // Restart runs it again under the same session, in a new view.
+  // Restart runs it again in the same view of the same session, and the
+  // tab reads the new run from the server.
   server.attach.mockClear();
   fireEvent.click(screen.getByRole('button', { name: 'Restart' }));
-  await waitFor(() =>
-    expect(scripts.restart).toHaveBeenCalledWith(
-      'http://station.test',
-      'project-a',
-      SCRIPT,
-    ),
-  );
-  await waitFor(() => expect(server.attach).toHaveBeenCalledWith(SCRIPT));
+  await waitFor(() => expect(scripts.restart).toHaveBeenCalledWith(SCRIPT));
+  expect(server.attach).not.toHaveBeenCalled();
   expect(
     await screen.findByRole('tab', { name: 'test, Running' }),
   ).toBeTruthy();

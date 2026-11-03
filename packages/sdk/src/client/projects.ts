@@ -434,27 +434,6 @@ export async function runProjectTerminalScript(
   return { terminalId: record.terminalId };
 }
 
-/**
- * `POST /api/projects/:slug/terminal-sessions/:id/restart` — ends the
- * session's program and starts it again under the same id; earlier output
- * stays above the new run.
- */
-export async function restartProjectTerminalSession(
-  apiBase: string,
-  projectSlug: string,
-  terminalId: string,
-  bindingKey = 'project',
-  opts?: ClientRequestOptions,
-): Promise<void> {
-  const response = await mutateJson(
-    `${apiBase}/api/projects/${encodeURIComponent(projectSlug)}/terminal-sessions/${encodeURIComponent(terminalId)}/restart`,
-    'POST',
-    opts,
-    { bindingKey },
-  );
-  await unwrapOrThrow(response, 'Failed to restart terminal');
-}
-
 /** `POST /api/projects/:slug/file-preview` — bounded, project-bound file preview. */
 export async function previewProjectWorkspaceFile(
   apiBase: string,

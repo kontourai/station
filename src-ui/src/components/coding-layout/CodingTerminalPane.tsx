@@ -2,7 +2,6 @@ import {
   closeProjectTerminal,
   listProjectTerminalScripts,
   openOrAdoptProjectShell,
-  restartProjectTerminalSession,
   runProjectTerminalScript,
   type TerminalSessionRecord,
 } from '@kontourai/station-sdk';
@@ -355,16 +354,6 @@ export function CodingTerminalPane({
   const [closeErrors, setCloseErrors] = useState<
     Readonly<Record<string, string>>
   >({});
-  const [restartErrors, setRestartErrors] = useState<
-    Readonly<Record<string, string>>
-  >({});
-  const [restartingTabIds, setRestartingTabIds] = useState<ReadonlySet<string>>(
-    () => new Set(),
-  );
-  // Each restart remounts the tab's view, so it attaches to the new run.
-  const [restarts, setRestarts] = useState<Readonly<Record<string, number>>>(
-    {},
-  );
   const [scriptError, setScriptError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -503,28 +492,6 @@ export function CodingTerminalPane({
     }
   };
 
-  const restartTab = async (id: string) => {
-    const tab = tabs.find((candidate) => candidate.id === id);
-    if (!tab?.terminalId || restartingTabIds.has(id)) return;
-    setRestartingTabIds((current) => new Set(current).add(id));
-    setRestartErrors(({ [id]: _cleared, ...remaining }) => remaining);
-    try {
-      await restartProjectTerminalSession(apiBase, projectSlug, tab.terminalId);
-      setRestarts((current) => ({ ...current, [id]: (current[id] ?? 0) + 1 }));
-      void queryClient.invalidateQueries({ queryKey: sessionsKey });
-    } catch (error) {
-      setRestartErrors((current) => ({
-        ...current,
-        [id]: userFacingErrorMessage(error),
-      }));
-    } finally {
-      setRestartingTabIds((current) => {
-        const next = new Set(current);
-        next.delete(id);
-        return next;
-      });
-    }
-  };
   // An open, empty terminal is a shell waiting to be asked for; it opens
   // one (U7). Once per mount, and never while the panel is closed, the
   // kinds are still unknown, or the server has not yet said which sessions
@@ -713,9 +680,10 @@ export function CodingTerminalPane({
         onCloseTab={closeTab}
         closingTabIds={closingTabIds}
         closeErrors={closeErrors}
-        onRestartTab={restartTab}
-        restartErrors={restartErrors}
-        restarts={restarts}
+        // The tab's badge reads the server's record of the new run.
+        onTabRestarted={() =>
+          void queryClient.invalidateQueries({ queryKey: sessionsKey })
+        }
         notice={scriptError}
         onToggleTabMode={toggleTabMode}
         canTogglePTY={canTogglePTY}

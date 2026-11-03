@@ -122,6 +122,16 @@ export interface TerminalSession {
   resize(cols: number, rows: number): void;
   /** The shell's working directory, or null when unknown. */
   cwd(): Promise<string | null>;
+  /**
+   * Runs the session's program again under the same id: a shell, an agent
+   * tab, or a package script resolved again by name. Its earlier output
+   * stays; the new run's follows `restartedAfterSeq` on this session.
+   * `subdirectory` (relative) moves it within its binding. Needs operate
+   * authority; an agent's command and a server-owned launch are refused.
+   */
+  restart(options?: {
+    subdirectory?: string;
+  }): Promise<{ restartedAfterSeq: number }>;
   /** Ends the shell. */
   close(): Promise<void>;
   /** Stops this view; the shell keeps running and can be attached again. */
@@ -697,7 +707,10 @@ export class TerminalSessionStore {
           pending.reject(errorFor(message.code, message.message));
         else if (message.type === 'list') pending.resolve(message.records);
         else if (message.type === 'cwd') pending.resolve(message.cwd);
-        else pending.resolve(undefined);
+        else
+          pending.resolve(
+            (message as { restartedAfterSeq?: unknown }).restartedAfterSeq,
+          );
         // A refused request (a resize of an ended shell) belongs to its
         // caller, not to the session's channel.
         return;
@@ -819,6 +832,22 @@ class StoreSession implements TerminalSession {
       channel: this.channel,
     });
     return typeof cwd === 'string' ? cwd : null;
+  }
+
+  async restart(
+    options: { subdirectory?: string } = {},
+  ): Promise<{ restartedAfterSeq: number }> {
+    await this.whenReady();
+    const restartedAfterSeq = await this.store.request({
+      type: 'restart',
+      channel: this.channel,
+      ...(options.subdirectory !== undefined && {
+        subdirectory: options.subdirectory,
+      }),
+    });
+    if (typeof restartedAfterSeq !== 'number')
+      throw new TerminalSessionError('protocol');
+    return { restartedAfterSeq };
   }
 
   async close(): Promise<void> {
