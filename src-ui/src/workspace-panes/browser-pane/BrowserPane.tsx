@@ -1934,9 +1934,9 @@ function BrowserSessionPane({
               <BrowserScreenshot
                 shot={shot}
                 onDismiss={() => setShot(null)}
-                {...(artifactsEnabled
-                  ? {
-                      onAttach: () => {
+                onAttach={
+                  artifactsEnabled
+                    ? () => {
                         void Promise.resolve()
                           .then(async () => {
                             const attach = attachFiles();
@@ -1994,9 +1994,9 @@ function BrowserSessionPane({
                                   : 'Could not attach screenshot.',
                               ),
                           );
-                      },
-                    }
-                  : {})}
+                      }
+                    : undefined
+                }
               />
             ) : null}
             {newDialog && !isDismissed(newDialog) ? (
