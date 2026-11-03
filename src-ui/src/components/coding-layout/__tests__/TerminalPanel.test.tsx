@@ -233,7 +233,7 @@ test('renders through the public TerminalView and leaves connection notices to t
   expect(typeof props.onAddToChat).toBe('function');
 });
 
-test('screen reader mode follows this device\'s terminal setting, off by default', async () => {
+test("screen reader mode follows this device's terminal setting, off by default", async () => {
   deviceSettingsStore.reset('terminalScreenReader');
   renderTerminal();
   await connectTerminal();

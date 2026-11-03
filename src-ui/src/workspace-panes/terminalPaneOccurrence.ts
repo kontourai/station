@@ -36,9 +36,7 @@ type Storage = Pick<
   'getItem' | 'setItem' | 'removeItem' | 'length' | 'key'
 >;
 
-function parseTerminalPaneState(
-  value: unknown,
-): TerminalPaneState | null {
+function parseTerminalPaneState(value: unknown): TerminalPaneState | null {
   if (typeof value !== 'object' || value === null || Array.isArray(value))
     return null;
   const state = value as Record<string, unknown>;

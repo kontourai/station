@@ -217,8 +217,7 @@ describe('shortcut list spelling and duplicates', () => {
       mac() ? '⌘C' : formatShortcutChord(['cmd', 'shift'], 'c', false),
     );
     expect(
-      screen.getByText('Leave the terminal')
-        .parentElement?.textContent,
+      screen.getByText('Leave the terminal').parentElement?.textContent,
     ).toContain('Esc then Tab');
   });
 });
