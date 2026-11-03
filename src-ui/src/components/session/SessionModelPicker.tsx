@@ -57,6 +57,8 @@ interface SessionModelPickerProps {
   onClose: () => void;
   /** See `ModelPickerDialogFrame`'s `returnFocusTarget`. */
   returnFocusTarget?: HTMLElement | null;
+  /** See `ModelPickerDialogFrame`'s `hostTitleId`. */
+  hostTitleId?: string;
 }
 
 export function formatContextWindow(tokens: number): string {
@@ -85,6 +87,7 @@ export function SessionModelPicker({
   onRuntimeOptionChange,
   onClose,
   returnFocusTarget,
+  hostTitleId,
 }: SessionModelPickerProps) {
   const [query, setQuery] = useState('');
   const [providerFilter, setProviderFilter] = useState('all');
@@ -306,6 +309,7 @@ export function SessionModelPicker({
     <ModelPickerDialogFrame
       onClose={onClose}
       returnFocusTarget={returnFocusTarget}
+      hostTitleId={hostTitleId}
       title={
         stationControl || models.some((model) => model.executionAgentId)
           ? 'Engine & model'

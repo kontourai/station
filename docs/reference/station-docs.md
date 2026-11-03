@@ -118,6 +118,7 @@ Engines use different transports, including native SDKs, headless processes,
 and the Agent Client Protocol. The user-facing identity is the engine's name.
 The runtime-owned Station Agent is a role, not a synonym for Station's engine;
 its selected execution engine determines the available delivery mechanisms.
+People see it as **Station Assistant** (#4388); its id stays `station`.
 
 Each engine has a capability matrix for system prompts, tool servers, skills,
 commands, and model selection. Requested authored content without a supported

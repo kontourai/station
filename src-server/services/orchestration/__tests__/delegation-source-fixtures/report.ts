@@ -9,6 +9,7 @@ import {
 } from '../../../../security/runtime-request-security.js';
 import { createLogger } from '../../../../utils/logger.js';
 import { AgentService } from '../../../agents/agent-service.js';
+import { FileDelegationAttemptClaimStore } from '../../delegation-attempt-claim-store.js';
 import { StationDelegationPersistence } from '../../delegation-group-persistence.js';
 import { StationReportGroupCustody } from '../../station-report-group-custody.js';
 import { StationReportGroupPreparation } from '../../station-report-group-preparation.js';
@@ -26,6 +27,9 @@ export async function setup(
 ) {
   vi.spyOn(Date, 'now').mockReturnValue(now);
   const f = await fixture(kind);
+  const delegationAttemptClaimStore = new FileDelegationAttemptClaimStore(
+    f.home,
+  );
   await f.loader.loadAppConfig();
   await f.storage.saveProviderConnection({
     id: 'anthropic-1',
@@ -70,6 +74,7 @@ export async function setup(
   const preparationOwners: ConstructorParameters<
     typeof StationReportGroupPreparation
   >[0] = {
+    delegationAttemptClaimStore,
     runtime: {
       configLoader: f.loader,
       storageAdapter: f.storage,
@@ -123,6 +128,7 @@ export async function setup(
   };
   return {
     f,
+    delegationAttemptClaimStore,
     owner,
     input,
     rawFetch,

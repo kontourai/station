@@ -53,6 +53,7 @@ import {
   type DelegatedTaskHandle,
   delegateTask,
 } from '../../tools/station-control-delegation.js';
+import type { DelegationAttemptClaimStore } from './delegation-attempt-claim-store.js';
 import { RoundsFinalFetchLaunchFence } from './delegation-group-launch-fence.js';
 import {
   createPreparedSdkSourceWireOwner,
@@ -142,6 +143,7 @@ export class StationReportGroupPreparation {
   constructor(
     private readonly owners: {
       runtime: RuntimeFencedCredentialObservationOwners;
+      delegationAttemptClaimStore?: DelegationAttemptClaimStore;
       sources: LocalSourceAdmissionOwner;
       qualification:
         | SealedProviderPreparation
@@ -1090,6 +1092,7 @@ export class StationReportGroupPreparation {
     const task = await delegateTask(
       {
         reservedStationTurn: port,
+        delegationAttemptClaimStore: this.owners.delegationAttemptClaimStore,
         delegationGroupAdmission: {
           assertCurrent: finalizeCurrent,
           signal,
@@ -1105,6 +1108,7 @@ export class StationReportGroupPreparation {
         },
         prompt: member.brief,
         sessionId: member.taskId,
+        clientTurnId: member.clientTurnId,
         initialClientTurnId: member.clientTurnId,
         userId: principal.id,
         principal,

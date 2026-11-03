@@ -1,0 +1,39 @@
+{
+  "path": "docs/design/verified-action-replay.md",
+
+  "kind": "design",
+
+  "state": "classified",
+
+  "summary": "Proposal for saving a verified Agent browser action sequence and replaying it inside a bound Session through the existing browser authority, lease, fence and approval path, with an observed-progress end check (not proof of cause), hand-off to the calling Agent, invalidation, secret handles and alternatives. Separately lists the current Station behavior the proposal depends on.",
+
+  "limits": "Design exploration only; nothing in it is implemented. The pilot timing and end-mismatch observation come from one run of an external framework, not a Station measurement. The current-behavior section was checked by source inspection, not by executing tests.",
+
+  "sources": [
+    "src-server/tools/station-control-browser-tools.ts",
+
+    "src-server/services/browser/browser-automation.ts",
+
+    "src-server/routes/browser-agent.ts",
+
+    "src-server/services/browser/browser-agent-authority.ts",
+
+    "src-server/services/live-surface/control-lease.ts",
+
+    "src-server/services/browser/browser-session-registry.ts",
+
+    "packages/contracts/src/secret-binding.ts",
+
+    "docs/decisions/browser-agent-actions-and-bound-channel.md",
+
+    "docs/decisions/device-agent-control.md",
+
+    "docs/guides/browser-workspace.md",
+
+    "docs/guides/mobile-device-workspace.md"
+  ],
+
+  "checks": [
+    "Read the proposal against the cited decisions, guides and sources, and kept all proposed behavior explicitly unimplemented."
+  ]
+}

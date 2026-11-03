@@ -114,6 +114,7 @@ test.each([
       runtime: h.preparationOwners.runtime,
       orchestration,
       rawFetch: h.rawFetch,
+      delegationAttemptClaimStore: h.delegationAttemptClaimStore,
       publicationParticipant: participant,
     });
     let createFailure: unknown;

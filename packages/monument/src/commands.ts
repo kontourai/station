@@ -544,6 +544,7 @@ export interface SteerReceiptReadCommand extends SteerReceiptKey {
   readonly inputDigest: string;
 }
 export type SteerReceiptReadResult =
+  | { readonly kind: 'conflict' }
   | { readonly kind: 'absent' }
   | { readonly kind: 'indeterminate' }
   | { readonly kind: 'confirmed'; readonly turnId: string };

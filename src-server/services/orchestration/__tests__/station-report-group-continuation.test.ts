@@ -204,6 +204,7 @@ test.each([
       runtime: h.preparationOwners.runtime,
       orchestration,
       rawFetch: h.rawFetch,
+      delegationAttemptClaimStore: h.delegationAttemptClaimStore,
     };
     const runtimeOwner = new StationRuntime({ projectHomeDir: h.f.home });
     const participant = Reflect.get(

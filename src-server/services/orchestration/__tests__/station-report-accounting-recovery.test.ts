@@ -88,6 +88,7 @@ async function recoveryFixture() {
     runtime: h.preparationOwners.runtime,
     orchestration,
     rawFetch: h.rawFetch,
+    delegationAttemptClaimStore: h.delegationAttemptClaimStore,
   };
   return { h, adapter, orchestration, eventStore, owners, relay, runtimeOwner };
 }

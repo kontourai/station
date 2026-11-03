@@ -62,6 +62,7 @@ test('underfunded three-seat admission refuses before Task or provider effects; 
     runtime: h.preparationOwners.runtime,
     orchestration,
     rawFetch: h.rawFetch,
+    delegationAttemptClaimStore: h.delegationAttemptClaimStore,
   });
   const stamped = getRuntimeAuthenticatedRequestPrincipal(h.f.req);
   assert.ok(stamped && stamped.kind !== 'internal');

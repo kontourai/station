@@ -21,6 +21,7 @@ import {
   readFileSync,
   realpathSync,
   rmSync,
+  statSync,
   symlinkSync,
   writeFileSync,
 } from 'node:fs';
@@ -60,6 +61,7 @@ import {
   awaitSessionAttachmentSettled,
   awaitSessionRecoveryCompleted,
 } from '../../../__test-utils__/session-runtime-barriers.js';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { FileStorageAdapter } from '../../../domain/file-storage-adapter.js';
 import { MonitoringEmitter } from '../../../monitoring/emitter.js';
 import type {
@@ -17919,7 +17921,7 @@ describe('OrchestrationService', () => {
     });
 
     // #3559: retention must never turn an old key back into a new one.
-    test('a retry of an evicted clientTurnId is refused as indeterminate and never reaches the adapter', async () => {
+    test('an unexpired clientTurnId survives legacy cap pressure and replays without another adapter call', async () => {
       const cappedStore = new EventStore(join(tmp, 'capped-dedup.sqlite'), 2);
       const cappedService = new OrchestrationService({
         adapterRegistry: createRegistry([claude]),
@@ -17949,14 +17951,14 @@ describe('OrchestrationService', () => {
               clientTurnId,
             },
           });
-        // Same-millisecond rows are evicted in key order: `client-a` first.
+        // Legacy cap pressure cannot evict a key inside its retry window.
         for (const clientTurnId of ['client-a', 'client-b', 'client-c'])
           await send(clientTurnId);
         expect(claude.sendTurn).toHaveBeenCalledTimes(3);
 
-        await expect(send('client-a')).rejects.toMatchObject({
-          code: 'foreground_message_indeterminate',
-          outcome: 'indeterminate',
+        await expect(send('client-a')).resolves.toMatchObject({
+          threadId: 'thread-3559-evicted',
+          turnId: 'evicted-turn-1',
         });
         expect(claude.sendTurn).toHaveBeenCalledTimes(3);
       } finally {
@@ -19050,16 +19052,102 @@ describe('OrchestrationService', () => {
     // Claude adapter's cwd-less skills overlay keys off this exact flag.
     expect(claude.startSession.mock.calls.at(-1)?.[0].cwdDefaulted).toBe(true);
 
-    await service.dispatch({
-      type: 'startSession',
-      input: {
-        threadId: 'thread-no-slug',
-        provider: 'claude',
-        modelId: 'claude-sonnet',
-      },
+  });
+
+  describe('a chat with no Project runs in its own scratch folder (#4389)', () => {
+    const tempDir = trackTempDirs();
+
+    function scratchService(
+      stationHome: string,
+      folder?: 'private' | 'home',
+    ): OrchestrationService {
+      return new OrchestrationService({
+        adapterRegistry: createRegistry([claude]),
+        eventBus,
+        eventStore,
+        listProjects: () => configuredProjects,
+        logger: { debug: vi.fn(), warn: vi.fn() },
+        noProjectChatStationHome: stationHome,
+        resolveNoProjectChatFolder: async () => folder,
+      });
+    }
+
+    test('a new no-project chat starts its engine in <Station home>/scratch/<conversation>', async () => {
+      const stationHome = tempDir('station-4389-home-');
+      await scratchService(stationHome).dispatch({
+        type: 'startSession',
+        input: {
+          threadId: 'thread-no-slug',
+          provider: 'claude',
+          modelId: 'claude-sonnet',
+        },
+      });
+      const start = claude.startSession.mock.calls.at(-1)?.[0];
+      const scratch = realpathSync(join(stationHome, 'scratch', 'thread-no-slug'));
+      expect(start?.cwd).toBe(scratch);
+      expect(start?.cwd).not.toBe(homedir());
+      expect(statSync(scratch).isDirectory()).toBe(true);
+      // Still Station's choice, not a folder the person bound.
+      expect(start?.cwdDefaulted).toBe(true);
     });
-    expect(claude.startSession.mock.calls.at(-1)?.[0].cwd).toBe(homedir());
-    expect(claude.startSession.mock.calls.at(-1)?.[0].cwdDefaulted).toBe(true);
+
+    test('the Station-level opt-out runs a new no-project chat in the home folder', async () => {
+      const stationHome = tempDir('station-4389-optout-');
+      await scratchService(stationHome, 'home').dispatch({
+        type: 'startSession',
+        input: {
+          threadId: 'thread-no-slug-home',
+          provider: 'claude',
+          modelId: 'claude-sonnet',
+        },
+      });
+      const start = claude.startSession.mock.calls.at(-1)?.[0];
+      expect(start?.cwd).toBe(homedir());
+      expect(start?.cwdDefaulted).toBe(true);
+      expect(existsSync(join(stationHome, 'scratch'))).toBe(false);
+    });
+
+    test('a Project with no folder still runs in the home folder', async () => {
+      configuredProjects.push({ slug: 'no-workdir-4389' });
+      const stationHome = tempDir('station-4389-project-');
+      await scratchService(stationHome).dispatch({
+        type: 'startSession',
+        input: {
+          threadId: 'thread-folderless-project',
+          provider: 'claude',
+          modelId: 'claude-sonnet',
+          metadata: { projectSlug: 'no-workdir-4389' },
+        },
+      });
+      expect(claude.startSession.mock.calls.at(-1)?.[0].cwd).toBe(homedir());
+    });
+
+    test('a chat that already ran in the home folder keeps it when it starts again', async () => {
+      const stationHome = tempDir('station-4389-existing-');
+      // Started before the change (or with the opt-out): it ran in home.
+      await scratchService(stationHome, 'home').dispatch({
+        type: 'startSession',
+        input: {
+          threadId: 'thread-existing-home',
+          provider: 'claude',
+          modelId: 'claude-sonnet',
+        },
+      });
+      expect(eventStore.readSessionByThread('thread-existing-home')?.cwd).toBe(
+        homedir(),
+      );
+      // Its next start, with the private default now in force, does not move it.
+      await scratchService(stationHome).dispatch({
+        type: 'startSession',
+        input: {
+          threadId: 'thread-existing-home',
+          provider: 'claude',
+          modelId: 'claude-sonnet',
+        },
+      });
+      expect(claude.startSession.mock.calls.at(-1)?.[0].cwd).toBe(homedir());
+      expect(existsSync(join(stationHome, 'scratch'))).toBe(false);
+    });
   });
 
   test('startSession leaves ACP unbound chats to the adapter connection default (#1023 review)', async () => {
@@ -26122,6 +26210,10 @@ describe('OrchestrationService', () => {
           modelId: 'claude-sonnet-4-6',
         },
       });
+      // #4389: a no-project start first prepares its scratch folder with real
+      // file I/O, so wait (on real timers) until the catalog read and its
+      // deadline exist before advancing the fake clock past that deadline.
+      await vi.waitFor(() => expect(operationSignal).toBeDefined());
       await vi.advanceTimersByTimeAsync(5_000);
 
       await expect(pending).resolves.toBeDefined();
@@ -27563,9 +27655,9 @@ describe('OrchestrationService', () => {
         eventStore: reopened,
       });
       expect(await restarted.dispatch(command, context)).toEqual(first);
-      expect(
-        await restarted.dispatch({ ...command, childId: 'other' }, context),
-      ).toMatchObject({ outcome: 'indeterminate' });
+      await expect(
+        restarted.dispatch({ ...command, childId: 'other' }, context),
+      ).rejects.toMatchObject({ code: 'client_turn_input_conflict' });
       expect(claude.steerChildWork).toHaveBeenCalledTimes(1);
       expect(claude.steerChildWork).toHaveBeenCalledWith(
         'child-parent',
@@ -27690,7 +27782,7 @@ describe('OrchestrationService', () => {
     try {
       const restarted = new OrchestrationService({ adapterRegistry: createRegistry([claude]), eventBus, eventStore: reopened, logger: { debug: vi.fn(), warn: vi.fn() } });
       expect(await restarted.dispatch({ ...command, clientInputId: 'another' }, context)).toMatchObject({ outcome: 'unsupported' });
-      expect(await restarted.dispatch({ ...command, clientInputId: 'another', input: 'changed' }, context)).toMatchObject({ outcome: 'indeterminate' });
+      await expect(restarted.dispatch({ ...command, clientInputId: 'another', input: 'changed' }, context)).rejects.toMatchObject({ code: 'client_turn_input_conflict' });
       expect(reopened.listChildSteerInstructions(command.threadId, command.childId, 0, 10).entries).toMatchObject([{ delivery: 'delivered' }, { delivery: 'refused' }]);
     } finally { reopened.close(); }
     claude.steerChildWork.mockResolvedValueOnce({ outcome: 'cancelled' } as never);
@@ -27790,9 +27882,9 @@ describe('OrchestrationService', () => {
       });
       expect(await restarted.dispatch(command)).toEqual(first);
       expect(claude.steerTurn).toHaveBeenCalledTimes(1);
-      expect(
-        await restarted.dispatch({ ...command, input: 'different input' }),
-      ).toMatchObject({ outcome: 'indeterminate' });
+      await expect(
+        restarted.dispatch({ ...command, input: 'different input' }),
+      ).rejects.toMatchObject({ code: 'client_turn_input_conflict' });
       expect(claude.steerTurn).toHaveBeenCalledTimes(1);
     } finally {
       reopened.close();

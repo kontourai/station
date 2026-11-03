@@ -34,7 +34,7 @@
 .plugin-permissions__tier {
   border-radius: 4px;
   flex: none;
-  font-size: 10px;
+  font-size: var(--k-text-sm);
   font-weight: 600;
   letter-spacing: 0.5px;
   padding: 2px 6px;
@@ -76,7 +76,7 @@
 .plugin-permissions__id {
   color: var(--text-muted);
   font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: 11px;
+  font-size: var(--k-text-sm);
   overflow: hidden;
   text-overflow: ellipsis;
 }

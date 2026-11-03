@@ -315,6 +315,7 @@ test('sync finalization refuses an absent receipt and recovers a lost result wit
         runtime: h.preparationOwners.runtime,
         orchestration,
         rawFetch: h.rawFetch,
+        delegationAttemptClaimStore: h.delegationAttemptClaimStore,
       });
       const writer = await HomeWriterOwner.forHome(h.f.home);
       const probe = await prepareFileMutationOwner(

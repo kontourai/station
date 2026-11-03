@@ -56,6 +56,7 @@ import {
   withStationControlCallerContext,
 } from '../../tools/station-control-shared.js';
 import { HomeWriterOwner } from '../ssh/home-writer-owner.js';
+import type { DelegationAttemptClaimStore } from './delegation-attempt-claim-store.js';
 import { FinalFetchLaunchFence } from './delegation-group-launch-fence.js';
 import {
   createPreparedSdkSourceWireOwner,
@@ -159,6 +160,7 @@ export class PortableGroupPreparation {
   constructor(
     private readonly owners: {
       runtime: RuntimeFencedCredentialObservationOwners;
+      delegationAttemptClaimStore?: DelegationAttemptClaimStore;
       sources: LocalSourceAdmissionOwner;
       qualification:
         | SealedProviderPreparation
@@ -1329,10 +1331,15 @@ export class PortableGroupPreparation {
     const requestDelegation = this.#requestAuthorities.get(
       context.req.raw,
     )?.delegation;
+    const caller = stationControlRequestAuthority(context.req.raw);
     const launchTask = () =>
       delegateTask(
         {
           reservedStationTurn: port,
+          delegationAttemptClaimStore: this.owners.delegationAttemptClaimStore,
+          ...(caller?.kind === 'caller'
+            ? { createRequestCallerSessionId: caller.caller.sessionId }
+            : {}),
           ...(requestDelegation
             ? {
                 ownerAttribution: 'verified-bound' as const,
@@ -1343,6 +1350,7 @@ export class PortableGroupPreparation {
           delegationGroupAdmission: { assertCurrent: finalizeCurrent, signal },
           prompt: member.brief,
           sessionId: member.taskId,
+          clientTurnId: member.clientTurnId,
           initialClientTurnId: member.clientTurnId,
           userId: principal.id,
           principal,
@@ -1356,7 +1364,6 @@ export class PortableGroupPreparation {
         },
         orchestration,
       );
-    const caller = stationControlRequestAuthority(context.req.raw);
     let task: Awaited<ReturnType<typeof delegateTask>>;
     if (caller?.kind === 'caller') {
       const token = context.req.raw.headers.get(

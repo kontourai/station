@@ -382,6 +382,7 @@ test('a lost reappraisal receipt can be finalized and replayed through Station c
       runtime: h.preparationOwners.runtime,
       orchestration,
       rawFetch: h.rawFetch,
+      delegationAttemptClaimStore: h.delegationAttemptClaimStore,
       publicationParticipant: participant,
       continuationFinalizerPreview: preview,
     });
@@ -426,6 +427,7 @@ test('a lost reappraisal receipt can be finalized and replayed through Station c
       runtime: h.preparationOwners.runtime,
       orchestration,
       rawFetch: h.rawFetch,
+      delegationAttemptClaimStore: h.delegationAttemptClaimStore,
       continuationFinalizerPreview: preview,
     });
     for (const unavailable of [missingOwner, null]) {
@@ -757,6 +759,7 @@ test('a lost reappraisal receipt can be finalized and replayed through Station c
       runtime: h.preparationOwners.runtime,
       orchestration,
       rawFetch: h.rawFetch,
+      delegationAttemptClaimStore: h.delegationAttemptClaimStore,
       publicationParticipant: participant,
       continuationFinalizerPreview: reopenedPreview,
     });

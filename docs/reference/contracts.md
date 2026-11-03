@@ -1039,6 +1039,9 @@ already accepted under an earlier admission.
 | `receiver_execution_consent_stale` | `permission_denied` | `false` |
 | `foreground_invocation_unavailable` | `conflict` | `false` |
 | `delegation_attempt_capacity` | `busy` | `true` |
+| `create_request_capacity` | `busy` | `true` |
+| `create_request_conflict` | `conflict` | `false` |
+| `create_request_indeterminate` | `indeterminate` | `false` |
 | `continuation_place_refused` | `input_unsupported` | `false` |
 | `acp-approval-takeover-failed` | `warning` | `false` |
 | `acp_approval_governance_refused` | `permission_denied` | `false` |

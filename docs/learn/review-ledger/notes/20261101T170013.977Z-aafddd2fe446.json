@@ -1,0 +1,15 @@
+{
+  "revision": "01c97925bbd1068263c88ffc59cb79c409192c37",
+
+  "notes": [
+    {"path":"docs/architecture/module-map.md","note":"Scoped review of TurnDeduplicator and continuity ownership: the subsequent source delta only reorders the existing Monument type imports in the continuity modules; runtime behavior and prior test evidence are unchanged. No new live-provider or device evidence.","inputs":["docs/architecture/module-map.md","src-server/services/orchestration/conversation-context-seed-witness.ts","src-server/services/orchestration/conversation-fork-context.ts","src-server/services/orchestration/conversation-lineage.ts"]},
+
+    {"path":"docs/contexts/agent-runtime/CONTEXT.md","note":"Scoped review of Agent runtime continuation and context boundaries: the subsequent source delta only reorders the existing Monument type imports in the continuity modules; runtime behavior and prior test evidence are unchanged. No new live-provider or device evidence.","inputs":["docs/contexts/agent-runtime/CONTEXT.md","src-server/services/orchestration/conversation-context-seed-witness.ts","src-server/services/orchestration/conversation-fork-context.ts","src-server/services/orchestration/conversation-lineage.ts"]},
+
+    {"path":"docs/reference/session-api.md","note":"Scoped review of Session handoff and continuation contracts: the subsequent source delta only reorders the existing Monument type imports in the continuity modules; runtime behavior and prior test evidence are unchanged. No new live-provider or device evidence.","inputs":["docs/reference/session-api.md","src-server/services/orchestration/conversation-context-seed-witness.ts","src-server/services/orchestration/conversation-fork-context.ts","src-server/services/orchestration/conversation-lineage.ts"]},
+
+    {"path":"packages/monument/CONTEXT.md","note":"Scoped review of Monument and host ownership: the subsequent source delta only reorders the existing Monument type imports in the continuity modules; runtime behavior and prior test evidence are unchanged. No new live-provider or device evidence.","inputs":["packages/monument/CONTEXT.md","src-server/services/orchestration/conversation-lineage.ts"]},
+
+    {"path":"packages/monument/README.md","note":"Scoped review of Monument host composition and portable port: the subsequent source delta only reorders the existing Monument type imports in the continuity modules; runtime behavior and prior test evidence are unchanged. No new live-provider or device evidence.","inputs":["packages/monument/README.md","src-server/services/orchestration/conversation-lineage.ts"]}
+  ]
+}

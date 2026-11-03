@@ -23,6 +23,7 @@ import {
   isRuntimeRequestPrincipalCurrent,
 } from '../../security/runtime-request-security.js';
 import { HomeWriterOwner } from '../ssh/home-writer-owner.js';
+import type { DelegationAttemptClaimStore } from './delegation-attempt-claim-store.js';
 import { StationDelegationPersistence } from './delegation-group-persistence.js';
 import {
   LocalSourceAdmissionOwner,
@@ -210,6 +211,7 @@ export class StationReportGroupRuntime {
       publicationParticipant?: import('../../runtime/bootstrap/runtime-publication-participant.js').RuntimePublicationParticipant;
       continuationFinalizerPreview?: import('../feature-previews/feature-preview-registry.js').FeaturePreviewSelector;
       runtime: RuntimeFencedCredentialObservationOwners;
+      delegationAttemptClaimStore?: DelegationAttemptClaimStore;
       orchestration: OrchestrationService;
       rawFetch: typeof fetch;
     },
@@ -287,6 +289,7 @@ export class StationReportGroupRuntime {
             sources,
             qualification: createSealedProviderPreparation,
             rawFetch: owners.rawFetch,
+            delegationAttemptClaimStore: owners.delegationAttemptClaimStore,
           }),
         )),
       custody: this.#custody,

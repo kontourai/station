@@ -68,6 +68,7 @@ test.each(['lifecycle', 'cancel-with-undelivered-seat'] as const)(
       runtime: h.preparationOwners.runtime,
       orchestration,
       rawFetch: h.rawFetch,
+      delegationAttemptClaimStore: h.delegationAttemptClaimStore,
     });
     const stamped = getRuntimeAuthenticatedRequestPrincipal(h.f.req);
     assert.ok(stamped && stamped.kind !== 'internal');

@@ -21,6 +21,7 @@ import {
   createGateTestRegistry,
   GateTestAdapter,
 } from '../../../__test-utils__/orchestration-gate-test-harness.js';
+import { keyedTurnRequest } from '../../../__test-utils__/turn-admission-fixture.js';
 import type { ProviderAdapterMetadata } from '../../../providers/adapter-shape.js';
 import { setRuntimeAuthenticatedRequestPrincipal } from '../../../security/runtime-request-security.js';
 import {
@@ -28,6 +29,7 @@ import {
   type ExecutionTargetExecutionDependencies,
   executeForegroundMessage,
 } from '../../../services/execution-target/execution-target-execution.js';
+import { FileDelegationAttemptClaimStore } from '../../../services/orchestration/delegation-attempt-claim-store.js';
 import { EventBus } from '../../../services/orchestration/event-bus.js';
 import { EventStore } from '../../../services/orchestration/event-store.js';
 import { OrchestrationService } from '../../../services/orchestration/orchestration-service.js';
@@ -345,12 +347,14 @@ describe('daily-driver real conversation agreement qualification (#3912/#3409/#3
 
       const execute = (input: {
         message: string;
+        clientTurnId?: string;
         conversationId?: string;
         model?: ExecutionModelRequest;
       }) =>
         executeForegroundMessage(
           {
             message: input.message,
+            clientTurnId: input.clientTurnId,
             ...(input.conversationId
               ? { conversationId: input.conversationId }
               : {}),
@@ -365,6 +369,7 @@ describe('daily-driver real conversation agreement qualification (#3912/#3409/#3
           executionDeps,
         );
       const routes = createOrchestrationRoutes(service, {
+        delegationAttemptClaimStore: new FileDelegationAttemptClaimStore(root),
         eventBus,
         logger: { debug: vi.fn() },
         getUserId: () => OWNER,
@@ -372,6 +377,7 @@ describe('daily-driver real conversation agreement qualification (#3912/#3409/#3
         continueForegroundMessage: (input) =>
           execute({
             message: input.message,
+            clientTurnId: input.clientTurnId,
             conversationId: input.conversationId,
             ...(input.model ? { model: input.model } : {}),
           }),
@@ -393,13 +399,14 @@ describe('daily-driver real conversation agreement qualification (#3912/#3409/#3
         const response = await app.request(path, {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify(body),
+          body: JSON.stringify(keyedTurnRequest(body)),
         });
         expect(response.status, await response.text()).toBe(200);
       };
 
       await send('/api/orchestration/chat', {
         message: `Remember ${CONTEXT_TOKEN}.`,
+        conversationId,
         target: {
           environment: { kind: 'current' },
           agent: 'claude',
@@ -600,6 +607,7 @@ describe('daily-driver real conversation agreement qualification (#3912/#3409/#3
       logger: { debug: vi.fn(), warn: vi.fn() },
     });
     const routes = createOrchestrationRoutes(service, {
+      delegationAttemptClaimStore: new FileDelegationAttemptClaimStore(root),
       eventBus: new EventBus(),
       logger: { debug: vi.fn() },
       getUserId: () => OWNER,
@@ -642,6 +650,7 @@ describe('daily-driver real conversation agreement qualification (#3912/#3409/#3
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
+        clientTurnId: 'fixture-turn-key',
         message: 'Use a model this engine cannot override.',
         target: {
           environment: { kind: 'current' },

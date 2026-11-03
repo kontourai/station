@@ -183,7 +183,7 @@
 }
 
 .time-range-sublabel {
-  font-size: 0.7rem;
+  font-size: var(--k-text-sm);
   opacity: 0.7;
   margin-top: 2px;
 }
@@ -509,7 +509,7 @@
 }
 
 .agent-status {
-  font-size: 0.625rem;
+  font-size: var(--k-text-sm);
   padding: 0.125rem 0.5rem;
   border-radius: 3px;
   font-weight: 600;
@@ -577,7 +577,7 @@
 }
 
 .conversations-label {
-  font-size: 0.7rem;
+  font-size: var(--k-text-sm);
   font-weight: 600;
   color: var(--text-secondary);
   text-transform: uppercase;
@@ -963,7 +963,7 @@
   color: var(--text-tertiary);
   border: 1px solid var(--border-primary);
   border-radius: 8px;
-  font-size: 0.65rem;
+  font-size: var(--k-text-sm);
   font-weight: 600;
   font-family: var(--font-mono);
   cursor: pointer;
@@ -1570,7 +1570,7 @@
   }
 
   .event-filter {
-    font-size: var(--text-sm);
+    font-size: var(--k-text-sm);
     padding: 4px 8px;
     min-height: 44px;
     display: inline-flex;

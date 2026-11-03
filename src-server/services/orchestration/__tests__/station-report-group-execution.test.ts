@@ -500,6 +500,7 @@ test.each([
       runtime: h.preparationOwners.runtime,
       orchestration,
       rawFetch: h.rawFetch,
+      delegationAttemptClaimStore: h.delegationAttemptClaimStore,
     };
     const roundsStore = StationDelegationPersistence.prototype.roundsStore;
     let groupWrites = 0;

@@ -1000,6 +1000,12 @@ function resolveProviderManagedExecution(
 
 export function preferredChatRuntime(
   agentConnections: ConnectionConfig[],
+  /**
+   * #4388: the engine this Station chose for its built-in Agent
+   * (`AppConfig.builtinAgentEngineConnectionId`). When it is ready it is the
+   * runtime named, not whichever of Claude Code or Codex sorts first.
+   */
+  chosenConnectionId?: string | null,
 ): ConnectionConfig | null {
   const ready = agentConnections.filter(isAgentConnectionSelectable);
   // Strict "connected" parity with the pre-rename executionClass literal —
@@ -1015,6 +1021,10 @@ export function preferredChatRuntime(
   const managed = ready.filter(
     (connection) => connectionEngineId(connection) === 'station',
   );
+  const chosen = chosenConnectionId
+    ? connected.find((connection) => connection.id === chosenConnectionId)
+    : undefined;
+  if (chosen) return chosen;
   const preferredIds = ['claude', 'codex'];
   for (const id of preferredIds) {
     const match = connected.find((connection) => connection.id === id);

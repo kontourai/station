@@ -1,10 +1,16 @@
-import { type ReactNode, useState } from 'react';
+import { createContext, type ReactNode, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
   ResponsiveDialogHeader,
   ResponsiveDialogSurface,
 } from '../ResponsiveDialogSurface';
 import { MoreActionsGlyph } from './MoreActionsGlyph';
+
+/**
+ * Closes the open sheet. An action that leaves the chat (a fork opening its
+ * draft) calls it, so the sheet does not stay over the draft.
+ */
+export const MessageDetailsCloseContext = createContext<() => void>(() => {});
 
 /** Secondary facts and actions stay available without competing with the message. */
 export function MessageDetails({
@@ -42,7 +48,11 @@ export function MessageDetails({
               closeLabel="Close message details"
               onClose={() => setOpen(false)}
             />
-            <div className="message-details__body">{children}</div>
+            <div className="message-details__body">
+              <MessageDetailsCloseContext.Provider value={() => setOpen(false)}>
+                {children}
+              </MessageDetailsCloseContext.Provider>
+            </div>
           </ResponsiveDialogSurface>,
           document.body,
         )}

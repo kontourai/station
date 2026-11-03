@@ -48,7 +48,7 @@
 .row-menu__heading {
   padding: var(--k-space-1) var(--k-space-2) 2px;
   color: var(--k-text-muted);
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
   font-weight: 600;
 }
 
@@ -82,6 +82,6 @@
 
 .row-menu__hint {
   color: var(--k-text-muted);
-  font-size: var(--k-text-xs);
+  font-size: var(--k-text-sm);
   white-space: nowrap;
 }

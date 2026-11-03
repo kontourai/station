@@ -101,7 +101,8 @@ describe('AgentService', () => {
       { slug: 'default', name: 'Default' },
       {
         slug: 'station',
-        name: 'Station',
+        // #4388: the built-in Agent's display name.
+        name: 'Station Assistant',
       },
       {
         slug: 'claude',
@@ -502,7 +503,7 @@ describe('AgentService', () => {
       (await svc.listAgents()).find((agent) => agent.slug === 'station'),
     ).toEqual({
       slug: 'station',
-      name: 'Station',
+      name: 'Station Assistant',
       execution: { agentConnectionId: 'codex' },
     });
   });

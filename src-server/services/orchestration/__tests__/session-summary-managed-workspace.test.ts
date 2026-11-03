@@ -1,12 +1,14 @@
+import { join } from 'node:path';
 import type { ProviderSession } from '@kontourai/station-contracts/provider';
 import { describe, expect, test } from 'vitest';
+import { resolveHomeDir } from '../../../utils/paths.js';
 import { buildOrchestrationSessionSummary } from '../orchestration-session-state.js';
 
 /**
  * The session summary says when its `cwd` is a folder Station created for the
  * chat (`cwdManagedWorkspace`), so clients can name it ("Chat workspace")
  * instead of printing a hash path — and never have to match the path
- * themselves. The server's own `isManagedEngineWorkspace` decides.
+ * themselves. The server's own `isStationChatFolder` decides.
  */
 function summarize(cwd: string | undefined, provider = 'acp-test') {
   const persisted: ProviderSession = {
@@ -69,6 +71,18 @@ describe('cwdManagedWorkspace on the session summary', () => {
     ],
   ])('%s is not', (_, cwd) => {
     expect(summarize(cwd).cwdManagedWorkspace).toBeUndefined();
+  });
+
+  test("a no-project chat's scratch folder under this Station's home is flagged (#4389)", () => {
+    const scratch = join(resolveHomeDir(), 'scratch', 'thread-managed');
+    expect(summarize(scratch).cwdManagedWorkspace).toBe(true);
+    // The scratch root itself, or a sibling of it, is not a chat's folder.
+    expect(
+      summarize(join(resolveHomeDir(), 'scratch')).cwdManagedWorkspace,
+    ).toBeUndefined();
+    expect(
+      summarize(join(resolveHomeDir(), 'scratchpad', 'x')).cwdManagedWorkspace,
+    ).toBeUndefined();
   });
 
   test('no cwd, no flag', () => {

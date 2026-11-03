@@ -70,6 +70,7 @@ test('source receipt changed after store return remains uncertain before launch'
     runtime: h.preparationOwners.runtime,
     orchestration,
     rawFetch: h.rawFetch,
+    delegationAttemptClaimStore: h.delegationAttemptClaimStore,
     publicationParticipant: participant,
   });
   let changed: { groupId: string; authorityId: string } | undefined;

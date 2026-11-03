@@ -7728,6 +7728,7 @@ export function configureRuntimeRoutes(
   ) {
     try {
       delegationGroups = new DelegationGroupRuntime({
+        delegationAttemptClaimStore: context.delegationAttemptClaims,
         runtime: groupRuntimeOwners,
         orchestration: context.orchestrationService,
         rawFetch: fetch,
@@ -7753,6 +7754,7 @@ export function configureRuntimeRoutes(
   if (isPersonalHost) {
     try {
       reportGroups = new StationReportGroupRuntime({
+        delegationAttemptClaimStore: context.delegationAttemptClaims,
         publicationParticipant: context.runtimePublicationParticipant,
         runtime: groupRuntimeOwners,
         orchestration: context.orchestrationService,

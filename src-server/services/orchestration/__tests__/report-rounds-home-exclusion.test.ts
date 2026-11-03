@@ -437,6 +437,7 @@ test.each([false, true])(
         runtime: h.preparationOwners.runtime,
         orchestration,
         rawFetch: h.rawFetch,
+        delegationAttemptClaimStore: h.delegationAttemptClaimStore,
         publicationParticipant: participant,
       });
       const root = join(h.f.home, 'report-groups');
@@ -623,6 +624,7 @@ test.each([false, true])(
           runtime: h.preparationOwners.runtime,
           orchestration,
           rawFetch: h.rawFetch,
+          delegationAttemptClaimStore: h.delegationAttemptClaimStore,
           publicationParticipant: returningParticipant,
         });
         assert.ok(cancellationRevision > 0);
@@ -696,6 +698,7 @@ test.each(['operation-lookup', 'authorize'] as const)(
       runtime: h.preparationOwners.runtime,
       orchestration,
       rawFetch: h.rawFetch,
+      delegationAttemptClaimStore: h.delegationAttemptClaimStore,
     });
     let releaseFault: { mockRestore(): void } | undefined;
     const arm = () => {

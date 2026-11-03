@@ -299,6 +299,7 @@ test('funded three-seat mixed-model report serves input, member results and acco
     runtime: h.preparationOwners.runtime,
     orchestration,
     rawFetch: h.rawFetch,
+    delegationAttemptClaimStore: h.delegationAttemptClaimStore,
     publicationParticipant,
   });
   let runtimeFailure: unknown;
@@ -525,6 +526,7 @@ test('explicit report input crosses real Flow dispatch, canonical answer and ret
     runtime: h.preparationOwners.runtime,
     orchestration,
     rawFetch: h.rawFetch,
+    delegationAttemptClaimStore: h.delegationAttemptClaimStore,
     publicationParticipant,
   });
   const input = {
@@ -925,6 +927,7 @@ test('explicit report input crosses real Flow dispatch, canonical answer and ret
       runtime: h.preparationOwners.runtime,
       orchestration,
       rawFetch: h.rawFetch,
+      delegationAttemptClaimStore: h.delegationAttemptClaimStore,
       publicationParticipant,
     }),
   );
@@ -1338,6 +1341,7 @@ test('explicit report input crosses real Flow dispatch, canonical answer and ret
     runtime: h.preparationOwners.runtime,
     orchestration: reopened,
     rawFetch: h.rawFetch,
+    delegationAttemptClaimStore: h.delegationAttemptClaimStore,
     publicationParticipant,
   });
   const recovered = await historicalReader.result(

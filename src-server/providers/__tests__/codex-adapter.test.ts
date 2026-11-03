@@ -21,6 +21,7 @@ import {
 } from '../../runtime/mcp/station-control-mcp-token.js';
 import { EventBus } from '../../services/orchestration/event-bus.js';
 import { EventStore } from '../../services/orchestration/event-store.js';
+import { prepareNoProjectChatScratch } from '../../services/orchestration/no-project-chat-folder.js';
 import { OrchestrationService } from '../../services/orchestration/orchestration-service.js';
 import { buildOrchestrationSessionSummary } from '../../services/orchestration/orchestration-session-state.js';
 import {
@@ -5284,6 +5285,63 @@ describe('CodexAdapter', () => {
       await started;
     },
   );
+
+  test('a no-project chat keeps its scratch folder instead of preparing a second private workspace (#4389, #4448)', async () => {
+    const stationHome = makeSessionWorkspace('codex-scratch-home-');
+    const scratch = await prepareNoProjectChatScratch(
+      'scratch-conversation',
+      stationHome,
+    );
+    processHandle = new FakeCodexProcess();
+    const adapter = new CodexAdapter({
+      processFactory: () => processHandle!,
+      managedWorkspaceHomeDir: stationHome,
+    });
+    const started = adapter.startSession({
+      provider: 'codex',
+      threadId: 'keep-scratch',
+      cwd: scratch,
+      cwdDefaulted: true,
+    });
+    await vi.waitFor(() =>
+      expect(
+        processHandle!.stdin.lines
+          .map(parseLine)
+          .some((line) => line.method === 'initialize'),
+      ).toBe(true),
+    );
+    writeServerMessage(adapter, 'keep-scratch', { id: '1', result: {} });
+    await vi.waitFor(() =>
+      expect(
+        processHandle!.stdin.lines
+          .map(parseLine)
+          .some((line) => line.method === 'thread/start'),
+      ).toBe(true),
+    );
+    const start = processHandle.stdin.lines
+      .map(parseLine)
+      .find((line) => line.method === 'thread/start');
+    expect(start.params.cwd).toBe(scratch);
+    expect(existsSync(join(stationHome, 'runtime', 'codex-workspaces'))).toBe(
+      false,
+    );
+    writeServerMessage(adapter, 'keep-scratch', {
+      id: '2',
+      result: {
+        thread: { id: 'native-keep-scratch' },
+        sandbox: {
+          type: 'workspaceWrite',
+          writableRoots: [],
+          networkAccess: false,
+          excludeTmpdirEnvVar: false,
+          excludeSlashTmp: false,
+        },
+        activePermissionProfile: { id: 'station-workspace' },
+      },
+    });
+    const session = await started;
+    expect(session.cwd).toBe(scratch);
+  });
 
   test('a private workspace preparation failure refuses the session before spawning', async () => {
     const stationHome = makeSessionWorkspace('codex-workspace-failure-');

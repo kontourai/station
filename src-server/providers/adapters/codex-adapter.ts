@@ -58,6 +58,7 @@ import {
 } from '../../services/infra/session-tmpdir.js';
 import { WORKLOAD_SESSION_ENV } from '../../services/infra/workload-budget.js';
 import type { NativeSessionOwnership } from '../../services/orchestration/native-session-ownership.js';
+import { isStationChatFolder } from '../../services/orchestration/no-project-chat-folder.js';
 import { SESSION_CONFINEMENT_ROOT_METADATA_KEY } from '../../services/orchestration/session-project-identity.js';
 import type { EngineMcpOAuthResolver } from '../../services/plugins/engine-mcp-oauth.js';
 import {
@@ -2099,8 +2100,19 @@ export class CodexAdapter implements ProviderAdapterShape {
     // recursively applies ACLs to its writable root; using HOME can spend
     // minutes changing unrelated files and granting sandbox access to launchers.
     // Keep the workspace deterministic across restarts, as ACP does, and fail
-    // before spawning if it cannot be prepared. Explicit/adopted folders win.
-    if (input.cwdDefaulted && input.confinement !== 'host' && !adoption) {
+    // before spawning if it cannot be prepared. Explicit/adopted folders win,
+    // and so does a folder Station already made for this chat (#4389's
+    // no-project scratch folder, or a recorded managed workspace): one chat,
+    // one private folder, prepared once.
+    if (
+      input.cwdDefaulted &&
+      input.confinement !== 'host' &&
+      !adoption &&
+      !(
+        input.cwd &&
+        isStationChatFolder(input.cwd, this.options.managedWorkspaceHomeDir)
+      )
+    ) {
       input = {
         ...input,
         cwd: await prepareManagedEngineWorkspace(

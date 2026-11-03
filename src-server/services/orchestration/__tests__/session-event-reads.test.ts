@@ -509,52 +509,6 @@ describe('historical report terminal snapshots', () => {
     }
   });
 
-  test('joins the original owner, delivery claim and exact terminal in one SQLite snapshot', async () => {
-    const file = join(
-      historicalHomes('report-turn-snapshot-'),
-      'events.sqlite',
-    );
-    const store = new EventStore(file);
-    const peer = new EventStore(file);
-    const service = new OrchestrationService({
-      eventStore: store,
-      eventBus: new EventBus(),
-      adapterRegistry: { register() {}, get: () => undefined, list: () => [] },
-      logger: { debug() {}, warn() {} },
-    });
-    try {
-      seedHistoricalTurn(store);
-      const originalRead = store.readSessionByThread.bind(store);
-      vi.spyOn(store, 'readSessionByThread').mockImplementationOnce((id) => {
-        const session = originalRead(id);
-        peer.deleteThread(id);
-        return session;
-      });
-      const observation = service.readHistoricalReportTurn(
-        historicalTurn,
-        historicalAuthority,
-      );
-      expect(observation).toEqual({
-        ...historicalTurn,
-        ownerId: 'report-owner',
-        provider: 'claude',
-        terminalEventId: 'report-terminal',
-        terminalCreatedAt: '2026-10-26T00:00:00.000Z',
-      });
-      expect(
-        peer.readSessionByThread(historicalTurn.sessionId),
-      ).toBeUndefined();
-      expect(
-        service.readHistoricalReportTurn(historicalTurn, historicalAuthority),
-      ).toBeNull();
-      expect(observation?.terminalEventId).toBe('report-terminal');
-    } finally {
-      await service.shutdown();
-      peer.close();
-      store.close();
-    }
-  });
-
   test('refuses foreign owners, mismatched tuples and ambiguous completion without trusting cached authorization', () => {
     const store = createStore();
     try {

@@ -79,6 +79,7 @@ export const STATION_HOME_ROOTS: Readonly<
   coordination: 'state',
   data: 'state',
   'delegation-attempt-claims.json': 'state',
+  'create-request-claims.json': 'state',
   devices: 'state',
   environments: 'state',
   feedback: 'state',

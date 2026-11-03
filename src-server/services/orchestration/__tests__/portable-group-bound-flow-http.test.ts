@@ -160,6 +160,7 @@ test('bound Station Control SDK Flow follows actual frontier through a join', as
     runtime: h.preparationOwners.runtime,
     orchestration,
     rawFetch: h.rawFetch,
+    delegationAttemptClaimStore: h.delegationAttemptClaimStore,
     resolveDelegation: createRequestDelegationResolver({
       isInternalRequest: isStationInternalRequest,
       resolveCaller: (request) =>

@@ -164,6 +164,7 @@ test('guarded Session owner creates and reads its own V2 group across token rota
     runtime: h.preparationOwners.runtime,
     orchestration,
     rawFetch: h.rawFetch,
+    delegationAttemptClaimStore: h.delegationAttemptClaimStore,
     resolveDelegation: createRequestDelegationResolver({
       isInternalRequest: isStationInternalRequest,
       resolveCaller: (request) =>

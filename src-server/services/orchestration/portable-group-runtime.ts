@@ -20,6 +20,7 @@ import type { RequestDelegationResolver } from '../../runtime/agents/request-del
 import { createOrchestrationRequestPrincipalResolver } from '../../runtime/bootstrap/orchestration-request-principal.js';
 import type { RuntimeFencedCredentialObservationOwners } from '../../runtime/conversation/runtime-fenced-credential-observation.js';
 import { createSealedProviderPreparation } from '../../runtime/conversation/sealed-provider-preparation.js';
+import type { DelegationAttemptClaimStore } from './delegation-attempt-claim-store.js';
 import { StationDelegationPersistence } from './delegation-group-persistence.js';
 import {
   LocalSourceAdmissionOwner,
@@ -69,6 +70,7 @@ export class DelegationGroupRuntime {
   constructor(
     private readonly owners: {
       runtime: RuntimeFencedCredentialObservationOwners;
+      delegationAttemptClaimStore?: DelegationAttemptClaimStore;
       orchestration: OrchestrationService;
       rawFetch: typeof fetch;
       resolveDelegation?: RequestDelegationResolver;
@@ -96,6 +98,7 @@ export class DelegationGroupRuntime {
       ),
       qualification: createSealedProviderPreparation,
       rawFetch: owners.rawFetch,
+      delegationAttemptClaimStore: owners.delegationAttemptClaimStore,
       resolveDelegation: owners.resolveDelegation,
     });
     this.#admissions = new PortableGroupAdmissionStore(admissions);

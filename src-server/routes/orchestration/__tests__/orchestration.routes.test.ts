@@ -1,6 +1,7 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import { STEERING_ENGINE_DURABILITY } from '@kontourai/station-contracts/engine-capability-matrix';
 import { vi as vitestConfigVi } from 'vitest';
+import { CreateRequestCapacityError } from '../../../services/orchestration/create-request-claims.js';
 
 // This file exercises REAL SQLite EventStores per test (one writes 401
 // 3KB rows synchronously). Under full-corpus worker contention the default
@@ -81,6 +82,91 @@ import {
   createOrchestrationRoutes,
   resolveStreamResumePlan,
 } from '../orchestration.js';
+
+test.each([
+  ['/chat', {}],
+  ['/chat/background', {}],
+  [
+    '/chat/delegated',
+    {
+      delegation: {
+        mode: 'isolated-child',
+        depth: 1,
+        maxDepth: 2,
+        parentAgentSlug: 'parent',
+        rootAgentSlug: 'root',
+      },
+    },
+  ],
+  ['/chat/conversation-a/continue', {}],
+])('refuses a keyless send at %s before dispatch', async (route, extra) => {
+  const execute = vi.fn().mockResolvedValue({
+    conversationId: 'conversation-a',
+    sessionId: 'session-a',
+    providerTurnId: 'turn-a',
+  });
+  const app = createOrchestrationRoutes(
+    {} as never,
+    {
+      eventBus: new EventBus(),
+      logger: { debug: vi.fn() },
+      getUserId: () => 'owner',
+      executeForegroundMessage: execute,
+      continueForegroundMessage: execute,
+      resolveRequestDelegation: async () => ({
+        context: 'delegation' in extra ? extra.delegation : undefined,
+        provenance: 'runtime-attested',
+      }),
+    } as never,
+  );
+  const response = await app.request(route, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      message: 'hello',
+      target: { environment: { kind: 'current' }, agent: 'station' },
+      ...extra,
+    }),
+  });
+  expect(response.status).toBe(400);
+  expect(await response.json()).toMatchObject({
+    code: 'client_turn_key_required',
+  });
+  expect(execute).not.toHaveBeenCalled();
+});
+
+test.each(['/chat', '/delegations'])(
+  '%s maps create storage refusal to HTTP 429 before invoking a sender',
+  async (path) => {
+    const refusal = async () => {
+      throw new CreateRequestCapacityError('records');
+    };
+    const app = createOrchestrationRoutes({} as never, {
+      eventBus: new EventBus(),
+      logger: { debug: vi.fn() },
+      getUserId: () => 'operator',
+      executeForegroundMessage: refusal,
+      delegateTask: refusal,
+    });
+    const response = await app.request(path, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        clientTurnId: 'capacity-key',
+        ...(path === '/chat'
+          ? { conversationId: 'existing', message: 'hello' }
+          : { prompt: 'hello' }),
+        target: { environment: { kind: 'current' }, agent: 'station' },
+      }),
+    });
+    expect(response.status).toBe(429);
+    await expect(response.json()).resolves.toMatchObject({
+      code: 'create_request_capacity',
+      retryable: true,
+      limit: 'records',
+    });
+  },
+);
 
 describe('direct Basis response revocation fence', () => {
   test('withholds every pre-await Basis field when authority is revoked during assessment I/O', async () => {
@@ -603,11 +689,12 @@ describe('Orchestration Routes', () => {
       expect(engineSteer).not.toHaveBeenCalled();
       await expect(
         steerTurn(input.apiBase, { ...input, clientInputId: '' }),
+      ).rejects.toThrow('clientInputId must be');
+      expect(engineSteer).not.toHaveBeenCalled();
+      await expect(
+        steerTurn(input.apiBase, { ...input, clientInputId: undefined }),
       ).rejects.toThrow('Validation failed');
       expect(engineSteer).not.toHaveBeenCalled();
-      await steerTurn(input.apiBase, { ...input, clientInputId: undefined });
-      expect(engineSteer).toHaveBeenCalledTimes(1);
-      expect(engineSteer.mock.calls[0][0]).not.toHaveProperty('clientInputId');
     } finally {
       fetchSpy.mockRestore();
     }
@@ -759,10 +846,35 @@ describe('Orchestration Routes', () => {
       });
       expect(adapter.steerTurn).toHaveBeenCalledTimes(1);
       expect(await steerTurn(input.apiBase, input)).toEqual({
+        clientInputId: input.clientInputId,
         outcome: 'steered',
         threadId,
         turnId: 'live',
       });
+      expect(adapter.steerTurn).toHaveBeenCalledTimes(1);
+      const conflict = await app.request('/api/orchestration/commands', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'steerTurn',
+          threadId,
+          turnId: 'live',
+          clientInputId: input.clientInputId,
+          input: 'different input',
+        }),
+      });
+      expect(conflict.status).toBe(409);
+      expect(await conflict.json()).toMatchObject({
+        success: false,
+        code: 'client_turn_input_conflict',
+      });
+      expect(adapter.steerTurn).toHaveBeenCalledTimes(1);
+      const unkeyed = await app.request('/api/orchestration/commands', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: 'steerTurn', threadId, input: 'keyless' }),
+      });
+      expect(unkeyed.status).toBe(400);
       expect(adapter.steerTurn).toHaveBeenCalledTimes(1);
     } finally {
       fetchSpy.mockRestore();
@@ -791,6 +903,7 @@ describe('Orchestration Routes', () => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          clientTurnId: 'fixture-turn',
           message: 'hello',
           target: { environment: { kind: 'current' }, agent: 'codex' },
         }),
@@ -872,6 +985,7 @@ describe('Orchestration Routes', () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         type: 'steerTurn',
+        clientInputId: 'fixture-steer-key',
         threadId: 'thread-live',
         input: 'change direction',
         turnId: 'turn-live',
@@ -882,6 +996,7 @@ describe('Orchestration Routes', () => {
     expect(dispatchWithReceipt).toHaveBeenCalledWith(
       {
         type: 'steerTurn',
+        clientInputId: 'fixture-steer-key',
         threadId: 'thread-live',
         input: 'change direction',
         turnId: 'turn-live',
@@ -1088,7 +1203,7 @@ describe('Orchestration Routes', () => {
     });
     expect(
       await (await send({ ...command, childId: 'other' })).json(),
-    ).toMatchObject({ success: true, data: { outcome: 'indeterminate' } });
+    ).toMatchObject({ success: false, code: 'client_turn_input_conflict' });
     expect(adapter.steerChildWork).toHaveBeenCalledTimes(1);
     expect(adapter.steerChildWork).toHaveBeenCalledWith(
       threadId,
@@ -1175,6 +1290,7 @@ describe('Orchestration Routes', () => {
 
     const steer = await post({
       type: 'steerTurn',
+      clientInputId: 'fixture-steer-key',
       threadId: 'thread-live',
       input: 'change direction',
       turnId: 'turn-live',
@@ -1186,6 +1302,7 @@ describe('Orchestration Routes', () => {
     expect(rest).toEqual([]);
     expect(command).toEqual({
       type: 'steerTurn',
+      clientInputId: 'fixture-steer-key',
       threadId: 'thread-live',
       input: 'change direction',
       turnId: 'turn-live',
@@ -1272,6 +1389,7 @@ describe('Orchestration Routes', () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         type: 'steerTurn',
+        clientInputId: 'fixture-steer-key',
         threadId: 'thread-live',
         input: 'change direction',
         turnId: 'turn-live',
@@ -1564,6 +1682,8 @@ describe('Orchestration Routes', () => {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
+        conversationId: 'conversation:fixture',
+        clientTurnId: 'fixture-turn',
         message: 'Resume safely',
         target: {
           environment: { kind: 'current' },
@@ -1614,6 +1734,7 @@ describe('Orchestration Routes', () => {
       },
     );
     const input = {
+      clientTurnId: 'fixture-turn',
       message: 'My answer',
       conversationId: 'conversation-a',
       target: { environment: { kind: 'current' }, agent: 'agent-a' },
@@ -1666,6 +1787,7 @@ describe('Orchestration Routes', () => {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
+        clientTurnId: 'fixture-turn',
         message: 'Continue this legacy alias thread',
         conversationId: 'conversation:legacy-codex',
         target: { environment: { kind: 'current' }, agent: 'codex' },
@@ -1716,6 +1838,8 @@ describe('Orchestration Routes', () => {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
+        conversationId: 'conversation:fixture',
+        clientTurnId: 'fixture-turn',
         message: 'Start safely',
         target: { environment: { kind: 'current' }, agent: 'claude' },
       }),
@@ -1765,6 +1889,8 @@ describe('Orchestration Routes', () => {
       resolveRequestDelegation,
     });
     const common = {
+      conversationId: 'conversation-fixed-intent',
+      clientTurnId: 'fixture-turn',
       message: 'Run later',
       target: { environment: { kind: 'current' }, agent: 'claude' },
     };
@@ -1852,6 +1978,8 @@ describe('Orchestration Routes', () => {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
+        conversationId: 'conversation:1',
+        clientTurnId: 'fixture-turn',
         message: 'Send into a stalled mount',
         target: {
           environment: { kind: 'current' },
@@ -1877,6 +2005,8 @@ describe('Orchestration Routes', () => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          conversationId: 'conversation:1',
+          clientTurnId: 'fixture-turn',
           message: 'Send',
           target: {
             environment: { kind: 'current' },
@@ -1986,6 +2116,7 @@ describe('Orchestration Routes', () => {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
+        conversationId: 'conversation:1',
         message: 'Inspect the target',
         target: {
           environment: { kind: 'saved', id: 'env-remote' },
@@ -2006,6 +2137,7 @@ describe('Orchestration Routes', () => {
       }),
     );
     expect(executeForegroundMessage).toHaveBeenCalledWith({
+      conversationId: 'conversation:1',
       message: 'Inspect the target',
       target: {
         environment: { kind: 'saved', id: 'env-remote' },
@@ -2155,6 +2287,8 @@ describe('Orchestration Routes', () => {
           'X-Station-Client-Origin': '1;web;2026.8.23',
         },
         body: JSON.stringify({
+          conversationId: 'conversation:route-origin',
+          clientTurnId: 'fixture-turn',
           message: 'Persist the early turn event',
           target: { environment: { kind: 'current' }, agent: 'station' },
         }),
@@ -2286,6 +2420,8 @@ describe('Orchestration Routes', () => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          conversationId: 'conversation:empty',
+          clientTurnId: 'fixture-turn',
           message: 'Do not accept without correlation',
           ...(path === '/chat'
             ? { target: { environment: { kind: 'current' }, agent: 'codex' } }
@@ -2321,7 +2457,10 @@ describe('Orchestration Routes', () => {
     const res = await app.request('/chat/conversation%3Atyped/continue', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message: 'Do not retry typed continuation' }),
+      body: JSON.stringify({
+        clientTurnId: 'fixture-turn',
+        message: 'Do not retry typed continuation',
+      }),
     });
 
     expect(res.status).toBe(409);
@@ -2358,6 +2497,8 @@ describe('Orchestration Routes', () => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          conversationId: 'conversation:fixture',
+          clientTurnId: 'fixture-turn',
           message: 'Observe this possible effect',
           ...(path === '/chat'
             ? { target: { environment: { kind: 'current' }, agent: 'codex' } }
@@ -2413,7 +2554,10 @@ describe('Orchestration Routes', () => {
     const res = await app.request('/chat/conversation%3Atyped/continue', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message: 'Observe rather than retry' }),
+      body: JSON.stringify({
+        clientTurnId: 'fixture-turn',
+        message: 'Observe rather than retry',
+      }),
     });
 
     expect(res.status).toBe(409);
@@ -2454,6 +2598,8 @@ describe('Orchestration Routes', () => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          conversationId: 'conversation:default-environment',
+          clientTurnId: 'fixture-turn',
           message: 'Resolve the environment',
           target: {
             ...(environment ? { environment } : {}),
@@ -2502,6 +2648,8 @@ describe('Orchestration Routes', () => {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
+        conversationId: 'conversation:explicit-environment',
+        clientTurnId: 'fixture-turn',
         message: 'Use this Station explicitly',
         target: {
           environment: { kind: 'current' },
@@ -2545,6 +2693,8 @@ describe('Orchestration Routes', () => {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
+        conversationId: 'conversation:image',
+        clientTurnId: 'fixture-turn',
         message: '',
         attachments: [attachment],
         target: {
@@ -2587,6 +2737,8 @@ describe('Orchestration Routes', () => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          conversationId: 'conversation:corr-1',
+          clientTurnId: 'fixture-turn',
           message: 'Inspect the target',
           target: {
             environment: { kind: 'saved', id: 'env-remote' },
@@ -2647,6 +2799,7 @@ describe('Orchestration Routes', () => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          clientTurnId: 'fixture-turn',
           message: 'Inspect the target',
           conversationId: 'conversation:stale-from-request',
           target: {
@@ -2752,7 +2905,10 @@ describe('Orchestration Routes', () => {
     const res = await app.request('/chat/conversation%3A1/continue', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message: 'Continue safely' }),
+      body: JSON.stringify({
+        clientTurnId: 'fixture-turn',
+        message: 'Continue safely',
+      }),
     });
 
     expect(res.status).toBe(200);
@@ -2783,6 +2939,7 @@ describe('Orchestration Routes', () => {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
+        clientTurnId: 'fixture-turn',
         message: 'Switch models for this turn',
         model: { override: 'gpt-5.6-terra' },
       }),
@@ -2849,6 +3006,7 @@ describe('Orchestration Routes', () => {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
+        clientTurnId: 'fixture-delegation-key',
         prompt: 'Review the mobile shell',
         target: {
           environment: { kind: 'current' },
@@ -2883,6 +3041,7 @@ describe('Orchestration Routes', () => {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
+        clientTurnId: 'fixture-delegation-key',
         prompt: 'Review the mobile shell',
         target: {
           environment: { kind: 'saved', id: 'env-remote' },
@@ -2903,6 +3062,10 @@ describe('Orchestration Routes', () => {
       data: { taskId: 'task:1', resumable: true },
     });
     expect(delegateTask).toHaveBeenCalledWith({
+      clientTurnId: 'fixture-delegation-key',
+      createRequestIntent: expect.objectContaining({
+        clientTurnId: 'fixture-delegation-key',
+      }),
       clientOrigin: {
         version: 1,
         actor: { kind: 'unknown' },
@@ -2951,6 +3114,7 @@ describe('Orchestration Routes', () => {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
+        clientTurnId: 'fixture-delegation-key',
         prompt: 'Review the mobile shell',
         target: {
           environment: { kind: 'current' },
@@ -2963,6 +3127,10 @@ describe('Orchestration Routes', () => {
 
     expect(res.status).toBe(200);
     expect(delegateTask).toHaveBeenCalledWith({
+      clientTurnId: 'fixture-delegation-key',
+      createRequestIntent: expect.objectContaining({
+        clientTurnId: 'fixture-delegation-key',
+      }),
       clientOrigin: {
         version: 1,
         actor: { kind: 'operator' },
@@ -3000,6 +3168,7 @@ describe('Orchestration Routes', () => {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
+        clientTurnId: 'fixture-delegation-key',
         message: 'Keep going',
         modelOptions: { thinking: true },
       }),
@@ -3007,6 +3176,7 @@ describe('Orchestration Routes', () => {
 
     expect(res.status).toBe(200);
     expect(continueDelegatedTask).toHaveBeenCalledWith({
+      clientTurnId: 'fixture-delegation-key',
       inboundDeviceKind: undefined,
       isRequestAuthorityCurrent: expect.any(Function),
       clientOrigin: {
@@ -3300,6 +3470,7 @@ describe('Orchestration Routes', () => {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
+        clientTurnId: 'fixture-delegation-key',
         message: 'Keep going',
         model: 'gpt-5.6-sol',
         userId: 'spoofed-user',
@@ -3312,6 +3483,7 @@ describe('Orchestration Routes', () => {
       data: { taskId: 'task:1', status: 'dispatched' },
     });
     expect(continueDelegatedTask).toHaveBeenCalledWith({
+      clientTurnId: 'fixture-delegation-key',
       inboundDeviceKind: undefined,
       isRequestAuthorityCurrent: expect.any(Function),
       clientOrigin: {
@@ -3343,7 +3515,10 @@ describe('Orchestration Routes', () => {
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: 'Keep going' }),
+        body: JSON.stringify({
+          clientTurnId: 'fixture-delegation-key',
+          message: 'Keep going',
+        }),
       },
     );
     expect(unavailableRes.status).toBe(503);
@@ -3360,7 +3535,10 @@ describe('Orchestration Routes', () => {
     const res = await app.request('/delegations/task:1/continue', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message: 'Keep going' }),
+      body: JSON.stringify({
+        clientTurnId: 'fixture-delegation-key',
+        message: 'Keep going',
+      }),
     });
     expect(res.status).toBe(400);
     expect(await readJson(res)).toMatchObject({
