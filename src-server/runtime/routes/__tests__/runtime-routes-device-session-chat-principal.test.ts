@@ -3963,9 +3963,10 @@ describe('device-session chat principal resolution over the REAL auth path (stat
     });
 
     test('author-private roots follow the personal account and refuse a delegation peer', async () => {
-      const { app, pairing, paired, knowledgeProvider } = await principalSetup({
-        knowledge: true,
-      });
+      const { app, pairing, paired, knowledgeProvider, roomHomeDir } =
+        await principalSetup({
+          knowledge: true,
+        });
       const root = await knowledgeProvider!.createRoot({
         scope: { kind: 'project', projectSlug: 'private' },
         readPolicy: {
@@ -4088,6 +4089,29 @@ describe('device-session chat principal resolution over the REAL auth path (stat
           }),
         ).toString('base64url'),
       });
+      const foreignRoot = await knowledgeProvider!.createRoot({
+        scope: { kind: 'project', projectSlug: 'private' },
+        readPolicy: {
+          kind: 'author-private',
+          ownerId: 'human:tailscale-serve:stranger@example',
+        },
+        adapterId: 'kit-default-store',
+        storeRoot: makeTempDir('station-private-foreign-'),
+        displayName: 'Another person private memory',
+      });
+      const foreignRebuild = await app.request(
+        '/api/knowledge/index/rebuild',
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${OPERATOR_SECRET}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ rootId: foreignRoot.id }),
+        },
+        REMOTE_TAILNET_ENV,
+      );
+      expect(foreignRebuild.status).toBe(403);
       for (const [credential, visible] of [
         [paired.credential, true],
         [peer.credential, false],
@@ -4110,6 +4134,47 @@ describe('device-session chat principal resolution over the REAL auth path (stat
         REMOTE_TAILNET_ENV,
       );
       expect(anonymous.status).toBe(401);
+      const pendingRecord = await app.request(
+        `/api/knowledge/roots/${root.id}/records/${id}`,
+        { headers: { Authorization: `Bearer ${OPERATOR_SECRET}` } },
+        REMOTE_TAILNET_ENV,
+      );
+      expect(pendingRecord.status).toBe(200);
+      const persistence = new FileStorageAdapter(roomHomeDir);
+      await persistence.saveKnowledgeStoreRoot({
+        ...root,
+        readPolicy: {
+          kind: 'author-private',
+          ownerId: `human:device:${paired.device.id}`,
+        },
+      });
+      const stillReadable = await app.request(
+        '/api/knowledge/roots',
+        { headers: { Authorization: `Bearer ${OPERATOR_SECRET}` } },
+        REMOTE_TAILNET_ENV,
+      );
+      expect(
+        (
+          (await stillReadable.json()) as { data: Array<{ id: string }> }
+        ).data.some((entry) => entry.id === root.id),
+      ).toBe(true);
+      await expect(pendingRecord.text()).rejects.toThrow('authorization ended');
+      await persistence.saveKnowledgeStoreRoot(root);
+      const pendingSearch = await app.request(
+        '/api/knowledge/index/search',
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${paired.credential}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ query: 'Private body', rootIds: [root.id] }),
+        },
+        REMOTE_TAILNET_ENV,
+      );
+      expect(pendingSearch.status).toBe(200);
+      pairing.revokeDevice(paired.device.id, 'operator-credential');
+      await expect(pendingSearch.text()).rejects.toThrow('authorization ended');
     });
 
     test('file-memory knowledge reads follow the personal account at the real route', async () => {

@@ -177,6 +177,36 @@ describe('knowledge source registry lifecycle on real storage', () => {
     ).toBe('Original document bytes');
     expect((await attach({ ...replaced, projectId })).status).toBe(409);
   });
+  test('legacy attachment refuses an author-private root without changing its registration', async () => {
+    const projectId = '11111111-1111-4111-8111-111111111111';
+    const root = await store.createRoot({
+      scope: { kind: 'project', projectSlug: 'legacy' },
+      readPolicy: { kind: 'author-private', ownerId: 'human:another-owner' },
+      adapterId: 'kit-default-store',
+      storeRoot: join(home, 'private'),
+      displayName: 'Private',
+    });
+    const app = createKnowledgeStoreRoutes({
+      store,
+      dataDir: home,
+      mayRegisterRoot: () => true,
+      projectIdForSlug: () => projectId,
+    });
+    const response = await app.request(
+      `/roots/${encodeURIComponent(root.id)}/attach-project`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          expectedRoot: root,
+          projectSlug: 'current',
+          projectId,
+        }),
+      },
+    );
+    expect(response.status).toBe(409);
+    expect(await store.getRoot(root.id)).toEqual(root);
+  });
   test('registration refuses a stale Project selection after real deletion and same-slug replacement', async () => {
     const slug = 'research';
     const firstId = '11111111-1111-4111-8111-111111111111';

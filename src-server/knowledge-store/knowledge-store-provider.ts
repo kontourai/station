@@ -184,7 +184,11 @@ export class KnowledgeStoreProvider implements KnowledgeStoreProviderContract {
     projectSlug: string,
     projectId: string,
   ): Promise<KnowledgeStoreRoot> {
-    if (expected.scope.kind !== 'project' || expected.projectId !== undefined)
+    if (
+      expected.scope.kind !== 'project' ||
+      expected.projectId !== undefined ||
+      expected.readPolicy !== undefined
+    )
       throw new FileStorageConflictError(
         'Only an unbound legacy Project store can be attached.',
       );

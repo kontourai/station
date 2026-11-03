@@ -21,6 +21,7 @@ import type {
   KnowledgeStoreProvider,
   KnowledgeStoreRoot,
 } from '@kontourai/station-contracts/knowledge-store';
+import { knowledgeRootIncarnationKey } from '@kontourai/station-shared/knowledge-root-identity';
 import { Hono } from 'hono';
 import { knowledgeEmbeddingIdentity } from '../../knowledge-index/embedding-identity.js';
 import { RebuildInProgressError } from '../../knowledge-index/inflight-guard.js';
@@ -176,30 +177,56 @@ export function createKnowledgeIndexRoutes(deps: KnowledgeIndexRouteDeps) {
         ? [requestedRootId]
         : (await deps.store.listRoots()).map((root) => root.id);
 
-      // Operator-only for a session-backed root, refused before any rebuild:
-      // a partial rebuild (or its record counts) is itself a disclosure.
-      if (!(deps.mayBuildSessionBackedRoot?.(c.req.raw) ?? false)) {
-        for (const rootId of rootIds) {
-          // An unregistered root (or one whose adapter is gone) fails in
-          // `rebuildRoot`'s first step, before its partition is touched.
-          const kind = await knowledgeRootReadKind(deps.store, rootId);
-          if (kind === 'session-backed' || kind === 'author-private') {
+      const privateRoots = new Map<string, KnowledgeStoreRoot>();
+      const isOperator = deps.mayBuildSessionBackedRoot?.(c.req.raw) ?? false;
+      for (const rootId of rootIds) {
+        const kind = await knowledgeRootReadKind(deps.store, rootId);
+        if (kind === 'session-backed' && !isOperator)
+          return c.json(
+            { success: false, error: SESSION_BACKED_BUILD_FORBIDDEN_ERROR },
+            403,
+          );
+        if (kind === 'author-private') {
+          const root = await deps.store.getRoot(rootId);
+          if (
+            !isOperator ||
+            !root ||
+            !deps.mayReadHitRoot ||
+            !(await deps.mayReadHitRoot(c.req.raw, root))
+          )
             return c.json(
-              {
-                success: false,
-                error:
-                  kind === 'author-private'
-                    ? "Only this Station's operator may build an author-private knowledge root index"
-                    : SESSION_BACKED_BUILD_FORBIDDEN_ERROR,
-              },
+              { success: false, error: 'Knowledge root access denied.' },
               403,
             );
-          }
+          privateRoots.set(rootId, root);
         }
       }
 
       const roots: RebuildRootReport[] = [];
       for (const rootId of rootIds) {
+        const expected = privateRoots.get(rootId);
+        if (
+          !expected &&
+          (await knowledgeRootReadKind(deps.store, rootId)) === 'author-private'
+        )
+          return c.json(
+            { success: false, error: 'Knowledge root access denied.' },
+            403,
+          );
+        if (expected) {
+          const current = await deps.store.getRoot(rootId);
+          if (
+            !current ||
+            knowledgeRootIncarnationKey(current) !==
+              knowledgeRootIncarnationKey(expected) ||
+            !deps.mayReadHitRoot ||
+            !(await deps.mayReadHitRoot(c.req.raw, current))
+          )
+            return c.json(
+              { success: false, error: 'Knowledge root access denied.' },
+              403,
+            );
+        }
         try {
           const result = await runAsIndexer(() =>
             deps.indexProvider.rebuildRoot(rootId, {
@@ -229,18 +256,23 @@ export function createKnowledgeIndexRoutes(deps: KnowledgeIndexRouteDeps) {
       // (every targeted root errored) is a genuine 500.
       const whollyFailed =
         roots.length > 0 && roots.every((r) => r.status === 'error');
-      if (whollyFailed) {
-        return c.json(
-          {
-            success: false,
-            error: 'All root rebuilds failed',
-            data: { roots },
-          },
-          500,
-        );
-      }
-
-      return c.json({ success: true, data: { roots } });
+      const response = whollyFailed
+        ? c.json(
+            {
+              success: false,
+              error: 'All root rebuilds failed',
+              data: { roots },
+            },
+            500,
+          )
+        : c.json({ success: true, data: { roots } });
+      return deps.guardReadResponse && privateRoots.size
+        ? deps.guardReadResponse(
+            c.req.raw,
+            [...privateRoots.values()],
+            response,
+          )
+        : response;
     } catch (e: unknown) {
       if (e instanceof RebuildInProgressError) {
         return c.json({ success: false, error: e.message }, 409);
