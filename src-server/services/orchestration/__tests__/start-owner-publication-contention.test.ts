@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
+import { setTimeout as delay } from 'node:timers/promises';
 import type { ProviderSession } from '@kontourai/station-contracts/provider';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import {
@@ -17,8 +18,10 @@ import type {
   ProviderSendTurnInput,
   ProviderSessionStartInput,
 } from '../../../providers/adapter-shape.js';
+import { StationAgentAdapter } from '../../../providers/adapters/station-agent-adapter.js';
 import type { IProviderAdapterRegistry } from '../../../providers/provider-interfaces.js';
 import { isSqliteContentionError } from '../../../utils/sqlite-wal.js';
+import { ApprovalRegistry } from '../../approvals/approval-registry.js';
 import { createConversationForkContext } from '../conversation-fork-context.js';
 import { readConversationContextSeedPin } from '../conversation-handoff-module.js';
 import { EventBus } from '../event-bus.js';
@@ -978,3 +981,123 @@ test('stops a session completed by an adapter replaced during launch', async () 
     store.close();
   }
 });
+
+test.each([
+  ['claude', 'release'],
+  ['claude', 'timeout'],
+  ['station-agent', 'release'],
+  ['station-agent', 'timeout'],
+] as const)(
+  '%s start waits for durable ownership when its event consumer lags (%s)',
+  async (provider, mode) => {
+    const store = new EventStore(
+      join(makeTempDir('start-consumer-lag-'), 'events.sqlite'),
+    );
+    const eventBus = new EventBus();
+    const adapter =
+      provider === 'claude'
+        ? new EchoingAdapter()
+        : new StationAgentAdapter({
+            apiBase: 'http://127.0.0.1:43871',
+            hasAgent: () => true,
+            eventBus,
+            approvalRegistry: new ApprovalRegistry(
+              { info: vi.fn(), warn: vi.fn() },
+              { eventBus },
+            ),
+          });
+    const threadId = `consumer-lag-${provider}-${mode}`;
+    const owner = 'consumer-lag-owner';
+    const held = Promise.withResolvers<void>();
+    const consumingPriorEvent = Promise.withResolvers<void>();
+    const announced = Promise.withResolvers<void>();
+    const stream = adapter.streamEvents.bind(adapter);
+    vi.spyOn(adapter, 'streamEvents').mockImplementation((options) => ({
+      async *[Symbol.asyncIterator]() {
+        for await (const event of stream(options)) {
+          // Hold the real queue consumer on an earlier session's event.
+          if (
+            event.threadId === 'prior-session' &&
+            event.method === 'session.started'
+          ) {
+            consumingPriorEvent.resolve();
+            await held.promise;
+          }
+          yield event;
+        }
+      },
+    }));
+    const start = adapter.startSession.bind(adapter);
+    vi.spyOn(adapter, 'startSession').mockImplementation(async (input) => {
+      const session = await start(input);
+      if (input.threadId === threadId) announced.resolve();
+      return session;
+    });
+    const sessions = new OrchestrationService({
+      adapterRegistry: createGateTestRegistry(adapter),
+      eventBus,
+      eventStore: store,
+      logger: { debug: vi.fn(), warn: vi.fn() },
+    });
+    let launch: ReturnType<typeof sessions.sessionCommands.execute> | undefined;
+    try {
+      sessions.initialize();
+      await adapter.startSession({
+        threadId: 'prior-session',
+        provider,
+        metadata: { agentId: 'reviewer' },
+      });
+      await consumingPriorEvent.promise;
+      let returned: unknown;
+      launch = sessions.sessionCommands
+        .execute(
+          {
+            type: 'start-session',
+            input: {
+              threadId,
+              provider,
+              metadata: { userId: owner, agentId: 'reviewer' },
+            },
+          },
+          { userId: owner },
+        )
+        .then((outcome) => {
+          returned = {
+            status: outcome.status,
+            persisted: store
+              .readSessions()
+              .some((session) => session.threadId === threadId),
+            started: !!store.latestEventByMethod(threadId, 'session.started'),
+          };
+          return outcome;
+        });
+      await announced.promise;
+      if (mode === 'release') {
+        // Let the start's existing scheduler yield finish while consumption stays held.
+        await delay(30);
+        expect(returned, JSON.stringify(returned)).toBeUndefined();
+        held.resolve();
+        expect((await launch).status).toBe('accepted');
+        expect(
+          store.latestEventByMethod(threadId, 'session.started')?.payload,
+        ).toMatchObject({
+          threadId,
+          method: 'session.started',
+          metadata: { userId: owner },
+        });
+        expect(sessions.sessionRecordedOwnerId(threadId)).toBe(owner);
+      } else {
+        expect((await launch).status).toBe('indeterminate');
+        expect(
+          store.latestEventByMethod(threadId, 'session.started'),
+        ).toBeUndefined();
+        expect(sessions.sessionRecordedOwnerId(threadId)).toBeUndefined();
+      }
+    } finally {
+      held.resolve();
+      await launch;
+      await sessions.shutdown();
+      store.close();
+    }
+  },
+);
