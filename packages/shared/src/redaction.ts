@@ -234,7 +234,7 @@ function redactContextualFields(text: string): string {
   const keys =
     /((?:^|[?&;\s])--?|^|[?&;\s])(?:"([^"\r\n]+)"|'([^'\r\n]+)'|([A-Za-z][A-Za-z0-9_-]*))(\s*(?:=|:)\s*)/gim;
   const values =
-    /\[REDACTED\]|"(?:\\.|[^"\\])*"|'[^']*'|(?:(?!\s-|\s[A-Za-z][A-Za-z0-9_-]*[ \t]*[=:])[^&;\r\n])*/y;
+    /\[REDACTED\](?=$|[\s&;])|"(?:\\.|[^"\\])*"(?=$|[\s&;])|'[^']*'(?=$|[\s&;])|(?:(?!\s-|\s[A-Za-z][A-Za-z0-9_-]*[ \t]*[=:])[^&;\r\n])*/y;
   let output = '';
   let copied = 0;
   for (
