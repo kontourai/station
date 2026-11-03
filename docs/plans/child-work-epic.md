@@ -7,13 +7,40 @@ normally before publication. Open one PR when the combined work is ready.
 
 ## Current delivery state
 
-**NOT_READY.** No push or PR exists. Normal merge `3aece9ab909` integrates
-main through `3cba8d04a2a`; managed dependencies and hooks pass after the merge.
-It preserves the sealed Session policy, main's pending steering semantics and
-the Inbox submission port. Main's new command-owner fallback lets an accepted
+**NOT_READY.** No push or PR exists. Normal merge `26f1acaeee5` integrates
+main through `8bf2544cc93`; managed dependencies and hooks pass after the merge.
+Conflict resolution preserves leased environment initialization/reset, main's
+owner-device standing, model-option and reserved-session contracts, the sealed
+Session policy, pending steering semantics and the Inbox submission port. Main's new command-owner fallback lets an accepted
 start's stamped owner pass the command gate while publication is pending; it
 does not prove durable `session.started` at acceptance. #4467 remains open and
 owned by #3558. No local retry or synthetic-event workaround is added.
+
+Integration exposed a delayed-authorization mismatch: the optional route
+assessment used raw pairing scope instead of main's owner-device scope policy.
+Repair `a4677835024` shares the canonical device-scope helper and retains the
+same live standing check as the legacy path. The real pairing harness now wires
+main's standing/device-kind resolvers; its two scoped-approver cases use explicit
+read-only grants so they remain distinct from owner devices. The five-file
+selection passes 95 tests and server-test types. Replacing only the assessment's
+canonical scope with raw pairing scope produces two intended boundary failures;
+exact-restored verification passes all six boundary cases. Earlier incomplete
+integration attempts remain diagnostic failures, not passing evidence. This does
+not establish a report deadline improvement or full-caller acceptance.
+
+Five complete-body source-currentness reviews cover Concepts, workspace
+checkpoints, the repository graph example, MCP host and Agent Runtime. Corrections
+use the current Station Assistant display name and the graph importer's actual
+shared batch deadline. Existing runtime/provider/native/hosted limits remain;
+these records do not close the broader documentation freshness backlog.
+
+A separate source review identifies two remaining execution custody bridges:
+initial intent/admission retention does not receive the existing publication,
+and the trailing operation lookup drops it. The next repair must preserve every
+live request/preparation check, exact Home custody through durable return and
+post-return uncertainty classification. Its proposed proof uses real persistence
+return barriers and a genuine Flow prerequisite with no ready roster seat, not
+fabricated provider success. Neither repair nor qualification is claimed here.
 
 The responding-request settlement gap is repaired at `26445f1466c`, followed by
 resource classification at `44c3c85ad29`. The original source check and the live
