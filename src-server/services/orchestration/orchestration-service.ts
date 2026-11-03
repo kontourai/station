@@ -8320,8 +8320,15 @@ export class OrchestrationService {
           }
           // The first turn is authorized from durable ownership. An adapter's
           // queued start event may arrive after this command returns accepted.
-          // Persist prepared metadata here, including server-minted consent.
-          if (consent || typeof input.metadata?.userId === 'string') {
+          // Persist missing ownership without replacing an adapter's richer
+          // configuration. Portable starts still stamp server-minted consent.
+          if (
+            consent ||
+            (typeof input.metadata?.userId === 'string' &&
+              this.options.eventStore?.findSessionOwnerUserId(
+                input.threadId,
+              ) !== input.metadata.userId)
+          ) {
             const recorded = this.projectAndPublishEvent({
               eventId: crypto.randomUUID(),
               provider: adapter.provider,
