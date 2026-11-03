@@ -86,8 +86,6 @@ function StartAttachButton({ onAdd }: { onAdd: (files: File[]) => void }) {
         accept={START_FILE_ACCEPT}
         onChange={handleFileSelect}
         hidden
-        tabIndex={-1}
-        aria-hidden="true"
       />
       <button
         type="button"
