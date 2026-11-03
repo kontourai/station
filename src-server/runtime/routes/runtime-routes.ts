@@ -10721,8 +10721,7 @@ export function configureRuntimeRoutes(
         ) === 'delegation'
       )
         return false;
-      if (action === 'edit' && !isOperatorInPersonNotAgent(request))
-        return false;
+      if (action === 'edit' && !isOperatorAtHostNotAgent(request)) return false;
       return (
         authority.userId === ownerId ||
         context.environmentSecurityService.canSharePersonalConversation(

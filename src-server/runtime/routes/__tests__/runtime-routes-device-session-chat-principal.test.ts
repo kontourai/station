@@ -290,13 +290,14 @@ describe('device-session chat principal resolution over the REAL auth path (stat
    * pairing-code/tailnet device — which is exactly the fact this regression
    * turns on.
    */
-  function pairRealDevice(homePossession = false) {
+  function pairRealDevice(homePossession = false, ownerDeviceStanding = false) {
     const homeDir = mkdtempSync(join(tmpdir(), 'station-device-chat-'));
     directories.push(homeDir);
     mkdirSync(join(homeDir, 'security'), { mode: 0o700 });
     const pairing = new DevicePairingService({
       homeDir,
       environmentId: '22222222-2222-4222-8222-222222222222',
+      ownerDeviceStanding,
     });
     const offer = pairing.createOffer({
       endpoint: 'https://station.example.test',
@@ -358,6 +359,8 @@ describe('device-session chat principal resolution over the REAL auth path (stat
           : pairing.identifyDevice(credential)?.scope,
       identifyDevice: (credential: string) =>
         pairing.identifyDevice(credential),
+      credentialHasOwnerStanding: (credential: string) =>
+        pairing.credentialHasOwnerStanding(credential),
       canSharePersonalConversation: (requester: string, owner: string) =>
         pairing.canSharePersonalConversation(requester, owner),
       credentialLocality: (credential: string) =>
@@ -419,6 +422,7 @@ describe('device-session chat principal resolution over the REAL auth path (stat
        * orchestration service, behind `/api/knowledge`.
        */
       knowledge?: boolean;
+      ownerDeviceStanding?: boolean;
       onKnowledgeEmbed?: (texts: string[]) => void;
       fileMemoryKnowledge?: boolean;
       /**
@@ -431,7 +435,10 @@ describe('device-session chat principal resolution over the REAL auth path (stat
       taskDispatcher?: unknown;
     } = {},
   ) {
-    const { pairing, paired } = pairRealDevice(searchMode === 'home');
+    const { pairing, paired } = pairRealDevice(
+      searchMode === 'home',
+      orchestrationExtras.ownerDeviceStanding,
+    );
     let knowledgeProvider: KnowledgeStoreProvider | undefined;
     const roomHomeDir = mkdtempSync(
       join(tmpdir(), 'station-device-chat-room-'),
@@ -3971,8 +3978,10 @@ describe('device-session chat principal resolution over the REAL auth path (stat
       const { app, pairing, paired, knowledgeProvider, roomHomeDir } =
         await principalSetup({
           knowledge: true,
+          ownerDeviceStanding: true,
           onKnowledgeEmbed: (texts) => embedded.push(texts),
         });
+      expect(pairing.credentialHasOwnerStanding(paired.credential)).toBe(true);
       const root = await knowledgeProvider!.createRoot({
         scope: { kind: 'project', projectSlug: 'private' },
         readPolicy: {
