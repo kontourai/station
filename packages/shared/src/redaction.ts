@@ -232,9 +232,10 @@ function redactContextualFields(text: string): string {
   );
 
   const keys =
-    /((?:^|[?&;\s])--?|^|[?&;\s])(?:"([^"\r\n]+)"|'([^'\r\n]+)'|([A-Za-z][A-Za-z0-9_-]*))(\s*(?:=|:)\s*)/gim;
+    /((?:^|[?&;:\s])--?|^|[?&;:\s])(?:"([^"\r\n]+)"|'([^'\r\n]+)'|([A-Za-z][A-Za-z0-9_-]*))(\s*(?:=|:)\s*)/gim;
   const values =
     /\[REDACTED\](?=$|[\s&;])|"(?:\\.|[^"\\])*"(?=$|[\s&;])|'[^']*'(?=$|[\s&;])|(?:(?!\s-|\s[A-Za-z][A-Za-z0-9_-]*[ \t]*[=:])[^&;\r\n])*/y;
+  const secretKeys = new Map<string, boolean>();
   let output = '';
   let copied = 0;
   for (
@@ -244,7 +245,12 @@ function redactContextualFields(text: string): string {
   ) {
     const [, boundary, double, single, plain, separator] = match;
     const key = double ?? single ?? plain ?? '';
-    if (!isSecretField(key)) {
+    let secret = secretKeys.get(key);
+    if (secret === undefined) {
+      secret = isSecretField(key);
+      secretKeys.set(key, secret);
+    }
+    if (!secret) {
       // A harmless unquoted value must not shield later credential keys.
       // Keep quoted values opaque, as they may contain ordinary example text.
       const next = jsonRedacted[keys.lastIndex];
@@ -252,7 +258,7 @@ function redactContextualFields(text: string): string {
         values.lastIndex = keys.lastIndex;
         const value = values.exec(jsonRedacted);
         if (value) keys.lastIndex = values.lastIndex;
-      } else if (/\s$/.test(separator)) keys.lastIndex -= 1;
+      } else if (/[:\s]$/.test(separator)) keys.lastIndex -= 1;
       continue;
     }
     values.lastIndex = keys.lastIndex;

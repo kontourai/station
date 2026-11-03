@@ -368,6 +368,7 @@ describe('#1545: credential vocabulary reachable from a tool-call preview', () =
       'Error: login failed password=[REDACTED]',
     ],
     ['E_AUTH: bad api_key=synthetic-secret', 'E_AUTH: bad api_key=[REDACTED]'],
+    ['Error:password=hunter2', 'Error:password=[REDACTED]'],
     ['password="abc"def', 'password=[REDACTED]'],
     ["password='abc'def", 'password=[REDACTED]'],
     ['password=[REDACTED]tail', 'password=[REDACTED]'],
