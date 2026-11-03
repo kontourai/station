@@ -49,7 +49,10 @@ import {
   SkeletonBlock,
 } from '../components/state';
 import { useHostRequestAuthorityScope } from '../contexts/ApiBaseContext';
-import { deviceFloatSourceKey } from '../float-over-chat/floatSource';
+import {
+  type DeviceFloatSource,
+  deviceFloatSourceKey,
+} from '../float-over-chat/floatSource';
 import {
   registerDevicePanePromotion,
   requestFloat,
@@ -875,6 +878,21 @@ function DeviceLoading({ pending }: { pending: Pending }) {
   );
 }
 
+function deviceFloatSource(
+  session: MobileDeviceSession,
+  projectSlug: string | null,
+): DeviceFloatSource {
+  return {
+    kind: 'device',
+    hostId: session.hostId,
+    platform: session.platform,
+    deviceId: session.deviceId,
+    surfaceId: session.surfaceId,
+    projectSlug,
+    name: session.name,
+  };
+}
+
 function DeviceStage({
   requestScope,
   hostLabel,
@@ -1034,17 +1052,9 @@ function DeviceStage({
     if (!deviceLoopEnabled) return;
     return registerDevicePanePromotion(() => {
       if (!requestScope.isCurrent()) return;
-      requestFloat({
-        kind: 'device',
-        hostId: session.hostId,
-        platform,
-        deviceId: session.deviceId,
-        surfaceId: session.surfaceId,
-        projectSlug,
-        name: session.name,
-      });
+      requestFloat(deviceFloatSource(session, projectSlug));
     });
-  }, [deviceLoopEnabled, requestScope, session, platform, projectSlug]);
+  }, [deviceLoopEnabled, requestScope, session, projectSlug]);
   // Let go only once a chat has TAKEN it: until then this pane keeps
   // showing the device. The float reads it under this pane's Project (the
   // one the person is viewing it from), and says so in the chat if it
@@ -1111,15 +1121,7 @@ function DeviceStage({
           toolsView={toolsView}
           onClose={() => {
             if (deviceLoopEnabled) {
-              requestFloat({
-                kind: 'device',
-                hostId: session.hostId,
-                platform,
-                deviceId: session.deviceId,
-                surfaceId: session.surfaceId,
-                projectSlug,
-                name: session.name,
-              });
+              requestFloat(deviceFloatSource(session, projectSlug));
             }
             onClose();
           }}

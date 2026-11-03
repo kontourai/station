@@ -15,8 +15,8 @@ import { useMenuFocus } from '../hooks/useMenuFocus';
 import './PaneOverflowMenu.css';
 
 /**
- * The `⋯` menu the Browser and Device panes keep their secondary actions in
- * (#90). Rows are grouped under `heading` items; a row may carry a hint at its
+ * The `⋯` menu the Browser and Device panes keep their secondary actions in.
+ * Rows are grouped under `heading` items; a row may carry a hint at its
  * right end (a shortcut, or a current value), and a `list` row opens its
  * choices in place, with a row to go back.
  *
@@ -83,6 +83,7 @@ function groupsOf(items: PaneMenuItem[]) {
 }
 
 const GAP_PX = 4;
+const FIRST_ENABLED_ROW = '[role^="menuitem"]:not(:disabled)';
 const EDGE_PX = 8;
 
 function Row({
@@ -97,7 +98,7 @@ function Row({
   return (
     <>
       <span className="menu-row__glyph" aria-hidden="true">
-        {glyph ?? null}
+        {glyph}
       </span>
       <span className="pane-menu__label">{label}</span>
       {hint ? (
@@ -162,9 +163,7 @@ export function PaneOverflowMenu({
   // biome-ignore lint/correctness/useExhaustiveDependencies: listId is the change key.
   useEffect(() => {
     if (!open) return;
-    menuRef.current
-      ?.querySelector<HTMLElement>('[role^="menuitem"]:not(:disabled)')
-      ?.focus();
+    menuRef.current?.querySelector<HTMLElement>(FIRST_ENABLED_ROW)?.focus();
   }, [listId]);
 
   // Placed from the trigger's own rect once the menu has a size.
@@ -236,7 +235,7 @@ export function PaneOverflowMenu({
   useEffect(() => {
     if (!open || style.visibility === 'hidden') return;
     menuRef.current
-      ?.querySelector<HTMLElement>('[role^="menuitem"]:not(:disabled)')
+      ?.querySelector<HTMLElement>(FIRST_ENABLED_ROW)
       ?.focus({ preventScroll: true });
   }, [open, style.visibility, menuRef]);
 
