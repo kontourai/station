@@ -585,10 +585,14 @@ test('#3163: View transcript reads the child by session and id, renders it read-
   // Closed: nothing is read.
   expect(useChildWorkTranscriptQuery).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole('button', { name: 'View transcript' }));
-  expect(useChildWorkTranscriptQuery).toHaveBeenCalledWith({
-    threadId: 'exec-1',
-    childId: 'task-1',
-  });
+  expect(useChildWorkTranscriptQuery).toHaveBeenCalledWith(
+    expect.objectContaining({
+      threadId: 'exec-1',
+      childId: 'task-1',
+      requestScope: undefined,
+    }),
+    undefined,
+  );
   const region = screen.getByRole('region', { name: 'Subagent transcript' });
   expect(region.textContent).toContain('Reply INNER');
   expect(region.textContent).toContain('Tool · Agent');
