@@ -1,5 +1,41 @@
 [
   {
+    "timestampUtc": "2026-11-03T15:42:27Z",
+    "channel": "nightly-npm",
+    "version": "0.11.0-nightly.2498.41664236882",
+    "sha": "8bfa549068e37bb8a241a0ecf2ae241909e54381",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/41664236882",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.11.0-nightly.2498.41664236882 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "3d83c6209a3e8be7f65aaebb79bbe48f0c2f699c",
+      "groups": {
+        "feat": [
+          "[#4475](https://github.com/kontourai/station/pull/4475) feat(browser,devices): simpler Browser and Device panes, advanced settings, and deslop",
+          "[#4472](https://github.com/kontourai/station/pull/4472) feat(feedback): prefill the bug-report form by field id and add a Troubleshoot report form",
+          "[#4411](https://github.com/kontourai/station/pull/4411) feat(terminal): Ghostty TerminalView, command and agent terminals, retention and plugin target",
+          "[#4476](https://github.com/kontourai/station/pull/4476) feat(access): owner devices act as the owner by default; Pair phone opens straight to a QR"
+        ],
+        "fix": [
+          "[#4468](https://github.com/kontourai/station/pull/4468) fix: repair restart recovery, Task Inbox grouping, and Codex startup"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#4488](https://github.com/kontourai/station/pull/4488) test(station-control): show why a dispatch failed and wait for the recorded owner"
+        ]
+      },
+      "note": null,
+      "commitCount": 6
+    }
+  },
+  {
     "timestampUtc": "2026-11-03T08:46:45Z",
     "channel": "nightly-desktop",
     "version": "0.1.11-nightly.2498",
