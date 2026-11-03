@@ -7279,6 +7279,17 @@ export class EventStore {
     }
   }
 
+  async waitForPublicationWrite(
+    threadId: string,
+    signal: AbortSignal,
+  ): Promise<void> {
+    await this.writeInBackground(threadId, () => {
+      signal.throwIfAborted();
+      this.db.exec('BEGIN IMMEDIATE');
+      this.db.exec('ROLLBACK');
+    });
+  }
+
   private async writeInBackground<T>(
     threadId: string | symbol,
     write: () => T,

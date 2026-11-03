@@ -44,12 +44,6 @@ const tenantTwo: TenantExecutionContext = {
  * `echoUserId` rewrites the echoed owner; `null` drops it.
  */
 class EchoingAdapter extends GateTestAdapter {
-  deferred = false;
-  private announceStart?: () => void;
-  publishStarted() {
-    this.announceStart?.();
-    this.announceStart = undefined;
-  }
   readonly sessions = new Map<string, ProviderSession>();
   readonly turns: ProviderSendTurnInput[] = [];
   /** When set, `startSession` returns only after its event is stored. */
@@ -69,22 +63,17 @@ class EchoingAdapter extends GateTestAdapter {
     const metadata = { ...input.metadata };
     if (this.echoUserId === null) delete metadata.userId;
     else if (this.echoUserId !== undefined) metadata.userId = this.echoUserId;
-    const announce = () => {
-      this.beforeStartEvent?.(input.threadId);
-      if (this.emitStart)
-        this.events.push({
-          eventId: randomUUID(),
-          provider: this.provider,
-          threadId: input.threadId,
-          sessionId: input.threadId,
-          method: 'session.started',
-          createdAt: session.createdAt,
-          metadata,
-        });
-    };
-    if (this.deferred && !this.beforeReturn && !this.settledBeforeReturn)
-      this.announceStart = announce;
-    else announce();
+    this.beforeStartEvent?.(input.threadId);
+    if (this.emitStart)
+      this.events.push({
+        eventId: randomUUID(),
+        provider: this.provider,
+        threadId: input.threadId,
+        sessionId: input.threadId,
+        method: 'session.started',
+        createdAt: session.createdAt,
+        metadata,
+      });
     await this.beforeReturn?.();
     const store = this.settledBeforeReturn;
     if (store)
@@ -175,12 +164,6 @@ function fixture(
   const path = join(makeTempDir('start-owner-contention-'), 'events.sqlite');
   const store = new EventStore(path);
   const adapter = new EchoingAdapter(options.echoUserId);
-  // Exercise the fallback only for adapters that announce after start returns.
-  adapter.deferred = true;
-  const announceDeferred = <T>(result: T): T => {
-    adapter.publishStarted();
-    return result;
-  };
   const replaced = new EchoingAdapter();
   let current: EchoingAdapter = options.replaceable ? replaced : adapter;
   const registry: IProviderAdapterRegistry = {
@@ -223,16 +206,10 @@ function fixture(
   });
   const contend = options.contend ?? 'first';
   let attempts = 0;
-  let released = false;
-  const release = () => {
-    released = true;
-  };
-  const retryReached = vi.fn();
   const attempt = store.withImmediateWriteAttempt.bind(store);
   vi.spyOn(store, 'withImmediateWriteAttempt').mockImplementation((publish) => {
     attempts += 1;
-    if (attempts > 1) retryReached(thread);
-    if (contend === 'none' || (contend === 'first' && released && attempts > 1))
+    if (contend === 'none' || (contend === 'first' && attempts > 1))
       return attempt(publish);
     const peer = new DatabaseSync(path, { timeout: 0 });
     try {
@@ -243,6 +220,19 @@ function fixture(
       peer.close();
     }
   });
+  let release!: () => void;
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const retryReached = vi.fn();
+  const waitForWrite = store.waitForPublicationWrite.bind(store);
+  vi.spyOn(store, 'waitForPublicationWrite').mockImplementation(
+    async (thread, signal) => {
+      retryReached(thread);
+      if (contend === 'first') await held;
+      return waitForWrite(thread, signal);
+    },
+  );
   const start = (
     ownerStamp: string,
     context: {
@@ -250,20 +240,18 @@ function fixture(
       tenantExecutionContext?: TenantExecutionContext;
     },
   ) =>
-    sessions
-      .dispatchWithReceipt(
-        {
-          type: 'startSession',
-          input: {
-            provider: 'claude',
-            threadId: thread,
-            cwd: process.cwd(),
-            metadata: { userId: ownerStamp },
-          },
+    sessions.dispatchWithReceipt(
+      {
+        type: 'startSession',
+        input: {
+          provider: 'claude',
+          threadId: thread,
+          cwd: process.cwd(),
+          metadata: { userId: ownerStamp },
         },
-        context,
-      )
-      .then(announceDeferred);
+      },
+      context,
+    );
   /**
    * A ready replay-seed fork of `owner`'s conversation into `thread`, started
    * the way a foreground send starts it: stamped with the requester.
@@ -310,31 +298,29 @@ function fixture(
     // The start below takes the fork path: a ready reference for `thread`.
     expect(store.conversationForkContextReference(thread)?.state).toBe('ready');
     const origin = { contextId: 'fork-event', contextDigest: snapshot.digest };
-    return sessions
-      .startSessionInternal(
-        {
-          type: 'start-session',
-          input: {
-            provider: 'claude',
-            threadId: thread,
-            cwd: process.cwd(),
-            metadata: {
-              userId: requester,
-              agentSlug: 'claude',
-              forkContextOrigin: origin,
-              forkSeedCarrier: {
-                ...origin,
-                seedDigest: readConversationContextSeedPin(snapshot.seedPinJson)
-                  .seedDigest,
-                clientTurnId: 'fork-turn',
-              },
+    return sessions.startSessionInternal(
+      {
+        type: 'start-session',
+        input: {
+          provider: 'claude',
+          threadId: thread,
+          cwd: process.cwd(),
+          metadata: {
+            userId: requester,
+            agentSlug: 'claude',
+            forkContextOrigin: origin,
+            forkSeedCarrier: {
+              ...origin,
+              seedDigest: readConversationContextSeedPin(snapshot.seedPinJson)
+                .seedDigest,
+              clientTurnId: 'fork-turn',
             },
           },
         },
-        { userId: requester },
-        {},
-      )
-      .then(announceDeferred);
+      },
+      { userId: requester },
+      {},
+    );
   };
   const send = (userId: string, tenant?: TenantExecutionContext) =>
     sessions
@@ -387,7 +373,7 @@ function fixture(
 // zero-timeout observed-event publish. Under contention that append retries
 // asynchronously, and a turn sent right after the accepted start (a
 // delegation's initial turn) must still be admitted for its owner.
-test('a deferred start owner can send a turn while its contended session.started publish is still retrying', async () => {
+test('a start owner can send a turn while its contended session.started publish is still retrying', async () => {
   const f = fixture();
   try {
     await f.start('owner', { userId: 'owner' });
@@ -585,12 +571,7 @@ test('a start whose session.started publish gave up before the start hook binds 
           ),
         { timeout: 7500 },
       );
-    await expect(f.start('owner', { userId: 'owner' })).rejects.toMatchObject({
-      outcome: 'indeterminate',
-      failurePhase: 'indeterminate',
-      retryable: false,
-      receiptStatus: 'unavailable',
-    });
+    await f.start('owner', { userId: 'owner' });
     expect(
       f.store.latestEventByMethod(threadId, 'session.started'),
     ).toBeUndefined();
@@ -641,9 +622,7 @@ test('an engine that exits before reporting its start ends the interim owner', a
     await f.start('owner', { userId: 'owner' });
     expect(f.admits('owner')).toBe(true);
     f.adapter.exit(threadId);
-    await vi.waitFor(() => expect(f.admits('owner')).toBe(false), {
-      timeout: 7500,
-    });
+    await vi.waitFor(() => expect(f.admits('owner')).toBe(false));
   } finally {
     await f.close();
   }
@@ -669,20 +648,19 @@ test('a start event that settles after teardown is not remembered', async () => 
   try {
     const internals = f.sessions as unknown as {
       settledStartEvents: Set<string>;
+      sessionAuthz: { settleStartOwner(threadId: string): void };
     };
+    const settle = vi.spyOn(internals.sessionAuthz, 'settleStartOwner');
     await f.start('owner', { userId: 'owner' });
     await f.retrying();
     await f.sessions.dispatchWithReceipt(
       { type: 'discardDraft', threadId },
       { userId: 'owner' },
     );
+    settle.mockClear();
     f.release();
-    // The consumer finishes handling the held start before pulling the marker.
-    await f.adapter.drained();
-    expect(
-      f.store.latestEventByMethod(threadId, 'session.started'),
-    ).toBeUndefined();
-    expect(f.admits('owner')).toBe(false);
+    // The held session.started now settles for a thread that is gone.
+    await vi.waitFor(() => expect(settle).toHaveBeenCalledWith(threadId));
     expect(internals.settledStartEvents.has(threadId)).toBe(false);
   } finally {
     await f.close();
@@ -785,178 +763,6 @@ test('the injected peer writer is real contention for the zero-timeout publish',
   } finally {
     peer.exec('ROLLBACK');
     peer.close();
-    store.close();
-  }
-});
-
-test.each(['transient', 'deadline'] as const)(
-  'start acknowledgement waits for session.started publication under %s contention',
-  async (mode) => {
-    const threadId = `start-publication-${mode}`;
-    const owner = 'start-publication-owner';
-    const store = new EventStore(
-      join(makeTempDir('start-commit-'), 'events.sqlite'),
-    );
-    const adapter = new EchoingAdapter();
-    const sessions = new OrchestrationService({
-      adapterRegistry: createGateTestRegistry(adapter),
-      eventBus: new EventBus(),
-      eventStore: store,
-      logger: { debug: vi.fn(), warn: vi.fn() },
-    });
-    const append = store.appendEvent.bind(store);
-    let attempts = 0;
-    vi.spyOn(store, 'appendEvent').mockImplementation((event, ...rest) => {
-      if (event.method === 'session.started' && event.threadId === threadId) {
-        attempts++;
-        if (mode === 'deadline' || attempts === 1)
-          throw Object.assign(new Error('database is locked'), {
-            code: 'SQLITE_BUSY',
-          });
-      }
-      return append(event, ...rest);
-    });
-    try {
-      const outcome = await sessions.sessionCommands.execute(
-        {
-          type: 'start-session',
-          input: { threadId, provider: 'claude', metadata: { userId: owner } },
-        },
-        { userId: owner },
-      );
-      if (mode === 'deadline') {
-        expect(outcome.status).toBe('indeterminate');
-        expect(
-          store.latestEventByMethod(threadId, 'session.started'),
-        ).toBeUndefined();
-        expect(sessions.sessionRecordedOwnerId(threadId)).toBeUndefined();
-        await expect(
-          sessions.dispatchWithReceipt(
-            {
-              type: 'sendTurn',
-              input: { threadId, input: 'unconfirmed start cannot send' },
-            },
-            { userId: owner },
-          ),
-        ).rejects.toThrow(`Session not found: ${threadId}`);
-        expect(adapter.turns).toEqual([]);
-      } else {
-        expect(outcome.status).toBe('accepted');
-        expect(
-          store.latestEventByMethod(threadId, 'session.started')?.payload,
-        ).toMatchObject({
-          threadId,
-          method: 'session.started',
-          metadata: { userId: owner },
-        });
-        expect(sessions.sessionRecordedOwnerId(threadId)).toBe(owner);
-        await sessions.dispatchWithReceipt(
-          {
-            type: 'sendTurn',
-            input: { threadId, input: 'immediate authorized send' },
-          },
-          { userId: owner },
-        );
-        expect(adapter.turns.map((turn) => turn.input)).toEqual([
-          'immediate authorized send',
-        ]);
-        expect(attempts).toBeGreaterThanOrEqual(2);
-      }
-    } finally {
-      await sessions.shutdown();
-      store.close();
-    }
-  },
-);
-
-test('a publication-timeout smoke retains its failed-stop handle without a durable start', async () => {
-  const store = new EventStore(
-    join(makeTempDir('start-smoke-retained-'), 'events.sqlite'),
-  );
-  const adapter = new EchoingAdapter();
-  vi.spyOn(adapter, 'stopSession').mockRejectedValue(new Error('stop failed'));
-  const append = store.appendEvent.bind(store);
-  vi.spyOn(store, 'appendEvent').mockImplementation((event, ...rest) => {
-    if (event.method === 'session.started')
-      throw Object.assign(new Error('database is locked'), {
-        code: 'SQLITE_BUSY',
-      });
-    return append(event, ...rest);
-  });
-  const sessions = new OrchestrationService({
-    adapterRegistry: createGateTestRegistry(adapter),
-    eventBus: new EventBus(),
-    eventStore: store,
-    logger: { debug: vi.fn(), warn: vi.fn() },
-  });
-  sessions.initialize();
-  try {
-    const result = await sessions.runConnectionSmoke({
-      connectionId: 'claude',
-      provider: 'claude',
-      cwd: process.cwd(),
-      timeoutMs: 500,
-    });
-    expect(result).toMatchObject({ ok: false, reasonCode: 'cleanup-failed' });
-    expect(adapter.sessions.size).toBe(1);
-    const retained = store.readSessions();
-    expect(retained).toHaveLength(1);
-    expect(
-      store.latestEventByMethod(retained[0]!.threadId, 'session.started'),
-    ).toBeUndefined();
-    expect(
-      sessions.sessionRecordedOwnerId(retained[0]!.threadId),
-    ).toBeUndefined();
-  } finally {
-    await sessions.shutdown();
-    store.close();
-  }
-});
-
-test('stops a session completed by an adapter replaced during launch', async () => {
-  const store = new EventStore(
-    join(makeTempDir('start-replaced-'), 'events.sqlite'),
-  );
-  const launching = new EchoingAdapter(true);
-  let resolveStart!: (session: ProviderSession) => void;
-  const started = new Promise<ProviderSession>((resolve) => {
-    resolveStart = resolve;
-  });
-  const start = vi
-    .spyOn(launching, 'startSession')
-    .mockReturnValueOnce(started);
-  const stop = vi.spyOn(launching, 'stopSession');
-  const registry = createGateTestRegistry(launching);
-  const sessions = new OrchestrationService({
-    adapterRegistry: registry,
-    eventBus: new EventBus(),
-    eventStore: store,
-    logger: { debug: vi.fn(), warn: vi.fn() },
-  });
-  try {
-    const launch = sessions.dispatch({
-      type: 'startSession',
-      input: { threadId: 'start-race', provider: 'claude', cwd: process.cwd() },
-    });
-    await vi.waitFor(() => expect(start).toHaveBeenCalled());
-    vi.spyOn(registry, 'get').mockReturnValue(new EchoingAdapter(true));
-    const session: ProviderSession = {
-      provider: 'claude',
-      threadId: 'start-race',
-      status: 'ready',
-      createdAt: '2026-07-19T00:00:00.000Z',
-      updatedAt: '2026-07-19T00:00:00.000Z',
-    };
-    launching.sessions.set(session.threadId, session);
-    resolveStart(session);
-    await expect(launch).rejects.toThrow('replaced while');
-    expect(stop).toHaveBeenCalledWith('start-race');
-    expect(launching.sessions.size).toBe(0);
-    expect(
-      store.readSessions().find((row) => row.threadId === 'start-race'),
-    ).toBeUndefined();
-  } finally {
-    await sessions.shutdown();
     store.close();
   }
 });

@@ -344,7 +344,7 @@ interface SessionCommandDependencies {
        * principal; undefined for an internal start.
        */
       startedBy: string | undefined,
-    ): void | Promise<void>;
+    ): void;
   };
   launchPolicy: {
     assertStartAllowed(
@@ -765,17 +765,17 @@ export function createSessionCommandModule(
             context,
             internal,
           );
-          await deps.sessionState.attachStarted(
+          await deps.launchPolicy.ensureStartedSessionCurrent(
+            adapter,
+            session,
+            startInput.signal,
+          );
+          deps.sessionState.attachStarted(
             session,
             adapter,
             context.tenantExecutionContext,
             startInput,
             internal?.forkContextRequester?.userId ?? context.userId,
-          );
-          await deps.launchPolicy.ensureStartedSessionCurrent(
-            adapter,
-            session,
-            startInput.signal,
           );
           deps.launchPolicy.logStarted(adapter, startInput);
           await deps.bindings.bind(startInput, internal);
