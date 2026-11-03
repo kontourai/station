@@ -67,6 +67,22 @@ run. This does not prove the earlier pending-publication error's sole cause,
 resolve the deadline failures or qualify the full journey. Assertions and product
 deadlines remain unchanged; no unchanged rerun follows.
 
+Answer-recovery preparation now joins the runtime publication at `152ba72a2e8`,
+before its first asynchronous authorization/read. That one admission also spans
+continuation and final inspection; private recovery reads borrow exact Home
+custody and synchronous signature/canonical checks use its scope. The new
+missing-group preparation regression fails on the pre-repair code, passes in the
+37-test accounting/publication/resource selection, fails again when the two
+production files are restored to their pre-repair versions, and passes after
+exact committed-byte restoration. Server-test types pass. This is shutdown and
+custody evidence, not successful recovery, initialized-store identity or provider
+qualification. The unchanged original caller then failed both cases: HTTP
+refused before canonical input with `group_preparation_unavailable`; direct Flow
+did not reach its required lost-adoption fault by 132000ms, beyond the unchanged
+120-second budget. The wrapper reported 96% host CPU pressure at launch. That
+context does not turn either failure into a pass or establish its sole cause.
+Both runtime shutdowns completed. No unchanged rerun follows.
+
 Sealed Queue and Steer are both disabled by the trusted Session declaration,
 with the plain report/group continuation explanation. The Queue-only mutant
 failed and restored browser verification passed at isolated `f138f28e20b`.

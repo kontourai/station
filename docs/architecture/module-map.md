@@ -2536,7 +2536,13 @@ A fresh runtime finalizes the retained empty-work cancellation and replays it wi
 another authority-cancellation write. Active interruption writers and confirmation
 with launched attempts remain unqualified.
 Runtime publication now also encloses input narrowing, report continuation and
-accounting recovery. Those paths use scoped Home custody and retained cleanup;
+accounting recovery. Input sync admits one publication before recovering the
+private answer and retains it through continuation and final custody inspection.
+Recovery reads borrow that publication's Home lease; synchronous signature and
+canonical question/outcome checks run inside the borrowed scope. A missing-group
+preparation test proves shutdown retains runtime storage and Home while that read
+is pending. It does not prove successful answer reconstruction or initialized
+serving-store identity. These paths use scoped Home custody and retained cleanup;
 this does not establish all-writer or combined supported-group qualification.
 Group/finalizer flags stay disabled. Legacy compositions without the runtime
 participant do not establish these ownership guarantees.
