@@ -26,7 +26,7 @@ import type {
 import { EventBus } from '../event-bus.js';
 import { EventStore } from '../event-store.js';
 import { OrchestrationService } from '../orchestration-service.js';
-import { turnDedupKey } from '../sqlite-turn-dedup-persistence.js';
+import { turnDedupKey } from '../station-turn-dedup-bindings.js';
 
 const CHILD_TIMEOUT_MS = 60_000;
 const THREAD_ID = 'thread-3559';
@@ -53,7 +53,7 @@ const OWNER_PROGRAM = `
   import { EventStore } from ${moduleUrl('src-server/services/orchestration/event-store.ts')};
   import { EventBus } from ${moduleUrl('src-server/services/orchestration/event-bus.ts')};
   import { OrchestrationService } from ${moduleUrl('src-server/services/orchestration/orchestration-service.ts')};
-  import { turnDedupKey } from ${moduleUrl('src-server/services/orchestration/sqlite-turn-dedup-persistence.ts')};
+  import { turnDedupKey } from ${moduleUrl('src-server/services/orchestration/station-turn-dedup-bindings.ts')};
   import { GateTestAdapter, createGateTestRegistry } from ${moduleUrl('src-server/__test-utils__/orchestration-gate-test-harness.ts')};
   const [dbPath, mode, threadId, clientTurnId] = process.argv.slice(1);
   const report = (step, extra = {}) =>
@@ -260,7 +260,7 @@ describe('client-turn dedup after a killed owner (#3559)', () => {
       (value) => value.kind === 'available' && value.active === false,
       'boot recovery to retire the dead owner boundary',
     );
-    return { adapter, service };
+    return { adapter, service, eventStore };
   }
 
   function retry(service: OrchestrationService, text = 'keyed') {
@@ -287,8 +287,31 @@ describe('client-turn dedup after a killed owner (#3559)', () => {
         step: 'adapter-invoked',
         clientTurnId: CLIENT_TURN_ID,
       });
-
-      const { adapter, service } = await restart(dbPath);
+      const db = new DatabaseSync(dbPath, { readOnly: true });
+      const boundary = db
+        .prepare(
+          'SELECT state, invocation_id FROM orchestration_turn_boundaries WHERE thread_id = ?',
+        )
+        .get(THREAD_ID) as { state: string; invocation_id: string };
+      db.close();
+      expect(boundary).toMatchObject({
+        state: 'invoking',
+        invocation_id: expect.any(String),
+      });
+      const { adapter, service, eventStore } = await restart(dbPath);
+      expect(
+        eventStore.readPreparedTurnIntent(THREAD_ID, boundary.invocation_id),
+      ).toMatchObject({
+        state: 'indeterminate',
+        capture: {
+          clientTurnId: CLIENT_TURN_ID,
+          input: { text: 'keyed' },
+          intent: {
+            invocationId: boundary.invocation_id,
+            inputDigest: expect.any(String),
+          },
+        },
+      });
       await expect(retry(service)).rejects.toMatchObject({
         code: 'foreground_message_indeterminate',
         outcome: 'indeterminate',

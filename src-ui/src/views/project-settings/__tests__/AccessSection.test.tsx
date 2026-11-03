@@ -21,6 +21,11 @@ const host = vi.hoisted(() => ({
   apiBase: 'https://station.example.test',
   authorityKey: 'device-one',
 }));
+const navigation = vi.hoisted(() => ({ navigate: vi.fn() }));
+vi.mock('../../../contexts/NavigationContext', () => ({
+  useNavigationActions: () => navigation,
+}));
+
 vi.mock('../../../contexts/ApiBaseContext', () => ({
   useHostRequestAuthorityScope: () => ({ ...host }),
 }));
@@ -89,6 +94,7 @@ function view(): ProjectAccessAdministrationView {
 }
 const clients: QueryClient[] = [];
 beforeEach(() => {
+  navigation.navigate.mockClear();
   host.authorityKey = 'device-one';
   setClientCredentialResolver(() => ({
     origin: host.apiBase,
@@ -343,7 +349,7 @@ describe('Project access administration UI through SDK queries and mutations', (
     ).toBe(true);
     expect(
       screen.getByText(
-        'Account sign-in must be configured before creating an invitation link.',
+        'Configure account sign-in on this Station before creating a link.',
       ),
     ).toBeTruthy();
   });
@@ -503,4 +509,41 @@ describe('enabling sharing with an operator passkey step-up (#4306)', () => {
     ).toBeTruthy();
     expect(calls).toContain('GET /api/projects/example/access/enablement');
   });
+});
+
+test('routes sharing setup and browser review through the canonical navigation owner', async () => {
+  vi.mocked(fetch).mockResolvedValue(reply(view()));
+  mount();
+  fireEvent.click(await screen.findByRole('button', { name: 'Sharing setup' }));
+  expect(navigation.navigate).toHaveBeenLastCalledWith('/settings', {
+    view: 'system',
+  });
+  fireEvent.click(
+    screen.getByRole('button', { name: 'Review browser requests' }),
+  );
+  expect(navigation.navigate).toHaveBeenLastCalledWith('/notifications');
+  fireEvent.click(screen.getByRole('button', { name: 'Feature previews' }));
+  expect(navigation.navigate).toHaveBeenLastCalledWith('/settings', {
+    view: 'feature-previews',
+    highlight: 'feature-previews',
+  });
+});
+
+test('a Station without sharing offers setup and a refresh instead of an unusable invitation form', async () => {
+  vi.mocked(fetch).mockResolvedValue(
+    Response.json(
+      { error: { code: 'project_sharing_disabled' } },
+      { status: 501 },
+    ),
+  );
+  mount();
+  await screen.findByText('Set up this Station for invitations');
+  expect(
+    screen.queryByRole('button', { name: 'Create invitation' }),
+  ).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'Sharing setup' }));
+  expect(navigation.navigate).toHaveBeenCalledWith('/settings', {
+    view: 'system',
+  });
+  expect(screen.getByRole('button', { name: 'Refresh access' })).toBeTruthy();
 });

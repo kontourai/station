@@ -69,6 +69,20 @@ type ProjectChatFixture = Pick<
 };
 
 describe('Chat Routes', () => {
+  test.each(['', '  ', 42, 'x'.repeat(201)])(
+    'refuses invalid client turn keys before preparing a chat',
+    async (clientTurnId) => {
+      vi.mocked(prepareChatRequest).mockClear();
+      const app = createChatRoutes({} as never);
+      const response = await app.request('/station/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ input: 'hello', options: { clientTurnId } }),
+      });
+      expect(response.status).toBe(400);
+      expect(prepareChatRequest).not.toHaveBeenCalled();
+    },
+  );
   test.each(['station', 'reader'])(
     '/%s/chat retains its registered tools, memory and approval hooks when selecting another model',
     async (publicSlug) => {
@@ -159,7 +173,7 @@ describe('Chat Routes', () => {
         // @ts-expect-error Request preparation and streaming are replaced after the real route/resolver/framework selection.
         ctx,
       );
-      streamPrimaryAgentChat.mockReturnValue(new Response('stream'));
+      streamPrimaryAgentChat.mockImplementation(({ c }) => c.body('stream'));
       for (const model of ['model-a', 'model-b']) {
         vi.mocked(prepareChatRequest).mockResolvedValueOnce({
           options: { model },
@@ -174,9 +188,21 @@ describe('Chat Routes', () => {
         const response = await app.request(`/${publicSlug}/chat`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ input: 'hello', options: { model } }),
+          body: JSON.stringify({
+            input: 'hello',
+            options: {
+              model,
+              ...(model === 'model-b' ? { clientTurnId: 'caller-key' } : {}),
+            },
+          }),
         });
         expect(response.status).toBe(200);
+        const turnKey = response.headers.get('X-Station-Client-Turn-Id');
+        if (model === 'model-b') expect(turnKey).toBe('caller-key');
+        else expect(turnKey).toMatch(/^[0-9a-f-]{36}$/);
+        expect(
+          vi.mocked(prepareChatRequest).mock.calls.at(-1)?.[0].options,
+        ).toMatchObject({ clientTurnId: turnKey });
         const selected = streamPrimaryAgentChat.mock.calls.at(-1)?.[0].agent;
         expect(selected.getTools().map((value: ITool) => value.name)).toEqual([
           'owned_read',

@@ -1,3 +1,5 @@
+export { isCreateRequestHandle as isForegroundDispatchHandle } from '../../services/orchestration/create-request-claims.js';
+
 import { createHash, randomUUID } from 'node:crypto';
 import type { AgentDelegationContext } from '@kontourai/station-contracts/agent';
 import {
@@ -123,6 +125,14 @@ import {
   stationControlRequestAuthority,
   stationControlRequestCurrent,
 } from '../../security/station-control-request-authority.js';
+import {
+  CreateRequestCapacityError,
+  CreateRequestConflictError,
+  CreateRequestIndeterminateError,
+  createRequestCallerSession,
+  isCreateRequestHandle,
+  runForegroundCreateClaim,
+} from '../../services/orchestration/create-request-claims.js';
 
 /** #3483: an authenticated request that is not a station-control (internal) call. */
 function isPersonRequest(request: Request): boolean {
@@ -130,6 +140,7 @@ function isPersonRequest(request: Request): boolean {
   return principal !== undefined && principal.kind !== 'internal';
 }
 
+import { TurnIdempotencySettledError } from '@kontourai/monument';
 import {
   AnswerAssessmentConflictError,
   AnswerAssessmentModule,
@@ -214,7 +225,6 @@ import {
   type TaskRoomWorkScope,
 } from '../../services/projects/task-room-work-module.js';
 import { CLIENT_SESSION_ID_PATTERN } from '../../services/ssh/client-connection-presence.js';
-import { TurnIdempotencySettledError } from '../../services/turn-idempotency.js';
 import {
   orchestrationStreamDuration,
   orchestrationStreamPresenceOps,
@@ -379,27 +389,6 @@ const sessionInventoryPageQuerySchema = sessionInventoryQueryBaseSchema
   });
 const sessionOutputInspectSchema = z.object({}).strict();
 
-/** Narrow, runtime-checked view of the `ForegroundMessageHandle` shape
- * `executeForegroundMessage` resolves (`execution-target-execution.ts`).
- * The route's own `deps.executeForegroundMessage` is typed `Promise<unknown>`
- * (a generic Hono DI boundary), so this is a real type GUARD, not a cast —
- * a caller-injected value missing `conversationId` is simply not bound. */
-export function isForegroundDispatchHandle(value: unknown): value is {
-  conversationId: string;
-  providerTurnId: string;
-  target?: { id?: unknown };
-} {
-  return (
-    typeof value === 'object' &&
-    value !== null &&
-    typeof (value as { conversationId?: unknown }).conversationId ===
-      'string' &&
-    typeof (value as { providerTurnId?: unknown }).providerTurnId ===
-      'string' &&
-    (value as { providerTurnId: string }).providerTurnId.trim().length > 0
-  );
-}
-
 function errorCode(error: unknown): string | undefined {
   if (typeof error !== 'object' || error === null) return undefined;
   const code = (error as { code?: unknown }).code;
@@ -481,7 +470,7 @@ const steerTurnCommandSchema = z.object({
   // generic zod message, exactly the divergence archive#2807 unified away.
   input: z.string().trim().min(1).max(CHAT_INPUT_MAX_CHARS),
   turnId: z.string().optional(),
-  clientInputId: z.string().min(1).max(128).optional(),
+  clientInputId: z.string().min(1).max(128),
 });
 
 const steerTurnOnceCommandSchema = steerTurnCommandSchema.extend({
@@ -846,6 +835,7 @@ const stagedAttachmentReferencesSchema = z
   .optional();
 
 export const delegateTaskSchema = z.object({
+  clientTurnId: z.string().min(1).max(200),
   attachmentRefs: stagedAttachmentReferencesSchema,
   // Inline bytes are not a delegation transport; never silently discard them.
   attachments: z.never().optional(),
@@ -1183,6 +1173,7 @@ const delegatedTaskEventsQuerySchema = z.object({
 });
 
 export const continueDelegatedTaskBodySchema = z.object({
+  clientTurnId: z.string().min(1).max(200),
   taskRoomReply: z
     .object({
       taskId: z.string().min(1).max(256),
@@ -1310,6 +1301,8 @@ interface DelegateTaskRequest {
    * caller grant composes below and this Station is the executing
    * receiver. Never an authorization by itself.
    */
+  clientTurnId?: string;
+  createRequestIntent?: unknown;
   delegationAttemptId?: string;
   /**
    * #485: the verified delegation-kind device grant behind the CURRENT
@@ -2720,6 +2713,15 @@ export function createOrchestrationRoutes(
         automaticBackground?: true;
         whenBusy?: 'queue';
       };
+      if (!body.clientTurnId)
+        return c.json(
+          {
+            success: false,
+            code: 'client_turn_key_required',
+            error: 'A client turn key is required.',
+          },
+          400,
+        );
       let verifiedMcpPromptOrigin:
         | import('@kontourai/station-contracts/mcp-prompts').VerifiedMcpPromptOrigin
         | undefined;
@@ -3084,22 +3086,16 @@ export function createOrchestrationRoutes(
           clientTurnId: body.clientTurnId,
           forwarded: resolvedTarget.environment.kind !== 'current',
         });
-      const data = await deps.executeForegroundMessage(foregroundRequest);
-      if (!isForegroundDispatchHandle(data)) {
-        // The foreground Interface cannot honestly call this accepted without
-        // the exact provider turn identity needed for terminal settlement.
-        return c.json(
-          {
-            ...providerFailure('indeterminate', 'indeterminate'),
-            success: false,
-            error:
-              'Foreground Agent execution may have started but did not return a provider turn id',
-            code: FOREGROUND_MESSAGE_INDETERMINATE_CODE,
-            outcome: 'indeterminate',
-          },
-          409,
-        );
-      }
+      const data = await runForegroundCreateClaim(
+        deps.delegationAttemptClaimStore?.createRequests,
+        foregroundRequest,
+        readAuthorityFor(c),
+        body,
+        (request) =>
+          deps.executeForegroundMessage!(request as ForegroundMessageRequest),
+        async (id) => orchestrationService.hasSessionStartRecord(id),
+        await createRequestCallerSession(c.req.raw),
+      );
       if (stagedAttachments?.length && stagedBinding) {
         deps.acceptStagedAttachments?.(
           principal!,
@@ -3127,6 +3123,40 @@ export function createOrchestrationRoutes(
       }
       return c.json({ success: true, data });
     } catch (error) {
+      if (error instanceof CreateRequestCapacityError)
+        return c.json(
+          {
+            success: false,
+            error: errorMessage(error),
+            code: error.code,
+            retryable: error.retryable,
+            limit: error.limit,
+          },
+          429,
+        );
+      if (error instanceof CreateRequestConflictError)
+        return c.json(
+          {
+            success: false,
+            error: errorMessage(error),
+            code: 'client_turn_input_conflict',
+          },
+          409,
+        );
+      if (error instanceof CreateRequestIndeterminateError)
+        return c.json(
+          {
+            ...providerFailure('indeterminate', 'indeterminate'),
+            success: false,
+            error: errorMessage(error),
+            code: FOREGROUND_MESSAGE_INDETERMINATE_CODE,
+            outcome: 'indeterminate',
+            conversationId: error.sessionId,
+            sessionId: error.sessionId,
+            clientTurnId: error.clientTurnId,
+          },
+          409,
+        );
       if (error instanceof ConversationTurnQueuedError)
         return queuedFollowUpResponse(
           c,
@@ -3346,7 +3376,7 @@ export function createOrchestrationRoutes(
           fullAccessGrant,
           clientOrigin: resolveClientOriginForRequest(c.req.raw),
         });
-        if (!isForegroundDispatchHandle(data)) {
+        if (!isCreateRequestHandle(data)) {
           return c.json(
             {
               ...providerFailure('indeterminate', 'indeterminate'),
@@ -3893,6 +3923,15 @@ export function createOrchestrationRoutes(
       }
       try {
         const body = getBody(c);
+        if (!body.clientTurnId)
+          return c.json(
+            {
+              success: false,
+              code: 'client_turn_key_required',
+              error: 'A client turn key is required.',
+            },
+            400,
+          );
         // #2377 slice C3b: an agent continues without an approval posture.
         const postureRefused = refuseCarriedPosture(c, [
           {
@@ -3975,7 +4014,7 @@ export function createOrchestrationRoutes(
           // Only the join wait a same-key retry may spend; never the send.
           joinWaitSignal: c.req.raw.signal,
         });
-        if (!isForegroundDispatchHandle(data)) {
+        if (!isCreateRequestHandle(data)) {
           return c.json(
             {
               ...providerFailure('indeterminate', 'indeterminate'),
@@ -4223,6 +4262,15 @@ export function createOrchestrationRoutes(
       const delegation = resolvedDelegation?.context;
       const delegate = deps.delegateTask;
       const roomRequest = body.taskRoomRequest;
+      if (roomRequest && body.clientTurnId !== roomRequest.operationId)
+        return c.json(
+          {
+            success: false,
+            code: 'client_turn_input_conflict',
+            error: 'The request key must match this Task Room operation.',
+          },
+          409,
+        );
       let roomAttachments: ChatAttachmentInput[] | undefined;
       let releaseRoomRequestPublication: (() => void) | undefined;
       const dispatch = async (
@@ -4238,6 +4286,10 @@ export function createOrchestrationRoutes(
         }
         return delegate({
           ...request,
+          createRequestIntent: body,
+          createRequestCallerSessionId: await createRequestCallerSession(
+            c.req.raw,
+          ),
           ...(stagedFiles ? { stagedFiles } : {}),
           ...(roomAttachments ? { taskRoomAttachments: roomAttachments } : {}),
           ...(contextSnapshot
@@ -4479,9 +4531,39 @@ export function createOrchestrationRoutes(
             ? 409
             : 400,
         );
+      if (error instanceof CreateRequestCapacityError)
+        return c.json(
+          {
+            success: false,
+            error: errorMessage(error),
+            code: error.code,
+            retryable: error.retryable,
+            limit: error.limit,
+          },
+          429,
+        );
       const refused =
         delegationRefusal(c, error) ?? dispatchCwdRefusalFor(c, error);
       if (refused) return refused;
+      if (
+        error instanceof CreateRequestConflictError ||
+        error instanceof CreateRequestIndeterminateError
+      )
+        return c.json(
+          {
+            success: false,
+            error: errorMessage(error),
+            code: error.code,
+            ...(error instanceof CreateRequestIndeterminateError
+              ? {
+                  outcome: error.outcome,
+                  sessionId: error.sessionId,
+                  clientTurnId: error.clientTurnId,
+                }
+              : {}),
+          },
+          409,
+        );
       // #485: the receiver's typed duplicate outcomes — an explicit
       // pending/unknown or exists reference with the attempt id, NEVER a
       // manufactured completed handle and never a resend authorization.
@@ -4886,6 +4968,15 @@ export function createOrchestrationRoutes(
               )
           : undefined;
         const roomReply = getBody(c).taskRoomReply;
+        if (roomReply && getBody(c).clientTurnId !== roomReply.operationId)
+          return c.json(
+            {
+              success: false,
+              code: 'client_turn_input_conflict',
+              error: 'The request key must match this Task Room operation.',
+            },
+            409,
+          );
         let continuationMessage = getBody(c).message;
         if (roomReply && roomReply.attachBrief !== false && principal) {
           const context = await deps.taskRoomWork?.resolveContext?.(
@@ -6999,7 +7090,8 @@ export function createOrchestrationRoutes(
           error instanceof AdoptionContinuationInProgressError ||
             indeterminate ||
             (error instanceof OrchestrationCommandDispatchError &&
-              (error.code === 'request_event_changed' ||
+              (error.code === 'client_turn_input_conflict' ||
+                error.code === 'request_event_changed' ||
                 error.code === 'request_verification_unavailable' ||
                 error.code === 'request_content_not_loaded'))
             ? 409

@@ -29,6 +29,7 @@ import {
   type ExecutionTargetExecutionDependencies,
   executeForegroundMessage,
 } from '../../../services/execution-target/execution-target-execution.js';
+import { FileDelegationAttemptClaimStore } from '../../../services/orchestration/delegation-attempt-claim-store.js';
 import { EventBus } from '../../../services/orchestration/event-bus.js';
 import { EventStore } from '../../../services/orchestration/event-store.js';
 import type { NativeSessionOwnership } from '../../../services/orchestration/native-session-ownership.js';
@@ -413,11 +414,13 @@ describe('scripted provider Agent handoff qualification (#3912/#731/#3307)', () 
           message: string;
           conversationId?: string;
           idempotencyKey?: string;
+          clientTurnId?: string;
         },
       ) =>
         executeForegroundMessage(
           {
             message: input.message,
+            ...(input.clientTurnId ? { clientTurnId: input.clientTurnId } : {}),
             ...(input.conversationId
               ? { conversationId: input.conversationId }
               : {}),
@@ -441,6 +444,9 @@ describe('scripted provider Agent handoff qualification (#3912/#731/#3307)', () 
         );
       const createApp = () => {
         const routes = createOrchestrationRoutes(service, {
+          delegationAttemptClaimStore: new FileDelegationAttemptClaimStore(
+            root,
+          ),
           eventBus,
           logger: { debug: vi.fn() },
           getUserId: () => OWNER,
@@ -464,6 +470,7 @@ describe('scripted provider Agent handoff qualification (#3912/#731/#3307)', () 
             execute(target, {
               message: input.message,
               conversationId: input.conversationId,
+              clientTurnId: input.clientTurnId,
             }),
         });
         const app = new Hono();
@@ -480,6 +487,7 @@ describe('scripted provider Agent handoff qualification (#3912/#731/#3307)', () 
 
       if (preserveProfile) {
         const refused = await post('/api/orchestration/chat', {
+          clientTurnId: 'refused-override',
           message: 'An authored Agent is not an engine selector.',
           target: {
             environment: { kind: 'current' },
@@ -500,6 +508,8 @@ describe('scripted provider Agent handoff qualification (#3912/#731/#3307)', () 
       }
 
       const started = await post('/api/orchestration/chat', {
+        conversationId,
+        clientTurnId: 'initial-send',
         message: `Remember ${CONTEXT_TOKEN}.`,
         target: { environment: { kind: 'current' }, agent: source.agent },
       });
@@ -716,6 +726,7 @@ describe('scripted provider Agent handoff qualification (#3912/#731/#3307)', () 
       );
 
       const directSwitch = await post('/api/orchestration/chat', {
+        clientTurnId: 'direct-switch',
         conversationId,
         message: 'Illegally switch back through ordinary chat.',
         target: { environment: { kind: 'current' }, agent: source.agent },
@@ -733,6 +744,7 @@ describe('scripted provider Agent handoff qualification (#3912/#731/#3307)', () 
       const ordinary = await post(
         `/api/orchestration/chat/${encodeURIComponent(conversationId)}/continue`,
         {
+          clientTurnId: 'ordinary-followup',
           message: oversizedCatchup
             ? 'x'.repeat(40_000)
             : 'Third turn stays on the target Agent.',
@@ -791,6 +803,7 @@ describe('scripted provider Agent handoff qualification (#3912/#731/#3307)', () 
 
       if (preserveProfile) {
         const fresh = await post('/api/orchestration/chat', {
+          clientTurnId: 'fresh-override',
           conversationId: `${conversationId}:fresh-override`,
           message: 'Start directly on my chosen engine.',
           target: { environment: { kind: 'current' }, agent: targetRef },
@@ -849,6 +862,26 @@ describe('scripted provider Agent handoff qualification (#3912/#731/#3307)', () 
             store.readSessionByThread(reserved!.sessionId),
           ).toBeUndefined();
           reservedSeedDigest = reserved!.contextSeed!.seedDigest;
+          // A later source event must not be folded into this already pinned
+          // reservation when Station reopens it.
+          const laterTurn = {
+            provider: target.provider,
+            threadId: handoffReceipt.data.sessionId,
+            turnId: 'after-reservation-turn',
+            createdAt: new Date().toISOString(),
+          } as const;
+          store.appendEvent({
+            ...laterTurn,
+            eventId: 'after-reservation-start',
+            method: 'turn.started',
+            prompt: 'Context added after reservation.',
+          });
+          store.appendEvent({
+            ...laterTurn,
+            eventId: 'after-reservation-complete',
+            method: 'turn.completed',
+            outputText: 'Late source answer.',
+          });
           const sourceTurns = sourceAdapter.turns.length;
           const targetTurns = targetAdapter.turns.length;
           await service.shutdown();
@@ -969,7 +1002,9 @@ describe('scripted provider Agent handoff qualification (#3912/#731/#3307)', () 
                 conversationId,
                 message: 'Continue after the failed return.',
               }),
-            ).rejects.toThrow(/native.return.*context|context.*native.return/i);
+            ).rejects.toThrow(
+              /(?:native.return|handoff).*context|context.*(?:native.return|handoff)/i,
+            );
             expect(sourceAdapter.turns).toHaveLength(2);
           } finally {
             await service.shutdown();
@@ -1062,8 +1097,12 @@ describe('scripted provider Agent handoff qualification (#3912/#731/#3307)', () 
           });
           await eventually(() => expect(sourceAdapter.turns).toHaveLength(3));
         }
-        if (restartBeforeReturnStart)
+        if (restartBeforeReturnStart) {
           expect(firstReturnSeedDigest).toBe(reservedSeedDigest);
+          expect(sourceAdapter.turns.at(-1)?.ambientContext).not.toContain(
+            'Context added after reservation.',
+          );
+        }
         if (oversizedCatchup) {
           expect(status?.nativeAcceptedTextThrough).toEqual([]);
           expect(
@@ -1133,6 +1172,10 @@ describe('scripted provider Agent handoff qualification (#3912/#731/#3307)', () 
             expect(status?.nativeResumeIdentity).toBe('matched');
           });
           expect(adapter.turns.at(-1)?.ambientContext).toContain(missedMessage);
+          if (selected === source)
+            expect(adapter.turns.at(-1)?.ambientContext).not.toContain(
+              'Third turn stays on the target Agent.',
+            );
           expect(adapter.starts.at(-1)?.resumeCursor).toEqual({
             nativeSessionId: `${selected.provider}:native:${selected === source ? conversationId : handoffReceipt.data.sessionId}`,
           });
@@ -1255,7 +1298,8 @@ describe('scripted provider Agent handoff qualification (#3912/#731/#3307)', () 
         ),
       ).toHaveLength(
         (repeatNativeReturn ? 6 : nativeReturn ? 4 : 3) +
-          (rebindBeforeDispatch ? 1 : 0),
+          (rebindBeforeDispatch ? 1 : 0) +
+          (restartBeforeReturnStart ? 1 : 0),
       );
       expect(
         restored?.events.filter(
