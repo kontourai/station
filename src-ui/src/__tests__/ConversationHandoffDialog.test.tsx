@@ -390,9 +390,9 @@ describe('ConversationHandoffDialog', () => {
     });
     render(<Composer />);
     fireEvent.click(screen.getByRole('button', { name: 'Use Agent defaults' }));
-    expect((screen.getByLabelText('Model') as HTMLSelectElement).value).toBe(
-      '',
-    );
+    expect(
+      screen.getByRole('button', { name: /^Model / }).textContent,
+    ).toContain('Agent default');
     expect(
       (
         screen.getByLabelText(
@@ -633,7 +633,7 @@ describe('ConversationHandoffDialog', () => {
     });
   });
 
-  test('the engine Model list offers only models this client can start', () => {
+  test('the engine Model list offers only models this client can start', async () => {
     useNewChatSelectionModel.mockReturnValue({
       ...currentSelection(),
       modelsForAgent: () => [
@@ -658,10 +658,50 @@ describe('ConversationHandoffDialog', () => {
         onClose={() => {}}
       />,
     );
-    const options = Array.from(
-      (screen.getByLabelText('Model') as HTMLSelectElement).options,
-    ).map((option) => option.value);
-    expect(options).toEqual(['gpt-5']);
+    fireEvent.click(screen.getByRole('button', { name: /^Model / }));
+    expect(await screen.findByRole('option', { name: /GPT-5/ })).toBeTruthy();
+    expect(screen.queryByRole('option', { name: /GPT locked/ })).toBeNull();
+  });
+
+  test('handoff uses the shared model picker and sends its runtime settings', async () => {
+    useNewChatSelectionModel.mockReturnValue({
+      ...currentSelection(),
+      modelsForAgent: () => [
+        {
+          id: 'gpt-5',
+          name: 'GPT-5',
+          capabilities: {
+            supportsEffort: true,
+            supportedEffortLevels: ['low', 'high'],
+          },
+        },
+      ],
+    });
+    handoffExecutionMessage
+      .mockRejectedValueOnce(new TypeError('response lost'))
+      .mockResolvedValueOnce(receipt());
+    const first = renderDialog();
+    fireEvent.click(screen.getByRole('radio', { name: /Codex reviewer/ }));
+    fireEvent.click(screen.getByRole('button', { name: /^Model / }));
+    fireEvent.click(await screen.findByRole('radio', { name: 'High' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Close model picker' }));
+    fireEvent.click(
+      screen.getByRole('button', { name: /Continue with Codex reviewer/ }),
+    );
+    await waitFor(() => expect(handoffExecutionMessage).toHaveBeenCalledOnce());
+    expect(handoffExecutionMessage.mock.calls[0][2].target.model).toEqual({
+      override: 'gpt-5',
+      options: { effort: 'high' },
+    });
+    await screen.findByRole('button', { name: 'Retry safely' });
+    const retainedRequest = handoffExecutionMessage.mock.calls[0][2];
+    first.unmount();
+    renderDialog();
+    fireEvent.click(screen.getByRole('button', { name: 'Retry safely' }));
+    await waitFor(() =>
+      expect(handoffExecutionMessage).toHaveBeenCalledTimes(2),
+    );
+    expect(handoffExecutionMessage.mock.calls[1][2]).toEqual(retainedRequest);
   });
 
   test('cancel is read-only and unavailable Agents are absent', () => {
