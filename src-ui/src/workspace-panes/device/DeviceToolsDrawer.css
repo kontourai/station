@@ -82,6 +82,13 @@
   text-transform: uppercase;
 }
 
+/* Device settings folds each section behind its title: the whole title row
+   is the toggle, at the drawer's 44px tap floor. */
+.device-tools__section-title .disclosure-toggle {
+  min-height: 44px;
+  width: 100%;
+}
+
 .device-tools__row {
   display: flex;
   flex-direction: column;

@@ -1482,6 +1482,29 @@ test.skipIf(process.platform === 'win32')(
   },
 );
 
+test.skipIf(process.platform === 'win32')(
+  'agent route reports a coded refusal when the pinned commit cannot be verified',
+  async () => {
+    const dir = temporary('station-fake-encoder-');
+    const encoder = join(dir, 'ffmpeg');
+    writeFileSync(encoder, '#!/bin/sh\nprintf webm\n', { mode: 0o700 });
+    const h = await harness({ recording: true, encoderPath: encoder });
+    const pin = TaskBrowserCapture.prototype.pin;
+    vi.spyOn(TaskBrowserCapture.prototype, 'pin').mockImplementation(
+      async function (this: TaskBrowserCapture, access) {
+        const result = await pin.call(this, access);
+        return { ...result, pin: { ...result.pin, commit: '0'.repeat(40) } };
+      },
+    );
+    expect(await h.record()).toMatchObject({
+      ok: false,
+      code: 'recording-unavailable',
+      message: 'The Task commit could not be verified.',
+    });
+    expect(h.streams()).toBe(1);
+  },
+);
+
 test.skipIf(!mediaReady)(
   'a workspace changed during recording is refused and the staged clip is removed',
   async () => {

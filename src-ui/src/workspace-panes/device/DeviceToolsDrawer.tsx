@@ -12,14 +12,17 @@ import {
 import { useFeaturePreviewsQuery } from '@kontourai/station-sdk';
 import type { ApiRequestScope } from '@kontourai/station-sdk/client';
 import {
+  createContext,
   type KeyboardEvent,
   type ReactNode,
+  useContext,
   useEffect,
   useId,
   useRef,
   useState,
 } from 'react';
 import { Button } from '../../components/Button';
+import { DisclosureToggle } from '../../components/DisclosureToggle';
 import { CloseGlyph } from '../../components/icons/Glyph';
 import { ErrorState, SkeletonBlock } from '../../components/state';
 import { DeviceReproductionPicker } from './DeviceReproductionPicker';
@@ -140,14 +143,25 @@ function locationLine(location: DeviceLocationReadBack): string {
   return UNREADABLE_COPY[location.reason];
 }
 
+/** Which part of the device tools the ⋯ menu opened. */
+export type DeviceToolsView = 'apps' | 'logs' | 'settings';
+
+const VIEW_TITLE: Record<DeviceToolsView, string> = {
+  apps: 'Apps',
+  logs: 'Logs',
+  settings: 'Device settings',
+};
+
+/** Device settings sections start folded; Apps and Logs show theirs open. */
+const SectionsCollapsed = createContext(false);
+
 export interface DeviceToolsDrawerProps {
+  view: DeviceToolsView;
   requestScope: ApiRequestScope;
   projectSlug: string | null;
   sourceSessionId?: string;
   target: DeviceToolsTarget;
   deviceName: string;
-  /** The drawer's element id (the Tools toggle's `aria-controls`). */
-  id: string;
   /** `overlay` below 560px of container width, `docked` (288px) above. */
   layout: 'overlay' | 'docked';
   axOverlay: boolean;
@@ -158,12 +172,12 @@ export interface DeviceToolsDrawerProps {
 }
 
 /**
- * The drawer. Its tools run on the device's own host: this Station's
- * `xcrun`/`adb`, or an SSH device host's through that host's allowlisted
- * tool mode (#2442) — the server decides, and says why when it cannot.
+ * The drawer the Device ⋯ menu opens on one view. Its tools run on the
+ * device's own host: this Station's `xcrun`/`adb`, or an SSH device host's
+ * allowlisted tool mode (#2442); the server says why when it cannot.
  */
 export function DeviceToolsDrawer(props: DeviceToolsDrawerProps) {
-  const { requestScope, projectSlug, target } = props;
+  const { requestScope, projectSlug, target, view } = props;
   const previews = useFeaturePreviewsQuery(requestScope.apiBase);
   const deviceLoopEnabled =
     previews.data?.some(
@@ -208,7 +222,8 @@ export function DeviceToolsDrawer(props: DeviceToolsDrawerProps) {
     target,
     projectSlug,
     logAppId,
-    deviceLoopEnabled &&
+    view === 'logs' &&
+      deviceLoopEnabled &&
       !logsPaused &&
       logsTarget === targetKey &&
       APP_ID.test(logAppId),
@@ -216,13 +231,14 @@ export function DeviceToolsDrawer(props: DeviceToolsDrawerProps) {
   const headingId = useId();
   const drawerRef = useRef<HTMLElement>(null);
 
-  // Opening the drawer moves focus into it, so a keyboard user is where the
-  // new content is. ONLY on open: a docked↔overlay flip (a resize) must not
-  // pull focus away from whatever the person is doing. Closing returns focus
-  // to the Tools button (the pane owns that; see DeviceStage).
+  // Opening the drawer, or switching it to another view from the ⋯ menu,
+  // moves focus into it. A docked↔overlay flip (a resize) must not pull focus
+  // away. Closing returns focus to the ⋯ button (the pane owns that; see
+  // DeviceStage).
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the view is the change key.
   useEffect(() => {
     drawerRef.current?.focus();
-  }, []);
+  }, [view]);
 
   async function run(next: DeviceToolAction, done?: string) {
     setLastAction(next.type);
@@ -254,14 +270,13 @@ export function DeviceToolsDrawer(props: DeviceToolsDrawerProps) {
       className={`device-tools device-tools--${props.layout}`}
       data-layout={props.layout}
       data-testid="device-tools-drawer"
-      id={props.id}
       onKeyDown={onKeyDown}
       ref={drawerRef}
       tabIndex={-1}
     >
       <div className="device-tools__header">
         <h3 className="device-tools__title" id={headingId}>
-          Tools
+          {VIEW_TITLE[view]}
         </h3>
         <Button
           aria-label="Refresh device values"
@@ -273,7 +288,7 @@ export function DeviceToolsDrawer(props: DeviceToolsDrawerProps) {
           Refresh
         </Button>
         <Button
-          aria-label="Close tools"
+          aria-label={`Close ${VIEW_TITLE[view].toLowerCase()}`}
           className="device-tools__close"
           onClick={props.onClose}
           size="sm"
@@ -304,40 +319,42 @@ export function DeviceToolsDrawer(props: DeviceToolsDrawerProps) {
           </p>
         ) : null}
 
-        <Section title="App">
-          <Row label="Foreground app">
-            {data ? (
-              data.foregroundApp.state === 'read' ? (
-                <code className="device-tools__value">
-                  {data.foregroundApp.value?.appId ?? 'None'}
-                </code>
+        {view === 'apps' ? (
+          <Section>
+            <Row label="Foreground app">
+              {data ? (
+                data.foregroundApp.state === 'read' ? (
+                  <code className="device-tools__value">
+                    {data.foregroundApp.value?.appId ?? 'None'}
+                  </code>
+                ) : (
+                  <span className="device-tools__muted">
+                    {unreadableLine(data.foregroundApp)}
+                  </span>
+                )
               ) : (
-                <span className="device-tools__muted">
-                  {unreadableLine(data.foregroundApp)}
-                </span>
-              )
-            ) : (
-              <span className="device-tools__muted">—</span>
-            )}
-          </Row>
-          {deviceLoopEnabled ? (
-            <AppActions
-              key={JSON.stringify([
-                targetKey,
-                projectSlug,
-                requestScope.apiBase,
-                requestScope.authorityKey,
-              ])}
-              requestScope={requestScope}
-              target={target}
-              projectSlug={projectSlug}
-              sourceSessionId={props.sourceSessionId}
-            />
-          ) : null}
-        </Section>
+                <span className="device-tools__muted">—</span>
+              )}
+            </Row>
+            {deviceLoopEnabled ? (
+              <AppActions
+                key={JSON.stringify([
+                  targetKey,
+                  projectSlug,
+                  requestScope.apiBase,
+                  requestScope.authorityKey,
+                ])}
+                requestScope={requestScope}
+                target={target}
+                projectSlug={projectSlug}
+                sourceSessionId={props.sourceSessionId}
+              />
+            ) : null}
+          </Section>
+        ) : null}
 
-        {deviceLoopEnabled ? (
-          <Section title="Logs">
+        {view === 'logs' && deviceLoopEnabled ? (
+          <Section>
             <label className="device-tools__field">
               <span className="device-tools__label">App ID</span>
               <input
@@ -413,7 +430,7 @@ export function DeviceToolsDrawer(props: DeviceToolsDrawerProps) {
           </Section>
         ) : null}
 
-        {deviceLoopEnabled ? (
+        {view === 'apps' && deviceLoopEnabled ? (
           <Section title="Action history">
             <details
               onToggle={(event) => setHistoryOpen(event.currentTarget.open)}
@@ -455,94 +472,111 @@ export function DeviceToolsDrawer(props: DeviceToolsDrawerProps) {
           </Section>
         ) : null}
 
-        {capabilities?.appearance ? (
-          <Section title="Appearance">
-            <p className="device-tools__line">
-              {data?.appearance.state === 'read'
-                ? `The device reports ${data.appearance.value} mode.`
-                : data
-                  ? unreadableLine(data.appearance)
-                  : null}
-            </p>
-            <fieldset
-              aria-label="Appearance"
-              className="device-tools__actions device-tools__fieldset"
-            >
-              {(['light', 'dark'] as const).map((mode) => (
-                <Button
-                  aria-pressed={
-                    data?.appearance.state === 'read' &&
-                    data.appearance.value === mode
-                  }
-                  disabled={busy && !pendingFor('set-appearance')}
-                  key={mode}
-                  onClick={() =>
-                    void run({ type: 'set-appearance', appearance: mode })
-                  }
-                  pending={pendingFor('set-appearance')}
-                  size="sm"
+        {view === 'settings' &&
+        capabilities &&
+        !capabilities.appearance &&
+        !capabilities.accessibility &&
+        !capabilities.push &&
+        !capabilities.location &&
+        capabilities.permissions.length === 0 ? (
+          <p className="device-tools__muted">
+            This device offers no settings here.
+          </p>
+        ) : null}
+        {view === 'settings' && capabilities ? (
+          <SectionsCollapsed.Provider value={true}>
+            {capabilities.appearance ? (
+              <Section title="Appearance">
+                <p className="device-tools__line">
+                  {data?.appearance.state === 'read'
+                    ? `The device reports ${data.appearance.value} mode.`
+                    : data
+                      ? unreadableLine(data.appearance)
+                      : null}
+                </p>
+                <fieldset
+                  aria-label="Appearance"
+                  className="device-tools__actions device-tools__fieldset"
                 >
-                  {mode === 'light' ? 'Light' : 'Dark'}
-                </Button>
-              ))}
-            </fieldset>
-          </Section>
-        ) : null}
+                  {(['light', 'dark'] as const).map((mode) => (
+                    <Button
+                      aria-pressed={
+                        data?.appearance.state === 'read' &&
+                        data.appearance.value === mode
+                      }
+                      disabled={busy && !pendingFor('set-appearance')}
+                      key={mode}
+                      onClick={() =>
+                        void run({ type: 'set-appearance', appearance: mode })
+                      }
+                      pending={pendingFor('set-appearance')}
+                      size="sm"
+                    >
+                      {mode === 'light' ? 'Light' : 'Dark'}
+                    </Button>
+                  ))}
+                </fieldset>
+              </Section>
+            ) : null}
 
-        {capabilities?.accessibility ? (
-          <AccessibilitySection
-            enabled={props.axOverlay}
-            onChange={props.onAxOverlayChange}
-            streamVisible={props.streamVisible}
-            tree={tree.data}
-            treeError={tree.error}
-          />
-        ) : null}
+            {capabilities.accessibility ? (
+              <AccessibilitySection
+                enabled={props.axOverlay}
+                onChange={props.onAxOverlayChange}
+                streamVisible={props.streamVisible}
+                tree={tree.data}
+                treeError={tree.error}
+              />
+            ) : null}
 
-        {capabilities?.push ? (
-          <PushSection
-            busy={busy}
-            defaultAppId={
-              data?.foregroundApp.state === 'read'
-                ? (data.foregroundApp.value?.appId ?? '')
-                : ''
-            }
-            onSend={(appId, payload) =>
-              run(
-                { type: 'send-push', appId, payload },
-                `Sent to ${appId}. The simulator accepted it; whether the app shows it is up to the app.`,
-              )
-            }
-            pending={pendingFor('send-push')}
-          />
-        ) : null}
+            {capabilities.push ? (
+              <PushSection
+                busy={busy}
+                defaultAppId={
+                  data?.foregroundApp.state === 'read'
+                    ? (data.foregroundApp.value?.appId ?? '')
+                    : ''
+                }
+                onSend={(appId, payload) =>
+                  run(
+                    { type: 'send-push', appId, payload },
+                    `Sent to ${appId}. The simulator accepted it; whether the app shows it is up to the app.`,
+                  )
+                }
+                pending={pendingFor('send-push')}
+              />
+            ) : null}
 
-        {capabilities?.location ? (
-          <LocationSection
-            busy={busy}
-            canClear={capabilities.clearLocation}
-            location={data?.location}
-            onClear={() => run({ type: 'clear-location' })}
-            onSet={(latitude, longitude) =>
-              run({ type: 'set-location', latitude, longitude })
-            }
-            pending={pendingFor('set-location') || pendingFor('clear-location')}
-          />
-        ) : null}
+            {capabilities.location ? (
+              <LocationSection
+                busy={busy}
+                canClear={capabilities.clearLocation}
+                location={data?.location}
+                onClear={() => run({ type: 'clear-location' })}
+                onSet={(latitude, longitude) =>
+                  run({ type: 'set-location', latitude, longitude })
+                }
+                pending={
+                  pendingFor('set-location') || pendingFor('clear-location')
+                }
+              />
+            ) : null}
 
-        {capabilities && capabilities.permissions.length > 0 ? (
-          <PermissionsSection
-            busy={busy}
-            decisions={capabilities.permissionDecisions}
-            onDecide={(appId, permission, decision) =>
-              run({ type: 'set-permission', appId, permission, decision })
-            }
-            pending={pendingFor('set-permission')}
-            permissions={capabilities.permissions}
-            projectSlug={projectSlug}
-            requestScope={requestScope}
-            target={target}
-          />
+            {capabilities.permissions.length > 0 ? (
+              <PermissionsSection
+                busy={busy}
+                decisions={capabilities.permissionDecisions}
+                onDecide={(appId, permission, decision) =>
+                  run({ type: 'set-permission', appId, permission, decision })
+                }
+                pending={pendingFor('set-permission')}
+                permissions={capabilities.permissions}
+                projectSlug={projectSlug}
+                requestScope={requestScope}
+                target={target}
+              />
+            ) : null}
+          </SectionsCollapsed.Provider>
         ) : null}
       </div>
     </aside>
@@ -728,14 +762,29 @@ function AppActions({
   );
 }
 
-function Section({ title, children }: { title: string; children: ReactNode }) {
+/** A drawer section; untitled when it is the whole of its view (Apps, Logs). */
+function Section({ title, children }: { title?: string; children: ReactNode }) {
   const id = useId();
+  const collapsible = useContext(SectionsCollapsed);
+  const [expanded, setExpanded] = useState(!collapsible);
+  if (!title)
+    return <section className="device-tools__section">{children}</section>;
   return (
     <section aria-labelledby={id} className="device-tools__section">
-      <h4 className="device-tools__section-title" id={id}>
-        {title}
+      <h4 className="device-tools__section-title">
+        {collapsible ? (
+          <DisclosureToggle
+            id={id}
+            expanded={expanded}
+            onToggle={() => setExpanded((open) => !open)}
+          >
+            {title}
+          </DisclosureToggle>
+        ) : (
+          <span id={id}>{title}</span>
+        )}
       </h4>
-      {children}
+      {expanded ? children : null}
     </section>
   );
 }

@@ -64,9 +64,11 @@ import { writeDevicePaneState } from '../devicePaneStateStorage';
 import {
   ANDROID_DEVICE,
   authorizeScope,
+  chooseDeviceMenuItem,
   click,
   frameRecord,
   IOS_DEVICE,
+  openDeviceMenu,
   readyInventory,
   renderInQueryClient,
   STOPPED_AVD,
@@ -104,6 +106,74 @@ async function openFirst(name: string) {
   await click(await screen.findByRole('button', { name }));
 }
 
+/** Wait until the ⋯ menu offers `name` (e.g. once a preview loads), then shut it. */
+async function waitForMenuItem(name: string) {
+  const { trigger, menu } = await openDeviceMenu();
+  await within(menu).findByRole('menuitem', { name });
+  await click(trigger);
+  expect(screen.queryByRole('menu')).toBeNull();
+}
+
+/**
+ * Task and device-recording routes over the device harness: one Task in
+ * `project-one`; a recording starts `starting`, reads `recording`, and a
+ * stop answers `completed`. Returns the recording requests in order.
+ */
+function stubRecordingRoutes() {
+  const jobId = '11111111-2222-4333-8444-555555555555';
+  const requests: Array<{ path: string; method: string; body?: unknown }> = [];
+  const originalFetch = globalThis.fetch;
+  vi.stubGlobal(
+    'fetch',
+    async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = new URL(String(input));
+      const method = init?.method ?? 'GET';
+      if (url.pathname === '/api/tasks' && method === 'GET')
+        return Response.json({
+          success: true,
+          data:
+            url.searchParams.get('projectId') === 'project-one'
+              ? [{ id: 'task-a', title: 'Test Task', status: 'ready' }]
+              : [],
+        });
+      if (url.pathname.includes('/review/device-recordings')) {
+        requests.push({
+          path: url.pathname,
+          method,
+          ...(init?.body ? { body: JSON.parse(String(init.body)) } : {}),
+        });
+        if (url.pathname.endsWith('/stop'))
+          return Response.json({
+            success: true,
+            data: {
+              id: jobId,
+              state: 'completed',
+              result: { walkthroughId: 'clip', commit: 'a'.repeat(40) },
+            },
+          });
+        return Response.json({
+          success: true,
+          data: {
+            id: jobId,
+            state: method === 'POST' ? 'starting' : 'recording',
+          },
+        });
+      }
+      return originalFetch(input, init);
+    },
+  );
+  return requests;
+}
+
+async function startRecording() {
+  await waitForMenuItem('Record to Task');
+  await chooseDeviceMenuItem('Record to Task');
+  const dialog = await screen.findByRole('dialog', { name: 'Record to Task' });
+  await click(await within(dialog).findByRole('button', { name: /Test Task/ }));
+  await click(within(dialog).getByRole('button', { name: 'Start recording' }));
+  await screen.findByText('Recording to Task…');
+}
+
 describe('opening a device', () => {
   test('a closed Device pane requests its host-qualified source as a float when the preview is on', async () => {
     activeProject.slug = 'project-one';
@@ -114,7 +184,7 @@ describe('opening a device', () => {
     const release = registerFloatHost();
     renderInQueryClient(<DeviceWorkspacePane />);
     await openFirst('Open Pixel 10 Pro XL');
-    await screen.findByRole('button', { name: 'Record to Task' });
+    await waitForMenuItem('Record to Task');
     act(() => promoteClosedDevicePane());
     expect(takeFloatRequest()?.source).toMatchObject({
       kind: 'device',
@@ -133,8 +203,8 @@ describe('opening a device', () => {
     const release = registerFloatHost();
     renderInQueryClient(<DeviceWorkspacePane />);
     await openFirst('Open Pixel 10 Pro XL');
-    await screen.findByRole('button', { name: 'Record to Task' });
-    await click(screen.getByRole('button', { name: 'Close' }));
+    await waitForMenuItem('Record to Task');
+    await chooseDeviceMenuItem('Close');
     expect(takeFloatRequest()?.source).toMatchObject({
       kind: 'device',
       hostId: 'local',
@@ -150,7 +220,8 @@ describe('opening a device', () => {
     const release = registerFloatHost();
     renderInQueryClient(<DeviceWorkspacePane />);
     await openFirst('Open Pixel 10 Pro XL');
-    await click(await screen.findByRole('button', { name: 'Close' }));
+    await chooseDeviceMenuItem('Close');
+    await screen.findByRole('heading', { name: 'Android Emulators' });
     expect(takeFloatRequest()).toBeNull();
     release();
   });
@@ -223,7 +294,8 @@ describe('opening a device', () => {
     );
     renderInQueryClient(<DeviceWorkspacePane />);
     await openFirst('Open Pixel 10 Pro XL');
-    await click(await screen.findByRole('button', { name: 'Record to Task' }));
+    await waitForMenuItem('Record to Task');
+    await chooseDeviceMenuItem('Record to Task');
     const dialog = await screen.findByRole('dialog', {
       name: 'Record to Task',
     });
@@ -249,6 +321,120 @@ describe('opening a device', () => {
     await click(screen.getByRole('button', { name: 'Stop recording' }));
     await screen.findByText('Recording saved to Task.');
   });
+  test('while recording, the stage shows its status and a visible Stop recording button that stops it', async () => {
+    activeProject.slug = 'project-one';
+    stubDeviceFetch({
+      inventory: readyInventory([ANDROID_DEVICE]),
+      deviceLoopPreview: true,
+    });
+    const requests = stubRecordingRoutes();
+    renderInQueryClient(<DeviceWorkspacePane />);
+    await openFirst('Open Pixel 10 Pro XL');
+    await startRecording();
+    // Visible on the stage, outside the ⋯ menu.
+    expect(screen.queryByRole('menu')).toBeNull();
+    const stop = screen.getByRole('button', { name: 'Stop recording' });
+    expect(stop.closest('.device-pane__stage')).not.toBeNull();
+    expect(screen.getByText('Recording to Task…')).toBeTruthy();
+    await click(stop);
+    await screen.findByText('Recording saved to Task.');
+    expect(
+      requests.filter(
+        (request) =>
+          request.method === 'POST' && request.path.endsWith('/stop'),
+      ),
+    ).toHaveLength(1);
+    expect(screen.queryByRole('button', { name: 'Stop recording' })).toBeNull();
+  });
+
+  test('the ⋯ menu offers Stop recording instead of Record to Task while recording, and it stops the recording', async () => {
+    activeProject.slug = 'project-one';
+    stubDeviceFetch({
+      inventory: readyInventory([ANDROID_DEVICE]),
+      deviceLoopPreview: true,
+    });
+    const requests = stubRecordingRoutes();
+    renderInQueryClient(<DeviceWorkspacePane />);
+    await openFirst('Open Pixel 10 Pro XL');
+    await startRecording();
+    const { menu } = await openDeviceMenu();
+    expect(
+      within(menu).queryByRole('menuitem', { name: 'Record to Task' }),
+    ).toBeNull();
+    await chooseDeviceMenuItem('Stop recording');
+    expect(screen.queryByRole('menu')).toBeNull();
+    await screen.findByText('Recording saved to Task.');
+    const stops = requests.filter(
+      (request) => request.method === 'POST' && request.path.endsWith('/stop'),
+    );
+    expect(stops).toHaveLength(1);
+    expect(stops[0]!.path).toContain('11111111-2222-4333-8444-555555555555');
+    // Stopped: the row offers a new recording again.
+    await waitForMenuItem('Record to Task');
+  });
+
+  test('Record to Task is not in the ⋯ menu without a Project', async () => {
+    stubDeviceFetch({
+      inventory: readyInventory([ANDROID_DEVICE]),
+      deviceLoopPreview: true,
+    });
+    renderInQueryClient(<DeviceWorkspacePane />);
+    await openFirst('Open Pixel 10 Pro XL');
+    // The preview has loaded (Logs needs it), yet recording needs a Project.
+    await waitForMenuItem('Logs');
+    const { menu } = await openDeviceMenu();
+    expect(
+      within(menu).queryByRole('menuitem', { name: 'Record to Task' }),
+    ).toBeNull();
+  });
+
+  test('the recording picker shows a capacity refusal', async () => {
+    activeProject.slug = 'project-one';
+    stubDeviceFetch({
+      inventory: readyInventory([ANDROID_DEVICE]),
+      deviceLoopPreview: true,
+    });
+    const originalFetch = globalThis.fetch;
+    vi.stubGlobal(
+      'fetch',
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = new URL(String(input));
+        if (url.pathname === '/api/tasks')
+          return Response.json({
+            success: true,
+            data: [{ id: 'task-a', title: 'Test Task', status: 'ready' }],
+          });
+        if (url.pathname.includes('/review/device-recordings'))
+          return Response.json(
+            {
+              success: false,
+              code: 'recording-unavailable',
+              error: 'Recording capacity is exhausted.',
+            },
+            { status: 503 },
+          );
+        return originalFetch(input, init);
+      },
+    );
+    renderInQueryClient(<DeviceWorkspacePane />);
+    await openFirst('Open Pixel 10 Pro XL');
+    await waitForMenuItem('Record to Task');
+    await chooseDeviceMenuItem('Record to Task');
+    const dialog = await screen.findByRole('dialog', {
+      name: 'Record to Task',
+    });
+    await click(
+      await within(dialog).findByRole('button', { name: /Test Task/ }),
+    );
+    await click(
+      within(dialog).getByRole('button', { name: 'Start recording' }),
+    );
+    expect(
+      await within(dialog).findByText('Recording capacity is exhausted.'),
+    ).toBeTruthy();
+    expect(screen.queryByText('Recording to Task…')).toBeNull();
+  });
+
   test('captures a reproduction bundle into a selected Task', async () => {
     activeProject.slug = 'project-one';
     stubDeviceFetch({
@@ -304,7 +490,9 @@ describe('opening a device', () => {
     );
     renderInQueryClient(<DeviceWorkspacePane />);
     await openFirst('Open Pixel 10 Pro XL');
-    await click(await screen.findByRole('button', { name: 'Tools' }));
+    await waitForMenuItem('Apps');
+    await chooseDeviceMenuItem('Apps');
+    await screen.findByRole('complementary', { name: 'Apps' });
     fireEvent.change(await screen.findByLabelText('App to control'), {
       target: { value: 'com.example.app' },
     });
@@ -368,7 +556,7 @@ describe('opening a device', () => {
       .mockImplementation(() => {});
     renderInQueryClient(<DeviceWorkspacePane />);
     await openFirst('Open Pixel 10 Pro XL');
-    await click(await screen.findByRole('button', { name: 'Save screenshot' }));
+    await chooseDeviceMenuItem('Save screenshot');
     await waitFor(() => expect(download).toHaveBeenCalledOnce());
     expect(create).toHaveBeenCalledOnce();
     expect(
@@ -396,7 +584,7 @@ describe('opening a device', () => {
       .mockImplementation(() => {});
     renderInQueryClient(<DeviceWorkspacePane />);
     await openFirst('Open Pixel 10 Pro XL');
-    await click(await screen.findByRole('button', { name: 'Save screenshot' }));
+    await chooseDeviceMenuItem('Save screenshot');
     expect(
       await screen.findByText('Screenshot could not be saved'),
     ).toBeTruthy();
@@ -411,12 +599,10 @@ describe('opening a device', () => {
     });
     renderInQueryClient(<DeviceWorkspacePane />);
     await openFirst('Open iPhone 17 Pro');
-    expect(
-      screen.getAllByText('Step 1 of 2: open device').length,
-    ).toBeGreaterThan(0);
+    expect(screen.getAllByText('Opening device…').length).toBeGreaterThan(0);
     const session = sessionFor(IOS_DEVICE);
     await act(async () => answer.resolve(session));
-    expect(await screen.findByText('Step 2 of 2: connect video')).toBeTruthy();
+    expect(await screen.findByText('Connecting video…')).toBeTruthy();
     await waitFor(() => expect(log.streams).toHaveLength(1));
     expect(log.streams[0]!.url).toContain(
       encodeURIComponent(session.surfaceId),
@@ -426,7 +612,7 @@ describe('opening a device', () => {
     );
     await log.streams[0]!.push(frameRecord(session.surfaceId));
     await waitFor(() =>
-      expect(screen.queryByText('Step 2 of 2: connect video')).toBeNull(),
+      expect(screen.queryByText('Connecting video…')).toBeNull(),
     );
   });
 
@@ -450,8 +636,7 @@ describe('opening a device', () => {
     renderInQueryClient(<DeviceWorkspacePane />);
     await openFirst('Start station-test');
     expect(
-      screen.getAllByText('Starting station-test… This can take a minute.')
-        .length,
+      screen.getAllByText('Starting station-test…').length,
     ).toBeGreaterThan(0);
     // The row keeps its own spinner while the device boots.
     expect(
@@ -544,8 +729,7 @@ describe('opening a device', () => {
     // The next read shows it booting; then it silently stops booting.
     await waitFor(() =>
       expect(
-        screen.getAllByText('Starting station-test… This can take a minute.')
-          .length,
+        screen.getAllByText('Starting station-test…').length,
       ).toBeGreaterThan(0),
     );
     await new Promise((resolve) => setTimeout(resolve, 50));
@@ -595,9 +779,14 @@ describe('the device toolbar', () => {
     expect(screen.getByRole('button', { name: 'Home' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Rotate' })).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Back' })).toBeNull();
-    expect(screen.queryByRole('button', { name: 'Recents' })).toBeNull();
-    expect(screen.getByRole('button', { name: 'Power off' })).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Close' })).toBeTruthy();
+    const { menu } = await openDeviceMenu();
+    expect(
+      within(menu).queryByRole('menuitem', { name: 'Recents' }),
+    ).toBeNull();
+    expect(
+      within(menu).getByRole('menuitem', { name: 'Power off' }),
+    ).toBeTruthy();
+    expect(within(menu).getByRole('menuitem', { name: 'Close' })).toBeTruthy();
   });
 
   test('Android: Home, Back and Recents — no Rotate', async () => {
@@ -606,9 +795,152 @@ describe('the device toolbar', () => {
       name: 'station-test',
     });
     await stream.push(stateRecord(surfaceId, { inputChannel: 'connected' }));
-    for (const name of ['Home', 'Back', 'Recents'])
+    for (const name of ['Home', 'Back'])
       expect(screen.getByRole('button', { name })).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Rotate' })).toBeNull();
+    const { menu } = await openDeviceMenu();
+    expect(
+      within(menu).getByRole('menuitem', { name: 'Recents' }),
+    ).toHaveProperty('disabled', false);
+  });
+
+  test('the toolbar holds exactly Home, Rotate and ⋯ on iOS, and Home, Back and ⋯ on Android', async () => {
+    const ios = await live(IOS_DEVICE);
+    await ios.stream.push(
+      stateRecord(ios.surfaceId, { inputChannel: 'connected' }),
+    );
+    expect(
+      within(screen.getByRole('toolbar', { name: 'iPhone 17 Pro controls' }))
+        .getAllByRole('button')
+        .map((button) => button.getAttribute('aria-label')),
+    ).toEqual(['Home', 'Rotate', 'More iPhone 17 Pro actions']);
+    cleanup();
+    vi.unstubAllGlobals();
+
+    const android = await live(ANDROID_DEVICE);
+    await android.stream.push(
+      stateRecord(android.surfaceId, { inputChannel: 'connected' }),
+    );
+    const toolbar = await screen.findByRole('toolbar', {
+      name: 'station-test controls',
+    });
+    expect(
+      within(toolbar)
+        .getAllByRole('button')
+        .map((button) => button.getAttribute('aria-label')),
+    ).toEqual(['Home', 'Back', 'More station-test actions']);
+  });
+
+  test('the ⋯ menu groups its rows under Capture, Tools and Session, with Power off and End last on their own', async () => {
+    const { stream, surfaceId } = await live(ANDROID_DEVICE);
+    await stream.push(stateRecord(surfaceId, { inputChannel: 'connected' }));
+    const { trigger, menu } = await openDeviceMenu('station-test');
+    expect(trigger.getAttribute('aria-haspopup')).toBe('menu');
+    const rows = (group: string) =>
+      within(within(menu).getByRole('group', { name: group }))
+        .getAllByRole('menuitem')
+        .map((row) => row.getAttribute('aria-label'));
+    // No Project and no preview: no Record to Task and no Logs.
+    expect(rows('Capture')).toEqual(['Save screenshot']);
+    expect(rows('Tools')).toEqual(['Apps', 'Device settings']);
+    expect(rows('Session')).toEqual([
+      'Recents',
+      'Float over chat (open a chat first)',
+      'Close',
+    ]);
+    // The rows that stop the device for everyone stand apart, last.
+    const groups = within(menu).getAllByRole('group');
+    const last = groups.at(-1)!;
+    expect(last.hasAttribute('aria-label')).toBe(false);
+    expect(
+      within(last)
+        .getAllByRole('menuitem')
+        .map((row) => row.getAttribute('aria-label')),
+    ).toEqual(['Power off', 'End for everyone']);
+    // Escape shuts it without running anything.
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(screen.queryByRole('menu')).toBeNull();
+  });
+
+  test('Recents in the ⋯ menu (Android) sends the recents device button', async () => {
+    const { stream, surfaceId, log } = await live(ANDROID_DEVICE);
+    await stream.push(stateRecord(surfaceId, { inputChannel: 'connected' }));
+    await stream.push(frameRecord(surfaceId));
+    await chooseDeviceMenuItem('Recents');
+    expect(screen.queryByRole('menu')).toBeNull();
+    await waitFor(() => expect(log.inputs).toHaveLength(1));
+    expect(log.inputs[0]!.events).toEqual([
+      { kind: 'device-button', button: 'recents' },
+    ]);
+  });
+
+  test('Recents in the ⋯ menu is disabled while input is down', async () => {
+    const { stream, surfaceId, log } = await live(ANDROID_DEVICE);
+    await stream.push(stateRecord(surfaceId, { inputChannel: 'down' }));
+    const { menu } = await openDeviceMenu();
+    const recents = within(menu).getByRole('menuitem', { name: 'Recents' });
+    expect(recents).toHaveProperty('disabled', true);
+    fireEvent.click(recents);
+    expect(log.inputs).toHaveLength(0);
+  });
+
+  test('Logs is offered in the ⋯ menu only under the device developer loop preview, and opens the Logs view', async () => {
+    const plain = await live(IOS_DEVICE);
+    await plain.stream.push(
+      stateRecord(plain.surfaceId, { inputChannel: 'connected' }),
+    );
+    const { menu } = await openDeviceMenu();
+    expect(within(menu).queryByRole('menuitem', { name: 'Logs' })).toBeNull();
+    cleanup();
+    vi.unstubAllGlobals();
+
+    stubDeviceFetch({
+      inventory: readyInventory([IOS_DEVICE]),
+      deviceLoopPreview: true,
+      tools: ({ method, path }) =>
+        method === 'GET' && path.endsWith('/tools')
+          ? {
+              body: {
+                success: true,
+                data: {
+                  hostId: 'local',
+                  platform: 'ios',
+                  deviceId: IOS_DEVICE.deviceId,
+                  readAt: '2026-11-01T00:00:00Z',
+                  foregroundApp: { state: 'read', value: null },
+                  appearance: { state: 'read', value: 'dark' },
+                  location: { state: 'unreadable', reason: 'unsupported' },
+                  capabilities: {
+                    appearance: true,
+                    location: false,
+                    clearLocation: false,
+                    push: false,
+                    permissions: [],
+                    permissionDecisions: [],
+                    accessibility: false,
+                  },
+                },
+              },
+            }
+          : undefined,
+    });
+    renderInQueryClient(<DeviceWorkspacePane />);
+    await openFirst('Open iPhone 17 Pro');
+    await waitForMenuItem('Logs');
+    await chooseDeviceMenuItem('Logs');
+    const drawer = await screen.findByRole('complementary', { name: 'Logs' });
+    expect(await within(drawer).findByLabelText('App ID')).toBeTruthy();
+    expect(
+      within(drawer).getByRole('button', { name: 'Start logs' }),
+    ).toBeTruthy();
+    // Logs holds logs only: no app actions or settings here.
+    expect(within(drawer).queryByLabelText('App to control')).toBeNull();
+    expect(
+      within(drawer).queryByRole('button', { name: 'Appearance' }),
+    ).toBeNull();
+    expect(
+      within(drawer).getByRole('button', { name: 'Close logs' }),
+    ).toBeTruthy();
   });
 
   test('buttons send typed device input through the surface, and pause while input is down', async () => {
@@ -730,7 +1062,7 @@ describe('the device toolbar', () => {
 
   test('Close only detaches this viewer; End for everyone ends it; Power off shuts it down', async () => {
     const { log } = await live(IOS_DEVICE);
-    await click(screen.getByRole('button', { name: 'Close' }));
+    await chooseDeviceMenuItem('Close');
     await screen.findByRole('heading', { name: 'iOS Simulators' });
     expect(
       log.requests.some((request) => request.method === 'DELETE'),
@@ -738,9 +1070,7 @@ describe('the device toolbar', () => {
     ).toBe(false);
 
     await openFirst('Open iPhone 17 Pro');
-    await click(
-      await screen.findByRole('button', { name: 'End for everyone' }),
-    );
+    await chooseDeviceMenuItem('End for everyone');
     await waitFor(() =>
       expect(
         log.requests.some(
@@ -758,7 +1088,7 @@ describe('the device toolbar', () => {
     ).toBe(false);
 
     await openFirst('Open iPhone 17 Pro');
-    await click(await screen.findByRole('button', { name: 'Power off' }));
+    await chooseDeviceMenuItem('Power off');
     await waitFor(() =>
       expect(
         log.requests.some(
@@ -783,12 +1113,19 @@ describe('the device toolbar', () => {
     renderInQueryClient(<DeviceWorkspacePane />);
     await openFirst('Open iPhone 17 Pro');
     await waitFor(() => expect(log.streams).toHaveLength(1));
+    const { menu } = await openDeviceMenu();
+    expect(
+      within(menu).queryByRole('menuitem', { name: 'Power off' }),
+    ).toBeNull();
+    expect(
+      within(menu).queryByRole('menuitem', { name: 'End for everyone' }),
+    ).toBeNull();
     expect(screen.queryByRole('button', { name: 'Power off' })).toBeNull();
     expect(
       screen.queryByRole('button', { name: 'End for everyone' }),
     ).toBeNull();
-    expect(screen.getByRole('button', { name: 'Close' })).toBeTruthy();
-    await click(screen.getByRole('button', { name: 'Close' }));
+    expect(within(menu).getByRole('menuitem', { name: 'Close' })).toBeTruthy();
+    await chooseDeviceMenuItem('Close');
     await screen.findByRole('heading', { name: 'Android Emulators' });
     // D12: a device shared with the caller's Project may be started by them
     // (the hub's boot route is `drive`); only powering off is withheld.
@@ -807,9 +1144,11 @@ describe('the device toolbar', () => {
     const stops = buttons.filter((button) => button.tabIndex === 0);
     expect(stops).toHaveLength(1);
     expect(stops[0]).toHaveProperty('disabled', false);
-    // Home and Rotate are disabled with input down; Tools (#1971) is the
+    // Home and Rotate are disabled with input down; the ⋯ menu is the
     // first control that works without input.
-    expect(stops[0]!.getAttribute('aria-label')).toBe('Tools');
+    expect(stops[0]!.getAttribute('aria-label')).toBe(
+      'More iPhone 17 Pro actions',
+    );
   });
 
   test('the toolbar is one tab stop; arrow keys move between its buttons', async () => {
@@ -844,16 +1183,20 @@ describe('the device toolbar', () => {
     // On screen here: the float-over-chat hides this device.
     expect(isSourceShown(key)).toBe(true);
     // No chat can float it yet: the action says so rather than doing nothing.
-    const disabled = screen.getByRole('button', { name: 'Float over chat' });
+    const { menu } = await openDeviceMenu();
+    const disabled = within(menu).getByRole('menuitem', {
+      name: 'Float over chat (open a chat first)',
+    });
     expect(disabled).toHaveProperty('disabled', true);
-    expect(disabled.getAttribute('title')).toBe(
-      'Open a chat in a Project to float this device',
-    );
+    expect(
+      within(menu).queryByRole('menuitem', { name: 'Float over chat' }),
+    ).toBeNull();
     let release!: () => void;
     act(() => {
       release = registerFloatHost();
     });
-    await click(screen.getByRole('button', { name: 'Float over chat' }));
+    // The open menu follows: the row is enabled once a chat can take it.
+    await chooseDeviceMenuItem('Float over chat');
     // Requested, not yet taken: the pane still shows the device.
     screen.getByRole('toolbar', { name: 'iPhone 17 Pro controls' });
     expect(isSourceShown(key)).toBe(true);
@@ -1077,7 +1420,7 @@ describe('the device toolbar', () => {
     act(() => {
       release = registerFloatHost();
     });
-    await click(screen.getByRole('button', { name: 'Float over chat' }));
+    await chooseDeviceMenuItem('Float over chat');
     act(() => takeFloatRequest()?.onTaken?.());
     await screen.findByRole('heading', { name: 'iOS Simulators' });
     // The row must come back to a live Open, not stay on a disabled
@@ -1125,9 +1468,7 @@ describe('the device toolbar', () => {
     });
     renderInQueryClient(<DeviceWorkspacePane />);
     await openFirst('Open iPhone 17 Pro');
-    expect(
-      await screen.findByText('This device session has ended'),
-    ).toBeTruthy();
+    expect(await screen.findByText('This device session ended')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Reconnect' })).toBeTruthy();
   });
 });

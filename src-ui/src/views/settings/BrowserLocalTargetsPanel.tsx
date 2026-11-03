@@ -7,7 +7,7 @@ import {
   type BrowserPaneApi,
   browserPaneKeys,
   describeBrowserFailure,
-} from './browserPaneApi';
+} from '../../workspace-panes/browser-pane/browserPaneApi';
 
 const WARNING_TEXT: Record<string, string> = {
   'station-process':
@@ -64,11 +64,11 @@ export function BrowserLocalTargetsPanel({
 
   return (
     <section
-      className="browser-pane__panel"
+      className="browser-settings__panel"
       aria-labelledby="browser-local-targets-heading"
     >
       <h3 id="browser-local-targets-heading">Shared local servers</h3>
-      <p className="browser-pane__hint">
+      <p className="browser-settings__hint">
         Project admins' browsers reach the public internet plus only the local
         servers shared here.
       </p>
@@ -82,16 +82,15 @@ export function BrowserLocalTargetsPanel({
       ) : targets.data.length === 0 ? (
         <Empty variant="compact" label="Nothing shared yet" />
       ) : (
-        <ul className="browser-pane__list">
+        <ul className="browser-settings__list">
           {targets.data.map((target) => (
-            <li key={target.id} className="browser-pane__list-item">
+            <li key={target.id} className="browser-settings__item">
               <span>
                 {target.label} — {target.host}:{target.port}
               </span>
               <Button
                 size="sm"
                 variant="danger-outline"
-                className="browser-pane__control"
                 pending={remove.isPending && remove.variables === target.id}
                 onClick={() => remove.mutate(target.id)}
               >
@@ -107,12 +106,7 @@ export function BrowserLocalTargetsPanel({
 
       <h4>Local servers on this computer</h4>
       {!scanning ? (
-        <Button
-          className="browser-pane__control"
-          onClick={() => setScanning(true)}
-        >
-          Find local servers
-        </Button>
+        <Button onClick={() => setScanning(true)}>Find local servers</Button>
       ) : suggestions.isPending ? (
         <SkeletonList count={2} label="Looking for local servers" />
       ) : suggestions.isError ? (
@@ -133,31 +127,30 @@ export function BrowserLocalTargetsPanel({
           description="Only servers running inside this Project's workspace are offered."
         />
       ) : (
-        <ul className="browser-pane__list">
+        <ul className="browser-settings__list">
           {suggestions.data.suggestions.map((suggestion) => (
             <li
               key={`${suggestion.host}:${suggestion.port}`}
-              className="browser-pane__suggestion"
+              className="browser-settings__suggestion"
             >
               <p>
                 <strong>{suggestion.label}</strong> :{suggestion.port}
                 {suggestion.processName ? ` — ${suggestion.processName}` : ''}
                 {suggestion.pid !== null ? ` (pid ${suggestion.pid})` : ''}
               </p>
-              <p className="browser-pane__hint">Folder: {suggestion.cwd}</p>
+              <p className="browser-settings__hint">Folder: {suggestion.cwd}</p>
               {suggestion.commandLine ? (
-                <p className="browser-pane__hint">
+                <p className="browser-settings__hint">
                   Command: <code>{suggestion.commandLine}</code>
                 </p>
               ) : null}
               {suggestion.warnings.map((warning) => (
-                <p key={warning} className="browser-pane__warning">
+                <p key={warning} className="browser-settings__warning">
                   {WARNING_TEXT[warning] ?? warning}
                 </p>
               ))}
               <Button
                 size="sm"
-                className="browser-pane__control"
                 pending={
                   share.isPending &&
                   share.variables?.port === suggestion.port &&
