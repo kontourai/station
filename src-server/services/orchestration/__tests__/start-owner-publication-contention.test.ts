@@ -586,7 +586,10 @@ test('a start whose session.started publish gave up before the start hook binds 
         { timeout: 7500 },
       );
     await expect(f.start('owner', { userId: 'owner' })).rejects.toMatchObject({
-      receipt: { status: 'indeterminate' },
+      outcome: 'indeterminate',
+      failurePhase: 'indeterminate',
+      retryable: false,
+      receiptStatus: 'unavailable',
     });
     expect(
       f.store.latestEventByMethod(threadId, 'session.started'),
