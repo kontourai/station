@@ -892,11 +892,12 @@ This is delegation metadata, not a read-only or sandbox guarantee; read-only
 attachments retain “Read only”. Older execution rows receive no inferred badge. A later terminal event can correct that uncertainty.
 
 **Amended by #2459 (epic #2455 slice 5), 2026-09-24.** The Agents pane now
-renders child work — engine subagents and Station delegates — from the
-provider-neutral child-work contract through its own row
-(`workspace-panes/agents/ChildWorkRow.tsx`), and gains an "All" scope beside
-"This conversation". Scope is display state (a per-device preference), not
-pane identity: the occurrence still binds nothing, so nothing above about
+renders engine subagents from the provider-neutral child-work contract through
+`workspace-panes/agents/ChildWorkRow.tsx`, and gains an "All" scope beside
+"This conversation". The conversation scope keeps tool and Station-delegate
+cards in `TaskRow`; the All scope renders Station delegates through
+`ChildWorkRow` from the session read model. Scope is display state (a per-device
+preference), not pane identity: the occurrence still binds nothing, so nothing above about
 Activity's precedent changes. "All" reads delegates from the session read
 model and engine subagents from a window-wide registry
 (`contexts/child-work-global-store.ts`) fed before the chat guard, so a

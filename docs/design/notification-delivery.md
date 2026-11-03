@@ -449,7 +449,7 @@ The Station side mirrors Web Push (`push-routes.ts`, `WebPushChannel`):
   carries the event. So an orchestration approval or a Done or Failed turn
   in a listed session, and the registry twin of a Station-agent approval,
   are left to the card; an approval in an ephemeral session, a stopped
-  turn, and every other registry approval are carried. The known edges
+  turn, and other non-canonical registry approvals are carried. The known edges
   listed there apply on Android too. On the
   phone (`StationNotifications.kt`) each urgency has its own notification
   channel; one Android notification per id per registration; a history of
@@ -780,7 +780,16 @@ the route answers 503. The gateway is deployed by hand
   `canceled`, which the card leaves off, so a stopped turn still alerts). No
   other source may set the mark: `schedule()` refuses it from REST
   `POST /notifications`, providers and every other producer.
-  One registry approval is on the card too: a Station-agent
+  Server-owned canonical forms use only the orchestration notification.
+  Their registry entry carries `settlement: 'canonical-request'`, so the
+  approval-inbox subscriber skips that registry event. The adapter publishes
+  the exact `request.opened`, and the canonical consumer acknowledges its
+  stored content before the form can be answered. The orchestration
+  notification opens the form instead of offering generic Allow/Deny buttons;
+  those buttons carry neither the required content nor its exact event binding.
+  This is not proof that a phone alert was delivered.
+
+  The ordinary non-canonical relay still has a registry twin: a Station-agent
   session relays each turn through `/chat`, so a tool approval there is both
   a registry approval and, republished by the adapter, the thread's
   orchestration `request.opened`. The relay names its thread in the
@@ -789,12 +798,12 @@ the route answers 503. The gateway is deployed by hand
   that approval's registry notification carries
   `metadata.orchestrationThreadId` equal to its `sessionId`, marked
   `onActivityCard` under the same session rule; that twin does not alert
-  either. Every other registry approval (a managed chat outside
+  either. Other non-canonical registry approvals (a managed chat outside
   orchestration, an MCP UI call, an ACP bridge request, a Kit action:
   `sessionKind: 'managed'`, `requestKind: 'registry'`, no
-  `orchestrationThreadId`) never writes the orchestration `request.opened`
-  that puts a session on the card as waiting for approval, so it still
-  alerts, as does any record that is unmarked or fails one of these checks
+  `orchestrationThreadId`) never write the orchestration `request.opened`
+  that puts a session on the card as waiting for approval, so they still
+  alert, as does any record that is unmarked or fails one of these checks
   (including one written before the mark existed). One known edge: the
   twin is marked when the approval registers, but the card's entry needs
   the adapter to receive the injected approval chunk; a relay stream that
@@ -810,7 +819,7 @@ the route answers 503. The gateway is deployed by hand
   failed card send backs off for up to five minutes, so a finish whose card
   lands late raises no alert either. The inbox keeps both. Only the two
   phone alert channels (this one and Android's) read the stamp: the two
-  records of a Station-agent approval are still two notifications
+  records of an ordinary relayed Station-agent approval are still two notifications
   everywhere else. The exclusion does not look at the phone: with Live
   Activities (or the Android card) turned off, the card-announced
   notifications raise no alert at all (the inbox keeps them).
