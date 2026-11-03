@@ -7,6 +7,9 @@ carries optional `serviceTiers` (exact ids, names and descriptions) and a
 catalog `defaultServiceTier`. Consumers show only reported choices. Codex's
 `serviceTier` option takes precedence over the legacy `fastMode` flag; other
 providers retain their existing controls.
+An absent Codex tier leaves the session's speed unchanged on continuation;
+`serviceTier: null` explicitly clears it. Legacy `fastMode: false` supplies no
+override. Catalog defaults describe the model, not local CLI configuration.
 
 Use `@kontourai/station-contracts/*` when you need stable API/domain shapes shared across `src-server`, `packages/sdk`, `packages/cli`, plugins, or tests. New code should import these modules directly instead of reaching through `@kontourai/station-shared`.
 

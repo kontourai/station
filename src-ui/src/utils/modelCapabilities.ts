@@ -219,9 +219,11 @@ export function updateModelRuntimeOption(
   const next = { ...current };
   if (value === undefined) delete next[key];
   else next[key] = value;
-  // A tier and the legacy Fast flag describe the same control.
+  // Canonical controls and their legacy aliases cannot compete.
   if (key === 'serviceTier') delete next.fastMode;
   if (key === 'fastMode') delete next.serviceTier;
+  if (key === 'effort') delete next.reasoningEffort;
+  if (key === 'reasoningEffort') delete next.effort;
   return next;
 }
 
@@ -272,6 +274,8 @@ export function sanitizeRuntimeOptionsForModel(
     capabilities?.serviceTiers?.some((tier) => tier.id === current.serviceTier)
   )
     next.serviceTier = current.serviceTier;
+  else if (current.serviceTier === null && capabilities?.serviceTiers?.length)
+    next.serviceTier = null;
   const currentEffort =
     typeof current.effort === 'string'
       ? current.effort

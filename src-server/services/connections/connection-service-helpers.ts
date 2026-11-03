@@ -429,8 +429,9 @@ function normalizeModelCapabilities(
         id: tier.id,
         name: tier.name,
         ...(typeof tier.description === 'string' &&
+        tier.description.trim() &&
         tier.description.length <= MODEL_OPTION_TEXT_MAX_LENGTH
-          ? { description: tier.description }
+          ? { description: tier.description.trim() }
           : {}),
       });
       if (tiers.length === MODEL_OPTION_CAPABILITY_VALUE_MAX_ENTRIES) break;

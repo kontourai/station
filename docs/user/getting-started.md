@@ -470,8 +470,9 @@ show what **Start** will use:
   **Engine & model** picker, which also offers alternative engines when they
   are available. An engine choice overrides this conversation's execution
   while retaining the selected Agent's profile and saved defaults. Search or
-  filter by provider, **Recent**, or **Favorites**; open **Options** for
-  supported controls such as reasoning effort. Choosing a Model for an Agent also chooses
+  filter by provider, **Recent**, or **Favorites**. Supported thinking effort
+  and Speed controls sit beside the list; on phones, open **Settings**.
+  Choosing a Model for an Agent also chooses
   that Agent and closes the picker; changing the effort leaves it open. Once
   you have chosen a Model, the picker's reset button names the default it
   returns to, such as **Use project default** for a model-only choice or

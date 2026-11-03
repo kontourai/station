@@ -444,9 +444,6 @@
   .session-model-picker__selected-heading {
     margin-bottom: var(--k-space-2);
   }
-  .session-model-picker .model-runtime-choices {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
   .session-model-picker__footer {
     position: sticky;
     bottom: 0;

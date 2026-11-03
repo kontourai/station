@@ -6,7 +6,7 @@ export interface CodexModelOptions {
   reasoningEffort?: string;
   fastMode?: boolean;
   /** Provider-reported tier id; takes precedence over the legacy Fast flag. */
-  serviceTier?: string;
+  serviceTier?: string | null;
   /** Session-level approval posture override (archive#727). See ApprovalMode. */
   approvalMode?: ApprovalMode;
 }

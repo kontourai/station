@@ -77,6 +77,44 @@ describe('execution utils', () => {
     });
   });
 
+  test.each(['codex', 'my-codex'])(
+    'preserves saved Codex speed and effort through %s agent execution',
+    (connectionId) => {
+      const resolved = resolveAgentExecution({
+        engineConnectionType: 'codex',
+        execution: {
+          agentConnectionId: engineConnectionId(connectionId),
+          runtimeOptions: {
+            serviceTier: 'ultrafast',
+            effort: 'high',
+            reasoningEffort: 'low',
+            fastMode: true,
+          },
+        },
+      });
+      expect(resolved.providerOptions).toEqual({
+        serviceTier: 'ultrafast',
+        reasoningEffort: 'high',
+      });
+    },
+  );
+
+  test.each([undefined, { fastMode: false }, { serviceTier: null }])(
+    'does not force Codex defaults for %j',
+    (runtimeOptions) => {
+      expect(
+        resolveAgentExecution({
+          execution: {
+            agentConnectionId: engineConnectionId('codex'),
+            runtimeOptions,
+          },
+        }).providerOptions,
+      ).toEqual(
+        runtimeOptions?.serviceTier === null ? { serviceTier: null } : {},
+      );
+    },
+  );
+
   test('resolveAgentExecution returns provider acp for an agent bound to an ACP engine connection (station#954)', () => {
     const resolved = resolveAgentExecution({
       execution: { agentConnectionId: engineConnectionId('kiro') },

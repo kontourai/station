@@ -1384,7 +1384,9 @@ capability and adjust settings beside the list; on phones, switch between
 **Models** and **Settings**. Thinking effort and **Speed** are independent.
 Codex speed choices follow its catalog, including Ultrafast when reported.
 **Standard** selects standard routing; **Model default** clears the speed
-override, and **Use model default** clears the thinking-effort override.
+override, and **Model default** under Thinking effort clears that override.
+When the catalog reports a default speed, its name and description appear
+beside the choices; local CLI configuration can supply a different default.
 Choosing a model closes the picker; runtime changes keep it open. Connections
 needing setup stay visible but cannot be selected.
 

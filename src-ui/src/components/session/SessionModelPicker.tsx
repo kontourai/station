@@ -66,7 +66,7 @@ interface SessionModelPickerProps {
   resetDisabledReason?: string;
   onRuntimeOptionChange: (
     key: string,
-    value: string | number | boolean | undefined,
+    value: string | number | boolean | null | undefined,
   ) => void;
   onClose: () => void;
   /** See `ModelPickerDialogFrame`'s `returnFocusTarget`. */

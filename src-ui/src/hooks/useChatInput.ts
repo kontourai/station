@@ -383,6 +383,7 @@ export function useChatInput({
         (capabilities.supportedEffortLevels?.length ?? 0) > 0) ||
       capabilities?.supportsAdaptiveThinking === true ||
       capabilities?.supportsFastMode === true ||
+      (capabilities?.serviceTiers?.length ?? 0) > 0 ||
       capabilities?.supportsAutoMode === true
     );
   });
@@ -1005,7 +1006,7 @@ export function useChatInput({
   ]);
 
   const handleModelRuntimeOptionChange = useCallback(
-    (key: string, value: string | number | boolean | undefined) => {
+    (key: string, value: string | number | boolean | null | undefined) => {
       if (!sessionId) return;
       const current = activeChatsStore.getSnapshot()[sessionId];
       const providerOptions = updateModelRuntimeOption(

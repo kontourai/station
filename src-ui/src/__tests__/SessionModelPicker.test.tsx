@@ -307,7 +307,7 @@ describe('SessionModelPicker', () => {
 
   test('removes the effort override when model default is selected', () => {
     const props = renderPicker();
-    fireEvent.click(screen.getByRole('radio', { name: 'Use model default' }));
+    fireEvent.click(screen.getByRole('radio', { name: 'Model default' }));
     expect(props.onRuntimeOptionChange).toHaveBeenCalledWith(
       'effort',
       undefined,
@@ -323,7 +323,7 @@ describe('SessionModelPicker', () => {
     expect(screen.queryByRole('group', { name: 'Thinking effort' })).toBeNull();
   });
 
-  test('keeps long effort descriptions out of the choice label', () => {
+  test('shows long effort guidance below its short choice label', () => {
     renderPicker({
       models: [
         {
@@ -342,10 +342,48 @@ describe('SessionModelPicker', () => {
     });
     expect(screen.getByRole('radio', { name: 'High' })).toBeTruthy();
     expect(
-      screen.queryByText(
+      screen.getByText(
         'Spend more time reasoning through complex tasks before producing a response.',
       ),
-    ).toBeNull();
+    ).toBeTruthy();
+  });
+
+  test('shows the legacy reasoning-effort alias as the active choice', () => {
+    renderPicker({ runtimeOptions: { reasoningEffort: 'high' } });
+    expect(
+      (screen.getByRole('radio', { name: 'High' }) as HTMLInputElement).checked,
+    ).toBe(true);
+  });
+
+  test('inherits the reported default when legacy Fast is off', () => {
+    renderPicker({
+      models: [
+        {
+          id: 'model',
+          name: 'Model',
+          capabilities: {
+            serviceTiers: [
+              { id: 'standard', name: 'Standard' },
+              {
+                id: 'ultrafast',
+                name: 'Ultrafast',
+                description: 'Lower latency, higher cost.',
+              },
+            ],
+            defaultServiceTier: 'ultrafast',
+          },
+        },
+      ],
+      currentModel: 'model',
+      runtimeOptions: { fastMode: false },
+    });
+    expect(
+      (screen.getByRole('radio', { name: 'Model default' }) as HTMLInputElement)
+        .checked,
+    ).toBe(true);
+    expect(
+      screen.getByText('Model default: Ultrafast. Lower latency, higher cost.'),
+    ).toBeTruthy();
   });
 
   test('offers reported speed tiers independently of thinking effort and the legacy Fast toggle', () => {
@@ -400,7 +438,7 @@ describe('SessionModelPicker', () => {
     fireEvent.click(speed.getByRole('radio', { name: 'Model default' }));
     expect(props.onRuntimeOptionChange).toHaveBeenLastCalledWith(
       'serviceTier',
-      undefined,
+      null,
     );
   });
 

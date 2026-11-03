@@ -133,6 +133,7 @@ const bigPickle: SelectableModel = {
 function renderChatInput(options: {
   runtimeConnection?: typeof opencodeConnection | null;
   bindingStatus?: ReturnType<typeof resolveBindingStatus>;
+  availableModels?: SelectableModel[];
 }) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -147,7 +148,7 @@ function renderChatInput(options: {
         sessionId: SESSION_ID,
         agentSlug: (mockAgent as AgentData | null)?.slug ?? null,
         conversationId: 'conv-1',
-        availableModels: [bigPickle],
+        availableModels: options.availableModels ?? [bigPickle],
         bindingStatus: options.bindingStatus,
         runtimeConnection: options.runtimeConnection,
       }),
@@ -175,7 +176,7 @@ describe('useChatInput engine capability model gate', () => {
       title: 'Speed',
     });
     activeChatsStore.updateChat(SESSION_ID, {
-      providerOptions: { fastMode: true, effort: 'high' },
+      providerOptions: { fastMode: true, reasoningEffort: 'high' },
     });
     const { result } = renderChatInput({ runtimeConnection: null });
     act(() =>
@@ -183,17 +184,23 @@ describe('useChatInput engine capability model gate', () => {
     );
     expect(
       activeChatsStore.getSnapshot()[SESSION_ID]?.requestedProviderOptions,
-    ).toEqual({ effort: 'high', serviceTier: 'ultrafast' });
+    ).toEqual({ reasoningEffort: 'high', serviceTier: 'ultrafast' });
     act(() => result.current.handleModelRuntimeOptionChange('effort', 'low'));
     expect(
       activeChatsStore.getSnapshot()[SESSION_ID]?.requestedProviderOptions,
     ).toEqual({ effort: 'low', serviceTier: 'ultrafast' });
     act(() =>
-      result.current.handleModelRuntimeOptionChange('serviceTier', undefined),
+      result.current.handleModelRuntimeOptionChange('effort', undefined),
     );
     expect(
       activeChatsStore.getSnapshot()[SESSION_ID]?.requestedProviderOptions,
-    ).toEqual({ effort: 'low' });
+    ).toEqual({ serviceTier: 'ultrafast' });
+    act(() =>
+      result.current.handleModelRuntimeOptionChange('serviceTier', null),
+    );
+    expect(
+      activeChatsStore.getSnapshot()[SESSION_ID]?.requestedProviderOptions,
+    ).toEqual({ serviceTier: null });
   });
 
   test('a Station-mode chat backed by a user-named model connection can select models', () => {
@@ -247,5 +254,37 @@ describe('useChatInput engine capability model gate', () => {
     // Without engine identity the unknown matrix must still refuse — the
     // fix adds identity, it must not invent capability.
     expect(result.current.canModelSelect).toBe(false);
+  });
+
+  test('keeps reported speed controls available without effort or model-selection flags', () => {
+    mockAgent = null;
+    activeChatsStore.initChat(SESSION_ID, {
+      agentSlug: 'station',
+      agentName: 'Station',
+      title: 'Speed only',
+    });
+    activeChatsStore.updateChat(SESSION_ID, {
+      executionMode: EXECUTION_MODE.STATION,
+    });
+    const bindingStatus = resolveBindingStatus({ agent: null });
+    const { result } = renderChatInput({
+      runtimeConnection: null,
+      bindingStatus: {
+        ...bindingStatus,
+        capabilityState: {
+          ...bindingStatus.capabilityState,
+          model_selection: false,
+        },
+      },
+      availableModels: [
+        {
+          ...bigPickle,
+          capabilities: {
+            serviceTiers: [{ id: 'ultrafast', name: 'Ultrafast' }],
+          },
+        },
+      ],
+    });
+    expect(result.current.canModelSelect).toBe(true);
   });
 });

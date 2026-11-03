@@ -341,7 +341,7 @@ interface ChatInputAreaProps {
   onModelOpen: () => void;
   onModelRuntimeOptionChange: (
     key: string,
-    value: string | number | boolean | undefined,
+    value: string | number | boolean | null | undefined,
   ) => void;
   onApprovalModeChange: (mode: ApprovalMode) => void;
   onAcpSessionModeChange?: (modeId: string) => void;

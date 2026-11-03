@@ -3624,8 +3624,9 @@ describe('CodexAdapter', () => {
           [{ serviceTier: 'default', fastMode: true }, 'default'],
           [{ serviceTier: 'ultrafast' }, 'ultrafast'],
           [{ fastMode: true }, 'fast'],
-          [{ fastMode: false }, 'default'],
-          [{}, null],
+          [{ fastMode: false }, undefined],
+          [{}, undefined],
+          [{ serviceTier: null }, null],
         ] as const;
         for (const [index, [modelOptions, expectedTier]] of choices.entries()) {
           const sent = adapter.sendTurn({

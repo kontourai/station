@@ -363,10 +363,10 @@ function mapReasoningEffort(options?: CodexModelOptions): string | null {
 }
 
 function mapServiceTier(options: CodexModelOptions): string | null {
+  if (options.serviceTier === null) return null;
   if (typeof options.serviceTier === 'string' && options.serviceTier.trim())
     return options.serviceTier.trim();
   if (options.fastMode === true) return 'fast';
-  if (options.fastMode === false) return 'default';
   return null;
 }
 
@@ -3286,7 +3286,10 @@ export class CodexAdapter implements ProviderAdapterShape {
             ? { approvalPolicy: approvalKnobs.approvalPolicy }
             : {}),
           ...(sandboxPolicy ? { sandboxPolicy } : {}),
-          serviceTier: mapServiceTier(modelOptions),
+          serviceTier:
+            modelOptions.serviceTier === null
+              ? null
+              : (mapServiceTier(modelOptions) ?? undefined),
         },
         { mapResult: acceptTurn },
       );

@@ -3,31 +3,7 @@ import { useId } from 'react';
 import { effortLabel } from '../utils/modelCapabilities';
 import { Checkbox } from './Checkbox';
 
-/**
- * The engine-owned model knobs — effort, adaptive thinking, fast mode, auto
- * mode — rendered from what the SERVER reported this model can do.
- *
- * DESIGN.md §3.4 asks for "only the knobs the capability matrix says the
- * engine delivers". The static `EngineCapabilityMatrix` has one cell that
- * bears on this (`modelSelection`, which gates whether a model is choosable
- * at all); it has no effort/thinking cells and should not grow them, because
- * the answer is not a property of the engine class: it is a property of the
- * selected MODEL, computed per connection by the adapter that will run it
- * (`codex-adapter.ts` derives `supportedEffortLevels`/`effortLabels`/
- * `supportsFastMode` from the live `codex model list`; `claude-adapter.ts`
- * reports its own) and projected onto the connection by
- * `connection-service-helpers.ts`. So the section's EXISTENCE is matrix-gated
- * and its CONTENTS are capability-gated, and neither is a per-engine branch
- * in the UI.
- *
- * The agent editor used to answer it with `connection.type === 'claude'` and
- * `connection.type === 'codex'` literals and hardcoded option lists — a
- * client-side guess at another process's capabilities that could only be
- * wrong (it offered Codex "Low/Medium/High/Highest" whatever the installed
- * codex reported, and offered Claude nothing that Claude's own catalogue
- * said). The Session model picker had already been doing it properly for one
- * surface; this is that same code, mounted by both.
- */
+/** Shared model controls use adapter-reported capabilities, not engine-name guesses. */
 export function ModelRuntimeOptionFields({
   idPrefix,
   className,
@@ -48,7 +24,7 @@ export function ModelRuntimeOptionFields({
   effortPresentation?: 'select' | 'choices';
   onRuntimeOptionChange: (
     key: string,
-    value: string | number | boolean | undefined,
+    value: string | number | boolean | null | undefined,
   ) => void;
 }) {
   const effortGroup = useId();
@@ -62,26 +38,41 @@ export function ModelRuntimeOptionFields({
           (tier) => tier.id === 'fast' || tier.id === 'priority',
         )
       : undefined);
-  const tierDescription = selectedTier?.description;
+  const defaultTier = serviceTiers.find(
+    (tier) => tier.id === capabilities?.defaultServiceTier,
+  );
+  const tierDescription =
+    selectedTier?.description ??
+    (!selectedTier && defaultTier
+      ? `Model default: ${defaultTier.name}.${defaultTier.description ? ` ${defaultTier.description}` : ''}`
+      : undefined);
   const effortOptions =
     capabilities?.supportsEffort === true
       ? (capabilities.supportedEffortLevels ?? [])
       : [];
+  const requestedEffort =
+    runtimeOptions.effort ?? runtimeOptions.reasoningEffort;
   const selectedEffort =
-    typeof runtimeOptions.effort === 'string' &&
-    effortOptions.includes(runtimeOptions.effort)
-      ? runtimeOptions.effort
+    typeof requestedEffort === 'string' &&
+    effortOptions.includes(requestedEffort)
+      ? requestedEffort
       : '';
   const effortName = (value: string) => {
     const label = capabilities?.effortLabels?.[value];
     return label && label.length <= 48 ? label : effortLabel(value);
   };
+  const effortDescription = capabilities?.effortLabels?.[selectedEffort];
+  const showEffortDescription =
+    effortDescription && effortDescription.length > 48;
   return (
     <>
       {effortOptions.length > 0 && effortPresentation === 'choices' && (
         <fieldset
           className={`${className} model-runtime-choices`}
           disabled={disabled}
+          aria-describedby={
+            showEffortDescription ? `${effortGroup}-description` : undefined
+          }
         >
           <legend>Thinking effort</legend>
           {['', ...effortOptions].map((option) => (
@@ -96,10 +87,18 @@ export function ModelRuntimeOptionFields({
                 }
               />
               <span title={capabilities?.effortLabels?.[option]}>
-                {option ? effortName(option) : 'Use model default'}
+                {option ? effortName(option) : 'Model default'}
               </span>
             </label>
           ))}
+          {showEffortDescription && (
+            <p
+              id={`${effortGroup}-description`}
+              className="model-runtime-tier-description"
+            >
+              {effortDescription}
+            </p>
+          )}
         </fieldset>
       )}
       {effortOptions.length > 0 && effortPresentation === 'select' && (
@@ -114,7 +113,7 @@ export function ModelRuntimeOptionFields({
               onRuntimeOptionChange('effort', event.target.value || undefined)
             }
           >
-            <option value="">Use model default</option>
+            <option value="">Model default</option>
             {effortOptions.map((option) => (
               <option
                 key={option}
@@ -157,7 +156,7 @@ export function ModelRuntimeOptionFields({
                 value={tier.id}
                 checked={(selectedTier?.id ?? '') === tier.id}
                 onChange={() =>
-                  onRuntimeOptionChange('serviceTier', tier.id || undefined)
+                  onRuntimeOptionChange('serviceTier', tier.id || null)
                 }
               />
               <span>{tier.name}</span>
@@ -183,10 +182,7 @@ export function ModelRuntimeOptionFields({
             value={selectedTier?.id ?? ''}
             title={tierDescription}
             onChange={(event) =>
-              onRuntimeOptionChange(
-                'serviceTier',
-                event.target.value || undefined,
-              )
+              onRuntimeOptionChange('serviceTier', event.target.value || null)
             }
           >
             <option value="">Model default</option>
