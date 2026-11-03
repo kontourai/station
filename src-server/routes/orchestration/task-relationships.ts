@@ -56,6 +56,7 @@ export interface TaskRelationshipRouteAdapters {
   authorityForRequest(
     request: Request,
     conversationId?: string,
+    target?: { taskId: string; conversationIds: readonly string[] },
   ): Promise<TaskRelationshipAuthority | undefined>;
   /** Current principal, Task and per-target access at final response delivery. */
   isCurrent(request: Request): boolean;

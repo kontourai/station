@@ -216,10 +216,7 @@ import { TaskDeviceCapture } from '../../services/projects/task-device-capture.j
 import { TaskDeviceRecording } from '../../services/projects/task-device-recording.js';
 import { TaskRoomAttachments } from '../../services/projects/task-room-attachments.js';
 import { createTaskRoomContext } from '../../services/projects/task-room-context.js';
-import {
-  TaskRoomAnswerUnavailableError,
-  TaskRoomConversationModule,
-} from '../../services/projects/task-room-conversation-module.js';
+import { TaskRoomConversationModule } from '../../services/projects/task-room-conversation-module.js';
 import { PullRequestReviewGuideService } from '../../services/pull-requests/pull-request-review-guide.js';
 import { ReviewGuideError } from '../../services/pull-requests/pull-request-review-guide-errors.js';
 import {
@@ -272,6 +269,7 @@ import { createProjectRoomAccess } from './project-room-access.js';
 import { projectRoomAgentExecution } from './project-room-agent-runtime.js';
 import { createProjectRoomTaskContext } from './project-room-task-context.js';
 import { createProjectSharingStepUp } from './project-sharing-step-up.js';
+import { createTaskInboxProjection } from './task-inbox-projection.js';
 import { runtimeToolLibraryDependencies } from './tool-library-runtime.js';
 
 export {
@@ -5479,140 +5477,154 @@ export function configureRuntimeRoutes(
     principalId: (request) => roomRequestPrincipals.get(request)?.id,
   });
   context.app.use('/api/tasks/*', primeRoomRequestPrincipal);
+  const taskRelationshipAuthority = createTaskRelationshipAuthority({
+    graph: context.taskGraphService,
+    projects: () =>
+      context.projectService
+        .listProjects()
+        .map((project) => context.storageAdapter.getProject(project.slug)),
+    sessions: context.orchestrationService,
+    events: context.orchestrationEventStore,
+    readAuthority: conversationReadAuthorityForRequest,
+    current: (request) => {
+      if (
+        isHostedTenantExecutionRequired() ||
+        !isRequestPrincipalCurrent(request) ||
+        isPrincipalScopedAgentRequest(request)
+      )
+        return false;
+      let witness = relationshipRequestWitnesses.get(request);
+      if (!witness) {
+        const principal = getRuntimeAuthenticatedRequestPrincipal(request);
+        const person = roomRequestPrincipals.get(request);
+        if (!principal || principal.kind === 'internal' || !person)
+          return false;
+        const account =
+          context.deploymentAuthentication?.service.current(request);
+        const device =
+          principal.authority === 'device-credential'
+            ? context.environmentSecurityService.identifyDevice(
+                principal.credential,
+              )
+            : undefined;
+        const binding = device?.principalBinding;
+        const boundAccount =
+          binding && 'kind' in binding && binding.kind === 'account'
+            ? binding
+            : undefined;
+        const sessionCurrent =
+          account?.kind === 'authenticated'
+            ? context.deploymentAuthentication!.service.captureCurrentSession(
+                request,
+              )
+            : undefined;
+        const directory = context.localAccounts?.accountDirectory;
+        if (
+          account &&
+          account.kind !== 'absent' &&
+          account.kind !== 'authenticated'
+        )
+          return false;
+        if (
+          account?.kind === 'authenticated' &&
+          account.principal.id !== person.id
+        )
+          return false;
+        if (
+          boundAccount &&
+          principalForDeviceBinding(boundAccount).id !== person.id
+        )
+          return false;
+        if (
+          boundAccount &&
+          !sessionCurrent &&
+          (!directory || directory.issuer !== boundAccount.issuer)
+        )
+          return false;
+        const capturedBinding = binding && structuredClone(binding);
+        const capturedTransport = structuredClone(principal);
+        const authorization = request.headers.get('authorization');
+        witness = () => {
+          if (
+            !isDeepStrictEqual(
+              getRuntimeAuthenticatedRequestPrincipal(request),
+              capturedTransport,
+            ) ||
+            request.headers.get('authorization') !== authorization
+          )
+            return false;
+          if (
+            roomRequestPrincipals.get(request)?.id !== person.id ||
+            !isRequestPrincipalCurrent(request)
+          )
+            return false;
+          if (sessionCurrent && !sessionCurrent()) return false;
+          if (
+            !sessionCurrent &&
+            context.deploymentAuthentication?.service.current(request)?.kind !==
+              account?.kind
+          )
+            return false;
+          const live =
+            principal.authority === 'device-credential'
+              ? context.environmentSecurityService.identifyDevice(
+                  principal.credential,
+                )
+              : undefined;
+          if (!isDeepStrictEqual(live?.principalBinding, capturedBinding))
+            return false;
+          return (
+            !boundAccount ||
+            !!sessionCurrent ||
+            directory?.standing(
+              boundAccount.subject,
+              boundAccount.approvedAt,
+            ) === 'current'
+          );
+        };
+        relationshipRequestWitnesses.set(request, witness);
+      }
+      return witness();
+    },
+    mayRead: canonicalTaskSourceMayRead,
+    mayEdit: (request, id) =>
+      (!isDeploymentAccountPrincipalId(
+        roomRequestPrincipals.get(request)?.id ?? '',
+      ) ||
+        isOperatorInPersonNotAgent(request)) &&
+      runtimeRequestPrincipalMayAccessHttpRoute(
+        request,
+        context.environmentSecurityService,
+        {
+          method: 'PATCH',
+          path: `/api/tasks/${encodeURIComponent(id)}/status`,
+        },
+      ),
+  });
   context.app.route(
     '/api/tasks',
     createTaskRelationshipRoutes(
       context.taskGraphService,
-      createTaskRelationshipAuthority({
+      taskRelationshipAuthority,
+    ),
+  );
+  const taskInboxProjection = context.orchestrationEventStore
+    ? createTaskInboxProjection({
         graph: context.taskGraphService,
         projects: () =>
           context.projectService
             .listProjects()
             .map((project) => context.storageAdapter.getProject(project.slug)),
-        sessions: context.orchestrationService,
+        relationships: taskRelationshipAuthority,
+        work: taskRoomWork,
         events: context.orchestrationEventStore,
-        readAuthority: conversationReadAuthorityForRequest,
-        current: (request) => {
-          if (
-            isHostedTenantExecutionRequired() ||
-            !isRequestPrincipalCurrent(request) ||
-            isPrincipalScopedAgentRequest(request)
-          )
-            return false;
-          let witness = relationshipRequestWitnesses.get(request);
-          if (!witness) {
-            const principal = getRuntimeAuthenticatedRequestPrincipal(request);
-            const person = roomRequestPrincipals.get(request);
-            if (!principal || principal.kind === 'internal' || !person)
-              return false;
-            const account =
-              context.deploymentAuthentication?.service.current(request);
-            const device =
-              principal.authority === 'device-credential'
-                ? context.environmentSecurityService.identifyDevice(
-                    principal.credential,
-                  )
-                : undefined;
-            const binding = device?.principalBinding;
-            const boundAccount =
-              binding && 'kind' in binding && binding.kind === 'account'
-                ? binding
-                : undefined;
-            const sessionCurrent =
-              account?.kind === 'authenticated'
-                ? context.deploymentAuthentication!.service.captureCurrentSession(
-                    request,
-                  )
-                : undefined;
-            const directory = context.localAccounts?.accountDirectory;
-            if (
-              account &&
-              account.kind !== 'absent' &&
-              account.kind !== 'authenticated'
-            )
-              return false;
-            if (
-              account?.kind === 'authenticated' &&
-              account.principal.id !== person.id
-            )
-              return false;
-            if (
-              boundAccount &&
-              principalForDeviceBinding(boundAccount).id !== person.id
-            )
-              return false;
-            if (
-              boundAccount &&
-              !sessionCurrent &&
-              (!directory || directory.issuer !== boundAccount.issuer)
-            )
-              return false;
-            const capturedBinding = binding && structuredClone(binding);
-            const capturedTransport = structuredClone(principal);
-            const authorization = request.headers.get('authorization');
-            witness = () => {
-              if (
-                !isDeepStrictEqual(
-                  getRuntimeAuthenticatedRequestPrincipal(request),
-                  capturedTransport,
-                ) ||
-                request.headers.get('authorization') !== authorization
-              )
-                return false;
-              if (
-                roomRequestPrincipals.get(request)?.id !== person.id ||
-                !isRequestPrincipalCurrent(request)
-              )
-                return false;
-              if (sessionCurrent && !sessionCurrent()) return false;
-              if (
-                !sessionCurrent &&
-                context.deploymentAuthentication?.service.current(request)
-                  ?.kind !== account?.kind
-              )
-                return false;
-              const live =
-                principal.authority === 'device-credential'
-                  ? context.environmentSecurityService.identifyDevice(
-                      principal.credential,
-                    )
-                  : undefined;
-              if (!isDeepStrictEqual(live?.principalBinding, capturedBinding))
-                return false;
-              return (
-                !boundAccount ||
-                !!sessionCurrent ||
-                directory?.standing(
-                  boundAccount.subject,
-                  boundAccount.approvedAt,
-                ) === 'current'
-              );
-            };
-            relationshipRequestWitnesses.set(request, witness);
-          }
-          return witness();
-        },
-        mayRead: canonicalTaskSourceMayRead,
-        mayEdit: (request, id) =>
-          (!isDeploymentAccountPrincipalId(
-            roomRequestPrincipals.get(request)?.id ?? '',
-          ) ||
-            isOperatorInPersonNotAgent(request)) &&
-          runtimeRequestPrincipalMayAccessHttpRoute(
-            request,
-            context.environmentSecurityService,
-            {
-              method: 'PATCH',
-              path: `/api/tasks/${encodeURIComponent(id)}/status`,
-            },
-          ),
-      }),
-    ),
-  );
+      })
+    : undefined;
   context.app.route(
     '/api/tasks',
     createTaskRoutes(context.taskGraphService, {
       logger: context.logger,
+      workChatConversations: taskInboxProjection,
       onRoomSystemLine: async ({
         task,
         request,
@@ -6132,6 +6144,13 @@ export function configureRuntimeRoutes(
         }
       },
       readAgentAnswers: (input) => roomConversation.answers(input),
+      onAnswerUnavailable: (error, taskId) =>
+        context.logger.warn('Task room answer recovery deferred', {
+          taskId,
+          sessionId: error.sessionId,
+          turnId: error.turnId,
+          error: error.message,
+        }),
       readAgentLifecycle: async ({ sessionId }) => {
         const detail = await context.orchestrationService.readSession(
           sessionId,
@@ -6237,21 +6256,7 @@ export function configureRuntimeRoutes(
     })
       .then(() =>
         Promise.all([
-          (async () => {
-            for (const taskId of roomTaskIds) {
-              try {
-                await roomRuntime.reconcileAgentLifecycles([taskId]);
-              } catch (error) {
-                if (!(error instanceof TaskRoomAnswerUnavailableError))
-                  throw error;
-                // Publication retains blocked presence and the original request.
-                // A later room read can retry without restarting the provider.
-                context.logger.warn('Task room answer recovery deferred', {
-                  taskId,
-                });
-              }
-            }
-          })(),
+          roomRuntime.reconcileAgentLifecycles(roomTaskIds),
           roomRuntime.reconcileRevisionPublications(roomTaskIds),
         ]),
       )
