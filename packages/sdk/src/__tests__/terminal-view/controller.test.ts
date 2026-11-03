@@ -130,14 +130,23 @@ beforeEach(() => {
     'fetch',
     vi.fn(async () => new Response(new Uint8Array(readFileSync(WASM_PATH)))),
   );
+  // Fires only for what is observed: unhooking the view's observer must
+  // leave a resize unseen.
   vi.stubGlobal(
     'ResizeObserver',
     class {
+      private readonly targets = new Set<Element>();
       constructor(callback: () => void) {
-        resizeObservers.push(callback);
+        resizeObservers.push(() => {
+          if (this.targets.size) callback();
+        });
       }
-      observe() {}
-      disconnect() {}
+      observe(target: Element) {
+        this.targets.add(target);
+      }
+      disconnect() {
+        this.targets.clear();
+      }
     },
   );
   vi.stubGlobal(
