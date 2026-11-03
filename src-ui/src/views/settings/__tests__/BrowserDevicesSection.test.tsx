@@ -220,6 +220,49 @@ describe('Browser settings for a view-only caller', () => {
   });
 });
 
+describe('Browser access read outcomes', () => {
+  const refused = (status: number, code: string) => () =>
+    new Response(
+      JSON.stringify({ success: false, error: { code, message: code } }),
+      { status, headers: { 'Content-Type': 'application/json' } },
+    );
+
+  test('a refused access read says the caller cannot change it', async () => {
+    stub({
+      'GET /api/browser/projects/alpha/access': refused(403, 'forbidden'),
+    });
+    mount();
+    expect(
+      await screen.findByText(
+        "You can't change Browser settings for this Project.",
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
+  });
+
+  test('a failed access read offers Try again, which brings the switch back', async () => {
+    let failing = true;
+    stub({
+      'GET /api/browser/projects/alpha/access': () =>
+        failing ? refused(500, 'internal')() : ok(ADMIN_ACCESS),
+      'GET /api/browser/projects/alpha/settings': () =>
+        ok({ browserEvaluate: false }),
+    });
+    mount();
+    const retry = await screen.findByRole('button', { name: 'Try again' });
+    expect(
+      screen.queryByText("You can't change Browser settings for this Project."),
+    ).toBeNull();
+    failing = false;
+    fireEvent.click(retry);
+    expect(
+      await screen.findByRole('switch', {
+        name: "Let agents run JavaScript in this Project's pages",
+      }),
+    ).toBeTruthy();
+  });
+});
+
 describe('Browser shared local servers (D7, operator only)', () => {
   const suggestion = {
     host: 'localhost',

@@ -1,14 +1,18 @@
 import { authenticatedFetch } from '@kontourai/station-sdk';
 import { useQuery } from '@tanstack/react-query';
 import { useId, useMemo, useState } from 'react';
+import { Button } from '../../components/Button';
+import { ErrorState } from '../../components/state';
 import {
   useApiBase,
   useHostRequestAuthorityScope,
 } from '../../contexts/ApiBaseContext';
 import { useScopedProjectsQuery } from '../../contexts/ProjectsContext';
 import {
+  BrowserApiError,
   browserPaneApi,
   browserPaneKeys,
+  describeBrowserFailure,
 } from '../../workspace-panes/browser-pane/browserPaneApi';
 import { DeviceSetupEntry } from '../../workspace-panes/device/DeviceSetupEntry';
 import { BrowserAgentSettingsPanel } from './BrowserAgentSettingsPanel';
@@ -78,10 +82,23 @@ export function BrowserDevicesSection() {
                 ))}
               </select>
             </label>
-            {access.isError || access.data?.canDrive === false ? (
+            {access.data?.canDrive === false ||
+            (access.error instanceof BrowserApiError &&
+              access.error.status === 403) ? (
               <p className="settings__field-hint">
                 You can't change Browser settings for this Project.
               </p>
+            ) : access.isError ? (
+              <ErrorState
+                variant="compact"
+                title="Browser access could not be read"
+                description={describeBrowserFailure(access.error)}
+                action={
+                  <Button size="sm" onClick={() => void access.refetch()}>
+                    Try again
+                  </Button>
+                }
+              />
             ) : access.data ? (
               <BrowserAgentSettingsPanel
                 key={`agent:${projectSlug}`}
