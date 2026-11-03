@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { isAbsolute, relative, resolve } from 'node:path';
+import { scheduler } from 'node:timers/promises';
 import { isDeepStrictEqual } from 'node:util';
 import type { FlowEvidenceEntry } from '@kontourai/flow';
 import type { TurnDeduplicator } from '@kontourai/monument';
@@ -537,6 +538,7 @@ import { SessionTranscriptReads } from './session-transcript-reads.js';
 import {
   createInMemorySessionTurnBoundaryAuthority,
   runSessionStartWithBoundary,
+  SessionStartIndeterminateError,
   type SessionTurnBoundaryAuthority,
 } from './session-turn-boundary-binding.js';
 import {
@@ -841,6 +843,8 @@ const DISCARDED_DRAFT_GATE_MAX = 256;
  * the interruption warning names it.
  */
 const OBSERVED_EVENT_RETRY_DELAYS_MS = [25, 100] as const;
+/** Match the EventStore background publication write budget without blocking the loop. */
+const STARTED_SESSION_COMMIT_BUDGET_MS = 5_000;
 
 /** What {@link OrchestrationService}'s append half hands its observer half. */
 interface CommittedEvent {
@@ -2462,6 +2466,18 @@ export class OrchestrationService {
    */
   private readonly internalStops: InternalStopSuppression;
   private readonly startingSessionThreads = new Set<string>();
+  private readonly startedSessionCommits = new Map<
+    string,
+    {
+      adapter: ProviderAdapterShape;
+      previousEventId?: string;
+      eventId?: string;
+      observedAt?: number;
+      committed: boolean;
+      promise: Promise<void>;
+      resolve: () => void;
+    }
+  >();
   /**
    * archive#3476: in-flight lazy materialisations, keyed by thread. Two
    * concurrent first turns on the same restored session would otherwise each
@@ -7543,6 +7559,52 @@ export class OrchestrationService {
     );
   }
 
+  private async awaitStartedSessionCommit(
+    adapter: ProviderAdapterShape,
+    session: ProviderSession,
+    signal?: AbortSignal,
+  ): Promise<void> {
+    const pending = this.startedSessionCommits.get(session.threadId);
+    if (!pending) return;
+    // Built-ins enqueue before returning; allow their queue consumer to observe the start.
+    await scheduler.yield();
+    if (signal?.aborted || !this.isAdapterCurrent(adapter))
+      throw new SessionStartIndeterminateError();
+    if (pending.committed) return;
+    const blockedAdapter = [...this.observedRetryThreads.keys()].some(
+      (thread) => this.sessionAdapters.get(thread) === adapter,
+    );
+    // Preserve deferred-start adapters that have not announced a session yet.
+    if (!pending.eventId && !blockedAdapter) return;
+    const deadline =
+      (pending.observedAt ?? performance.now()) +
+      STARTED_SESSION_COMMIT_BUDGET_MS;
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    let aborted: (() => void) | undefined;
+    try {
+      await new Promise<void>((resolve, reject) => {
+        const unavailable = () =>
+          new SessionStartIndeterminateError(
+            undefined,
+            'Session creation may have completed, but session.started was not durably confirmed. Inspect the session before retrying.',
+          );
+        timeout = setTimeout(
+          () => reject(unavailable()),
+          Math.max(0, deadline - performance.now()),
+        );
+        aborted = () => reject(unavailable());
+        signal?.addEventListener('abort', aborted, { once: true });
+        if (signal?.aborted) aborted();
+        pending.promise.then(resolve);
+      });
+      if (!pending.committed || !this.isAdapterCurrent(adapter))
+        throw new SessionStartIndeterminateError();
+    } finally {
+      if (timeout) clearTimeout(timeout);
+      if (aborted) signal?.removeEventListener('abort', aborted);
+    }
+  }
+
   /** Private adapters compose service state into the deep start command. */
   private createSessionCommandImplementation(): SessionCommandImplementation {
     return createSessionCommandModule({
@@ -7595,9 +7657,21 @@ export class OrchestrationService {
           this.startingSessionThreads.add(threadId);
           return true;
         },
-        releaseStart: (threadId) =>
-          this.startingSessionThreads.delete(threadId),
-        attachStarted: (session, adapter, tenant, startInput, startedBy) => {
+        releaseStart: (threadId) => {
+          this.startingSessionThreads.delete(threadId);
+          this.startedSessionCommits.delete(threadId);
+        },
+        attachStarted: async (
+          session,
+          adapter,
+          tenant,
+          startInput,
+          startedBy,
+        ) => {
+          if (!this.isAdapterCurrent(adapter))
+            throw new Error(
+              `${adapter.provider} adapter was replaced while the session was starting.`,
+            );
           if (
             startInput.metadata?.[SESSION_VISIBILITY_METADATA_KEY] ===
             'ephemeral'
@@ -7640,7 +7714,7 @@ export class OrchestrationService {
             )
           )
             this.sessionAuthz.bindStartOwner(session.threadId, startOwner);
-          this.options.eventStore?.upsertSession(session);
+          await this.options.eventStore?.upsertSessionInBackground(session);
         },
       },
       launchPolicy: {
@@ -8164,6 +8238,22 @@ export class OrchestrationService {
         },
         start: async (adapter, input, context, internal) => {
           const startedAt = performance.now();
+          if (this.options.eventStore) {
+            let resolve!: () => void;
+            const promise = new Promise<void>((accept) => {
+              resolve = accept;
+            });
+            this.startedSessionCommits.set(input.threadId, {
+              adapter,
+              previousEventId: this.options.eventStore.latestEventByMethod(
+                input.threadId,
+                'session.started',
+              )?.payload.eventId,
+              committed: false,
+              promise,
+              resolve,
+            });
+          }
           const admissionLease = await admitEngineStartForIntent(
             this.options.resourcePosture,
             this.options.logger,
@@ -8302,6 +8392,7 @@ export class OrchestrationService {
           this.sessionAuthz.settleStartOwner(threadId);
           // Revoke even if provider teardown fails or exceeds its deadline.
           revokeStationControlMcpToken(threadId);
+          this.sessionAuthz.forgetTenantContext(threadId);
           try {
             await this.adapterRetirement.runCleanupWithinDeadline(
               () => adapter.stopSession(threadId),
@@ -8367,7 +8458,7 @@ export class OrchestrationService {
             this.portableConsentByThread.delete(input.threadId);
           }
         },
-        ensureStartedSessionCurrent: async (adapter, _session, signal) => {
+        ensureStartedSessionCurrent: async (adapter, session, signal) => {
           if (signal?.aborted) {
             throwIfAborted(signal);
           }
@@ -8376,6 +8467,7 @@ export class OrchestrationService {
               `${adapter.provider} adapter was replaced while the session was starting.`,
             );
           }
+          await this.awaitStartedSessionCommit(adapter, session, signal);
         },
         logStarted: (adapter, input) => {
           this.sessionLogger(input).debug('Session started', {
@@ -12910,10 +13002,24 @@ export class OrchestrationService {
         const settling =
           event.method === 'session.started' ||
           event.method === 'session.exited'
-            ? { threadId: event.threadId, method: event.method }
+            ? {
+                threadId: event.threadId,
+                method: event.method,
+                eventId: event.eventId,
+              }
             : undefined;
         try {
           if (!this.isAdapterCurrent(adapter)) continue;
+          if (event.method === 'session.started') {
+            const pending = this.startedSessionCommits.get(event.threadId);
+            if (
+              pending?.adapter === adapter &&
+              event.eventId !== pending.previousEventId
+            ) {
+              pending.eventId = event.eventId;
+              pending.observedAt ??= performance.now();
+            }
+          }
           if (event.method === ('content.host-images' as string)) {
             // Station derives this from files it read itself; an engine's
             // version would map paths to images Station never admitted.
@@ -13043,7 +13149,11 @@ export class OrchestrationService {
             (this.isAdapterCurrent(adapter) ||
               this.sessionAdapters.get(settling.threadId) === adapter)
           )
-            this.settleStartEvent(settling.threadId, settling.method);
+            this.settleStartEvent(
+              settling.threadId,
+              settling.method,
+              settling.eventId,
+            );
         }
       }
     } catch (error) {
@@ -13142,8 +13252,20 @@ export class OrchestrationService {
   private settleStartEvent(
     threadId: string,
     method: 'session.started' | 'session.exited',
+    eventId?: string,
+    committed = false,
   ): void {
     this.sessionAuthz.settleStartOwner(threadId);
+    // Settlement ends interim authority; only an appended event confirms creation.
+    const pending = this.startedSessionCommits.get(threadId);
+    if (
+      method === 'session.started' &&
+      eventId &&
+      pending?.eventId === eventId
+    ) {
+      pending.committed ||= committed;
+      pending.resolve();
+    }
     if (this.startingSessionThreads.has(threadId))
       this.settledStartEvents.add(threadId);
     else if (method === 'session.exited')
@@ -15038,6 +15160,13 @@ export class OrchestrationService {
         event.method,
       );
     if (!committed) return false;
+    if (event.method === 'session.started')
+      this.settleStartEvent(
+        event.threadId,
+        'session.started',
+        event.eventId,
+        true,
+      );
     const projectedEvent = this.observeCommittedEvent(
       event,
       committed,
@@ -15130,9 +15259,8 @@ export class OrchestrationService {
     if (projectedEvent.method === 'session.exited')
       this.settleStartEvent(projectedEvent.threadId, 'session.exited');
     else if (
-      projectedEvent.method === 'session.started' ||
-      (projectedEvent.method === 'session.configured' &&
-        typeof projectedEvent.metadata?.userId === 'string')
+      projectedEvent.method === 'session.configured' &&
+      typeof projectedEvent.metadata?.userId === 'string'
     )
       this.sessionAuthz.settleStartOwner(projectedEvent.threadId);
     this.options.eventBus.emit(SERVER_EVENTS.ORCHESTRATION_EVENT, {

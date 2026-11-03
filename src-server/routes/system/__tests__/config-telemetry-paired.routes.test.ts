@@ -3,17 +3,10 @@ import { join } from 'node:path';
 import type { HttpBindings } from '@hono/node-server';
 import { pairingScopePresetString } from '@kontourai/station-contracts';
 
-/**
- * A paired device that may operate but holds no host shell, so it never has
- * owner-device standing (2026-11-02): the ungranted paired caller these
- * tests need. A Standard device the owner paired carries `terminal:operate`
- * and acts as the owner.
- */
-const OPERATE_ONLY = 'orchestration:read orchestration:operate';
-
 import { Hono } from 'hono';
 import { afterEach, expect, test, vi } from 'vitest';
 import { withOperatorPrincipal } from '../../../__test-utils__/operator-principal.js';
+import { DEVICE_WITHOUT_HOST_SHELL } from '../../../__test-utils__/owner-standing.js';
 import { readJson } from '../../../__test-utils__/read-json.js';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { ConfigLoader } from '../../../domain/config-loader.js';
@@ -88,7 +81,7 @@ test.each([
     const pairing = security.devicePairing;
     const offer = pairing.createOffer({
       endpoint: 'https://station.example.test',
-      scope: OPERATE_ONLY,
+      scope: DEVICE_WITHOUT_HOST_SHELL,
     });
     const pending = pairing.requestPairing({
       requesterPosition: 'off-box',
@@ -102,7 +95,7 @@ test.each([
       proof: offer.challenge,
       requestId: pending.requestId,
     });
-    expect(paired.device.scope).toBe(OPERATE_ONLY);
+    expect(paired.device.scope).toBe(DEVICE_WITHOUT_HOST_SHELL);
     const logger = createLogger({
       name: 'paired-telemetry-test',
       level: 'error',
@@ -257,8 +250,7 @@ async function authorAdmissionFixture(capability = true) {
       requestId: pending.requestId,
     });
   };
-  // Ungranted: no host shell, so no owner-device standing.
-  const standard = pair(OPERATE_ONLY);
+  const standard = pair(DEVICE_WITHOUT_HOST_SHELL);
   const managing = pair(
     `${pairingScopePresetString('standard')} access:manage`,
   );
@@ -547,7 +539,7 @@ test.each([
       preset === 'standard+access:manage'
         ? `${pairingScopePresetString('standard')} access:manage`
         : preset === 'operate-only'
-          ? OPERATE_ONLY
+          ? DEVICE_WITHOUT_HOST_SHELL
           : pairingScopePresetString(preset);
     const offer = security.devicePairing.createOffer({
       endpoint: 'https://station.example.test',
@@ -729,8 +721,7 @@ test.each([
     await security.initialize();
     const offer = security.devicePairing.createOffer({
       endpoint: 'https://station.example.test',
-      // Ungranted: the raise refusal applies to a device without owner standing.
-      scope: OPERATE_ONLY,
+      scope: DEVICE_WITHOUT_HOST_SHELL,
     });
     const pending = security.devicePairing.requestPairing({
       requesterPosition: 'off-box',

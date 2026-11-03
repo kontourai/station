@@ -197,6 +197,10 @@ turn, queued message or pending check blocks the switch; the handoff's
 **Switch to …** action is disabled for the same reasons ([entry
 point](../../src-ui/src/components/chat-dock/ChatDockBody.tsx),
 [dialog](../../src-ui/src/components/chat-dock/ConversationHandoffDialog.tsx)).
+New chat, the active composer and the handoff dialog use the shared model picker.
+Their catalogs prefer the executing engine's models; another engine's profile
+aliases are not offered. Handoff runtime settings are retained with the exact
+request when a lost response requires a safe retry.
 On an engine override, **Use Agent defaults** returns to the authored engine and
 model through that handoff when the switch is open. Whenever it is not, the
 picker's reset is disabled with the reason (the open resolution's refusal reads
@@ -236,7 +240,9 @@ Station choice, else the Project's saved default environment, else the
 answering Station's host projection. When the server reports another Station
 this caller may run on, it opens a **Where this work runs** list with
 the current Station marked. The list offers only what the task launcher
-accepts, through one shared rule set: a verified SSH environment when no
+accepts. A failed Station-list read keeps the chooser reachable, with an
+access/version explanation and a Retry action rather than hiding the control.
+The list uses one shared rule set: a verified SSH environment when no
 Project is selected (a Project is never placed over SSH), or a paired Station
 the caller may list whose credential holds `orchestration:operate`. A caller
 whose authority observation reports a grant without `orchestration:operate`

@@ -1391,13 +1391,10 @@ function configureRuntimeSecurity(
       const pairingSource = security.resolvePairingSource?.(credential!);
       const locality = security.resolveCredentialLocality?.(credential!);
       const mintKind = security.resolveCredentialMintKind?.(credential!);
-      // Owner standing: only for a device credential that is not already
-      // home-possession (that one is the operator in person).
+      // The pairing store owns which devices qualify; see
+      // `DevicePairingService.credentialHasOwnerStanding`.
       const ownerStanding =
         authority === 'device-credential' &&
-        deviceId !== undefined &&
-        deviceKind !== 'delegation' &&
-        !locality &&
         security.resolveCredentialOwnerStanding?.(credential!) === true;
       setRuntimeAuthenticatedRequestPrincipal(c.req.raw, {
         kind: 'credential',
