@@ -9,7 +9,10 @@ import {
   readStationControlSourceCredentialAuthority,
   type StationControlSourceCredentialAuthority,
 } from '../../services/orchestration/delegation-group-source-admission.js';
-import type { EnvironmentSecurityService } from '../../services/ssh/environment-security-service.js';
+import type {
+  CanonicalLocalGrantOrigin,
+  EnvironmentSecurityService,
+} from '../../services/ssh/environment-security-service.js';
 import { resolveManagedModelIdentity } from '../plugins/runtime-provider-resolution.js';
 import type { RuntimeContext } from '../types.js';
 import {
@@ -29,6 +32,7 @@ export interface RuntimeFencedCredentialObservationOwners {
   storageAdapter: FileStorageAdapter;
   environmentSecurityService: EnvironmentSecurityService;
   requestSecurity: CurrentRuntimeRequestPrincipalSecurity;
+  canonicalLocalGrantOrigin?: CanonicalLocalGrantOrigin;
   runtime: Pick<
     RuntimeContext,
     'getAgentConfigurationRevision' | 'commitAgentConfigurationRead'
@@ -203,6 +207,7 @@ export class RuntimeFencedCredentialObservationOwner {
           owners.environmentSecurityService,
           owners.requestSecurity,
           admit,
+          owners.canonicalLocalGrantOrigin,
         );
     const assertCurrent = () => {
       if (
@@ -343,6 +348,7 @@ export class RuntimeFencedCredentialObservationOwner {
             owners.environmentSecurityService,
             owners.requestSecurity,
             admit,
+            owners.canonicalLocalGrantOrigin,
           );
       const authority = sessionCapability
         ? {
@@ -480,6 +486,8 @@ export class RuntimeFencedCredentialObservationOwner {
         request,
         owners.environmentSecurityService,
         owners.requestSecurity,
+        undefined,
+        owners.canonicalLocalGrantOrigin,
       );
       requireCurrent();
       authority.requireCurrentLocalGrant(request).assertCurrent();

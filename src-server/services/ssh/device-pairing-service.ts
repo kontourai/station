@@ -1214,6 +1214,25 @@ function isSameReplacementDomain(
 
 const pairingConstructionKey = Symbol('PairingConstruction');
 
+interface CanonicalPairingReadOperations {
+  withCurrentRegistry<Value>(check: () => Value): Value;
+  readUnboundScope(candidate: string): string | undefined;
+  readBorrowedUnboundScope(candidate: string): string | undefined;
+  isRegistryScopeActive(): boolean;
+}
+const canonicalPairingReads = new WeakMap<
+  DevicePairingService,
+  CanonicalPairingReadOperations
+>();
+
+export function readCanonicalPairingOperations(
+  owner: DevicePairingService,
+): CanonicalPairingReadOperations {
+  const operations = canonicalPairingReads.get(owner);
+  if (!operations) throw new HomeWriterUnavailableError('identity-unavailable');
+  return operations;
+}
+
 export class DevicePairingService {
   static async create(
     options: DevicePairingServiceOptions,
@@ -1321,6 +1340,21 @@ export class DevicePairingService {
       this.#pendingRegistryMigrationPersist = false;
       this.#persistRegistry();
     }
+    canonicalPairingReads.set(
+      this,
+      Object.freeze({
+        withCurrentRegistry: <Value>(check: () => Value): Value =>
+          this.#withCurrentRegistry(check),
+        readUnboundScope: (candidate: string) =>
+          this.#writer.runSynchronous(() => this.#readUnboundScope(candidate)),
+        readBorrowedUnboundScope: (candidate: string) => {
+          this.#writer.assertSynchronous();
+          return this.#readUnboundScope(candidate);
+        },
+        isRegistryScopeActive: () =>
+          this.#registrySnapshotActive || this.#registrySpanDepth > 0,
+      }),
+    );
   }
 
   /**
@@ -3651,35 +3685,37 @@ export class DevicePairingService {
   /** Fresh, no-touch authority for an unbound local grant. Other identity
    * bindings require their own current owners and are refused here. */
   readCurrentUnboundLocalGrantScope(candidate: string): string | undefined {
-    return this.#writer.runSynchronous(() => {
-      if (this.#registryOutcomeUnconfirmed)
-        throw new HomeWriterUnavailableError('cleanup-required', true);
-      let scope: string | undefined;
-      try {
-        const registry =
-          this.#registrySnapshotActive || this.#registrySpanDepth
-            ? this.#registry
-            : validateRegistry(
-                this.#readRegistrySnapshot().value,
-                this.#environmentId,
-              );
-        const match = this.#findActiveCredential(registry, candidate);
-        scope =
-          match &&
-          !match.alias &&
-          !match.device.principalBinding &&
-          match.device.locality === 'home-possession' &&
-          match.device.mintKind === 'local-grant'
-            ? match.device.scope
-            : undefined;
-      } catch {
-        scope = undefined;
-      }
-      // The configured clock can re-enter a registry writer during lookup.
-      if (this.#registryOutcomeUnconfirmed)
-        throw new HomeWriterUnavailableError('cleanup-required', true);
-      return scope;
-    });
+    return this.#writer.runSynchronous(() => this.#readUnboundScope(candidate));
+  }
+
+  #readUnboundScope(candidate: string): string | undefined {
+    if (this.#registryOutcomeUnconfirmed)
+      throw new HomeWriterUnavailableError('cleanup-required', true);
+    let scope: string | undefined;
+    try {
+      const registry =
+        this.#registrySnapshotActive || this.#registrySpanDepth
+          ? this.#registry
+          : validateRegistry(
+              this.#readRegistrySnapshot().value,
+              this.#environmentId,
+            );
+      const match = this.#findActiveCredential(registry, candidate);
+      scope =
+        match &&
+        !match.alias &&
+        !match.device.principalBinding &&
+        match.device.locality === 'home-possession' &&
+        match.device.mintKind === 'local-grant'
+          ? match.device.scope
+          : undefined;
+    } catch {
+      scope = undefined;
+    }
+    // The configured clock can re-enter a registry writer during lookup.
+    if (this.#registryOutcomeUnconfirmed)
+      throw new HomeWriterUnavailableError('cleanup-required', true);
+    return scope;
   }
 
   /**
@@ -4135,6 +4171,10 @@ export class DevicePairingService {
   }
 
   withCurrentRegistry<T>(check: () => T): T {
+    return this.#withCurrentRegistry(check);
+  }
+
+  #withCurrentRegistry<T>(check: () => T): T {
     return this.#writer.runSynchronous(() => {
       if (this.#registrySnapshotActive || this.#registrySpanDepth)
         return check();

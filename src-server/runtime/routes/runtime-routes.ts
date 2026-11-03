@@ -7880,6 +7880,8 @@ export function configureRuntimeRoutes(
     storageAdapter: context.storageAdapter,
     environmentSecurityService: context.environmentSecurityService,
     requestSecurity: context.environmentSecurityService,
+    canonicalLocalGrantOrigin:
+      context.environmentSecurityService.canonicalLocalGrantOrigin(),
     runtime: {
       getAgentConfigurationRevision: context.getAgentConfigurationRevision,
       commitAgentConfigurationRead: (revision, work) =>

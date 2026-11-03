@@ -24,7 +24,10 @@ import {
   setRuntimeAuthenticatedRequestPrincipal,
 } from '../../../security/runtime-request-security.js';
 import { DevicePairingService } from '../../../services/ssh/device-pairing-service.js';
-import { EnvironmentSecurityService } from '../../../services/ssh/environment-security-service.js';
+import {
+  EnvironmentSecurityService,
+  readCanonicalLocalGrantOrigin,
+} from '../../../services/ssh/environment-security-service.js';
 import { HomeWriterUnavailableError } from '../../../services/ssh/home-writer-owner.js';
 import { captureEnvironmentLocalGrantObservationOwner } from '../local-grant-observation-owner.js';
 import {
@@ -146,52 +149,63 @@ async function deniedAsync(action: () => Promise<unknown>) {
       error.code === 'authorization_unavailable',
   );
 }
-test('actual environment identity and current request owners compose a private bound observation lease', async () => {
-  const h = await setup();
-  {
-    assert.equal(
-      isRuntimeRequestPrincipalCurrent(h.request, h.environment),
-      true,
-    );
-    const owner = await captureEnvironmentLocalGrantObservationOwner(
-      h.request,
-      h.environment,
-      h.environment,
-    );
-    const lease = owner.requireCurrentLocalGrant(h.request);
-    assert.equal(lease.hostContextId, h.record.environmentId);
-    assert.equal(lease.principalCredential, h.paired.credential);
-    assert.match(lease.privateHostContextWitness, /^[A-Za-z0-9_-]{43}$/);
-    lease.assertCurrent();
-    assert.equal(JSON.stringify(owner), '{}');
-    assert.equal(Object.isFrozen(lease), true);
-    assert.equal(JSON.stringify(lease).includes(h.paired.credential), false);
-    assert.equal(
-      JSON.stringify(lease).includes(lease.privateHostContextWitness),
-      false,
-    );
-    const observation = h.store(owner).capture(h.request, 'selected');
-    assert.equal(
-      JSON.stringify(observation).includes(lease.privateHostContextWitness),
-      false,
-    );
-    assert.equal(
-      JSON.stringify(observation).includes(h.record.environmentId),
-      false,
-    );
-    const nextOwner = await captureEnvironmentLocalGrantObservationOwner(
-      h.request,
-      h.environment,
-      h.environment,
-    );
-    assert.equal(
-      h.store(nextOwner).revalidate(h.request, observation.observationId)
-        .observationId,
-      observation.observationId,
-    );
-    denied(() => owner.requireCurrentLocalGrant(new Request(h.request)));
-  }
-});
+test.each(['legacy', 'canonical'] as const)(
+  'actual environment identity and current request owners compose a private bound observation lease (%s)',
+  async (originMode) => {
+    const h = await setup();
+    {
+      assert.equal(
+        isRuntimeRequestPrincipalCurrent(h.request, h.environment),
+        true,
+      );
+      const owner = await captureEnvironmentLocalGrantObservationOwner(
+        h.request,
+        h.environment,
+        h.environment,
+        undefined,
+        originMode === 'canonical'
+          ? h.environment.canonicalLocalGrantOrigin()
+          : undefined,
+      );
+      const lease = owner.requireCurrentLocalGrant(h.request);
+      assert.equal(lease.hostContextId, h.record.environmentId);
+      assert.equal(lease.principalCredential, h.paired.credential);
+      assert.match(lease.privateHostContextWitness, /^[A-Za-z0-9_-]{43}$/);
+      lease.assertCurrent();
+      assert.equal(JSON.stringify(owner), '{}');
+      assert.equal(Object.isFrozen(lease), true);
+      assert.equal(JSON.stringify(lease).includes(h.paired.credential), false);
+      assert.equal(
+        JSON.stringify(lease).includes(lease.privateHostContextWitness),
+        false,
+      );
+      const observation = h.store(owner).capture(h.request, 'selected');
+      assert.equal(
+        JSON.stringify(observation).includes(lease.privateHostContextWitness),
+        false,
+      );
+      assert.equal(
+        JSON.stringify(observation).includes(h.record.environmentId),
+        false,
+      );
+      const nextOwner = await captureEnvironmentLocalGrantObservationOwner(
+        h.request,
+        h.environment,
+        h.environment,
+        undefined,
+        originMode === 'canonical'
+          ? h.environment.canonicalLocalGrantOrigin()
+          : undefined,
+      );
+      assert.equal(
+        h.store(nextOwner).revalidate(h.request, observation.observationId)
+          .observationId,
+        observation.observationId,
+      );
+      denied(() => owner.requireCurrentLocalGrant(new Request(h.request)));
+    }
+  },
+);
 test('request JSON, UI bootstrap, read-only scope and principal restamping cannot become the local-grant owner', async () => {
   for (const kind of [
     'ui-bootstrap',
@@ -233,30 +247,41 @@ test('request JSON, UI bootstrap, read-only scope and principal restamping canno
     }
   }
 });
-test('actual credential revocation invalidates already captured finalizers and rejects new captures', async () => {
-  const h = await setup();
-  {
-    const owner = await captureEnvironmentLocalGrantObservationOwner(
-      h.request,
-      h.environment,
-      h.environment,
-    );
-    const lease = owner.requireCurrentLocalGrant(h.request);
-    h.environment.devicePairing.revokeDevice(
-      h.paired.device.id,
-      'operator-credential',
-    );
-    denied(lease.assertCurrent);
-    denied(() => owner.requireCurrentLocalGrant(h.request));
-    await deniedAsync(() =>
-      captureEnvironmentLocalGrantObservationOwner(
+test.each(['legacy', 'canonical'] as const)(
+  'actual credential revocation invalidates already captured finalizers and rejects new captures (%s)',
+  async (originMode) => {
+    const h = await setup();
+    {
+      const owner = await captureEnvironmentLocalGrantObservationOwner(
         h.request,
         h.environment,
         h.environment,
-      ),
-    );
-  }
-});
+        undefined,
+        originMode === 'canonical'
+          ? h.environment.canonicalLocalGrantOrigin()
+          : undefined,
+      );
+      const lease = owner.requireCurrentLocalGrant(h.request);
+      h.environment.devicePairing.revokeDevice(
+        h.paired.device.id,
+        'operator-credential',
+      );
+      denied(lease.assertCurrent);
+      denied(() => owner.requireCurrentLocalGrant(h.request));
+      await deniedAsync(() =>
+        captureEnvironmentLocalGrantObservationOwner(
+          h.request,
+          h.environment,
+          h.environment,
+          undefined,
+          originMode === 'canonical'
+            ? h.environment.canonicalLocalGrantOrigin()
+            : undefined,
+        ),
+      );
+    }
+  },
+);
 test.each(['revoke', 'narrow'] as const)(
   'another registry owner can %s a captured grant without a stale observer restoring it',
   async (change) => {
@@ -602,9 +627,14 @@ test('a complete authority check refuses registry bytes changed during its synch
   }
 });
 
-test.each(['before', 'during'] as const)(
-  'uncertain publication %s the raw lookup fences the still-active grant before external policy',
-  async (mode) => {
+test.each([
+  ['before', 'legacy'],
+  ['during', 'legacy'],
+  ['before', 'canonical'],
+  ['during', 'canonical'],
+] as const)(
+  'uncertain publication %s the raw lookup fences the still-active grant before external policy (%s)',
+  async (mode, originMode) => {
     let armed = false;
     let publication: (() => void) | undefined;
     const h = await setup('local-grant', undefined, () => {
@@ -650,6 +680,10 @@ test.each(['before', 'during'] as const)(
         resolveGrantedScope: scope,
         verifyOperatorCredential: operator,
       },
+      undefined,
+      originMode === 'canonical'
+        ? h.environment.canonicalLocalGrantOrigin()
+        : undefined,
     );
     const lease = owner.requireCurrentLocalGrant(h.request);
     const remove = fs.rmSync;
@@ -1026,4 +1060,71 @@ test('route assessment strips activity while ingress authorization counts the re
   assert.ok(counted);
   assert.equal(counted.usageCount, (before.usageCount ?? 0) + 1);
   assert.equal(counted.lastSeenFrom, 'tailnet');
+});
+
+test('canonical origin refuses copied and foreign facets before independent policy', async () => {
+  const h = await setup();
+  const other = await setup();
+  const own = h.environment.canonicalLocalGrantOrigin();
+  const authorize = vi.fn(() => true);
+  for (const origin of [
+    Object.freeze({ ...own }),
+    other.environment.canonicalLocalGrantOrigin(),
+  ]) {
+    await deniedAsync(() =>
+      captureEnvironmentLocalGrantObservationOwner(
+        h.request,
+        h.environment,
+        { authorizeCredential: authorize, resolveGrantedScope: () => '*' },
+        undefined,
+        origin,
+      ),
+    );
+  }
+  assert.equal(authorize.mock.calls.length, 0);
+});
+
+test('borrowed canonical raw reads are confined to the issued synchronous region', async () => {
+  const h = await setup();
+  const raw = readCanonicalLocalGrantOrigin(
+    h.environment,
+    h.environment.canonicalLocalGrantOrigin(),
+  );
+  assert.equal(raw.borrowedRegion(), undefined);
+  let retained: object | undefined;
+  raw.withObservationScope(() => {
+    const region = raw.borrowedRegion();
+    assert.ok(region);
+    retained = region;
+    assert.ok(raw.readBorrowedUnboundScope(h.paired.credential, region));
+    assert.throws(() => raw.readBorrowedUnboundScope(h.paired.credential, {}), {
+      reason: 'borrow-unavailable',
+    });
+    raw.withObservationScope(() => {
+      assert.notEqual(raw.borrowedRegion(), region);
+      assert.throws(
+        () => raw.readBorrowedUnboundScope(h.paired.credential, region),
+        { reason: 'borrow-unavailable' },
+      );
+    });
+    assert.equal(raw.borrowedRegion(), region);
+  });
+  assert.ok(retained);
+  const expired = retained;
+  assert.equal(raw.borrowedRegion(), undefined);
+  assert.throws(
+    () => raw.readBorrowedUnboundScope(h.paired.credential, expired),
+    { reason: 'borrow-unavailable' },
+  );
+  raw.withObservationScope(() => {
+    assert.throws(
+      () => raw.readBorrowedUnboundScope(h.paired.credential, expired),
+      { reason: 'borrow-unavailable' },
+    );
+  });
+  await Promise.resolve();
+  assert.throws(
+    () => raw.readBorrowedUnboundScope(h.paired.credential, expired),
+    { reason: 'borrow-unavailable' },
+  );
 });

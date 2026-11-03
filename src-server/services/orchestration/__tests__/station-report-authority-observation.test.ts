@@ -7,9 +7,11 @@ import {
   createGateTestRegistry,
   GateTestAdapter,
 } from '../../../__test-utils__/orchestration-gate-test-harness.js';
+import { ProviderCredentialObservationStore } from '../../../runtime/conversation/provider-credential-observation.js';
 import { EventBus } from '../event-bus.js';
 import { EventStore } from '../event-store.js';
 import { OrchestrationService } from '../orchestration-service.js';
+import { StationReportGroupPreparation } from '../station-report-group-preparation.js';
 import { StationReportGroupRuntime } from '../station-report-group-runtime.js';
 import { createReportFlow } from './delegation-source-fixtures/flow.js';
 import { setup } from './delegation-source-fixtures/report.js';
@@ -143,5 +145,86 @@ test('the response authorizer shares one home hold and refuses revocation on the
     syncBuiltinESMExports();
     await orchestration.shutdown();
     eventStore.close();
+  }
+});
+
+test('canonical two-Agent Flow roster reads retain live authority with bounded Home inspections', async () => {
+  const h = await setup();
+  await h.f.loader.saveAgent('reviewer-two', {
+    name: 'Second reviewer',
+    prompt: 'Configured second report instructions',
+    execution: {
+      modelConnectionId: 'anthropic-1',
+      modelId: 'claude-sonnet-4-6',
+    },
+  });
+  const flow = await createReportFlow(h.f, 'canonical-raw-prefix-cost', [
+    { id: 'left' },
+    { id: 'right' },
+  ]);
+  const owner = new StationReportGroupPreparation({
+    ...h.preparationOwners,
+    runtime: {
+      ...h.preparationOwners.runtime,
+      canonicalLocalGrantOrigin: h.f.environment.canonicalLocalGrantOrigin(),
+    },
+  });
+  const credentials = new Set<object>();
+  const capture =
+    ProviderCredentialObservationStore.prototype.captureSdkCredential;
+  const captured = vi
+    .spyOn(ProviderCredentialObservationStore.prototype, 'captureSdkCredential')
+    .mockImplementation(function (
+      this: ProviderCredentialObservationStore,
+      ...args
+    ) {
+      const credential = capture.apply(this, args);
+      credentials.add(credential);
+      return credential;
+    });
+  const handle = await owner.prepare(h.f.context(), {
+    ...h.input,
+    flow,
+    members: [
+      h.input.members[0],
+      { ...h.input.members[1], agentId: 'reviewer-two' },
+    ],
+  });
+  const open = fs.openSync;
+  let opens = 0;
+  const opened = vi
+    .spyOn(fs, 'openSync')
+    .mockImplementation((path, flags, mode) => {
+      if (String(path) === join(h.f.home, 'security', '.home-writer.mutation'))
+        opens++;
+      return open(path, flags, mode);
+    });
+  syncBuiltinESMExports();
+  try {
+    assert.equal(credentials.size, 2);
+    const view = owner.read(handle, h.f.req);
+    assert.deepEqual(
+      view.members.map((member) => member.agentId),
+      ['reviewer', 'reviewer-two'],
+    );
+    assert.equal(opens, 159);
+    assert.ok(opens > 0, 'the observer must see real Home inspections');
+    assert.ok(
+      opens <= 159,
+      `Home inspections: ${opens}; remeasure the unfused owner before changing this bound`,
+    );
+    h.f.environment.devicePairing.revokeDevice(
+      h.f.paired.device.id,
+      'operator-credential',
+    );
+    assert.throws(() => owner.read(handle, h.f.req), {
+      code: 'group_preparation_unavailable',
+    });
+    assert.equal(h.rawFetch.mock.calls.length, 0);
+  } finally {
+    opened.mockRestore();
+    captured.mockRestore();
+    syncBuiltinESMExports();
+    owner.close(handle);
   }
 });

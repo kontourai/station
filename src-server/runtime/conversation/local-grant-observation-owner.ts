@@ -5,7 +5,11 @@ import {
   isBoundLocalGrantMintedOperator,
   isRuntimeRequestPrincipalCurrent,
 } from '../../security/runtime-request-security.js';
-import { EnvironmentSecurityService } from '../../services/ssh/environment-security-service.js';
+import {
+  type CanonicalLocalGrantOrigin,
+  EnvironmentSecurityService,
+  readCanonicalLocalGrantOrigin,
+} from '../../services/ssh/environment-security-service.js';
 import {
   type CurrentLocalGrantObservationOwner,
   ProviderCredentialObservationError,
@@ -48,6 +52,7 @@ export function captureEnvironmentLocalGrantObservationOwner(
   environment: EnvironmentSecurityService,
   security: CurrentRuntimeRequestPrincipalSecurity,
   admit?: LocalGrantObservationAdmission,
+  canonicalOrigin?: CanonicalLocalGrantOrigin,
 ): Promise<EnvironmentLocalGrantObservationOwner> {
   return captureExistingLocalGrant(
     boundRequest,
@@ -55,6 +60,7 @@ export function captureEnvironmentLocalGrantObservationOwner(
     security,
     'POST',
     admit,
+    canonicalOrigin,
   );
 }
 
@@ -64,6 +70,7 @@ export async function captureEnvironmentLocalGrantReadOwner(
   environment: EnvironmentSecurityService,
   security: CurrentRuntimeRequestPrincipalSecurity,
   admit?: LocalGrantObservationAdmission,
+  canonicalOrigin?: CanonicalLocalGrantOrigin,
 ): Promise<
   Readonly<{
     hostContextId: string;
@@ -76,6 +83,7 @@ export async function captureEnvironmentLocalGrantReadOwner(
     security,
     'GET',
     admit,
+    canonicalOrigin,
   );
   const lease = admit
     ? await admit(() => owner.requireCurrentLocalGrant(request))
@@ -96,6 +104,7 @@ async function captureExistingLocalGrant(
   security: CurrentRuntimeRequestPrincipalSecurity,
   method: 'POST' | 'GET',
   admit?: LocalGrantObservationAdmission,
+  canonicalOrigin?: CanonicalLocalGrantOrigin,
 ): Promise<EnvironmentLocalGrantObservationOwner> {
   try {
     if (
@@ -106,9 +115,19 @@ async function captureExistingLocalGrant(
     const principal = getRuntimeAuthenticatedRequestPrincipal(boundRequest);
     if (!principal || principal.kind === 'internal') refuse();
     const credential = principal.credential;
+    const raw =
+      canonicalOrigin === undefined
+        ? undefined
+        : readCanonicalLocalGrantOrigin(environment, canonicalOrigin);
+    const withAuthority = <Value>(check: () => Value): Value =>
+      raw
+        ? raw.withCurrentAuthority(check)
+        : environment.withCurrentAuthority(check);
     const requirePrincipal = () =>
-      environment.withCurrentAuthority(() => {
-        const scope = environment.readCurrentUnboundLocalGrantScope(credential);
+      withAuthority(() => {
+        const scope = raw
+          ? raw.readUnboundScope(credential)
+          : environment.readCurrentUnboundLocalGrantScope(credential);
         if (
           getRuntimeAuthenticatedRequestPrincipal(boundRequest) !== principal ||
           !isBoundLocalGrantMintedOperator(boundRequest) ||
@@ -143,7 +162,7 @@ async function captureExistingLocalGrant(
     if (after.environmentId !== environmentId) refuse();
     const assertCurrent = () => {
       try {
-        environment.withCurrentAuthority(() => {
+        withAuthority(() => {
           requirePrincipal();
           if (
             !sameSignature(
@@ -163,7 +182,9 @@ async function captureExistingLocalGrant(
     return Object.freeze({
       withObservationScope<T>(request: Request, check: () => T): T {
         if (request !== boundRequest) refuse();
-        return environment.withCurrentAuthority(check);
+        return raw
+          ? raw.withObservationScope(check)
+          : environment.withCurrentAuthority(check);
       },
       requireCurrentLocalGrant(request: Request) {
         if (request !== boundRequest) refuse();

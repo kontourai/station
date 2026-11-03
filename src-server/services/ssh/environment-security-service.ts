@@ -76,7 +76,10 @@ import { isHostedTenantExecutionRequired } from '../../runtime/bootstrap/hosted-
 import { sleep } from '../../utils/sleep.js';
 import { principalForDeviceBinding } from '../access/device-binding-principal.js';
 import { StationGroupsService } from '../access/station-groups-service.js';
-import { DevicePairingService } from './device-pairing-service.js';
+import {
+  DevicePairingService,
+  readCanonicalPairingOperations,
+} from './device-pairing-service.js';
 import {
   type HomeWriterLease,
   HomeWriterOwner,
@@ -207,6 +210,38 @@ function parseLockRecord(value: unknown): EnvironmentSecurityLockRecord {
     );
   }
   return lock as unknown as EnvironmentSecurityLockRecord;
+}
+
+const canonicalLocalGrantOriginBrand = Symbol('CanonicalLocalGrantOrigin');
+export interface CanonicalLocalGrantOrigin {
+  readonly [canonicalLocalGrantOriginBrand]: true;
+}
+export interface CanonicalLocalGrantOriginOperations {
+  withCurrentAuthority<Value>(check: () => Value): Value;
+  withObservationScope<Value>(check: () => Value): Value;
+  readUnboundScope(candidate: string): string | undefined;
+  borrowedRegion(): object | undefined;
+  readBorrowedUnboundScope(
+    candidate: string,
+    region: object,
+  ): string | undefined;
+}
+const canonicalLocalGrantOrigins = new WeakMap<
+  CanonicalLocalGrantOrigin,
+  {
+    owner: EnvironmentSecurityService;
+    operations: CanonicalLocalGrantOriginOperations;
+  }
+>();
+
+export function readCanonicalLocalGrantOrigin(
+  owner: EnvironmentSecurityService,
+  origin: CanonicalLocalGrantOrigin,
+): CanonicalLocalGrantOriginOperations {
+  const registered = canonicalLocalGrantOrigins.get(origin);
+  if (!registered || registered.owner !== owner)
+    throw new HomeWriterUnavailableError('identity-unavailable');
+  return registered.operations;
 }
 
 /**
@@ -509,6 +544,64 @@ export class EnvironmentSecurityService {
     if (this.#devicePairingService)
       return this.#devicePairingService.withCurrentRegistry(check);
     return this.#homeWriter.runSynchronous(check);
+  }
+
+  /** Canonical raw facts only. Independent request policy remains separate. */
+  canonicalLocalGrantOrigin(): CanonicalLocalGrantOrigin {
+    const pairing = this.#devicePairingService;
+    if (!this.#initialized || !pairing || !this.#homeWriter)
+      throw new HomeWriterUnavailableError('identity-unavailable');
+    const reads = readCanonicalPairingOperations(pairing);
+    const origin: CanonicalLocalGrantOrigin = Object.freeze({
+      [canonicalLocalGrantOriginBrand]: true as const,
+    });
+    let currentRegion: object | undefined;
+    const active = new WeakSet<object>();
+    const requireOwner = () => {
+      if (!this.#initialized || this.#devicePairingService !== pairing)
+        throw new HomeWriterUnavailableError('identity-unavailable');
+    };
+    const borrowedRegion = () => {
+      requireOwner();
+      return currentRegion &&
+        active.has(currentRegion) &&
+        reads.isRegistryScopeActive()
+        ? currentRegion
+        : undefined;
+    };
+    const operations: CanonicalLocalGrantOriginOperations = Object.freeze({
+      withCurrentAuthority: <Value>(check: () => Value): Value => {
+        requireOwner();
+        return reads.withCurrentRegistry(check);
+      },
+      withObservationScope: <Value>(check: () => Value): Value => {
+        requireOwner();
+        return reads.withCurrentRegistry(() => {
+          const region = Object.freeze({});
+          const prior = currentRegion;
+          active.add(region);
+          currentRegion = region;
+          try {
+            return check();
+          } finally {
+            active.delete(region);
+            currentRegion = prior;
+          }
+        });
+      },
+      readUnboundScope: (candidate: string) => {
+        requireOwner();
+        return reads.readUnboundScope(candidate);
+      },
+      borrowedRegion,
+      readBorrowedUnboundScope: (candidate: string, region: object) => {
+        if (borrowedRegion() !== region)
+          throw new HomeWriterUnavailableError('borrow-unavailable');
+        return reads.readBorrowedUnboundScope(candidate);
+      },
+    });
+    canonicalLocalGrantOrigins.set(origin, { owner: this, operations });
+    return origin;
   }
 
   readCurrentUnboundLocalGrantScope(candidate: string): string | undefined {
