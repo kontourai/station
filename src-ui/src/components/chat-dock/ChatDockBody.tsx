@@ -1768,6 +1768,7 @@ export function ChatDockBody({
       chatInput.handleCancel,
       callerAccess,
       callerMayContinue,
+      callerMayStartChat,
     ],
   );
 
