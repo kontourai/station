@@ -1150,7 +1150,10 @@ export function ChatDockBody({
     sessionSteeringPlacement(activeSession.orchestrationDurability).state ===
     'native';
   const steeringUnavailableReason = activeSession.orchestrationDurability
-    ? undefined
+    ? activeSession.orchestrationDurability.steerPlacement.state === 'none'
+      ? activeSession.orchestrationDurability.steerPlacement.detail?.trim() ||
+        'Steering is unavailable for this session.'
+      : undefined
     : activeOrchestrationSessionRead === 'pending'
       ? 'Loading steering support…'
       : 'Steering unavailable: the host did not report a durability profile.';

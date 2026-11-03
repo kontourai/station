@@ -849,7 +849,10 @@ a declaration, they disclose that steering is unavailable; neither Send-as-steer
 nor Retry-steering is offered. Follow-up Retry remains available. A durable
 steer already queued waits while Session materialization has not registered an
 adapter. A registered adapter without a declaration, or a declared placement of
-`none`, refuses it with `unsupported-engine` before any handoff.
+`none`, refuses it with `unsupported-engine` before any handoff. For a declared
+`none`, the Send-mode popover shows the adapter's trimmed explanation, or
+“Steering is unavailable for this session.” when that explanation is blank or
+missing. Native and emulated declarations do not show an unavailable note.
 ACP's cancel-and-reprompt extension does not become an additive
 native composer action. Profile observations are not persisted in browser session
 state. After post-tool injection the entry remains claimed until model dispatch,
