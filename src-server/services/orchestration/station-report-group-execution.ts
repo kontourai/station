@@ -889,14 +889,17 @@ export class StationReportGroupExecution {
       };
       const base = build();
       const metadata = <Value>(
-        work: (facades: ReturnType<typeof build>) => Promise<Value>,
+        work: (
+          facades: ReturnType<typeof build>,
+          scope?: ReportRoundsScope,
+        ) => Promise<Value>,
       ): Promise<Value> =>
         publication
           ? publication.withHome(
               { owner: requestWriter, current: metadataCurrent },
               async (scope) => {
                 scope.check(assertPreparedSource);
-                const value = await work(build(scope));
+                const value = await work(build(scope), scope);
                 assertReturnedPreparation(scope);
                 return value;
               },
@@ -979,9 +982,15 @@ export class StationReportGroupExecution {
               : {}),
           }
         : base.roundsHost;
-      await service.issue(prepared.root);
-      for (const envelope of prepared.envelopes)
-        await service.derive(prepared.root.authority_id, envelope);
+      await metadata(async (initial, scope) => {
+        await initial.service.issue(prepared.root);
+        if (scope) assertReturnedPreparation(scope);
+        for (const envelope of prepared.envelopes) {
+          scope?.check(assertPreparedSource);
+          await initial.service.derive(prepared.root.authority_id, envelope);
+          if (scope) assertReturnedPreparation(scope);
+        }
+      });
       const controller = createDelegationRoundsController({
         store: base.launch.groups,
         authorityService: service,

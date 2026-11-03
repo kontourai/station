@@ -7,6 +7,58 @@ normally before publication. Open one PR when the combined work is ready.
 
 ## Current delivery state
 
+**NOT_READY.** No push or PR exists. Normal merge `3aece9ab909` integrates
+main through `3cba8d04a2a`; managed dependencies and hooks pass after the merge.
+It preserves the sealed Session policy, main's pending steering semantics and
+the Inbox submission port. Main's new command-owner fallback lets an accepted
+start's stamped owner pass the command gate while publication is pending; it
+does not prove durable `session.started` at acceptance. #4467 remains open and
+owned by #3558. No local retry or synthetic-event workaround is added.
+
+The responding-request settlement gap is repaired at `26445f1466c`, followed by
+resource classification at `44c3c85ad29`. The original source check and the live
+responding-request closure now reach the synchronous canonical settlement after
+both waits. Independent source review found no new P0–P2 production defect.
+The supplied execution includes 124 focused passes, a clean two-case baseline,
+and an intended stale-responder mutation failure. Exact restoration is proven,
+but its two 30-second verification timeouts remain red. The unchanged original
+callers subsequently failed twice at the 120-second product deadline after the
+answer. They remain unqualified.
+
+A diagnostic worker capture at `dcf6a3ed02f` also failed both callers: HTTP
+refused before input this time, and direct Flow reached the deadline. Sampled
+Home/currentness and filesystem work overlap; the capture proves neither a
+sole cause nor recoverable time. Assertions, product deadlines and original
+caller bytes were restored exactly. Initial authority-installation batching is
+being qualified separately. It retains each published issue/derive transaction,
+live fences and post-return uncertainty checks; a lower Home-hold count is not
+an end-to-end latency or supported-group result.
+
+Sealed Queue and Steer are both disabled by the trusted Session declaration,
+with the plain report/group continuation explanation. The Queue-only mutant
+failed and restored browser verification passed at isolated `f138f28e20b`.
+The four 390/1440 light/dark captures and SHA-bound receipt were sent for the
+requested follow-up visual review; that approval remains pending. The older
+layout approval alone does not approve the corrected behavior or final source.
+Provider, native and hosted acceptance are not inferred from these fixtures.
+
+Ten changed-input documentation reviews were committed at `dcf6a3ed02f`, and
+sixteen security/orchestration reviews at `53b89e7c7d1`. These are bounded source
+reviews with preserved classifications and execution limits. The learning atlas
+now builds 543 documents; MCP generation retains 136 topics. The last frozen
+readiness at `dcf6a3ed02f` still fails required documentation truth and records
+the optional provider-policy warning. These completed reviews do not clear the
+remaining currency or qualification obligations.
+
+Both group advertisement and continuation-finalizer qualification guards remain
+false. Positive initialized serving/recovery, original finalizer and report
+journeys, all-writer/accounting and Flow frontier/join proof, required actual
+CLI/reload/second-device journeys, folded #91 obligations and final combined
+deslop/visual/independent qualification remain open. The one-PR rule and separate
+#3991/#3558 ownership remain unchanged.
+
+### Historical checkpoint before responder settlement and the main merge
+
 **NOT_READY.** The branch has no push or PR. Normal merge `1f62bd1513e`
 integrates main through `cd8273bd60b`, including #4457 and #4461. It keeps
 sealed-session profile resolution before main's exact pending-steering fallback,
