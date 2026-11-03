@@ -445,6 +445,49 @@ describe('station triage', () => {
     },
   );
 
+  // bin.ts passes isInteractive from stdin alone; the CLI registration must
+  // still require stdout to be a terminal before starting an interactive agent.
+  test.each([
+    { stdoutTTY: true, mode: 'interactive' },
+    { stdoutTTY: false, mode: 'headless' },
+  ] as const)(
+    'through runCli with a stdin TTY, stdout TTY $stdoutTTY selects $mode',
+    async ({ stdoutTTY, mode }) => {
+      const restore = stubTerminal(true, stdoutTTY);
+      const launchAgent = vi.fn().mockResolvedValue({
+        success: true,
+        exitCode: 0,
+        output: '## Diagnosis\nRead-only result',
+      });
+      const confirmIssueSearch = vi.fn().mockResolvedValue(false);
+      const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+      try {
+        const { runCli } = await import('../cli.js');
+        await runCli(['triage', '--agent=codex', '--problem=broken'], {
+          isInteractive: true,
+          triage: {
+            confirmIssueSearch,
+            launchAgent,
+            probeAgent: () => 'available',
+          },
+        });
+      } finally {
+        log.mockRestore();
+        restore();
+      }
+      expect(launchAgent).toHaveBeenCalledExactlyOnceWith(
+        'codex',
+        mode === 'interactive' ? INTERACTIVE_ARGS : CODEX_HEADLESS_ARGS,
+        expect.any(String),
+        mode,
+      );
+      // A redirected stdout must not leave an invisible consent prompt.
+      expect(confirmIssueSearch).toHaveBeenCalledTimes(
+        mode === 'interactive' ? 1 : 0,
+      );
+    },
+  );
+
   test('records a failed interactive session without inventing a diagnosis', async () => {
     const runId = '57575757-5757-4575-8575-575757575757';
     await expect(

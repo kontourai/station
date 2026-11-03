@@ -118,7 +118,11 @@ import {
 } from './commands/surfaces.js';
 import { runTargetCommand } from './commands/target-command.js';
 import { runTelemetryCommand } from './commands/telemetry.js';
-import { runTriageCommand, runTriageDraftReport } from './commands/triage.js';
+import {
+  runTriageCommand,
+  runTriageDraftReport,
+  type TriageDependencies,
+} from './commands/triage.js';
 import { type DevFlags, startDevServer } from './dev/server.js';
 import {
   assertCommandAvailable,
@@ -364,6 +368,11 @@ export interface CliDependencies {
   }) => Promise<PlaybookSkillMigrationSummary>;
   /** Source-only diagnostic callback for `station triage`; never bundled. */
   collectTriageDoctorReport?: () => Promise<unknown>;
+  /** Test seam: `station triage` agent probe, launch and consent prompt. */
+  triage?: Pick<
+    TriageDependencies,
+    'confirmIssueSearch' | 'launchAgent' | 'probeAgent'
+  >;
   /** Exact source revision supplied by the checkout launcher when available. */
   sourceRevision?: () => string | undefined;
 }
@@ -802,10 +811,11 @@ function buildProgram(
       return;
     }
     await runTriageCommand(rawArgs, {
+      ...dependencies.triage,
       collectSourceDoctorReport: dependencies.collectTriageDoctorReport,
-      // Unset in production: triage needs both stdin and stdout to be a TTY
-      // before it starts an interactive agent.
-      isInteractive: dependencies.isInteractive,
+      // `interactive` reflects stdin only; an interactive agent also needs
+      // stdout to be a terminal.
+      isInteractive: interactive && Boolean(process.stdout.isTTY),
       sourceRevision: dependencies.sourceRevision,
     });
   });
