@@ -116,7 +116,7 @@ routes. A known `rate_limited` HTTP 429 with a valid `Retry-After` waits at leas
 that long, then reads the exact record before another write. At most eight such
 waits and a 15-minute batch deadline are allowed. Unknown refusals and uncertain
 transport failures stop with an incomplete receipt; they are not automatically
-replayed. Individual SDK request deadlines still apply.
+replayed. The 15-minute batch deadline also bounds its requests.
 
 New exports retain old snapshot records rather than rewriting history. Recall
 uses the selected export's IDs, so equal titles from older snapshots are not

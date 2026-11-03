@@ -37,8 +37,8 @@ until you need them; starting a chat does not require creating each one.
 Station names the concrete engine when that distinction matters. Protocols such
 as ACP are connection details, not agent types users need to choose.
 
-The reserved Agent named **Station** is a separate role. Its name does not tell
-you which engine runs it; that engine is selected in Station settings.
+The reserved Agent named **Station Assistant** is a separate role. Its name does
+not tell you which engine runs it; that engine is selected in Station settings.
 
 Concrete examples:
 
