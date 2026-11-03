@@ -100,6 +100,103 @@ describe('redactTroubleshootReportText', () => {
       expect(redacted).not.toContain('secret-product');
     }
   });
+
+  test('a URL cannot carry text past its core, and Markdown punctuation survives', () => {
+    const station = 'https://github.com/kontourai/station/issues/1';
+    const cases: Array<[string, string]> = [
+      // Query and fragment of a kept link are dropped.
+      [
+        `see ${station}?next=https://github.com/acme/secret-product`,
+        `see ${station}`,
+      ],
+      [`see ${station}#secret-product`, `see ${station}`],
+      // Text after a bracket may be URL text: never kept, always marked.
+      [`see ${station}?title=a)secret-product`, `see ${station})[REDACTED]`],
+      [`see ${station}?title=a)]secret-product`, `see ${station})][REDACTED]`],
+      [
+        'see https://github.com/acme/private/issues/1?title=a)secret-product here',
+        'see [REDACTED_URL])[REDACTED] here',
+      ],
+      [
+        `see (${station})https://github.com/acme/secret-product`,
+        `see (${station})[REDACTED]`,
+      ],
+      // Path segments are cut at anything but plain characters.
+      [
+        'see https://github.com/kontourai/station/blob/main/a)secret-product',
+        'see https://github.com/kontourai/station/blob/main/a)[REDACTED]',
+      ],
+      [
+        'see https://github.com/kontourai/station/blob/main/%73ecret-product/x',
+        'see https://github.com/kontourai/station/blob/main',
+      ],
+      // Markdown and sentence punctuation stay intact.
+      [
+        '[x](https://github.com/acme/secret-product) after prose',
+        '[x]([REDACTED_URL]) after prose',
+      ],
+      [
+        '![x](https://github.com/acme/secret-product). Next',
+        '![x]([REDACTED_URL]). Next',
+      ],
+      [`see [link](${station}).`, `see [link](${station}).`],
+      [`see ${station}, and more`, `see ${station}, and more`],
+    ];
+    for (const [input, expected] of cases) {
+      const redacted = redactTroubleshootReportText(input);
+      expect(redacted).toBe(expected);
+      expect(redacted).not.toContain('secret-product');
+    }
+  });
+
+  test('SSH-style Git remotes are redacted unless they are Station', () => {
+    expect(
+      redactTroubleshootReportText(
+        'remote git@github.com:acme/secret-product.git.',
+      ),
+    ).toBe('remote [REDACTED_URL].');
+    expect(
+      redactTroubleshootReportText(
+        'remote deploy@git.internal:secret-product/x',
+      ),
+    ).toBe('remote [REDACTED_URL]');
+    expect(
+      redactTroubleshootReportText(
+        'remote git@github.com:kontourai/station.git',
+      ),
+    ).toBe('remote git@github.com:kontourai/station.git');
+  });
+
+  test('SSH remotes with IPv6 hosts are redacted', () => {
+    expect(
+      redactTroubleshootReportText(
+        'remote git@[2001:db8::1]:secret-product/repo',
+      ),
+    ).toBe('remote [REDACTED_URL]');
+  });
+
+  test('a remote with a long user name is still redacted', () => {
+    expect(
+      redactTroubleshootReportText(
+        `${'x'.repeat(70)}@github.com:acme/secret-product`,
+      ),
+    ).toBe('[REDACTED_URL]');
+  });
+
+  test('a long run with no remote is scanned in linear time', () => {
+    // 80k chars: the old per-position retry took ~5.5 s here (quadratic); the
+    // bounded pattern takes ~0 ms. A blocking regex cannot be interrupted by a
+    // test timeout, so the elapsed time is asserted with wide headroom instead.
+    const input = 'a.'.repeat(40_000);
+    const started = performance.now();
+    expect(redactTroubleshootReportText(input)).toBe(input);
+    expect(performance.now() - started).toBeLessThan(1_000);
+  });
+
+  test('many adjacent URLs finish without deep recursion', () => {
+    const input = 'https://github.com/kontourai/station/)'.repeat(5_000);
+    expect(() => redactTroubleshootReportText(input)).not.toThrow();
+  });
 });
 
 describe('troubleshoot seed admission', () => {

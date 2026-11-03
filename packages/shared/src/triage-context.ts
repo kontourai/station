@@ -734,9 +734,20 @@ export function validateTroubleshootContext(value: TroubleshootContext): void {
 
 const REDACTED = '[REDACTED]';
 const REDACTED_URL = '[REDACTED_URL]';
-const URL_PATTERN = /\b[a-z][a-z0-9+.-]{1,20}:\/\/[^\s<>"'`)\]]+/gi;
-// The only locations a public bug report may keep verbatim: Station's own
-// public repository and docs site. Any other GitHub path can name a private
+// A URL runs to the next whitespace. Its core ends at the first `)` or `]`,
+// because what follows is either more URL text (`?title=a)secret`) or Markdown
+// and prose, and the two cannot be told apart.
+const URL_PATTERN = /\b[a-z][a-z0-9+.-]{1,20}:\/\/[^\s<>"'`]+/gi;
+const URL_CORE_END = /[)\]]/;
+// Punctuation that may follow a URL core and carries no content of its own.
+const DELIMITER_RUN = /^[)\].,;:!?]*/;
+const TRAILING_PUNCTUATION = /[.,;:!?]+$/;
+// Path segments kept from a public URL. The path is cut at the first segment
+// with anything else (percent-encoding, `:`, `(`), which could carry text the
+// reviewer did not mean to publish.
+const PLAIN_SEGMENT = /^[A-Za-z0-9._-]+$/;
+// The only locations a public bug report may keep: Station's own public
+// repository and docs site. Any other GitHub path can name a private
 // repository or issue, so it is replaced like a LAN, tailnet, or pairing URL.
 const PUBLIC_GITHUB_REPOSITORIES = new Set(['kontourai/station']);
 const PUBLIC_DOCS_SITE = {
@@ -745,9 +756,10 @@ const PUBLIC_DOCS_SITE = {
 };
 
 /**
- * Returns the normalized URL when it is public, else null. The URL is parsed
- * rather than prefix-matched: `kontourai/station/../other/repo` normalizes to
- * another repository, and keeping the raw text would leak that name.
+ * Rebuilds a public URL from its origin and plain leading path segments, or
+ * returns null. Parsing (not prefix matching) means `station/../other/repo`
+ * resolves to the other repository; rebuilding drops queries and fragments,
+ * which can carry any other URL.
  */
 function publicReportUrl(raw: string): string | null {
   let url: URL;
@@ -757,21 +769,59 @@ function publicReportUrl(raw: string): string | null {
     return null;
   }
   if (url.protocol !== 'https:' || url.username || url.password) return null;
-  const segments = url.pathname.split('/').filter(Boolean);
+  const segments: string[] = [];
+  for (const segment of url.pathname.split('/').filter(Boolean)) {
+    if (!PLAIN_SEGMENT.test(segment)) break;
+    segments.push(segment);
+  }
   const host = url.hostname.toLowerCase();
+  const kept = `${url.origin}/${segments.join('/')}`.replace(/\/$/, '');
   if (host === 'github.com') {
     const [owner, repo] = segments;
     if (!owner || !repo) return null;
     const name = `${owner}/${repo.replace(/\.git$/i, '')}`.toLowerCase();
-    return PUBLIC_GITHUB_REPOSITORIES.has(name) ? url.href : null;
+    return PUBLIC_GITHUB_REPOSITORIES.has(name) ? kept : null;
   }
   if (
     host === PUBLIC_DOCS_SITE.host &&
     segments[0]?.toLowerCase() === PUBLIC_DOCS_SITE.firstSegment
   ) {
-    return url.href;
+    return kept;
   }
   return null;
+}
+
+function redactReportUrls(text: string): string {
+  return text.replace(URL_PATTERN, (match) => {
+    const coreEnd = match.search(URL_CORE_END);
+    const bracketed = coreEnd === -1 ? match : match.slice(0, coreEnd);
+    // Sentence punctuation after a URL (`…/4470, and`) belongs to the prose.
+    const core = bracketed.replace(TRAILING_PUNCTUATION, '');
+    const rest = match.slice(core.length);
+    const delimiters = DELIMITER_RUN.exec(rest)?.[0] ?? '';
+    // Anything after the delimiters may be URL text; mark it rather than keep it.
+    const dropped = rest.length > delimiters.length ? REDACTED : '';
+    return (publicReportUrl(core) ?? REDACTED_URL) + delimiters + dropped;
+  });
+}
+
+// SSH-style Git remotes (`git@github.com:owner/repo.git`) have no scheme, so
+// the URL pattern never sees them. Only Station's own remote is kept.
+// The user part may only start where a run of user characters starts, so a
+// long `a.a.a…` run is scanned once, not once per position. It is not length
+// bounded: a bound would let a remote with a long user name skip redaction.
+// The host may be a bracketed IPv6 literal.
+const SCP_REMOTE_PATTERN =
+  /(?<![A-Za-z0-9._-])[A-Za-z0-9._-]+@(?:\[[0-9A-Fa-f:.]{2,45}\]|[A-Za-z0-9.-]{1,253}):[^\s<>"'`]+/g;
+const STATION_SCP_REMOTE = /^git@github\.com:kontourai\/station(?:\.git)?$/i;
+
+function redactScpRemotes(text: string): string {
+  return text.replace(SCP_REMOTE_PATTERN, (match) => {
+    const core = match.replace(TRAILING_PUNCTUATION, '');
+    return STATION_SCP_REMOTE.test(core)
+      ? match
+      : REDACTED_URL + match.slice(core.length);
+  });
 }
 // Station's pairing and device credentials are 32 random bytes in base64url
 // (43 characters). Requiring upper, lower and digit keeps commit SHAs, UUIDs
@@ -795,10 +845,7 @@ export function redactTroubleshootReportText(text: string): string {
   if (typeof text !== 'string') {
     throw new TypeError('troubleshoot report redaction requires a string');
   }
-  let result = redactSecrets(text).replace(
-    URL_PATTERN,
-    (url) => publicReportUrl(url) ?? REDACTED_URL,
-  );
+  let result = redactScpRemotes(redactReportUrls(redactSecrets(text)));
   result = result.replace(OPAQUE_CREDENTIAL_PATTERN, REDACTED);
   for (const pattern of HOME_PATH_PATTERNS)
     result = result.replace(pattern, '~');
