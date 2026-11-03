@@ -1,5 +1,87 @@
 [
   {
+    "timestampUtc": "2026-11-03T22:43:55Z",
+    "channel": "nightly-desktop",
+    "version": "0.1.11-nightly.2498.2",
+    "sha": "98703439f7606e50dabe7ccf91ce052eb5ce1571",
+    "artifactBuiltAt": "2026-11-03T21:33:14.633Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/41720227898",
+    "artifacts": [
+      "github-release:nightly-desktop (cohort-finalized)"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 41720227898)"
+    ],
+    "changelog": {
+      "previousSha": "3d83c6209a3e8be7f65aaebb79bbe48f0c2f699c",
+      "groups": {
+        "feat": [
+          "[#4475](https://github.com/kontourai/station/pull/4475) feat(browser,devices): simpler Browser and Device panes, advanced settings, and deslop",
+          "[#4472](https://github.com/kontourai/station/pull/4472) feat(feedback): prefill the bug-report form by field id and add a Troubleshoot report form",
+          "[#4411](https://github.com/kontourai/station/pull/4411) feat(terminal): Ghostty TerminalView, command and agent terminals, retention and plugin target",
+          "[#4476](https://github.com/kontourai/station/pull/4476) feat(access): owner devices act as the owner by default; Pair phone opens straight to a QR"
+        ],
+        "fix": [
+          "[#4501](https://github.com/kontourai/station/pull/4501) fix(security): redact credentials behind diagnostic prefixes",
+          "[#4491](https://github.com/kontourai/station/pull/4491) fix(orchestration): await durable announced session starts",
+          "[#4494](https://github.com/kontourai/station/pull/4494) fix(chat): restore phone UI consistency and stream recovery status",
+          "[#4495](https://github.com/kontourai/station/pull/4495) fix(ui): polish model picker filters and settings",
+          "[#4468](https://github.com/kontourai/station/pull/4468) fix: repair restart recovery, Task Inbox grouping, and Codex startup"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#4497](https://github.com/kontourai/station/pull/4497) refactor(pairing): compact Pair phone layout and de-slop owner-device standing",
+          "[#4488](https://github.com/kontourai/station/pull/4488) test(station-control): show why a dispatch failed and wait for the recorded owner"
+        ]
+      },
+      "note": null,
+      "commitCount": 11
+    }
+  },
+  {
+    "timestampUtc": "2026-11-03T22:43:51Z",
+    "channel": "nightly-android",
+    "version": "0.1.11-nightly.2498.2",
+    "sha": "98703439f7606e50dabe7ccf91ce052eb5ce1571",
+    "artifactBuiltAt": "2026-11-03T21:32:41.880Z",
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/41720227898",
+    "artifacts": [
+      "play-internal-aab:cohort-finalized"
+    ],
+    "gateResult": "native cohort final receipt complete",
+    "notes": [
+      "ios: TestFlight delivery success (run 41720227898)"
+    ],
+    "changelog": {
+      "previousSha": "3d83c6209a3e8be7f65aaebb79bbe48f0c2f699c",
+      "groups": {
+        "feat": [
+          "[#4475](https://github.com/kontourai/station/pull/4475) feat(browser,devices): simpler Browser and Device panes, advanced settings, and deslop",
+          "[#4472](https://github.com/kontourai/station/pull/4472) feat(feedback): prefill the bug-report form by field id and add a Troubleshoot report form",
+          "[#4411](https://github.com/kontourai/station/pull/4411) feat(terminal): Ghostty TerminalView, command and agent terminals, retention and plugin target",
+          "[#4476](https://github.com/kontourai/station/pull/4476) feat(access): owner devices act as the owner by default; Pair phone opens straight to a QR"
+        ],
+        "fix": [
+          "[#4501](https://github.com/kontourai/station/pull/4501) fix(security): redact credentials behind diagnostic prefixes",
+          "[#4491](https://github.com/kontourai/station/pull/4491) fix(orchestration): await durable announced session starts",
+          "[#4494](https://github.com/kontourai/station/pull/4494) fix(chat): restore phone UI consistency and stream recovery status",
+          "[#4495](https://github.com/kontourai/station/pull/4495) fix(ui): polish model picker filters and settings",
+          "[#4468](https://github.com/kontourai/station/pull/4468) fix: repair restart recovery, Task Inbox grouping, and Codex startup"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#4497](https://github.com/kontourai/station/pull/4497) refactor(pairing): compact Pair phone layout and de-slop owner-device standing",
+          "[#4488](https://github.com/kontourai/station/pull/4488) test(station-control): show why a dispatch failed and wait for the recorded owner"
+        ]
+      },
+      "note": null,
+      "commitCount": 11
+    }
+  },
+  {
     "timestampUtc": "2026-11-03T21:31:15Z",
     "channel": "nightly-npm",
     "version": "0.11.0-nightly.2498.41720227898",
