@@ -10,6 +10,7 @@ export function FilteredEmpty({
   icon,
   variant = 'compact',
   onClear,
+  clearLabel = 'Clear filter',
 }: {
   query: string;
   noun?: string;
@@ -18,6 +19,7 @@ export function FilteredEmpty({
   icon?: ReactNode;
   variant?: 'compact' | 'prominent';
   onClear: () => void;
+  clearLabel?: string;
 }) {
   const visibleQuery = query.trim();
   return (
@@ -32,7 +34,7 @@ export function FilteredEmpty({
           className="filtered-empty__clear"
           onClick={onClear}
         >
-          Clear filter
+          {clearLabel}
         </button>
       }
     />
