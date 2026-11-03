@@ -1397,7 +1397,7 @@ describe('configureRuntimeRoutes: station-control reads act for the calling sess
       channel: 'sdk-in-process',
     };
     const roots = await asTool(caller, '/api/knowledge/roots');
-    expect(roots.code).toBe('station_control_role_required');
+    expect(roots).toMatchObject({ code: 'station_control_role_required' });
     const path = `/api/knowledge/roots/${encodeURIComponent(root.id)}/records`;
     expect((await asTool(caller, `${path}?type=raw`)).code).toBe(
       'station_control_role_required',
