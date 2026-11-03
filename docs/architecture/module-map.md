@@ -3535,8 +3535,9 @@ reconcile the existing agent-publish text append path; no new history body or
 storage worker is needed.
 An unavailable canonical answer remains visibly blocked and is logged with its
 Task, Session, and turn identity. Lifecycle reconciliation continues with other
-Sessions so that answer cannot prevent startup; later reconciliation retries
-publication without restarting the provider. Other recovery errors still propagate.
+Sessions so that answer cannot prevent startup. An authorized agent-request list
+read retries publication without restarting its provider. Other recovery errors
+still fail readiness.
 Browser records add optional timestamps, opaque actor identity and
 execution/thread correlation. Older records remain readable;
 older closed DTO readers reject the additive fields. Full runs open in the dock. Idle, resumable room-bound Sessions are parked
@@ -4032,12 +4033,21 @@ improvement or human usability. See [bounded agent work](../guides/agent-efficie
 
 [ProjectWorkingConfigurationService](../../src-server/services/projects/project-working-configuration.ts)
 discovers bounded repository guidance and saves reviewed Project defaults. The
-[runtime selector](../../src-server/runtime/project-working-configuration-runtime.ts)
+[runtime owner](../../src-server/runtime/project-working-configuration-runtime.ts)
 feeds both Task brief callers and the operator Sources routes. Project/root
 identity, source digest, review revision and current access fence reads and
 writes. Apply never executes commands or grants setup permission. The brief
 shares a hard total bound with Task state and approved learning references;
-unknown scoped paths remain lazy pointers with omission disclosure.
+unknown scoped paths remain lazy pointers with omission disclosure. This is
+ordinary personal-host functionality; unreviewed Projects skip source discovery,
+including Projects without a local repository. Reviewed roots and sources remain
+mandatory at model-effect admission.
+
+Promotion preserves the retained no-guidance digest of preview-off Sessions.
+This compatibility applies only while no configuration has been reviewed; new
+reviewed guidance, learning changes and Task incarnation changes still refuse an
+older execution. Personal Device callers follow the ordinary personal Project
+rule; account-bound callers still require current Project read membership.
 
 ## Context compaction and Project supervision
 

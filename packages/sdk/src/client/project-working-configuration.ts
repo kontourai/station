@@ -74,10 +74,10 @@ async function unwrap<T>(response: Response, schema: z.ZodType<T>): Promise<T> {
     throw envelopeError(
       response,
       body,
-      'Project working configuration is unavailable. Enable its Feature Preview or update this Station.',
+      'Working configuration requires an accessible local repository and an updated personal Station.',
       {
         message:
-          'Project working configuration is unavailable. Enable its Feature Preview or update this Station.',
+          'Working configuration requires an accessible local repository and an updated personal Station.',
       },
     );
   if (!response.ok)

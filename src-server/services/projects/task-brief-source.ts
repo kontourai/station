@@ -420,15 +420,27 @@ export function createTaskBriefSource(
         deps.ownerOf?.(sessionId),
       );
       const task = deps.readTask(bound.task.id);
+      // Older preview-off Sessions retained this exact no-guidance shape.
+      // Promotion alone may not strand them; reviewed rules and learning
+      // changes still have to match their original mandatory-context digest.
+      const beforePromotion =
+        context.working?.state === 'unconfigured'
+          ? taskMandatoryContextDigest({
+              task: bound.task,
+              workingContext: { state: 'disabled', text: '', omittedRules: 0 },
+              learningContext: context.learning,
+            })
+          : undefined;
       if (
         !task ||
         task.createdAt !== bound.task.createdAt ||
         task.projectId !== bound.task.projectId ||
-        taskMandatoryContextDigest({
+        (taskMandatoryContextDigest({
           task,
           workingContext: context.working,
           learningContext: context.learning,
-        }) !== expectedDigest
+        }) !== expectedDigest &&
+          beforePromotion !== expectedDigest)
       )
         throw new TaskContextAdmissionError(
           new Error('Mandatory Task context changed before provider placement'),
