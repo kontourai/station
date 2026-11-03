@@ -53,11 +53,11 @@ export interface TerminalRun {
   failure?: string;
 }
 
-export const TERMINAL_RUN_APPROVAL_TTL_MS = 10 * 60_000;
+const TERMINAL_RUN_APPROVAL_TTL_MS = 10 * 60_000;
 export const TERMINAL_RUN_MAX_PENDING_PER_CONVERSATION = 3;
 export const TERMINAL_RUN_MAX_COMMAND_CHARS = 8192;
 /** A run that ended is still shown to the person this long, with its exit. */
-export const TERMINAL_RUN_RECENT_MS = 60_000;
+const TERMINAL_RUN_RECENT_MS = 60_000;
 /** Settled requests kept per conversation, so an agent can still read one. */
 const MAX_RECORDS_PER_CONVERSATION = 20;
 const MAX_RECORDS = 512;

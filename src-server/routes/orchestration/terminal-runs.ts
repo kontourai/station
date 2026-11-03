@@ -57,7 +57,7 @@ export interface TerminalRunOutput {
 }
 
 /** What the agent and the person see of a run. */
-export function publicTerminalRun(run: TerminalRun) {
+function publicTerminalRun(run: TerminalRun) {
   return {
     runId: run.id,
     state: run.state,

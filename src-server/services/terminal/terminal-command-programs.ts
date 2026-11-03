@@ -29,7 +29,7 @@ export interface PackageScript {
 
 /** A larger `package.json` is refused rather than read. */
 const MAX_PACKAGE_JSON_BYTES = 1024 * 1024;
-export const MAX_PACKAGE_SCRIPTS = 200;
+const MAX_PACKAGE_SCRIPTS = 200;
 export const MAX_SCRIPT_NAME_CHARS = 256;
 
 const LOCKFILES: readonly [string, PackageManager][] = [
