@@ -355,58 +355,91 @@ test('a lost reappraisal receipt can be finalized and replayed through Station c
       participant,
       (historical) => historical.group,
     );
-    await callbackReady;
-    await assert.rejects(
-      h.custody.finalizeContinuation(
-        h.f.context(requestFor(h, 'POST')),
-        groupId,
-        {
-          operationKey: 'finish',
-          expectedRevision: held.revision,
-          continuationOperationKey: 'lost',
-        },
-        dispatch,
-        h.f.owner,
-        participant,
-        (historical) => historical.group,
-      ),
-      {
-        name: 'HomeWriterUnavailableError',
-        reason: 'busy',
-        operationRan: false,
+    const earlySettlement = pending.then(
+      () => {
+        throw new Error(
+          'Finalizer completed before its held phase was released',
+        );
+      },
+      (error) => {
+        throw error;
       },
     );
-    const shutdown = runtime.shutdown();
-    assert.throws(() => participant.acquire());
-    assert.throws(
-      () => acquireStationHomeMaintenanceLease(h.f.home),
-      StationHomeActiveError,
-    );
-    assert.equal(close.mock.calls.length, 0);
-    releaseCallback();
-    await durableReady;
-    assert.throws(() => physicalHome.runSynchronous(() => undefined), {
-      reason: 'busy',
-    });
-    assert.equal(close.mock.calls.length, 0);
-    assert.throws(
-      () => acquireStationHomeMaintenanceLease(h.f.home),
-      StationHomeActiveError,
-    );
-    releaseDurable();
-    const finalized = await pending;
-    for (const guard of lateGuards)
-      assert.throws(
-        guard,
-        (error) =>
-          error instanceof DelegationRoundsTransactionParentError ||
-          (error instanceof HomeWriterUnavailableError &&
-            error.reason === 'borrow-unavailable'),
+    void earlySettlement.catch(() => {});
+    let shutdown: ReturnType<StationRuntime['shutdown']> | undefined;
+    let finalized: Awaited<typeof pending> | undefined;
+    let cleanupFailures: unknown[] = [];
+    try {
+      await Promise.race([callbackReady, earlySettlement]);
+      await assert.rejects(
+        h.custody.finalizeContinuation(
+          h.f.context(requestFor(h, 'POST')),
+          groupId,
+          {
+            operationKey: 'finish',
+            expectedRevision: held.revision,
+            continuationOperationKey: 'lost',
+          },
+          dispatch,
+          h.f.owner,
+          participant,
+          (historical) => historical.group,
+        ),
+        {
+          name: 'HomeWriterUnavailableError',
+          reason: 'busy',
+          operationRan: false,
+        },
       );
-    await shutdown;
-    assert.equal(close.mock.calls.length, 1);
-    storeSpy.mockRestore();
-    authorityStoreSpy.mockRestore();
+      shutdown = runtime.shutdown();
+      void shutdown.catch(() => {});
+      assert.throws(() => participant.acquire());
+      assert.throws(
+        () => acquireStationHomeMaintenanceLease(h.f.home),
+        StationHomeActiveError,
+      );
+      assert.equal(close.mock.calls.length, 0);
+      releaseCallback();
+      await Promise.race([durableReady, earlySettlement]);
+      assert.throws(() => physicalHome.runSynchronous(() => undefined), {
+        reason: 'busy',
+      });
+      assert.equal(close.mock.calls.length, 0);
+      assert.throws(
+        () => acquireStationHomeMaintenanceLease(h.f.home),
+        StationHomeActiveError,
+      );
+      releaseDurable();
+      finalized = await pending;
+      for (const guard of lateGuards)
+        assert.throws(
+          guard,
+          (error) =>
+            error instanceof DelegationRoundsTransactionParentError ||
+            (error instanceof HomeWriterUnavailableError &&
+              error.reason === 'borrow-unavailable'),
+        );
+      await shutdown;
+      assert.equal(close.mock.calls.length, 1);
+    } finally {
+      releaseCallback();
+      releaseDurable();
+      const settled = await Promise.allSettled([
+        pending,
+        shutdown ?? runtime.shutdown(),
+      ]);
+      storeSpy.mockRestore();
+      authorityStoreSpy.mockRestore();
+      cleanupFailures = settled.flatMap((result) =>
+        result.status === 'rejected' ? [result.reason] : [],
+      );
+    }
+    if (cleanupFailures.length)
+      throw new AggregateError(
+        cleanupFailures,
+        'Finalizer scenario cleanup failed',
+      );
+    assert.ok(finalized);
     runtime = new StationRuntime({ projectHomeDir: h.f.home });
     participant = Reflect.get(
       runtime,
