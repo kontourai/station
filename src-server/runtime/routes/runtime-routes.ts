@@ -9797,6 +9797,8 @@ export function configureRuntimeRoutes(
             return !scopedTerminalRefused(error);
           }
         },
+        endProjectTerminals: async (projectId) =>
+          scopedTerminals.sessions?.endProject(projectId),
         visualFileFrameOrigin: () => context.getMcpUiFrameOrigin?.(),
         sessionWorkspaceDirectory: (routeContext, projectSlug, thread) =>
           sessionWorkspaceDirectory(routeContext.req.raw, projectSlug, thread),

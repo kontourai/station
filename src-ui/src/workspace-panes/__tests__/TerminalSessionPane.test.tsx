@@ -1,6 +1,7 @@
 /** @vitest-environment jsdom */
 
 import { createWorkspaceTerminalPaneInstance } from '@kontourai/station-contracts/workspace-terminal-pane';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
@@ -82,8 +83,20 @@ vi.mock('../../contexts/AuthorityPersistenceContext', () => ({
     observation: { grant: viewer.grant },
   }),
 }));
+const projects = vi.hoisted(() => ({
+  list: [{ id: 'project-a-id', slug: 'project-a', name: 'Project A' }] as {
+    id: string;
+    slug: string;
+    name: string;
+  }[],
+}));
 vi.mock('../../contexts/ProjectsContext', () => ({
   useProject: () => ({ project: { workingDirectory: '/workspace' } }),
+  useScopedProjectsQuery: () => ({
+    data: projects.list,
+    isLoading: false,
+    isError: false,
+  }),
 }));
 vi.mock('../../hooks/useIsMobile', async (original) => ({
   ...(await original<typeof import('../../hooks/useIsMobile')>()),
@@ -146,11 +159,13 @@ function renderPane() {
   const instance = createWorkspaceTerminalPaneInstance(ID, PROJECT.projectId);
   if (!instance) throw new Error('fixture instance');
   return render(
-    <NavigationProvider>
-      <ActiveChatsProvider>
-        <TerminalSessionPane instance={instance} />
-      </ActiveChatsProvider>
-    </NavigationProvider>,
+    <QueryClientProvider client={new QueryClient()}>
+      <NavigationProvider>
+        <ActiveChatsProvider>
+          <TerminalSessionPane instance={instance} />
+        </ActiveChatsProvider>
+      </NavigationProvider>
+    </QueryClientProvider>,
   );
 }
 
@@ -166,6 +181,9 @@ beforeEach(() => {
   view.sessions = [];
   view.output = [];
   viewer.grant = { kind: 'operator' };
+  projects.list = [
+    { id: 'project-a-id', slug: 'project-a', name: 'Project A' },
+  ];
   vi.stubGlobal('matchMedia', () => ({ matches: false }));
 });
 
@@ -226,5 +244,15 @@ test('without terminal:operate the pane only watches: no input and no resize', a
 test('a pane whose record is gone says so and attaches to nothing', () => {
   renderPane();
   expect(screen.getByText('This terminal is no longer available')).toBeTruthy();
+  expect(store.attach).not.toHaveBeenCalled();
+});
+
+// A Project deleted while its related terminal stayed in a dock region: the
+// pane kept attaching to the deleted Project's shell from its stored record.
+test('a pane whose Project was deleted says so and attaches to nothing', () => {
+  storeRecord();
+  projects.list = [];
+  renderPane();
+  expect(screen.getByText('That Project is gone')).toBeTruthy();
   expect(store.attach).not.toHaveBeenCalled();
 });
