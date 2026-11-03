@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import type { ProviderSession } from '@kontourai/station-contracts/provider';
+import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import {
   type TenantExecutionContext,
   tenantId,
@@ -16,6 +17,7 @@ import type {
   ProviderSendTurnInput,
   ProviderSessionStartInput,
 } from '../../../providers/adapter-shape.js';
+import type { IProviderAdapterRegistry } from '../../../providers/provider-interfaces.js';
 import { isSqliteContentionError } from '../../../utils/sqlite-wal.js';
 import { createConversationForkContext } from '../conversation-fork-context.js';
 import { readConversationContextSeedPin } from '../conversation-handoff-module.js';
@@ -82,6 +84,32 @@ class EchoingAdapter extends GateTestAdapter {
       );
     return session;
   }
+  /** Event ids in the order the service's consumer pulled them. */
+  readonly pulled: string[] = [];
+  override async *streamEvents(options?: {
+    signal?: AbortSignal;
+  }): AsyncIterable<CanonicalRuntimeEvent> {
+    for await (const event of super.streamEvents(options)) {
+      this.pulled.push(event.eventId);
+      yield event;
+    }
+  }
+  /**
+   * Resolves once every event queued before it has been fully consumed: the
+   * consumer pulls the marker only after the previous event's handling.
+   */
+  async drained() {
+    const marker = randomUUID();
+    this.events.push({
+      eventId: marker,
+      provider: this.provider,
+      threadId: 'drain-marker',
+      sessionId: 'drain-marker',
+      method: 'session.configured',
+      createdAt: new Date().toISOString(),
+    });
+    await vi.waitFor(() => expect(this.pulled).toContain(marker));
+  }
   exit(threadId: string) {
     this.events.push({
       eventId: randomUUID(),
@@ -124,6 +152,11 @@ function fixture(
     /** Personal access: `account-reader` reads `owner`'s conversations. */
     personalAccess?: boolean;
     thread?: string;
+    /**
+     * Starts on a replaced adapter's registry with no change notice, so the
+     * replaced adapter's consumer keeps running; `replace()` swaps it out.
+     */
+    replaceable?: boolean;
   } = {},
 ) {
   const thread = options.thread ?? threadId;
@@ -131,8 +164,17 @@ function fixture(
   const path = join(makeTempDir('start-owner-contention-'), 'events.sqlite');
   const store = new EventStore(path);
   const adapter = new EchoingAdapter(options.echoUserId);
+  const replaced = new EchoingAdapter();
+  let current: EchoingAdapter = options.replaceable ? replaced : adapter;
+  const registry: IProviderAdapterRegistry = {
+    register() {},
+    get: (provider) => (provider === current.provider ? current : undefined),
+    list: () => [current],
+  };
   const sessions = new OrchestrationService({
-    adapterRegistry: createGateTestRegistry(adapter),
+    adapterRegistry: options.replaceable
+      ? registry
+      : createGateTestRegistry(adapter),
     eventBus: new EventBus(),
     eventStore: store,
     logger: { debug: vi.fn(), warn },
@@ -304,6 +346,12 @@ function fixture(
     sessions,
     thread,
     warn,
+    replaced,
+    /** Make `adapter` current; the replaced adapter's consumer keeps running. */
+    replace: () => {
+      sessions.initialize();
+      current = adapter;
+    },
     start,
     startFork,
     send,
@@ -615,6 +663,42 @@ test('a start event that settles after teardown is not remembered', async () => 
   }
 });
 
+test('an engine that exits before the start hook leaves no interim owner', async () => {
+  const f = fixture({ contend: 'none' });
+  try {
+    f.adapter.emitStart = false;
+    // The engine dies while startSession is still pending.
+    f.adapter.beforeReturn = async () => {
+      f.adapter.exit(threadId);
+      await f.adapter.drained();
+    };
+    await f.start('owner', { userId: 'owner' });
+    expect(f.store.findSessionOwnerUserId(threadId)).toBeUndefined();
+    expect(f.admits('owner')).toBe(false);
+  } finally {
+    await f.close();
+  }
+});
+
+test('a replaced adapter late exit cannot end the current adapter start window', async () => {
+  const f = fixture({ contend: 'none', replaceable: true });
+  try {
+    f.replace();
+    // The current adapter's stream is not consumed (no change notice), so
+    // its start window stays open.
+    await f.start('owner', { userId: 'owner' });
+    expect(f.admits('owner')).toBe(true);
+    f.replaced.exit(threadId);
+    await f.replaced.drained();
+    expect(f.replaced.pulled.length).toBeGreaterThanOrEqual(2);
+    // Still no durable owner: only the interim owner can admit here.
+    expect(f.store.findSessionOwnerUserId(threadId)).toBeUndefined();
+    expect(f.admits('owner')).toBe(true);
+  } finally {
+    await f.close();
+  }
+});
+
 test('a fork started by its owner admits the owner while its start publish retries', async () => {
   const f = fixture({ thread: 'child', personalAccess: true });
   try {
@@ -636,6 +720,9 @@ test('a fork started by a personal-access reader binds the reader, whose stamp b
     expect(started.status, JSON.stringify(started)).toBe('accepted');
     await f.retrying();
     expect(f.admits('account-reader')).toBe(true);
+    // account-reader may read owner's conversations, so only this tells the
+    // bound principal apart: owner passes only if owner was bound.
+    expect(f.admits('owner')).toBe(false);
     expect(f.admits('stranger')).toBe(false);
     f.release();
     await vi.waitFor(() =>
