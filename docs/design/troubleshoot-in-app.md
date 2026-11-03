@@ -46,9 +46,9 @@ surfaces whose sibling controls are native buttons or banner actions call
 | A placed pane in `temporarily-unavailable` ([`ProjectLayoutRenderer`](../../src-ui/src/app-shell/ProjectLayoutRenderer.tsx)), and the same state's card explanation ([`WorkspacePaneAvailabilityList`](../../src-ui/src/workspace-panes/WorkspacePaneAvailabilityList.tsx)); not while the renderer is still loading or when extension access is the cause | Troubleshoot | `pane-<reason code>` |
 | Unsupported layout tab ([`layouts/index.tsx`](../../src-ui/src/layouts/index.tsx)) | Troubleshoot | `unsupported-layout-tab` |
 | An engine that never connected ([`NotConnectedEngineDetail`](../../src-ui/src/views/NotConnectedEngineDetail.tsx)) | Troubleshoot | `engine-<failure phase>` |
-| The chat dock's "This agent is unavailable" banner ([`ChatDockBody`](../../src-ui/src/components/chat-dock/ChatDockBody.tsx)) | Troubleshoot | the unavailable-fix kind; the conversation id |
+| The chat dock's "This agent is unavailable" banner ([`ChatDockBody`](../../src-ui/src/components/chat-dock/ChatDockBody.tsx)), for a caller who may start a chat | Troubleshoot | the unavailable-fix kind; the conversation id |
 | The local-Station banner when it is `stopped` or `failed` and offers no Restart (an unresolved owner or a fail-closed home) ([`BundledServiceBanner`](../../src-ui/src/components/BundledServiceBanner.tsx)) | Troubleshoot | `local-station-<phase>` |
-| A failed turn's `[CHAT_ERROR]` marker, not in a replay ([`ChatDockBody`](../../src-ui/src/components/chat-dock/ChatDockBody.tsx) through [`SystemEventMessage`](../../src-ui/src/components/chat/SystemEventMessage.tsx)) | Troubleshoot this | the marker's error code; conversation and turn ids |
+| A failed turn's `[CHAT_ERROR]` marker, not in a replay and only for a caller who may start a chat (`callerAccess.startChat`) ([`ChatDockBody`](../../src-ui/src/components/chat-dock/ChatDockBody.tsx) through [`SystemEventMessage`](../../src-ui/src/components/chat/SystemEventMessage.tsx)) | Troubleshoot this | the marker's error code; conversation and turn ids |
 | A thumbs-down rating ([`MessageRating`](../../src-ui/src/components/chat/message-bubble/MessageRating.tsx)) | This looks like a Station bug | `reply-marked-station-bug`; conversation and turn ids |
 
 Runtime failures reach the UI as `[CHAT_ERROR]` markers, not as a failed
