@@ -5,12 +5,12 @@
  * - `get_troubleshoot_playbook` returns the bundled playbook, which is too
  *   long for the first turn's ambient context.
  * - `draft_troubleshoot_report` redacts issue-form fields with the shared
- *   report redactor and returns the prefilled `troubleshoot-report.yml` link.
+ *   report drafter (also behind `station triage draft-report`) and returns
+ *   the prefilled `troubleshoot-report.yml` link.
  *   A field that does not fit the link comes back whole in `overflow`.
  */
 
 import {
-  buildTroubleshootIssueFormUrl,
   MAX_TROUBLESHOOT_REPORT_FIELD_LENGTH,
   MAX_TROUBLESHOOT_REPORT_TITLE_LENGTH,
   TROUBLESHOOT_REPORT_FIELD_IDS,
@@ -19,7 +19,7 @@ import {
   type TroubleshootReportFieldId,
   type TroubleshootReportFields,
 } from '@kontourai/station-contracts/troubleshoot';
-import { redactTroubleshootReportText } from '@kontourai/station-shared/triage-context';
+import { draftTroubleshootReport } from '@kontourai/station-shared/triage-context';
 import {
   TROUBLESHOOT_PLAYBOOK,
   TROUBLESHOOT_PLAYBOOK_VERSION,
@@ -63,24 +63,17 @@ export function registerTroubleshootTools(
         .describe('Issue-form field values keyed by field id.'),
     },
     async ({ title, fields }) => {
-      const redactedTitle = redactTroubleshootReportText(title);
-      const redacted: TroubleshootReportFields = {};
-      for (const id of TROUBLESHOOT_REPORT_FIELD_IDS) {
-        const value = (fields as TroubleshootReportFields)[id];
-        if (value !== undefined)
-          redacted[id] = redactTroubleshootReportText(value);
-      }
       try {
-        const link = buildTroubleshootIssueFormUrl({
-          title: redactedTitle,
-          fields: redacted,
+        const draft = draftTroubleshootReport({
+          title,
+          fields: fields as TroubleshootReportFields,
         });
         return jsonToolResult({
-          title: redactedTitle,
-          fields: redacted,
-          url: link.url,
-          included: link.included,
-          overflow: link.overflow,
+          title: draft.title,
+          fields: draft.fields,
+          url: draft.url,
+          included: draft.included,
+          overflow: draft.overflow,
         });
       } catch (error) {
         if (error instanceof TroubleshootReportBoundsError)

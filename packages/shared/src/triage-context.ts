@@ -25,15 +25,25 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { join } from 'node:path';
+import {
+  buildTroubleshootIssueFormUrl,
+  TROUBLESHOOT_REPORT_FIELD_IDS,
+  type TroubleshootIssueFormLink,
+  TroubleshootReportBoundsError,
+  type TroubleshootReportFields,
+} from '@kontourai/station-contracts/troubleshoot';
 import { redactDeep, redactSecrets, sanitizeFreeText } from './redaction.js';
-import { resolveStationRoot } from './runtime-path-resolver.js';
+import {
+  resolveRuntimeHome,
+  resolveStationRoot,
+} from './runtime-path-resolver.js';
 import {
   assertWindowsPathsTrusted,
   ensureWindowsDirectoriesTrusted,
   runWindowsTrustCommand,
 } from './windows-path-trust.js';
 
-export const TRIAGE_CONTEXT_SCHEMA_VERSION = 1;
+export const TRIAGE_CONTEXT_SCHEMA_VERSION = 2;
 export const MAX_TRIAGE_CONTEXT_BYTES = 96 * 1024;
 export const MAX_TRIAGE_DOCTOR_CHECKS = 32;
 export const MAX_TRIAGE_TEXT_LENGTH = 1_024;
@@ -318,9 +328,43 @@ export type TriageAgentAvailability =
   | 'unavailable'
   | 'not-probed';
 
-/** The `station triage` CLI's context.json, schema v1. */
+/**
+ * Where this machine's Station runtime keeps its logs, for an agent working
+ * in a terminal. The directory is shown with the home directory as `~`; a
+ * directory outside the home directory is withheld (`null`) rather than
+ * persisted as a raw absolute path.
+ */
+export interface TriageLocalLogs {
+  directory: string | null;
+  status: 'present' | 'absent';
+}
+
+/**
+ * The local runtime home's log directory (the durable server log store is its
+ * `server/` subdirectory). This is the default runtime for the caller's
+ * environment, which is not necessarily the Station the run targets.
+ */
+export function localTriageLogFacts(runtimeHome?: string): TriageLocalLogs {
+  let home: string;
+  try {
+    home = runtimeHome ?? resolveRuntimeHome();
+  } catch {
+    return { directory: null, status: 'absent' };
+  }
+  const directory = join(home, 'logs');
+  const shown = redactTroubleshootReportText(directory);
+  return {
+    directory:
+      shown.startsWith('~') && shown.length <= MAX_TRIAGE_TEXT_LENGTH
+        ? shown
+        : null,
+    status: existsSync(directory) ? 'present' : 'absent',
+  };
+}
+
+/** The `station triage` CLI's context.json, schema v2. */
 export interface TriageContext {
-  schemaVersion: 1;
+  schemaVersion: 2;
   generatedAt: string;
   runId: string;
   cli: {
@@ -361,6 +405,7 @@ export interface TriageContext {
           | { status: 'unavailable'; reason: string };
       }
     | { status: 'unavailable'; reason: string };
+  localLogs: TriageLocalLogs;
   launch: {
     requested: TriageAgent | null;
     selected: TriageAgent | null;
@@ -380,7 +425,7 @@ export interface TriageContext {
   };
 }
 
-/** Refuses any CLI context outside schema v1's exact keys and bounded values. */
+/** Refuses any CLI context outside schema v2's exact keys and bounded values. */
 export function validateTriageContext(value: TriageContext): void {
   const allowed = [
     'schemaVersion',
@@ -392,6 +437,7 @@ export function validateTriageContext(value: TriageContext): void {
     'doctor',
     'agents',
     'remote',
+    'localLogs',
     'launch',
     'limits',
   ];
@@ -401,7 +447,9 @@ export function validateTriageContext(value: TriageContext): void {
     !/^\d{4}-\d{2}-\d{2}T/.test(value.generatedAt) ||
     !/^[0-9a-f-]{36}$/i.test(value.runId)
   ) {
-    throw new Error('Triage context did not satisfy schema v1.');
+    throw new Error(
+      `Triage context did not satisfy schema v${TRIAGE_CONTEXT_SCHEMA_VERSION}.`,
+    );
   }
   if (!['source', 'packaged'].includes(value.cli.distribution)) {
     throw new Error('Triage context has an invalid distribution identity.');
@@ -444,6 +492,7 @@ export function validateTriageContext(value: TriageContext): void {
           !hasExactKeys(value.remote.logs, ['status', 'reason'])))) ||
     (value.remote.status === 'unavailable' &&
       !hasExactKeys(value.remote, ['status', 'reason'])) ||
+    !hasExactKeys(value.localLogs, ['directory', 'status']) ||
     !hasExactKeys(value.launch, [
       'requested',
       'selected',
@@ -452,7 +501,9 @@ export function validateTriageContext(value: TriageContext): void {
     ]) ||
     !hasExactKeys(value.limits, ['contextBytes', 'doctorChecks', 'textLength'])
   ) {
-    throw new Error('Triage context contains fields outside schema v1.');
+    throw new Error(
+      `Triage context contains fields outside schema v${TRIAGE_CONTEXT_SCHEMA_VERSION}.`,
+    );
   }
   if (
     !['available', 'unavailable'].includes(
@@ -469,6 +520,12 @@ export function validateTriageContext(value: TriageContext): void {
       value.capabilities.remoteReadFacts,
     ) ||
     !['available', 'unavailable'].includes(value.capabilities.recentLogs) ||
+    !['present', 'absent'].includes(value.localLogs.status) ||
+    // Only a home-relative location may be persisted; never a raw path.
+    (value.localLogs.directory !== null &&
+      (typeof value.localLogs.directory !== 'string' ||
+        !value.localLogs.directory.startsWith('~') ||
+        value.localLogs.directory.length > MAX_TRIAGE_TEXT_LENGTH)) ||
     !['available', 'unavailable', 'not-probed'].includes(value.agents.codex) ||
     !['available', 'unavailable', 'not-probed'].includes(value.agents.claude) ||
     ![
@@ -746,4 +803,32 @@ export function redactTroubleshootReportText(text: string): string {
   for (const pattern of HOME_PATH_PATTERNS)
     result = result.replace(pattern, '~');
   return result;
+}
+
+export interface TroubleshootReportDraft extends TroubleshootIssueFormLink {
+  readonly title: string;
+  readonly fields: TroubleshootReportFields;
+}
+
+/**
+ * Redacts a report's title and fields, then builds its prefilled issue-form
+ * link. The in-app drafting tool and `station triage draft-report` both call
+ * this, so the two surfaces produce the same text and link. An unknown field
+ * id or an over-limit value throws {@link TroubleshootReportBoundsError}.
+ */
+export function draftTroubleshootReport(input: {
+  readonly title: string;
+  readonly fields: TroubleshootReportFields;
+}): TroubleshootReportDraft {
+  for (const id of Object.keys(input.fields)) {
+    if (!(TROUBLESHOOT_REPORT_FIELD_IDS as readonly string[]).includes(id))
+      throw new TroubleshootReportBoundsError(`Unknown report field: ${id}.`);
+  }
+  const title = redactTroubleshootReportText(input.title);
+  const fields: TroubleshootReportFields = {};
+  for (const id of TROUBLESHOOT_REPORT_FIELD_IDS) {
+    const value = input.fields[id];
+    if (value !== undefined) fields[id] = redactTroubleshootReportText(value);
+  }
+  return { title, fields, ...buildTroubleshootIssueFormUrl({ title, fields }) };
 }

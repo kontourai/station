@@ -1,5 +1,6 @@
 import {
   existsSync,
+  mkdirSync,
   mkdtempSync,
   readdirSync,
   rmSync,
@@ -7,11 +8,14 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { TroubleshootReportBoundsError } from '@kontourai/station-contracts/troubleshoot';
 import { afterEach, describe, expect, test } from 'vitest';
 import {
   admitTroubleshootSeed,
   boundedTriageLogTail,
   createTriageRunDirectory,
+  draftTroubleshootReport,
+  localTriageLogFacts,
   MAX_TRIAGE_CONTEXT_BYTES,
   MAX_TRIAGE_DOCTOR_CHECKS,
   MAX_TRIAGE_LOG_TAIL_LENGTH,
@@ -263,5 +267,56 @@ describe('createTriageRunDirectory', () => {
       createTriageRunDirectory('6c6c6c6c-6c6c-4c6c-8c6c-6c6c6c6c6c6c', other),
     ).toThrow('real directory');
     expect(readdirSync(outside)).toEqual([]);
+  });
+});
+
+describe('localTriageLogFacts', () => {
+  test('shows a home-directory location as ~ and withholds any other path', () => {
+    expect(
+      localTriageLogFacts('/Users/alice/.station/instances/stable'),
+    ).toEqual({
+      directory: '~/.station/instances/stable/logs',
+      status: 'absent',
+    });
+    expect(localTriageLogFacts('/home/bob/.station/instances/stable')).toEqual({
+      directory: '~/.station/instances/stable/logs',
+      status: 'absent',
+    });
+    expect(localTriageLogFacts('/opt/station')).toEqual({
+      directory: null,
+      status: 'absent',
+    });
+  });
+
+  test('reports whether the log directory exists', () => {
+    const home = tempRoot();
+    expect(localTriageLogFacts(home).status).toBe('absent');
+    mkdirSync(join(home, 'logs'));
+    expect(localTriageLogFacts(home).status).toBe('present');
+  });
+});
+
+describe('draftTroubleshootReport', () => {
+  test('redacts title and fields before building the link', () => {
+    const draft = draftTroubleshootReport({
+      title: 'Crash at /Users/alice/project',
+      fields: {
+        'prior-issue': 'https://github.com/acme/private/issues/3',
+      },
+    });
+    expect(draft.title).toBe('Crash at ~/project');
+    expect(draft.fields).toEqual({ 'prior-issue': '[REDACTED_URL]' });
+    expect(new URL(draft.url).searchParams.get('prior-issue')).toBe(
+      '[REDACTED_URL]',
+    );
+  });
+
+  test('refuses an unknown field by name', () => {
+    expect(() =>
+      draftTroubleshootReport({
+        title: 'x',
+        fields: { body: 'y' } as never,
+      }),
+    ).toThrow(TroubleshootReportBoundsError);
   });
 });

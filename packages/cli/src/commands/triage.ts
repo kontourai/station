@@ -10,6 +10,11 @@ import { spawn, spawnSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import { createInterface } from 'node:readline/promises';
+import {
+  MAX_TROUBLESHOOT_REPORT_FIELD_LENGTH,
+  MAX_TROUBLESHOOT_REPORT_TITLE_LENGTH,
+  type TroubleshootReportFields,
+} from '@kontourai/station-contracts/troubleshoot';
 import { authenticatedFetch } from '@kontourai/station-sdk/client';
 import { sanitizeFreeText } from '@kontourai/station-shared/redaction';
 import {
@@ -18,6 +23,8 @@ import {
   boundedTriageLogTail,
   boundedTriageText,
   createTriageRunDirectory,
+  draftTroubleshootReport,
+  localTriageLogFacts,
   MAX_TRIAGE_CONTEXT_BYTES,
   MAX_TRIAGE_DOCTOR_CHECKS,
   MAX_TRIAGE_TEXT_LENGTH,
@@ -32,6 +39,7 @@ import {
   validateTriageContext,
   writeTriageOwnerFile,
 } from '@kontourai/station-shared/triage-context';
+import { TROUBLESHOOT_PLAYBOOK } from '@kontourai/station-shared/troubleshoot-playbook';
 import { bundleInfo, isBundledDistribution } from '../distribution.js';
 import {
   configureApiCredential,
@@ -60,6 +68,10 @@ export const TRIAGE_PLAYBOOK_VERSION = 1;
 export const MAX_TRIAGE_AGENT_OUTPUT_BYTES = 64 * 1024;
 export const MAX_TRIAGE_PROBLEM_LENGTH = 512;
 export const MAX_TRIAGE_ISSUE_RESULTS = 10;
+export const MAX_TRIAGE_DRAFT_REPORT_INPUT_BYTES = 256 * 1024;
+
+/** How an agent is launched: a terminal conversation or a one-shot diagnosis. */
+export type TriageLaunchMode = 'interactive' | 'headless';
 
 export interface TriageDependencies {
   /** Source-only callback; the packaged bundle deliberately has no adapter. */
@@ -69,12 +81,18 @@ export interface TriageDependencies {
   newRunId?: () => string;
   /** Small probe seam keeps tests from creating a real agent process. */
   probeAgent?: (agent: TriageAgent) => AgentAvailability;
-  /** Launch seam; production uses no shell and hides Windows windows. */
+  /**
+   * Launch seam; production uses no shell and hides Windows windows. An
+   * interactive launch inherits the terminal and captures no output.
+   */
   launchAgent?: (
     agent: TriageAgent,
     args: string[],
     cwd: string,
+    mode: TriageLaunchMode,
   ) => Promise<{ success: boolean; exitCode: number | null; output?: string }>;
+  /** Test seam for the local log facts; production reads the runtime home. */
+  localLogs?: () => TriageContext['localLogs'];
   /** Exact source revision, supplied by source composition when known. */
   sourceRevision?: () => string | undefined;
   chooseAgent?: () => Promise<TriageAgent | undefined>;
@@ -119,14 +137,29 @@ function defaultLaunchAgent(
   agent: TriageAgent,
   args: string[],
   cwd: string,
+  mode: TriageLaunchMode,
 ): Promise<{ success: boolean; exitCode: number | null; output: string }> {
   return new Promise((resolve) => {
     const chunks: Buffer[] = [];
     let captured = 0;
+    const interactive = mode === 'interactive';
+    // The agent owns the terminal. Ctrl-C reaches it through the shared
+    // process group; Station waits for it to exit instead of dying first and
+    // leaving the agent attached to the terminal.
+    const ignoreInterrupt = () => {};
+    if (interactive) process.on('SIGINT', ignoreInterrupt);
+    const settle = (result: {
+      success: boolean;
+      exitCode: number | null;
+      output: string;
+    }) => {
+      if (interactive) process.off('SIGINT', ignoreInterrupt);
+      resolve(result);
+    };
     const child = spawn(agent, args, {
       cwd,
       shell: false,
-      stdio: ['ignore', 'pipe', 'inherit'],
+      stdio: interactive ? 'inherit' : ['ignore', 'pipe', 'inherit'],
       windowsHide: true,
     });
     child.stdout?.on('data', (value: Buffer | string) => {
@@ -139,10 +172,10 @@ function defaultLaunchAgent(
       captured += retained.byteLength;
     });
     child.once('error', () =>
-      resolve({ success: false, exitCode: null, output: '' }),
+      settle({ success: false, exitCode: null, output: '' }),
     );
     child.once('close', (exitCode) =>
-      resolve({
+      settle({
         success: exitCode === 0,
         exitCode,
         output: Buffer.concat(chunks).toString('utf8'),
@@ -153,6 +186,7 @@ function defaultLaunchAgent(
 
 function parseTriageArgs(args: string[]): {
   contextOnly: boolean;
+  headless: boolean;
   problem: string | null;
   requested: TriageAgent | null;
   searchIssues: boolean;
@@ -161,13 +195,14 @@ function parseTriageArgs(args: string[]): {
   const parsed = parseCoreArgs(args);
   if (parsed.positionals.length > 0) {
     throw new Error(
-      'Usage: station triage [--context-only] [--agent=codex|claude] [--problem=<text>] [--search-issues]',
+      'Usage: station triage [--context-only] [--headless] [--agent=codex|claude] [--problem=<text>] [--search-issues]',
     );
   }
   for (const flag of Object.keys(parsed.flags)) {
     if (
       ![
         'context-only',
+        'headless',
         'agent',
         'problem',
         'search-issues',
@@ -198,8 +233,12 @@ function parseTriageArgs(args: string[]): {
   ) {
     throw new Error('--search-issues is a boolean flag.');
   }
+  if (parsed.flags.headless !== undefined && parsed.flags.headless !== true) {
+    throw new Error('--headless is a boolean flag.');
+  }
   return {
     contextOnly: parsed.flags['context-only'] === true,
+    headless: parsed.flags.headless === true,
     problem: typeof problem === 'string' ? problem : null,
     requested: typeof agent === 'string' ? agent : null,
     searchIssues: parsed.flags['search-issues'] === true,
@@ -541,6 +580,7 @@ function renderMarkdown(context: TriageContext): string {
     `- Source doctor: ${context.capabilities.sourceDoctor}`,
     `- Recent logs: ${context.capabilities.recentLogs}`,
     `- Authenticated remote facts: ${context.capabilities.remoteReadFacts}`,
+    `- Local log directory: ${context.localLogs.directory ?? 'withheld (outside the home directory)'} (${context.localLogs.status})`,
     '',
     '## Target',
     '',
@@ -646,7 +686,25 @@ Posting that draft or making any repair happens later through an existing
 Station command and explicit user action.
 `;
 
-function launchArgs(agent: TriageAgent): string[] {
+/**
+ * The whole argument list for an interactive launch: one single-line
+ * instruction, so Windows never receives a multiline argument, and no flag,
+ * so the agent keeps its normal approval mode.
+ */
+export const INTERACTIVE_TRIAGE_INSTRUCTION =
+  'Read playbook.md and context.json in this directory, then problem.md and related-issues.json. Follow the playbook, starting with its Terminal surface section, and start a troubleshooting conversation with me.';
+
+/** The argument list `station triage` passes to the selected agent. */
+export function triageLaunchArgs(
+  agent: TriageAgent,
+  mode: TriageLaunchMode,
+): string[] {
+  return mode === 'interactive'
+    ? [INTERACTIVE_TRIAGE_INSTRUCTION]
+    : headlessLaunchArgs(agent);
+}
+
+function headlessLaunchArgs(agent: TriageAgent): string[] {
   const instruction =
     'Read the Station-owned playbook.md, context.json, problem.md, and related-issues.json in your current working directory. Return the required read-only Markdown diagnosis and plan only; do not make network or GitHub write calls.';
   return agent === 'codex'
@@ -684,6 +742,10 @@ export async function runTriageCommand(
   const interactive =
     dependencies.isInteractive ??
     Boolean(process.stdin.isTTY && process.stdout.isTTY);
+  // A terminal conversation needs both ends to be a terminal; otherwise, or
+  // on request, keep the read-only one-shot diagnosis.
+  const mode: TriageLaunchMode =
+    interactive && !input.headless ? 'interactive' : 'headless';
   let problem = input.problem
     ? sanitizeFreeText(input.problem, MAX_TRIAGE_PROBLEM_LENGTH)
     : null;
@@ -765,6 +827,7 @@ export async function runTriageCommand(
     doctor,
     agents,
     remote,
+    localLogs: (dependencies.localLogs ?? localTriageLogFacts)(),
     launch,
     limits: {
       contextBytes: MAX_TRIAGE_CONTEXT_BYTES,
@@ -774,7 +837,14 @@ export async function runTriageCommand(
   };
   validateTriageContext(context);
   const serialized = serializeTriageContext(context);
-  writeTriageOwnerFile(join(runDir, 'playbook.md'), PLAYBOOK);
+  // Interactive runs get the same v2 playbook the in-app assistant follows;
+  // headless and context-only runs keep the read-only v1 playbook.
+  writeTriageOwnerFile(
+    join(runDir, 'playbook.md'),
+    mode === 'interactive' && !input.contextOnly
+      ? TROUBLESHOOT_PLAYBOOK
+      : PLAYBOOK,
+  );
   writeTriageOwnerFile(join(runDir, 'context.json'), serialized);
   writeTriageOwnerFile(join(runDir, 'summary.md'), renderMarkdown(context));
   writeTriageOwnerFile(
@@ -799,21 +869,24 @@ export async function runTriageCommand(
   if (launch.selected) {
     const outcome = await (dependencies.launchAgent ?? defaultLaunchAgent)(
       launch.selected,
-      launchArgs(launch.selected),
+      triageLaunchArgs(launch.selected, mode),
       runDir,
+      mode,
     );
     const diagnosis = sanitizeFreeText(
       outcome.output ?? '',
       MAX_TRIAGE_AGENT_OUTPUT_BYTES,
     );
-    const completed = outcome.success && diagnosis.length > 0;
+    // An interactive session's output went to the terminal, not to Station.
+    const completed =
+      outcome.success && (mode === 'interactive' || diagnosis.length > 0);
     context.launch.status = completed ? 'completed' : 'failed';
     context.launch.exitCode = outcome.exitCode;
     validateTriageContext(context);
     const updated = serializeTriageContext(context);
     rewriteTriageOwnerFile(join(runDir, 'context.json'), updated);
     rewriteTriageOwnerFile(join(runDir, 'summary.md'), renderMarkdown(context));
-    if (diagnosis) {
+    if (mode === 'headless' && diagnosis) {
       writeTriageOwnerFile(join(runDir, 'diagnosis.md'), `${diagnosis}\n`);
       writeTriageOwnerFile(
         join(runDir, 'issue-draft.md'),
@@ -822,12 +895,102 @@ export async function runTriageCommand(
     }
     if (!completed) {
       throw new Error(
-        `${launch.selected} exited without a non-empty successful read-only diagnosis. Artifacts: ${runDir}`,
+        `${launch.selected} ${mode === 'interactive' ? 'interactive session exited unsuccessfully' : 'exited without a non-empty successful read-only diagnosis'}. Artifacts: ${runDir}`,
       );
     }
   }
   (dependencies.stdout ?? console.log)(
-    `Triage artifacts: ${runDir}${launch.selected ? `; launched ${launch.selected} in enforced ${launch.selected === 'codex' ? 'read-only' : 'plan'} mode.` : '; no agent launched.'}`,
+    `Triage artifacts: ${runDir}${launch.selected ? `; launched ${launch.selected} in ${mode === 'interactive' ? 'interactive' : `enforced ${launch.selected === 'codex' ? 'read-only' : 'plan'}`} mode.` : '; no agent launched.'}`,
   );
   return { runDir, context };
+}
+
+/**
+ * `station triage draft-report`: reads `{ title, fields }` JSON on stdin and
+ * prints the redacted title and fields, the prefilled issue-form `url`, and
+ * any `overflow` fields, using the same drafter as the in-app tool. Input over
+ * its limits is refused, never truncated. Nothing is sent anywhere.
+ */
+export async function runTriageDraftReport(
+  args: string[],
+  source:
+    | AsyncIterable<Buffer | string>
+    | Iterable<Buffer | string> = process.stdin,
+  output: (line: string) => void = console.log,
+): Promise<void> {
+  if (args.length > 0) {
+    throw new Error('Usage: station triage draft-report < report.json');
+  }
+  const chunks: Buffer[] = [];
+  let total = 0;
+  for await (const chunk of source) {
+    const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    total += bytes.byteLength;
+    if (total > MAX_TRIAGE_DRAFT_REPORT_INPUT_BYTES) {
+      throw new Error(
+        `Report input exceeds ${MAX_TRIAGE_DRAFT_REPORT_INPUT_BYTES} bytes.`,
+      );
+    }
+    chunks.push(bytes);
+  }
+  let value: unknown;
+  try {
+    value = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+  } catch {
+    throw new Error(
+      'Report input must be JSON: {"title": "...", "fields": {...}}.',
+    );
+  }
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error('Report input must be a JSON object.');
+  }
+  const report = value as Record<string, unknown>;
+  const extra = Object.keys(report).filter(
+    (key) => key !== 'title' && key !== 'fields',
+  );
+  if (extra.length > 0) {
+    throw new Error(`Unknown report key: ${extra[0]}.`);
+  }
+  if (
+    typeof report.title !== 'string' ||
+    report.title.length > MAX_TROUBLESHOOT_REPORT_TITLE_LENGTH
+  ) {
+    throw new Error(
+      `Report title must be a string of at most ${MAX_TROUBLESHOOT_REPORT_TITLE_LENGTH} characters.`,
+    );
+  }
+  if (
+    !report.fields ||
+    typeof report.fields !== 'object' ||
+    Array.isArray(report.fields)
+  ) {
+    throw new Error('Report fields must be an object keyed by field id.');
+  }
+  for (const [id, field] of Object.entries(report.fields)) {
+    if (
+      typeof field !== 'string' ||
+      field.length > MAX_TROUBLESHOOT_REPORT_FIELD_LENGTH
+    ) {
+      throw new Error(
+        `Report field ${id} must be a string of at most ${MAX_TROUBLESHOOT_REPORT_FIELD_LENGTH} characters.`,
+      );
+    }
+  }
+  const draft = draftTroubleshootReport({
+    title: report.title,
+    fields: report.fields as TroubleshootReportFields,
+  });
+  output(
+    JSON.stringify(
+      {
+        title: draft.title,
+        fields: draft.fields,
+        url: draft.url,
+        included: draft.included,
+        overflow: draft.overflow,
+      },
+      null,
+      2,
+    ),
+  );
 }

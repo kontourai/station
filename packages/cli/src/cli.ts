@@ -118,7 +118,7 @@ import {
 } from './commands/surfaces.js';
 import { runTargetCommand } from './commands/target-command.js';
 import { runTelemetryCommand } from './commands/telemetry.js';
-import { runTriageCommand } from './commands/triage.js';
+import { runTriageCommand, runTriageDraftReport } from './commands/triage.js';
 import { type DevFlags, startDevServer } from './dev/server.js';
 import {
   assertCommandAvailable,
@@ -797,9 +797,15 @@ function buildProgram(
   register('target', (rawArgs) => runTargetCommand(rawArgs));
   register('open', (rawArgs) => runOpenCommand(rawArgs));
   register('triage', async (rawArgs) => {
+    if (rawArgs[0] === 'draft-report') {
+      await runTriageDraftReport(rawArgs.slice(1));
+      return;
+    }
     await runTriageCommand(rawArgs, {
       collectSourceDoctorReport: dependencies.collectTriageDoctorReport,
-      isInteractive: interactive,
+      // Unset in production: triage needs both stdin and stdout to be a TTY
+      // before it starts an interactive agent.
+      isInteractive: dependencies.isInteractive,
       sourceRevision: dependencies.sourceRevision,
     });
   });
