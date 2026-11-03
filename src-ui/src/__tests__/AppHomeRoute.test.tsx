@@ -383,8 +383,10 @@ vi.mock('../workspace-panes/RegionPaneHost', async () => {
     },
   };
 });
+// The palette is a child of the lazily loaded deferred overlays, so its
+// marker shows that chunk rendered rather than failing into its boundary.
 vi.mock('../components/CommandPalette', () => ({
-  CommandPalette: () => null,
+  CommandPalette: () => <div data-testid="deferred-overlays-mounted" />,
 }));
 // #928 C2a: the Activity shell is what `main` renders when Activity occupies
 // it. Stubbed: its content (the sessions surface) is not this route's
@@ -405,6 +407,13 @@ vi.mock('../components/ShortcutsCheatsheet', () => ({
   ShortcutsCheatsheet: () => null,
 }));
 vi.mock('../components/voice/VoicePill', () => ({ VoicePill: () => null }));
+// App renders inside `ActiveChatsProvider` in `main.tsx`, not here. The
+// deferred overlays' troubleshooting host (#4470) launches chats through
+// `useLaunchChat`, which needs that provider, so it is stubbed.
+vi.mock('../hooks/useActiveChatSessions', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../hooks/useActiveChatSessions')>()),
+  useLaunchChat: () => vi.fn(),
+}));
 // Both hooks, because EnginesStep calls `useAgentsLoaded` and this route
 // renders it. Spreading the real module instead would pull the real
 // AgentsContext, which reaches the SDK and needs a second, larger mock —
@@ -412,6 +421,7 @@ vi.mock('../components/voice/VoicePill', () => ({ VoicePill: () => null }));
 // the standing hazard: the next export added here fails in a file whose
 // author never opened this one (archive#3112).
 vi.mock('../contexts/AgentsContext', () => ({
+  useAgent: () => null,
   useAgents: () => [],
   useAgentsLoaded: () => true,
   useAgentsSettled: () => true,
@@ -1114,6 +1124,18 @@ describe('App home route resolution', () => {
     await act(async () => undefined);
 
     expect(registerRegionSurfaceHost).toHaveBeenCalled();
+  });
+
+  test('the deferred overlays chunk renders on Home without a load error', async () => {
+    hooks.regionModel = regionModelStub();
+
+    render(<App />);
+
+    // Waiting for the chunk makes this independent of how fast the dynamic
+    // import settles: an overlay that reads a hook the mocks above lack
+    // fails the whole chunk into its boundary, and the marker never renders.
+    await screen.findByTestId('deferred-overlays-mounted');
+    expect(document.querySelector('.lazy-boundary__error')).toBeNull();
   });
 
   /**
