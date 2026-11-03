@@ -82,6 +82,7 @@ clearly mark the stale document.
 - **[Local speech and media tools](guides/local-speech.md)** — consented tool downloads, local transcription, limits and platform evidence.
 - **[Browser workspace](guides/browser-workspace.md)** — server-owned browser sessions, profile and target boundaries, Agent permissions, live viewing and artifact previews.
 - **[Mobile device workspace](guides/mobile-device-workspace.md)** — managed or SSH device hosts, shared live viewing/control, and the separate single-frame API.
+- **[Browser, device and Walkthrough reference](reference/browser-and-devices.md)** — authority rules, limits, timeouts, refusal codes, storage and evidence behind the three guides above.
 - **[Outside-agent OAuth](reference/outside-agent-oauth.md)** — inert R3 protocol contract and exposure limits; R6 owns enablement.
 - **[Reference](reference/)** — API, CLI, config, SDK, and contract details.
 - **[Monitoring](guides/monitoring.md)** — recording paths, Profile usage and paired people, retention, companion host prerequisites, dashboard limits, and the generated [metric declarations](reference/metrics.md).
