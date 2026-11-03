@@ -7,6 +7,47 @@ normally before publication. Open one PR when the combined work is ready.
 
 ## Current delivery state
 
+**NOT_READY.** The branch has no push or PR. Normal merge `1f62bd1513e`
+integrates main through `cd8273bd60b`, including #4457 and #4461. It keeps
+sealed-session profile resolution before main's exact pending-steering fallback,
+and retains both the Inbox submission-admission port and the `pending` union.
+Managed dependencies/hooks were verified after the merge. #4467 is still open;
+its accepted-start publication fix remains with the durability owner. No caller
+retry or synthetic `session.started` workaround is added.
+
+The reserved input repairs are committed at `0f6c6d5a3d9` and `4adeec9e520`.
+Real Home contention queues through the original source authority without lending
+Home across persistence, canonical commit or human waits. An early answer now
+waits for canonical commit marking before fresh reply admission. The delegated
+final focused selection passes 122 cases, server-test types and scoped Biome.
+The entry-admission mutation fails its intended assertion and restores to 11
+passes. The unchanged original callers failed twice at the earlier checkpoint
+with stale approval replies; that ordering failure has a focused pre-fix/fixed
+control, but the final merged full callers are not yet qualified.
+
+The generic declared-`none` composer explanation is integrated at `c1dfd3e9892`.
+Its isolated landed-#4457 browser selection passes 14 cases, with real composer
+captures at 390/1440 in light/dark, UI/e2e types, fixture guard and lint passing.
+The initial missing-SSE-projection failure and two incorrectly declared emulated
+fixtures are excluded as product failure/catch evidence. The corrected pre-fix
+control fails because the disabled mode has no reason. Merged-head browser
+qualification and the durability owner's promised screenshot review remain open.
+
+Four reviewed design corrections are committed at `20425ed3c08`; five supported
+semantic reviews are recorded at `64c983aaa0d`. The learning atlas builds 542
+documents and MCP generation retains 136 topics. This does not clear the remaining
+semantic review leads. The last frozen readiness at `4adeec9e520` is red on
+required documentation currency, with an optional provider-policy warning.
+
+Both group advertisement and continuation-finalizer qualification guards remain
+false. Positive initialized serving/recovery, the original finalizer and report
+caller journeys, all-writer/accounting and Flow frontier/join proof, the required
+CLI/reload/second-device journeys, and final combined deslop/visual/independent
+qualification remain open. The one-PR rule and separate #3991/#3558 ownership
+remain unchanged. Older checkpoints below retain their own evidence and limits.
+
+### Historical delivery checkpoint at `20337fe8be4`
+
 **NOT_READY.** At source `20337fe8be4`, the branch has no push or PR. Main is
 integrated through `c14e930bdf1` by normal merge `2439b1b6f35`, including #4420
 and #4422. Master consolidation #3991 remains separately owned. The historical
