@@ -202,6 +202,7 @@ describe('configureRuntimeRoutes: station-control dispatch stays in scope (slice
         getProjectHomeDir: () => homeDir,
         loadAppConfig: () => ({}),
       },
+      eventBus: new EventBus(),
       logger: { debug() {}, info() {}, warn() {}, error() {} },
       activeAgents: new Map(),
       agentService: {
