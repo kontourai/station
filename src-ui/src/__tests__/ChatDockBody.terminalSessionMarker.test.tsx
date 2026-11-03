@@ -1026,6 +1026,33 @@ describe('ChatDockBody marker actions follow callerAccess', () => {
     return ACTIONS.filter((name) => screen.queryByRole('button', { name }));
   }
 
+  // #4470: Troubleshoot this starts a new chat, so it follows startChat.
+  test.each([
+    ['full', true],
+    ['noSend', true],
+    ['noNewChat', false],
+    ['readOnly', false],
+  ] as const)(
+    'Troubleshoot this is offered to %s caller: %s',
+    async (caller, offered) => {
+      renderDock(
+        sessionWith(
+          `[SYSTEM_EVENT] [CHAT_ERROR:engine-session-binding-dead] ${RAW_MESSAGE}`,
+          CALLERS[caller],
+        ),
+        vi.fn(),
+      );
+      await screen.findByText(
+        /engine session was lost/i,
+        {},
+        { timeout: LAZY_TRANSCRIPT_TIMEOUT_MS },
+      );
+      expect(
+        Boolean(screen.queryByRole('button', { name: 'Troubleshoot this' })),
+      ).toBe(offered);
+    },
+  );
+
   const ENDED =
     '[SYSTEM_EVENT] [CHAT_ERROR:session_ended] This session has already ended.';
   test.each([
