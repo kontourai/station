@@ -223,7 +223,7 @@ export function prepareReservedStationTurn(
   return handle;
 }
 
-export function assertReservedStationTurnBinding(
+function assertReservedStationTurnBinding(
   handle: ReservedStationTurn,
   principalId: string | undefined,
   threadId: string,
@@ -247,7 +247,7 @@ export function assertReservedStationTurnBinding(
 }
 
 /** A canonical current-Station lookup must still name the prepared source host. */
-export function assertReservedStationEnvironment(
+function assertReservedStationEnvironment(
   handle: ReservedStationTurn,
   environmentId: string,
 ): void {
@@ -346,7 +346,7 @@ export function currentReservedStationTurn(): ReservedStationTurn | undefined {
   return context.getStore();
 }
 
-export function openReservedStationSession(
+function openReservedStationSession(
   threadId: string,
   recoveredIdentity?: string,
 ): string | undefined {
@@ -497,7 +497,7 @@ function assertSession(value: State, record: object): void {
     refuse();
 }
 
-export function reservedStationTurnHasInput(
+function reservedStationTurnHasInput(
   handle: ReservedStationTurn,
 ): boolean {
   return state(handle).inputRuntime !== undefined;
