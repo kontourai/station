@@ -16,17 +16,17 @@ blocked on #4467, owned by #3558; no retry or synthetic-event workaround is adde
 
 Canonical raw-grant owner source `ce5b15e3621` validates both the originating
 and current Home contexts, including a two-Home release-notification escape.
-Its native-unfused roster baseline measured159 lock inspections; the safe
-candidate passes an at-most153 bound. Both complete principal checks, independent
-policy, signer reads and uncertainty fences remain. All44 focused cases pass,
+Its native-unfused roster baseline measured 159 lock inspections; the safe
+candidate passes an at-most-153 bound. Both complete principal checks, independent
+policy, signer reads and uncertainty fences remain. All 44 focused cases pass,
 three guard/cost mutations fail their intended assertions, and exact restoration
-passes44. This is an inspection-count result, not a latency or fsync saving claim.
+passes 44. This is an inspection-count result, not a latency or fsync saving claim.
 
 At `0a2ded30b1e`, both original report-input callers pass with unchanged
 120-second deadlines and assertions. That receipt precedes the latest main
 merge and does not establish combined-source or live-provider qualification.
 The merged finalizer matrix at `c434d1c4cab6` remains red: eight checks pass,
-but the original journey times out at its unchanged60-second limit. Its failure
+but the original journey times out at its unchanged 60-second limit. Its failure
 requires diagnosis; no unchanged rerun or budget increase is counted as progress.
 
 The sealed composer visual approval remains bound to `f138f28e20b0` and its
