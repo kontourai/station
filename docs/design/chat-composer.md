@@ -167,16 +167,20 @@ reads as a quiet pill right after its name, not on a line of its own. A row does
 the Agent's name plus a qualifier (the row keeps the qualifier), or "Model not
 reported": a row with a model catalog but no reported model offers **Choose
 model**, and one with neither shows no model control. A row that cannot start
-keeps its Model control, so a choice made before its repair carries through it. The Model picker offers search, recent choices, favorites and provider
-filters; Options reveals capability filters and the selected model's supported
-runtime controls. Reviewed canonical model identities still own grouping across
-provider routes; similar names do not establish equivalence.
+keeps its Model control, so a choice made before its repair carries through it.
+The Model picker offers search, Favorites, Recent and provider collections.
+Filter by capability and adjust the current model's supported settings beside
+the list; on phones, **Models** and **Settings** are separate views. Effort and
+speed remain separate controls. Speed uses reported tier ids and names, so a
+runtime can offer Standard, Fast, Ultrafast or another supported tier.
+Reviewed canonical model identities still own grouping across provider routes;
+similar names do not establish equivalence.
 
 Agent choices are grouped as **Station**, **Coding apps**, and **My agents**;
 recent use orders rows inside their group. Bundled engine and model marks identify
-known brands. The Engine & model picker uses one filter control and a collapsed
-Options section. Home and New Chat share its menu controller; `/model` shares
-filtering, availability and choice memory with the popup.
+known brands. Selecting a model closes the picker; runtime changes keep it open.
+Home and New Chat share its menu
+controller; `/model` shares filtering, availability and choice memory with the popup.
 
 Choosing another engine is a conversation override of the selected Agent's
 execution binding. It retains the authored profile rather than substituting the

@@ -11,6 +11,7 @@ import type {
 import {
   resolveModelChoice,
   sanitizeRuntimeOptionsForModel,
+  updateModelRuntimeOption,
 } from '../utils/modelCapabilities';
 import {
   buildLastChosenModelBindingKey,
@@ -182,7 +183,11 @@ export function useStartSelection(selection: SelectionModel, context: string) {
   const setRuntimeOption = (target: AgentData, key: string, value: unknown) =>
     updateModelChoice(target, (current) => ({
       ...current,
-      providerOptions: { ...current.providerOptions, [key]: value },
+      providerOptions: updateModelRuntimeOption(
+        current.providerOptions,
+        key,
+        value,
+      ),
     }));
 
   /** The selection a start carries, exactly as the chips show it. */

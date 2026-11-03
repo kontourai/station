@@ -655,8 +655,8 @@ export const PROVIDER_MUSE = 'muse';
  *   too (flagSettings.fastMode/disableAutoMode), so they're included.
  * - `codex` (`codex-adapter.ts`/`codex-approval-mode.ts`): `resolveCodexApprovalKnobs`
  *   reads `approvalMode`; `mapReasoningEffort` reads `effort`, falling back to
- *   `reasoningEffort` — both genuinely applied, so both are listed; `fastMode`
- *   is read directly (`codex-adapter.ts` ~lines 71-73, 555-633, 683-718).
+ *   `reasoningEffort`. `mapServiceTier` sends the exact `serviceTier` at session
+ *   start/resume and each turn, falling back to the legacy `fastMode` flag.
  * - `acp` (`acp-adapter.ts`): `modelOptions.mode` is the requested ACP
  *   session mode (station#1945). The adapter applies it from the fresh
  *   session catalog — `setConfigOption` when a `category: "mode"` option
@@ -689,7 +689,13 @@ export const PROVIDER_MODEL_OPTION_SUPPORT: Record<string, readonly string[]> =
       'fastMode',
       'autoMode',
     ],
-    [PROVIDER_CODEX]: ['approvalMode', 'effort', 'reasoningEffort', 'fastMode'],
+    [PROVIDER_CODEX]: [
+      'approvalMode',
+      'effort',
+      'reasoningEffort',
+      'fastMode',
+      'serviceTier',
+    ],
     [PROVIDER_ACP]: ['mode'],
     [PROVIDER_OLLAMA]: [],
     [PROVIDER_BEDROCK]: [],
