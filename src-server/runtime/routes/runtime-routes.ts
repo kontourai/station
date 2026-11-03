@@ -543,6 +543,11 @@ import {
   createTaskRoutes,
   keptRowsForTaskSession,
 } from '../../routes/orchestration/tasks.js';
+import {
+  createAgentTerminalRunRoutes,
+  createTerminalRunRoutes,
+  TERMINAL_RUN_OUTPUT_PAGE_BYTES,
+} from '../../routes/orchestration/terminal-runs.js';
 import { WORK_CLAIM_MAX_ACTIVE_PER_SESSION } from '../../routes/orchestration/work-claim-limits.js';
 import { createWorkItemRoutes } from '../../routes/orchestration/work-items.js';
 import { createWorkspacePaneHostActionRoutes } from '../../routes/orchestration/workspace-pane-host-actions.js';
@@ -926,11 +931,13 @@ import {
   TelemetryProducerStore,
 } from '../../services/telemetry-producers/telemetry-producer-store.js';
 import { createTerminalShellHost } from '../../services/terminal/supervisor-shell-host.js';
+import { resolveTerminalCommandLaunch } from '../../services/terminal/terminal-command-programs.js';
 import {
   registerTerminalGateway,
   TerminalGateway,
 } from '../../services/terminal/terminal-gateway.js';
 import { resolveTerminalRetention } from '../../services/terminal/terminal-retention.js';
+import { TerminalRunRequests } from '../../services/terminal/terminal-runs.js';
 import {
   TerminalSessionRefusal,
   TerminalSessions,
@@ -9552,6 +9559,8 @@ export function configureRuntimeRoutes(
     authorityFor: conversationReadAuthorityForRequest,
     projects: context.projectService,
   });
+  // Commands agents ask to run (#3994); absent on a host with no terminals.
+  let terminalRuns: TerminalRunRequests | undefined;
   // Terminals belong to the operator on a personal host: in person, or
   // through one of their own paired devices (#3994 owner decision,
   // 2026-10-31). Members, agents, plugins and hosted tenants are refused.
@@ -9629,6 +9638,13 @@ export function configureRuntimeRoutes(
           context.storageAdapter
             .listProjects()
             .some((item) => item.id === scope.projectId),
+        // A package script by name or an approved agent command; the
+        // executable is found here, never taken from a request.
+        resolveCommand: async (_request, _scope, program, cwd) =>
+          resolveTerminalCommandLaunch(program, cwd, {
+            findBinary: findCliBinaryAsync,
+            path: resolveAugmentedPath,
+          }),
         resolveRoot: async (request, scope) => {
           const project = context.storageAdapter
             .listProjects()
@@ -9721,7 +9737,74 @@ export function configureRuntimeRoutes(
         authorizeTerminalRequest,
       ),
     );
+    const runs = new TerminalRunRequests();
+    terminalRuns = runs;
+    context.app.route(
+      '/api/terminal/runs',
+      createTerminalRunRoutes({
+        runs,
+        authorizeRequest: (request, operation) =>
+          authorizeTerminalRequest(request) &&
+          terminalScopeAllows(terminalScopeFor(request), operation),
+        person: agentSchedule.person,
+        start: async (request, run) => {
+          const { record, exited } = await terminalSessions.openCommand(
+            request,
+            { projectId: run.projectId, bindingKey: `thread:${run.sessionId}` },
+            {
+              program: { kind: 'run', command: run.command },
+              ...(run.subdirectory ? { subdirectory: run.subdirectory } : {}),
+              expectedCwd: run.cwd,
+            },
+          );
+          return { terminalId: record.terminalId, exited };
+        },
+      }),
+    );
   }
+  context.app.route(
+    '/api/orchestration/station-control/terminal-runs',
+    createAgentTerminalRunRoutes({
+      isInternalRequest: isStationInternalRequest,
+      runs: terminalRuns,
+      project: (projectId) =>
+        context.storageAdapter
+          .listProjects()
+          .find((item) => item.id === projectId),
+      runDirectory: async (request, input) => {
+        const sessions = scopedTerminals.sessions;
+        const project = context.storageAdapter
+          .listProjects()
+          .find((item) => item.slug === input.projectSlug);
+        if (!sessions || !project)
+          throw new TerminalSessionRefusal('Terminal runs unavailable');
+        return sessions.commandDirectory(
+          request,
+          { projectId: project.id, bindingKey: `thread:${input.sessionId}` },
+          input.subdirectory,
+        );
+      },
+      output: async (run, fromSeq) => {
+        const sessions = scopedTerminals.sessions;
+        if (!sessions || !run.terminalId)
+          throw new TerminalSessionRefusal('Terminal runs unavailable');
+        const read = await sessions.readInternal(
+          { projectId: run.projectId, bindingKey: `thread:${run.sessionId}` },
+          run.terminalId,
+          fromSeq,
+          TERMINAL_RUN_OUTPUT_PAGE_BYTES,
+        );
+        const { records, lastSeq, reset } = read.journal;
+        return {
+          output: records.map((record) => record.data).join(''),
+          nextSeq: records.at(-1)?.seq ?? (reset ? 0 : fromSeq),
+          lastSeq,
+          reset,
+          outputCapped: read.outputCapped === true,
+        };
+      },
+    }),
+  );
   const projectCatalogue = createProjectCatalogueReader(
     context.projectService,
     projectCatalogueDeps,

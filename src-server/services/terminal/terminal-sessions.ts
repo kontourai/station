@@ -27,6 +27,10 @@ import {
   type ShellSpawnKind,
 } from './shell-host.js';
 import {
+  readPackageScripts,
+  type TerminalCommandProgram,
+} from './terminal-command-programs.js';
+import {
   resolveTerminalJournalOptions,
   TerminalJournal,
   type TerminalJournalOptions,
@@ -86,17 +90,25 @@ const recordSchema = scopeSchema
           })
           .strict(),
         z.object({ kind: z.literal('server') }).strict(),
+        // A command session's program, re-resolved by name on restart.
+        z
+          .object({ kind: z.literal('script'), name: z.string().min(1) })
+          .strict(),
+        // An approved agent command, kept for display; never run again.
+        z
+          .object({ kind: z.literal('run'), command: z.string().min(1) })
+          .strict(),
       ])
       .optional(),
     exitCode: z.number().int().nullable().optional(),
     /** The signal number that ended it, when one did. */
     exitSignal: z.number().int().nullable().optional(),
     /**
-     * Absent: an interactive PTY. `command`: a server-launched program with
-     * no PTY whose output is capped at `outputCapBytes` (an agent's ACP
-     * terminal). Its program is never stored, so it cannot be restarted. It is
-     * never a user shell: no ordinal, no restore, and it is retained in its
-     * own pool.
+     * Absent: an interactive PTY. `command`: a program with no PTY whose
+     * output is capped at `outputCapBytes` (an agent's ACP terminal or
+     * approved run, or a package script). Only a script can be restarted: it
+     * is resolved again by name. It is never a user shell: no ordinal and no
+     * restore.
      */
     kind: z.literal('command').optional(),
     outputCapBytes: z.number().int().optional(),
@@ -159,6 +171,9 @@ type SessionJournal = Pick<
 
 export class TerminalSessionRefusal extends Error {}
 
+/** A command session's program could not be resolved; the message says why. */
+export class TerminalCommandUnavailable extends TerminalSessionRefusal {}
+
 interface TerminalSessionAuthority<Principal> {
   authorize(
     principal: Principal,
@@ -185,6 +200,13 @@ interface TerminalSessionAuthority<Principal> {
    * its binding. Absent: none is, and such shells stay ended.
    */
   restorable?(scope: TerminalSessionScope): Promise<boolean>;
+  /** Resolves a command session's program in `cwd`; throws to refuse it. */
+  resolveCommand?(
+    principal: Principal,
+    scope: TerminalSessionScope,
+    program: TerminalCommandProgram,
+    cwd: string,
+  ): Promise<ShellLaunch>;
 }
 
 function isShell(record: SessionRecord): boolean {
@@ -196,12 +218,15 @@ function isShell(record: SessionRecord): boolean {
 
 /**
  * Agent commands are retained apart from everything else, so a busy agent
- * can only expire its own ended commands, never a person's shell history.
+ * can only expire its own ended commands, never a person's shell history or
+ * script runs.
  */
 const COMMAND_SESSION_SLOTS = 16;
 type RetentionPool = 'command' | 'session';
 function poolOf(record: SessionRecord): RetentionPool {
-  return record.kind === 'command' ? 'command' : 'session';
+  return record.kind === 'command' && record.launch?.kind !== 'script'
+    ? 'command'
+    : 'session';
 }
 
 function sameScope(a: TerminalSessionScope, b: TerminalSessionScope) {
@@ -496,6 +521,136 @@ export class TerminalSessions<Principal> {
     });
   }
 
+  /**
+   * A person's command session (#3994): a package script, or an agent's
+   * command the person approved. Needs operate authority on `scope`; the
+   * program is resolved in the binding's directory. With `expectedCwd`, a
+   * directory that no longer resolves to it is refused, so a command runs
+   * only where the person was shown it would.
+   */
+  openCommand(
+    principal: Principal,
+    scope: TerminalSessionScope,
+    input: {
+      program: TerminalCommandProgram;
+      subdirectory?: string;
+      expectedCwd?: string;
+    },
+  ) {
+    return this.serialize(async () => {
+      await this.check(principal, scope, 'operate');
+      await this.ready;
+      if (this.disposed)
+        throw new TerminalSessionRefusal('Terminal sessions stopped');
+      await this.maintain();
+      const { root, cwd } = await this.confine(
+        principal,
+        scope,
+        input.subdirectory ?? '.',
+      );
+      if (input.expectedCwd !== undefined && cwd !== input.expectedCwd)
+        throw new TerminalCommandUnavailable('Its directory has changed');
+      const launch = await this.resolveCommand(
+        principal,
+        scope,
+        input.program,
+        cwd,
+      );
+      const record = recordSchema.parse({
+        ...scope,
+        terminalId: randomUUID(),
+        cwd,
+        cols: 80,
+        rows: 24,
+        status: 'starting',
+        createdAt: Date.now(),
+        kind: 'command',
+        outputCapBytes: DEFAULT_COMMAND_OUTPUT_CAP_BYTES,
+        launch: input.program,
+        ...this.storage(),
+      });
+      await this.makeRoom(record, principal);
+      this.records.set(record.terminalId, record);
+      await this.persist();
+      const exited = new Promise<TerminalExit>((done) =>
+        this.exits.set(record.terminalId, done),
+      );
+      try {
+        const journal = await this.journal(record);
+        await this.recheck(principal, scope, root, cwd);
+        await journal.flush();
+        const proc = await this.host.spawn({
+          terminalId: record.terminalId,
+          cwd,
+          cols: record.cols,
+          rows: record.rows,
+          journal: this.journalSpec(record),
+          launch,
+          kind: 'command',
+          outputCapBytes: DEFAULT_COMMAND_OUTPUT_CAP_BYTES,
+        });
+        this.track(record, proc, journal);
+        record.status = 'running';
+        await this.persist();
+      } catch (error) {
+        this.exits.delete(record.terminalId);
+        await this.stop(record.terminalId);
+        record.status = 'failed';
+        record.endedAt = Date.now();
+        await this.persist();
+        throw error;
+      }
+      return { record: { ...record }, exited };
+    });
+  }
+
+  /**
+   * The directory a command in `scope` would run in, for the server component
+   * that shows it to a person before they approve it. Nothing is authorized
+   * here: `openCommand` checks the approver and refuses a directory that
+   * resolves differently by then.
+   */
+  async commandDirectory(
+    principal: Principal,
+    scope: TerminalSessionScope,
+    subdirectory = '.',
+  ): Promise<string> {
+    await this.ready;
+    return (await this.confine(principal, scope, subdirectory)).cwd;
+  }
+
+  /** The package scripts in the binding's directory, for the script runner. */
+  async scripts(principal: Principal, scope: TerminalSessionScope) {
+    await this.check(principal, scope, 'observe');
+    const { root } = await this.confine(principal, scope, '.');
+    const scripts = await readPackageScripts(root);
+    await this.check(principal, scope, 'observe');
+    return scripts;
+  }
+
+  private async resolveCommand(
+    principal: Principal,
+    scope: TerminalSessionScope,
+    program: TerminalCommandProgram,
+    cwd: string,
+  ): Promise<ShellLaunch> {
+    if (!this.authority.resolveCommand)
+      throw new TerminalSessionRefusal('Command sessions unavailable');
+    try {
+      return await this.authority.resolveCommand(
+        principal,
+        scope,
+        program,
+        cwd,
+      );
+    } catch (error) {
+      if (error instanceof TerminalSessionRefusal) throw error;
+      throw new TerminalCommandUnavailable(
+        error instanceof Error ? error.message : String(error),
+      );
+    }
+  }
+
   /** Ends a server-owned launch; refuses an id outside `scope`. */
   closeInternal(scope: TerminalSessionScope, terminalId: string) {
     return this.serialize(async () => {
@@ -546,7 +701,8 @@ export class TerminalSessions<Principal> {
    * id (#3994): its journal continues in a new segment, so earlier output
    * stays readable. `subdirectory` moves it within its binding's root; an
    * unchanged directory is confined to the binding again, which may have
-   * moved. Server launches and commands store no program and are refused.
+   * moved. Server launches and commands other than scripts store no program
+   * and are refused; a script is resolved again by name.
    */
   restart(
     principal: Principal,
@@ -559,14 +715,17 @@ export class TerminalSessions<Principal> {
       await this.ready;
       if (this.disposed)
         throw new TerminalSessionRefusal('Terminal sessions stopped');
-      if (record.kind === 'command' || record.launch?.kind === 'server')
+      if (
+        record.launch?.kind === 'server' ||
+        (record.kind === 'command' && record.launch?.kind !== 'script')
+      )
         throw new TerminalSessionRefusal('This terminal cannot be restarted');
       if (record.journalUnavailable)
         throw new TerminalSessionRefusal('Terminal journal unavailable');
       if (record.legacy && !record.legacy.imported)
         throw new TerminalSessionRefusal('Terminal history import incomplete');
       let launch: ShellLaunch | undefined;
-      if (record.launch && record.launch.kind !== 'shell') {
+      if (record.launch?.kind === 'agent') {
         if (!this.authority.resolveLaunch)
           throw new TerminalSessionRefusal('Launch profile unavailable');
         launch = await this.authority.resolveLaunch(
@@ -580,6 +739,13 @@ export class TerminalSessions<Principal> {
         record,
         input.subdirectory ?? (() => record.cwd),
       );
+      if (record.launch?.kind === 'script')
+        launch = await this.resolveCommand(
+          principal,
+          record,
+          record.launch,
+          cwd,
+        );
       await this.stop(terminalId);
       const previous = await this.journal(record);
       // The next run's records start a new segment of the same journal.
@@ -595,12 +761,21 @@ export class TerminalSessions<Principal> {
       // whether it ended with its host.
       delete record.endedAt;
       delete record.hostStopped;
+      delete record.outputCapped;
       record.restart = {
         count: (record.restart?.count ?? 0) + 1,
         afterSeq: lastSeq,
         at: Date.now(),
       };
       await this.persist();
+      const spawnKind: ShellSpawnKind =
+        record.kind === 'command'
+          ? {
+              kind: 'command',
+              outputCapBytes:
+                record.outputCapBytes ?? DEFAULT_COMMAND_OUTPUT_CAP_BYTES,
+            }
+          : {};
       try {
         const proc = await this.host.spawn({
           terminalId,
@@ -609,6 +784,7 @@ export class TerminalSessions<Principal> {
           rows: record.rows,
           journal: this.journalSpec(record),
           ...(launch && { launch }),
+          ...spawnKind,
         });
         this.track(record, proc, previous);
         record.status = 'running';
