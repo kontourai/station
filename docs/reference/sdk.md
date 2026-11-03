@@ -44,10 +44,8 @@ Station has no `port + 1` terminal listener; the SDK no longer exports
 Both return a `TerminalSession`, the narrow interface a renderer consumes:
 `terminalId`, `state` (`connecting`, `replaying`, `ready`, `reconnecting`,
 `failed`, `detached`), `status`, `readOnly`, `error`; `subscribe({output,
-reset, change})`, `write(data)`, `resize(cols, rows)`, `cwd()`, `close()`,
-`restart()` and `detach()`. `restart()` starts an exited (or running) program
-again under the same id, its output continuing on the same view; a read-only
-view, an agent command and a server-owned launch are refused. A new subscriber first receives the retained output (256 KiB per
+reset, change})`, `write(data)`, `resize(cols, rows)`, `cwd()`, `close()` and
+`detach()`. A new subscriber first receives the retained output (256 KiB per
 session by default), then live output; `reset` means earlier output is gone.
 Each session notifies only its own subscribers, so output on one terminal
 never wakes a view of another. Input is coalesced per animation frame and held until replay is acknowledged;
