@@ -250,3 +250,8 @@ export class BrowserNetworkLog {
     this.entries.push(entry);
   }
 }
+
+/** One page of network metadata, stamped with the session generation it came from. */
+export type BrowserNetworkSnapshot = ReturnType<BrowserNetworkLog['read']> & {
+  generation: number;
+};

@@ -396,14 +396,15 @@ export function useDeviceAppAction(
           action,
         ),
       );
+      const observed =
+        action.type === 'terminate' ? 'not-running' : 'foreground';
       if (
         value.hostId !== target.hostId ||
         value.platform !== target.platform ||
         value.deviceId !== target.deviceId ||
         value.appId !== action.appId ||
         value.action !== action.type ||
-        value.observed !==
-          (action.type === 'terminate' ? 'not-running' : 'foreground') ||
+        value.observed !== observed ||
         typeof value.observedAt !== 'string'
       )
         throw new DeviceToolsRequestError(200, undefined);
@@ -411,7 +412,7 @@ export function useDeviceAppAction(
         ...target,
         appId: action.appId,
         action: action.type,
-        observed: action.type === 'terminate' ? 'not-running' : 'foreground',
+        observed,
         observedAt: value.observedAt,
       };
     },
@@ -483,23 +484,26 @@ export function useDeviceAppInstall(
         throw new Error('Select a Project first.');
       const root = `${scope.apiBase}/api/mobile-devices/projects/${encodeURIComponent(projectSlug)}/device-artifacts`;
       const opts = { requestScope: scope, maxResponseBytes: 16 * 1024 };
+      if (
+        source.kind === 'upload' &&
+        !(
+          source.file.size > 0 &&
+          source.file.size <= DEVICE_ARTIFACT_UPLOAD_MAX_BYTES
+        )
+      )
+        throw new Error('The app file is empty or too large.');
       const response =
         source.kind === 'workspace'
           ? await mutateJson(`${root}/workspace`, 'POST', opts, {
               relativePath: source.path,
               platform: target.platform,
             })
-          : source.file.size > 0 &&
-              source.file.size <= DEVICE_ARTIFACT_UPLOAD_MAX_BYTES
-            ? await mutateBinary(
-                `${root}/upload?${new URLSearchParams({ platform: target.platform })}`,
-                'POST',
-                opts,
-                source.file,
-              )
-            : (() => {
-                throw new Error('The app file is empty or too large.');
-              })();
+          : await mutateBinary(
+              `${root}/upload?${new URLSearchParams({ platform: target.platform })}`,
+              'POST',
+              opts,
+              source.file,
+            );
       const staged = await data(response);
       if (
         typeof staged.handle !== 'string' ||

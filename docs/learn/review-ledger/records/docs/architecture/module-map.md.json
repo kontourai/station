@@ -942,8 +942,6 @@
 
     "src-ui/src/workspace-panes/browser-pane/BrowserAcquisitionPanel.tsx",
 
-    "src-ui/src/workspace-panes/browser-pane/BrowserAgentSettingsPanel.tsx",
-
     "src-ui/src/workspace-panes/browser-pane/BrowserPane.tsx",
 
     "src-ui/src/workspace-panes/browser-pane/BrowserSetup.tsx",
@@ -1614,7 +1612,9 @@
 
     "packages/agent-runtime/src/__tests__/turn-retention.test.ts",
 
-    "src-server/services/orchestration/__tests__/session-start-ownership.test.ts"
+    "src-server/services/orchestration/__tests__/session-start-ownership.test.ts",
+
+    "src-ui/src/views/settings/BrowserAgentSettingsPanel.tsx"
   ],
 
   "checks": [

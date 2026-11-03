@@ -102,8 +102,6 @@
 
     "src-ui/src/workspace-panes/browser-pane/BrowserAcquisitionPanel.tsx",
 
-    "src-ui/src/workspace-panes/browser-pane/BrowserAgentSettingsPanel.tsx",
-
     "src-ui/src/workspace-panes/browser-pane/BrowserPane.tsx",
 
     "src-ui/src/workspace-panes/browser-pane/browserPaneApi.ts",
@@ -115,8 +113,6 @@
     "src-ui/src/workspace-panes/DeviceWorkspacePane.tsx",
 
     "src-ui/src/workspace-panes/browser-pane/BrowserPane.css",
-
-    "src-ui/src/workspace-panes/browser-pane/BrowserOverflowMenu.tsx",
 
     "src-server/services/projects/task-browser-capture.ts",
 
@@ -136,7 +132,11 @@
 
     "src-server/tools/station-browser-policy.ts",
 
-    "src-ui/src/views/task-workspace/review/TaskReviewClips.tsx"
+    "src-ui/src/views/task-workspace/review/TaskReviewClips.tsx",
+
+    "src-ui/src/views/settings/BrowserAgentSettingsPanel.tsx",
+
+    "src-ui/src/workspace-panes/PaneOverflowMenu.tsx"
   ],
 
   "checks": [
