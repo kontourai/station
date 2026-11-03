@@ -2540,6 +2540,13 @@ execution inspections now acquire their own short home scopes before domain lock
 A fresh runtime finalizes the retained empty-work cancellation and replays it without
 another authority-cancellation write. Active interruption writers and confirmation
 with launched attempts remain unqualified.
+Initial report intent/admission retention and creation's final operation lookup
+borrow that same parent publication. Capture checks queue under the original
+request authority. One Home scope spans both initial writes through durable
+return; the final lookup owns a separate scoped read. Each successful writer
+return has a closing currentness check, with loss classified as uncertain.
+Unconfirmed release retains runtime admission, and the same Home owner refuses
+new work until cleanup succeeds. These scopes end before provider or human waits.
 Runtime publication now also encloses input narrowing, report continuation and
 accounting recovery. Input sync admits one publication before recovering the
 private answer and retains it through continuation and final custody inspection.

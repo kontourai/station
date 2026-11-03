@@ -34,13 +34,24 @@ use the current Station Assistant display name and the graph importer's actual
 shared batch deadline. Existing runtime/provider/native/hosted limits remain;
 these records do not close the broader documentation freshness backlog.
 
-A separate source review identifies two remaining execution custody bridges:
-initial intent/admission retention does not receive the existing publication,
-and the trailing operation lookup drops it. The next repair must preserve every
-live request/preparation check, exact Home custody through durable return and
-post-return uncertainty classification. Its proposed proof uses real persistence
-return barriers and a genuine Flow prerequisite with no ready roster seat, not
-fabricated provider success. Neither repair nor qualification is claimed here.
+Initial/final execution custody is repaired at `69b278d2eaf`. Initial private
+intent/admission retention and the trailing lookup now borrow the existing parent
+publication. Full request/preparation/signature guards remain; successful writer
+returns have explicit uncertainty checks and failed release remains retryable.
+Seven new real-boundary controls pass, including a genuine Flow prerequisite with
+no ready roster seat and zero model dispatch. Omitting only the two publication
+arguments causes all seven intended failures; exact-restored verification passes
+all seven. The same production bytes pass the 35 adjacent authority-installation
+and resource-policy checks. Independent source review found no P0–P2 defect.
+Earlier cleanup-test failures exposed an overly strong post-release physical-lock
+oracle and teardown after temp deletion; both fixture issues were corrected.
+Physical exclusion is proven through durable return; after failed retirement,
+the same Home owner refuses new work and runtime admission stays pending until
+retry succeeds. This is not all-writer, provider or initialized-store qualification.
+The unchanged original caller still fails both cases: HTTP refuses before canonical
+input with `group_preparation_unavailable` (two starts, one model fetch and one
+input invocation); direct Flow misses its lost-adoption fault at 130297ms, beyond
+the unchanged 120-second budget. Both shutdowns complete. No unchanged rerun follows.
 
 The responding-request settlement gap is repaired at `26445f1466c`, followed by
 resource classification at `44c3c85ad29`. The original source check and the live
