@@ -11,6 +11,15 @@ pages never split surrogate pairs. Its usage belongs to the whole invocation,
 not the page. These shapes do not supply execution authority or establish
 current host capability.
 
+`ModelOptionCapabilities` in [`tool.ts`](../../packages/contracts/src/tool.ts)
+carries optional `serviceTiers` (exact ids, names and descriptions) and a
+catalog `defaultServiceTier`. Consumers show only reported choices. Codex's
+`serviceTier` option takes precedence over the legacy `fastMode` flag; other
+providers retain their existing controls.
+An absent Codex tier leaves the session's speed unchanged on continuation;
+`serviceTier: null` explicitly clears it. Legacy `fastMode: false` supplies no
+override. Catalog defaults describe the model, not local CLI configuration.
+
 Use `@kontourai/station-contracts/*` when you need stable API/domain shapes shared across `src-server`, `packages/sdk`, `packages/cli`, plugins, or tests. New code should import these modules directly instead of reaching through `@kontourai/station-shared`.
 
 `LayoutPanelsRecord` holds device-local side/lower-panel state by layout host
@@ -283,7 +292,9 @@ bytes, publication references, byte/height limits and theme variable names for
 conversation access. Filesystem preparation stays in the server.
 
 The `@kontourai/station-contracts/terminal-transport` subpath exports the
-terminal binary frame codec, limits and observe/operate scope predicate. The
+terminal binary frame codec, limits, the socket's `restart` request
+(`TerminalRestartRequest`, with `TERMINAL_SUBDIRECTORY_MAX_LENGTH`) and the
+observe/operate scope predicate. The
 frame limit bounds unacknowledged output records independently of byte credit,
 including records sanitized to an empty payload. The
 [API reference](api.md#terminal-socket-operator-transport) owns the
@@ -385,6 +396,7 @@ value; see [event content spill](../design/event-content-spill.md).
 | `@kontourai/station-contracts/tool-library` | Safe source metadata, Project policy, requests, access summaries and Project agent drafts; [SDK client](sdk.md#project-tool-library) |
 | `@kontourai/station-contracts/unified-search` | Owner-qualified typed search results, provider pages, source states, open intents, and fresh owner-resolved open targets |
 | `@kontourai/station-contracts/workspace-activity-review-pane` | Canonical Activity review Pane descriptor, `activity-review:` plus 32 lowercase hexadecimal occurrence identity, instance constructor and pure canonical-instance check. These grant no source access or review authority. |
+| `@kontourai/station-contracts/workspace-terminal-pane` | Canonical terminal session Pane descriptor (`pane:builtin:workspace-terminal`), `terminal-pane:` plus 32 lowercase hexadecimal occurrence identity bound to one Project, instance constructor and pure canonical-instance check. The session it shows is the occurrence's stored record; nothing here grants terminal access. |
 | `@kontourai/station-contracts/workspace-pane-host-contract` | The transport-independent Pane-host capability interface: navigation, notices, confirmation, device facts, the optional Skill experience and the optional, occurrence-bound related-pane capability (`PaneRelatedPanesHost`, see [Related panes](sdk.md#related-panes)) |
 | `@kontourai/station-contracts/workspace-pane-host-contribution` | Package-level Pane-host actions and explicit owner-relative/default Agent selection |
 

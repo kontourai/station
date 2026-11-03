@@ -1489,6 +1489,11 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
         method: 'POST',
         prefix: '/api/projects/:slug/terminal-sessions/:terminalId/resize',
       },
+      // Restart ends and relaunches the shell (#3994): an operate action.
+      {
+        method: 'POST',
+        prefix: '/api/projects/:slug/terminal-sessions/:terminalId/restart',
+      },
       {
         method: 'DELETE',
         prefix: '/api/projects/:slug/terminal-sessions/:terminalId',
@@ -1681,6 +1686,26 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
     prefix: '/api/terminal/tickets',
     exact: true,
     scope: PAIRING_SCOPE_TERMINAL_OBSERVE,
+    origin: 'explicit',
+    personalTokens: 'refused',
+  },
+  // #3994: terminal history usage reads what the caller may observe; clearing
+  // deletes ended terminals' output, the operate tier.
+  {
+    id: '/api/terminal/history:GET:terminal-observe',
+    method: 'GET',
+    prefix: '/api/terminal/history',
+    exact: true,
+    scope: PAIRING_SCOPE_TERMINAL_OBSERVE,
+    origin: 'explicit',
+    personalTokens: 'refused',
+  },
+  {
+    id: '/api/terminal/history:DELETE:terminal-operate',
+    method: 'DELETE',
+    prefix: '/api/terminal/history',
+    exact: true,
+    scope: PAIRING_SCOPE_TERMINAL_OPERATE,
     origin: 'explicit',
     personalTokens: 'refused',
   },

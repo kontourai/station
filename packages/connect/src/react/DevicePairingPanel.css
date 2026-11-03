@@ -128,3 +128,79 @@
   background: var(--bg-primary, #111);
   color: var(--text-primary, #eee);
 }
+
+/* "Pair phone": one tap per route, the QR updates with the choice. */
+.pairing-routes {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.pairing-routes > legend {
+  padding: 0 0 6px;
+  font-size: 0.8rem;
+  color: var(--text-secondary, #999);
+}
+.pairing-route {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 8px 10px;
+  border: 1px solid var(--border-primary, #333);
+  border-radius: 8px;
+  cursor: pointer;
+}
+.pairing-route[data-selected="true"] {
+  border-color: var(--accent-primary, #8b7cf6);
+  background: var(--bg-hover, rgba(255, 255, 255, 0.04));
+}
+.pairing-route > input {
+  margin-top: 3px;
+}
+.pairing-route__text {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.pairing-route__label {
+  font-weight: 600;
+  color: var(--text-primary, #eee);
+}
+.pairing-route__hint {
+  font-size: 0.8rem;
+  color: var(--text-secondary, #999);
+}
+.pairing-route__url {
+  font-size: 0.75rem;
+  color: var(--text-secondary, #999);
+  overflow-wrap: anywhere;
+}
+.pairing-quick-status {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+}
+.pairing-quick-status > p {
+  margin: 0;
+  color: var(--text-secondary, #999);
+}
+.pairing-quick-expiry {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  align-items: center;
+  justify-content: center;
+}
+.pairing-link-btn {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text-secondary, #999);
+  font: inherit;
+  font-size: 0.85rem;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  cursor: pointer;
+}

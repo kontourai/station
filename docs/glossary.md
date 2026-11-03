@@ -422,7 +422,8 @@ frame, input and lifecycle ownership.
 - **Browser pane** — a Workspace Pane that displays a browser session running
   on the Station host. Authorized Devices view its streamed frames. The
   Station operator can view and control sessions across profiles; the operator’s
-  own current paired Device can view within its scope. Active Project admins and owners are restricted to sessions in their own profile.
+  own current paired Device can view within its scope, and one that already has a
+  host shell acts as the operator (owner-device standing). Active Project admins and owners are restricted to sessions in their own profile.
   Agent operations need a separately verified grant. Pane state `2.0` stores
   the Project ID and browser-session reference. Opening a legacy `1.0` Browser
   Preview record restores or opens a server session for its URL and saves the

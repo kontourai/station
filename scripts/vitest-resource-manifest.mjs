@@ -199,6 +199,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'src-server/adapters/__tests__/node-pty-adapter.test.ts',
   // Real node-pty shells in isolated homes; no shared ports or host state.
   'src-server/services/terminal/__tests__/terminal-sessions.process.test.ts',
+  // Real node-pty shells in a private home; one loopback server on port 0.
+  'src-server/services/terminal/__tests__/terminal-retention.process.test.ts',
   // Production route/auth composition opens real terminal PTYs in a private home.
   'src-server/runtime/routes/__tests__/runtime-routes-station-control-read-scope.test.ts',
   'src-server/services/terminal/__tests__/terminal-gateway.process.test.ts',
@@ -206,6 +208,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // command children it kills as trees; a core restart is a second
   // TerminalSessions on the same private home. No ports or host state.
   'src-server/services/terminal/__tests__/supervisor-shell-host.process.test.ts',
+  // Command sessions (output cap, exit, ACP agent terminals) and restart of
+  // a real PTY, in private homes; no ports or host state.
+  'src-server/services/terminal/__tests__/terminal-command-sessions.process.test.ts',
   // Two disposable workers contend on private SQLite connections; no shared host output or timing assertion.
   'src-server/services/outside-agent/__tests__/oauth-concurrency.test.ts',
   // Two cache-enabled server bootstrap processes drive real MCP, Strands, CLI and shell children.

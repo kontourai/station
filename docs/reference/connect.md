@@ -660,7 +660,10 @@ The host's launcher sign-in session on the same computer may create invitations,
 requests and manage paired devices while its grant retains `access:manage`.
 This authority comes from the server's private host-possession and
 `ui-bootstrap` mint record, not from an ordinary paired Device carrying that
-scope. Invited Devices do not inherit it. It does not grant operator identity,
+scope. On a personal Station, one of the owner's own Devices that already holds
+a host shell gets the same standing and limits
+([owner-device standing](../security/remote-access-threat-model.md#owner-device-standing-2026-11-02)); other
+invited Devices do not inherit it. It does not grant operator identity,
 passkey management or the native desktop consent broker's local-grant authority.
 The host browser cannot introduce protected management or consent scopes into
 an invitation, a pending request's final approved scope, or another Device's
@@ -668,13 +671,19 @@ permissions. Ordinary Device-use grants, including running commands and full
 access, remain available; protected promotions keep their separate operator path.
 
 At the end of onboarding or in the Connections modal, choose **Connect another device** to invite a phone
-to the selected Station server. The existing client and the phone both connect
+to the selected Station server. The panel asks the Station for its reachable
+routes (`GET /api/system/routes`) and opens straight to a pre-approved code on
+the first HTTPS one (a code carries a secret, and the phone's decoder accepts
+only HTTPS, so cleartext LAN and Tailscale IP routes are not listed); choosing
+another route replaces the code and cancels the old one, and **Other options**
+shows the address and access form below. If no route works or the code cannot
+be created, the panel shows why and opens that form. The existing client and the phone both connect
 to that server; the existing client does not become a server. Check the visible
-server address: the phone needs a reachable LAN or tailnet address, not localhost.
+server address: the phone needs a reachable HTTPS address, not localhost.
 The panel warns when the address is a loopback one, and remembers the last
 reachable address an offer was created with for that Station, offering it back
 as the field's starting value the next time (#2228).
-Choose **Create pairing code**, scan with the phone camera to open the selected
+Scan the code (from **Other options**, choose **Create pairing code** first) with the phone camera to open the selected
 installed Station channel, then redeem the invitation. Creating it approves
 the selected access; no second approval is needed. For Station’s in-app scanner, select **Scanner inside Station** above the QR instead.
 **Paired devices → Approve another device** also opens the invitation panel.
@@ -725,8 +734,8 @@ remote WebSocket admission without rotating the operator credential or revoking
 other devices. Existing streams have their own revalidation boundaries; this is
 not a guarantee that revocation closes every already admitted socket. It does
 not recall data already delivered or guarantee cancellation of effects already
-dispatched. Ordinary paired
-credentials cannot create pairing offers. An explicitly promoted
+dispatched. Paired credentials without owner-device standing cannot create
+pairing offers. An explicitly promoted
 `access:devices` Device can list, change scopes, revoke and remove revoked
 records using the same authenticated principal in the Paired devices panel.
 Only the operator can grant or remove `access:devices`; a person-bound holder
@@ -1041,8 +1050,10 @@ The optional `renderPairingEndpointSuggestions` modal slot accepts host-owned
 content with `{apiBase, request, onSuggest}`. Station's host UI fetches the
 permission-protected raw endpoint inventory with React Query and shows an exact
 HTTPS address with an explicit Use action. It never overwrites entered/remembered
-addresses automatically. Host QR creation requires reachable HTTPS/nonloopback;
-the decoder retains HTTPS and strict HTTP loopback compatibility. Native LAN
+addresses automatically. Host QR creation requires a reachable nonloopback HTTPS
+address, matching the decoder, which retains HTTPS and strict HTTP loopback
+compatibility. The offer service also accepts private-network HTTP, but the panel
+does not create a secret-bearing code for it. Native LAN
 HTTP uses the separate direct access flow instead of secret QR invitations.
 
 ### Connection candidate providers

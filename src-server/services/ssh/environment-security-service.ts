@@ -30,6 +30,7 @@ import {
   DEVICE_PAIRING_PROTOCOL_VERSION,
   ENVIRONMENT_SECURITY_SCHEMA_VERSION,
   type EnvironmentSecurityRecord,
+  PAIRING_SCOPES,
   type PairedDevice,
   PUBLIC_HANDSHAKE_SCHEMA_VERSION,
   type PublicStationHandshake,
@@ -42,7 +43,9 @@ import {
 } from '@kontourai/station-contracts';
 import {
   CLIENT_PROTOCOL_HEADER_CAPABILITY,
+  PAIRING_SCOPE_ACCESS_MANAGE,
   PAIRING_SCOPE_APPROVAL_FULL_ACCESS,
+  pairingScopeIncludes,
 } from '@kontourai/station-contracts/environment-security';
 import {
   PRODUCT_TELEMETRY_ACKNOWLEDGEMENT_CAPABILITY,
@@ -336,6 +339,7 @@ export class EnvironmentSecurityService {
           environmentId: current.environmentId,
           now: this.#now,
           capScope: this.#capScope,
+          ownerDeviceStanding: !this.#hosted,
         },
         lease,
       );
@@ -379,6 +383,7 @@ export class EnvironmentSecurityService {
           environmentId: current.environmentId,
           now: this.#now,
           capScope: this.#capScope,
+          ownerDeviceStanding: !this.#hosted,
         },
         lease,
       );
@@ -533,7 +538,46 @@ export class EnvironmentSecurityService {
       return DEFAULT_GRANT_PAIRING_SCOPE;
     // #3557: never the raw grant: a device tied to a person is capped by
     // that person's Station group, here and in every reader of this.
-    return this.#devicePairingService?.effectiveScope(candidate);
+    const scope = this.#devicePairingService?.effectiveScope(candidate);
+    // Owner standing (2026-11-02): the owner's own device reaches the
+    // `access:manage` route tier, exactly as Station's launcher browser on
+    // the host does. Derived per request, never stored: the device's grant
+    // and the scope string on the wire are unchanged (principals.md R2).
+    // No other tier widens; protected and single-purpose scopes stay as
+    // granted.
+    if (
+      scope !== undefined &&
+      !pairingScopeIncludes(scope, PAIRING_SCOPE_ACCESS_MANAGE) &&
+      this.credentialHasOwnerStanding(candidate)
+    )
+      return PAIRING_SCOPES.filter(
+        (token) =>
+          token === PAIRING_SCOPE_ACCESS_MANAGE ||
+          pairingScopeIncludes(scope, token),
+      ).join(' ');
+    return scope;
+  }
+
+  /**
+   * Owner standing (owner decision, 2026-11-02): whether `candidate` is one
+   * of the owner's own devices on this personal Station, acting as the owner.
+   * See `DevicePairingService.credentialHasOwnerStanding` for exactly which
+   * devices qualify. The operator credential is not a device and never holds
+   * it (it is already the operator).
+   */
+  credentialHasOwnerStanding(candidate: string): boolean {
+    if (this.#hosted) return false;
+    return (
+      this.#devicePairingService?.credentialHasOwnerStanding(candidate) ?? false
+    );
+  }
+
+  /** {@link credentialHasOwnerStanding}, by device id, for background work. */
+  deviceHasOwnerStanding(deviceId: string): boolean {
+    if (this.#hosted) return false;
+    return (
+      this.#devicePairingService?.deviceHasOwnerStanding(deviceId) ?? false
+    );
   }
 
   verifyOperatorCredential(candidate: string): boolean {
@@ -744,6 +788,8 @@ export class EnvironmentSecurityService {
         this.#devicePairingService?.credentialMayManagePairing(candidate) &&
         (isPairingApprovalLeaf(request) ||
           isDeviceAccessManagementLeaf(request) ||
+          (request.method.toUpperCase() === 'GET' &&
+            request.path === '/api/pairing/endpoint-suggestions') ||
           (request.method.toUpperCase() === 'POST' &&
             request.path === '/api/pairing/offers') ||
           (request.method.toUpperCase() === 'DELETE' &&

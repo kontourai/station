@@ -101,6 +101,7 @@
         "ProjectTaskRoom",
         "MobileDeviceHost",
         "BrowserSessionService",
+        "TerminalView",
         "Local speech and media tools",
         "Shared live surface",
         "Personal Work Board",

@@ -1,4 +1,5 @@
 import { describe, expect, test, vi } from 'vitest';
+import type { TerminalShellHostReport } from '../commands/lifecycle.js';
 import type { DoctorDeps } from '../commands/lifecycle-doctor.js';
 import {
   collectDoctorReport,
@@ -19,6 +20,7 @@ function stubDeps(overrides: Partial<DoctorDeps> = {}): Partial<DoctorDeps> {
       mismatches: [],
     })),
     inspectSupervisorWedges: vi.fn(async () => []),
+    inspectShellHosts: vi.fn(() => []),
     ...overrides,
   };
 }
@@ -78,5 +80,73 @@ describe('doctor terminal PTY check (#1244)', () => {
     expect(capability.state).toBe('unavailable');
     if (capability.state !== 'unavailable') return;
     expect(capability.reason).toContain('npm run dependencies:install');
+  });
+});
+
+describe('doctor terminal shell host (#3994)', () => {
+  const report = (
+    overrides: Partial<TerminalShellHostReport>,
+  ): TerminalShellHostReport => ({
+    instanceId: 'dev',
+    hostBundle: true,
+    supervised: true,
+    workloads: 'granted',
+    hostAvailable: true,
+    detail: 'shells are supervisor workloads',
+    ...overrides,
+  });
+
+  test('a supervisor that granted workloads, with the host bundle present, passes both lines', async () => {
+    const inspectShellHosts = vi.fn(() => [report({})]);
+    const result = await collectDoctorReport(stubDeps({ inspectShellHosts }));
+    expect(inspectShellHosts).toHaveBeenCalledWith('/nonexistent/project-home');
+    expect(
+      result.checks.filter((check) => check.label.startsWith('Terminal')),
+    ).toEqual(
+      expect.arrayContaining([
+        {
+          label: 'Terminal shell host (dev)',
+          status: 'pass',
+          detail: 'Supervisor workloads: shells survive a core restart.',
+        },
+        {
+          label: 'Terminal PTY host bundle (dev)',
+          status: 'pass',
+          detail: 'station-pty-host.js is beside the server bundle.',
+        },
+      ]),
+    );
+  });
+
+  test('a core without the workloads grant or the bundle warns and says why', async () => {
+    const result = await collectDoctorReport(
+      stubDeps({
+        inspectShellHosts: vi.fn(() => [
+          report({
+            hostBundle: false,
+            workloads: 'not-granted',
+            hostAvailable: false,
+            detail: 'the supervisor has no workload host',
+          }),
+        ]),
+      }),
+    );
+    const host = result.checks.find(
+      (check) => check.label === 'Terminal shell host (dev)',
+    );
+    expect(host?.status).toBe('warn');
+    expect(host?.detail).toContain('the supervisor has no workload host');
+    const bundle = result.checks.find(
+      (check) => check.label === 'Terminal PTY host bundle (dev)',
+    );
+    expect(bundle?.status).toBe('warn');
+    expect(bundle?.detail).toContain('missing');
+  });
+
+  test('with no instance running it reports that instead of a guess', async () => {
+    const result = await collectDoctorReport(stubDeps());
+    expect(
+      result.checks.find((check) => check.label === 'Terminal shell host'),
+    ).toMatchObject({ status: 'pass' });
   });
 });

@@ -26,6 +26,7 @@
     "./workspace-file-preview": "./src/workspace-file-preview.ts",
     "./coding-file-mentions-query": "./src/query-domains/chatRuntimeCoding.ts",
     "./workspace-pane": "./src/workspace-pane.ts",
+    "./terminal-view": "./src/terminal-view/index.ts",
     "./task-outputs": "./src/task-outputs.ts",
     "./session-outputs": "./src/session-outputs.ts",
     "./session-inventory": "./src/session-inventory.ts",

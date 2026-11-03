@@ -383,7 +383,7 @@
   --diff-deletion: var(--k-negative);
   --diff-modified: var(--k-active);
 
-  /* Terminal (xterm paints a canvas, so TerminalPanel reads these from the
+  /* Terminal (the terminal view paints a canvas, so it reads these from the
      computed style and re-reads them when the root theme changes). */
   --terminal-background: #1a1a2e;
   --terminal-foreground: #e0e0e0;
@@ -2202,6 +2202,38 @@ button:hover {
   flex: 0 1 auto;
   align-items: center;
   overflow: hidden;
+}
+
+/* #4401 A30: a side region narrower than its default (`is-compact`,
+   `RegionChromeBar`). With the full bar's spacing the identity, which clips,
+   was squeezed past its own contents: the title went to nothing and the ×
+   slid under the status chip. Here the spacing tightens, and the hover-only
+   placement grab and the avatar step aside so the title keeps room; moving
+   the region stays a row of the More menu. */
+.chat-dock__header.is-compact {
+  gap: var(--k-space-1);
+  padding-inline: var(--k-space-2);
+}
+
+.chat-dock__header.is-compact .chat-dock__title {
+  gap: var(--k-space-1);
+}
+
+.chat-dock__header.is-compact .chat-dock__header-actions {
+  gap: var(--k-space-1);
+}
+
+.chat-dock__header.is-compact .chat-dock__header-actions .chat-dock__icon-btn {
+  padding-inline: 6px;
+}
+
+.chat-dock__header.is-compact .chat-dock__placement-grab,
+.chat-dock__header.is-compact .chat-dock__active-identity-avatar {
+  display: none;
+}
+
+.chat-dock__header.is-compact .session-context-chip {
+  margin-left: 0;
 }
 
 /* The row's only growing member: everything to the left of it is one cluster,
@@ -6318,6 +6350,13 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
     -webkit-overflow-scrolling: touch;
   }
 
+  .session-model-picker > .responsive-dialog-header {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background: var(--k-bg);
+  }
+
   .responsive-dialog-header strong,
   .background-tasks-sheet__header h2,
   .tool-call-batch-sheet__title {
@@ -7673,6 +7712,26 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
     align-items: center;
   }
 
+  /* #4401 A31: the pane's identity (avatar, title, ×) and its status chip are
+     horizontal rows with their own floors; in the 36px vertical strip they ran
+     out of it, over the main content and past the window edge. The strip is
+     the region's controls alone; Show <surface> names it. Every button keeps
+     inside the strip's width. */
+  .app__main
+    > :is([data-region="left"], [data-region="right"]).is-collapsed
+    :is(.chat-dock__header-identity, .session-context-chip) {
+    display: none;
+  }
+
+  .app__main
+    > :is([data-region="left"], [data-region="right"]).is-collapsed
+    .chat-dock__header
+    button {
+    max-width: 100%;
+    padding-left: 4px;
+    padding-right: 4px;
+  }
+
   .app__main
     > :is([data-region="left"], [data-region="right"]).is-collapsed
     .chat-dock__counter {
@@ -8800,7 +8859,7 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
 
 .new-chat-modal__model-picker {
   position: relative;
-  width: min(420px, 100%);
+  width: min(820px, 100%);
 }
 
 .new-chat-modal__model-picker .session-model-picker {

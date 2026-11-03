@@ -82,6 +82,7 @@ import { createTranscriptionRoutes } from '../../routes/transcription.js';
 import { createWalkthroughRoutes } from '../../routes/walkthroughs.js';
 import { readBoundedRequestBody } from '../../security/bounded-request-body.js';
 import {
+  isOperatorAtHostNotAgent,
   isOperatorInPersonNotAgent,
   isOperatorsOwnDevice,
   isTerminalOperator,
@@ -582,7 +583,10 @@ import {
   createProjectRoutes,
   type ProjectResolutionRouteDeps,
 } from '../../routes/projects/projects.js';
-import { createTerminalSessionRoutes } from '../../routes/projects/terminal-session-routes.js';
+import {
+  createTerminalHistoryRoutes,
+  createTerminalSessionRoutes,
+} from '../../routes/projects/terminal-session-routes.js';
 import { createUICommandRoutes } from '../../routes/projects/ui-commands.js';
 import { createConversationPullRequestLinkRoutes } from '../../routes/pull-requests/conversation-pull-request-links.js';
 import { createPullRequestRoutes } from '../../routes/pull-requests/pull-request-routes.js';
@@ -641,10 +645,11 @@ import {
   classifyRuntimePeer,
   getRuntimeAuthenticatedRequestPrincipal,
   getRuntimeNativeDeviceProofPrincipal,
-  isBoundRuntimeLocalOperator,
+  isBoundRuntimeOwner,
   isLoopbackAuthority,
   isRuntimeRequestPrincipalCurrent,
   parseStrictBearer,
+  principalHasOwnerAuthority,
   RUNTIME_CREDENTIAL_AUTHORITY_VAR,
   type RuntimeCallerRequest,
   type RuntimeDeviceActivityClassifierContext,
@@ -939,6 +944,7 @@ import {
   registerTerminalGateway,
   TerminalGateway,
 } from '../../services/terminal/terminal-gateway.js';
+import { resolveTerminalRetention } from '../../services/terminal/terminal-retention.js';
 import {
   TerminalSessionRefusal,
   TerminalSessions,
@@ -1093,6 +1099,21 @@ import {
 } from './workspace-pane-host-actions.js';
 
 type HonoApp = Parameters<NonNullable<HonoServerConfig['configureApp']>>[0];
+
+/**
+ * The display name of the Station owner acting in person, for routes whose
+ * work belongs to the owner (setup imports, pull requests, conversation PR
+ * links, the owner's own agents' unattended grants). The owner in person,
+ * by the operator credential, at the host, or through one of their own
+ * paired devices (owner standing, owner decision 2026-11-02). Never an
+ * agent's request: Station's internal principal is excluded. `undefined`
+ * refuses.
+ */
+function ownerIdentityForRequest(request: Request): string | undefined {
+  return isOperatorInPersonNotAgent(request)
+    ? getCachedUser().alias
+    : undefined;
+}
 
 /** A session worktree is valid only within the project that owns the thread. */
 export function pullRequestThreadForProject<
@@ -1863,6 +1884,8 @@ export function configureRuntimeRoutes(
       context.environmentSecurityService.credentialLocality(credential),
     resolveCredentialMintKind: (credential: string) =>
       context.environmentSecurityService.credentialMintKind(credential),
+    resolveCredentialOwnerStanding: (credential: string) =>
+      context.environmentSecurityService.credentialHasOwnerStanding(credential),
     classifyPairedDeviceActivity: classifyRuntimePairedDeviceActivity,
     allowedOrigins,
     audit: (record: RuntimeSecurityAuditRecord) =>
@@ -2263,7 +2286,7 @@ export function configureRuntimeRoutes(
       resolveOrchestrationRequestPrincipal(c).id,
       getTenantRequestContext(c.req.raw),
       hostedTenantRegistry,
-      runtimePrincipal?.locality === 'home-possession'
+      principalHasOwnerAuthority(runtimePrincipal)
         ? { localHomePossession: true }
         : undefined,
     );
@@ -3980,7 +4003,7 @@ export function configureRuntimeRoutes(
       (request) =>
         !hostedTenantRegistry &&
         !isHostedTenantExecutionRequired() &&
-        isBoundRuntimeLocalOperator(request),
+        isBoundRuntimeOwner(request),
       async (requestContext, request) => {
         const { captureAuthorityObservation, revalidateAuthorityObservation } =
           await import('../../services/identity/authority-observation.js');
@@ -4053,7 +4076,7 @@ export function configureRuntimeRoutes(
           hostedTenantRegistry ||
           isHostedTenantExecutionRequired() ||
           isStationInternalRequest(request) ||
-          !isBoundRuntimeLocalOperator(request)
+          !isBoundRuntimeOwner(request)
         )
           return undefined;
         const actorId = resolveOrchestrationRequestPrincipal(requestContext).id;
@@ -4063,7 +4086,7 @@ export function configureRuntimeRoutes(
           assertCurrent() {
             if (
               !isRequestPrincipalCurrent(request) ||
-              !isBoundRuntimeLocalOperator(request) ||
+              !isBoundRuntimeOwner(request) ||
               resolveOrchestrationRequestPrincipal(requestContext).id !==
                 actorId
             )
@@ -4457,14 +4480,8 @@ export function configureRuntimeRoutes(
           context.configLoader.getProjectHomeDir(),
         ),
         {
-          operatorIdentityForRequest: (routeContext) => {
-            const authority = (
-              routeContext as unknown as { get: (key: string) => unknown }
-            ).get(RUNTIME_CREDENTIAL_AUTHORITY_VAR);
-            return authority === 'operator-credential'
-              ? getCachedUser().alias
-              : undefined;
-          },
+          operatorIdentityForRequest: (routeContext) =>
+            ownerIdentityForRequest(routeContext.req.raw),
           isHostedExecution: () => hostedTenantRegistry !== undefined,
         },
       ),
@@ -8141,8 +8158,9 @@ export function configureRuntimeRoutes(
         ) ||
         (getRuntimeAuthenticatedRequestPrincipal(request)?.authority !==
           'operator-credential' &&
-          getRuntimeAuthenticatedRequestPrincipal(request)?.locality !==
-            'home-possession')
+          !principalHasOwnerAuthority(
+            getRuntimeAuthenticatedRequestPrincipal(request),
+          ))
       )
         throw new ProjectMembershipRefusal('forbidden');
     },
@@ -8962,8 +8980,7 @@ export function configureRuntimeRoutes(
       }),
       {
         canManage: (request) =>
-          isBoundRuntimeLocalOperator(request) &&
-          isRequestPrincipalCurrent(request),
+          isBoundRuntimeOwner(request) && isRequestPrincipalCurrent(request),
         canQuery: (request) => {
           return delegationContributionQueryAuthorized(request, {
             current: isRequestPrincipalCurrent,
@@ -9808,6 +9825,12 @@ export function configureRuntimeRoutes(
             env: { PATH: await resolveAugmentedPath() },
           };
         },
+        // A shell that ended because its host restarted reopens only while
+        // its Project still exists; the session re-checks its directory.
+        restorable: async (scope) =>
+          context.storageAdapter
+            .listProjects()
+            .some((item) => item.id === scope.projectId),
         resolveRoot: async (request, scope) => {
           const project = context.storageAdapter
             .listProjects()
@@ -9830,6 +9853,13 @@ export function configureRuntimeRoutes(
           return root;
         },
       },
+      {},
+      {},
+      async () =>
+        resolveTerminalRetention(
+          await context.configLoader.loadAppConfig(),
+          context.configLoader.getProjectHomeDir(),
+        ),
     );
     scopedTerminals.sessions = terminalSessions;
     context.app.get(TERMINAL_SOCKET_PATH, (c) =>
@@ -9875,10 +9905,15 @@ export function configureRuntimeRoutes(
       new TerminalGateway({
         sessions: terminalSessions,
         tickets: terminalTickets,
-        // The operator in person keeps reserved slots even when their own
-        // devices, or a flood of them, fill the shared capacity.
-        reserved: (request) => isOperatorInPersonNotAgent(request),
+        // The operator at the host keeps reserved slots even when their own
+        // devices, or a flood of them, fill the shared capacity. Host-only:
+        // owner-device standing does not reach these slots.
+        reserved: (request) => isOperatorAtHostNotAgent(request),
       }),
+    );
+    context.app.route(
+      '/api/terminal/history',
+      createTerminalHistoryRoutes(terminalSessions, authorizeTerminalRequest),
     );
     context.app.route(
       '/api/projects',
@@ -10205,12 +10240,7 @@ export function configureRuntimeRoutes(
       () => listProviders('pullRequest').map((entry) => entry.provider),
       {
         current: isRequestPrincipalCurrent,
-        operator: (request) => {
-          const principal = getRuntimeAuthenticatedRequestPrincipal(request);
-          return principal?.authority === 'operator-credential'
-            ? getCachedUser().alias
-            : undefined;
-        },
+        operator: ownerIdentityForRequest,
         canRead: (request, conversationId) =>
           context.orchestrationService.canUserReadConversation(
             conversationId,
@@ -10344,28 +10374,16 @@ export function configureRuntimeRoutes(
             : undefined;
         },
         isRequestPrincipalCurrent,
-        operatorIdentityForRequest: (routeContext) => {
-          const authority = (
-            routeContext as unknown as { get: (key: string) => unknown }
-          ).get(RUNTIME_CREDENTIAL_AUTHORITY_VAR);
-          return authority === 'operator-credential'
-            ? getCachedUser().alias
-            : undefined;
-        },
+        operatorIdentityForRequest: (routeContext) =>
+          ownerIdentityForRequest(routeContext.req.raw),
       },
     ),
   );
   context.app.route(
     '/api/agents/unattended-grants',
     createUnattendedGrantRoutes(unattendedGrantStore, {
-      operatorIdentityForRequest: (routeContext) => {
-        const authority = (
-          routeContext as unknown as { get: (key: string) => unknown }
-        ).get(RUNTIME_CREDENTIAL_AUTHORITY_VAR);
-        return authority === 'operator-credential'
-          ? getCachedUser().alias
-          : undefined;
-      },
+      operatorIdentityForRequest: (routeContext) =>
+        ownerIdentityForRequest(routeContext.req.raw),
       logger: context.logger,
     }),
   );
@@ -11240,8 +11258,7 @@ export function configureRuntimeRoutes(
       // The reader owns which failures become "absent"; see its docblock.
       createConfigProjectReader(context.storageAdapter),
       (request) =>
-        isBoundRuntimeLocalOperator(request) &&
-        isRequestPrincipalCurrent(request),
+        isBoundRuntimeOwner(request) && isRequestPrincipalCurrent(request),
       (config) => {
         context.getUsageTelemetry?.()?.reconfigure(config, true);
         reconfigureOtelTelemetryDelivery(config);
@@ -13280,11 +13297,13 @@ export function configureDevicePairingPublicRoutes(
       : null;
     // A fresh launcher can upgrade an ordinary session only on the host.
     // Off-host redemption cannot add that authority, so preserve its identity.
+    // An owner device's session is still upgraded: owner standing is not the
+    // host browser's home possession.
     if (
       existingDevice &&
       (!matchedPurpose ||
         !isSameMachineBrowserCaller(c) ||
-        pairing.credentialMayManagePairing(existingCredential!) ||
+        pairing.isHostBrowserSessionCredential(existingCredential!) ||
         pairing.isLocalGrantMintedCredential(existingCredential!))
     ) {
       if (matchedPurpose) uiBootstrapTokens.delete(matchedPurpose);
@@ -15033,9 +15052,15 @@ export function configureDevicePairingHostRoutes(
               'home-possession' &&
             (pairing.credentialMintKind(actor.credential) === 'local-grant' ||
               pairing.credentialMayManagePairing(actor.credential));
+          // Owner standing (2026-11-02): the owner's own device approves
+          // device-use grants exactly as the host-issued browser does.
+          const ownerDevice =
+            actor?.authority === 'device-credential' &&
+            actor.standing === 'owner-device' &&
+            pairing.credentialHasOwnerStanding(actor.credential);
           // Thrown, not returned, so it is counted and audited as the
           // refusal it is, with the service's own refusals below.
-          if (!operatorCredential && !localGrant)
+          if (!operatorCredential && !localGrant && !ownerDevice)
             throw new DevicePairingError('approval_requires_operator');
         }
       }

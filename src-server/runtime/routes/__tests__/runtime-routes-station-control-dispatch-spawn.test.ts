@@ -106,6 +106,11 @@ const support = vi.hoisted(() => ({
   /** The real routes' address, for a tool's request to this Station's API. */
   routeBase: undefined as string | undefined,
   conversationRuns: undefined as ScheduledConversationRunner | undefined,
+  /**
+   * Holds the engine's start events back this long, so their projection (the
+   * conversation's recorded owner) lags the start call as it can under load.
+   */
+  startEventDelayMs: 0,
 }));
 
 vi.mock('../runtime-route-support.js', () => {
@@ -209,8 +214,12 @@ class RecordingAcpAdapter implements ProviderAdapterShape {
       ...(cwd ? { cwd } : {}),
     };
     this.sessions.set(input.threadId, session);
+    const publish = (event: CanonicalRuntimeEvent) =>
+      support.startEventDelayMs > 0
+        ? setTimeout(() => this.events.push(event), support.startEventDelayMs)
+        : this.events.push(event);
     for (const method of ['session.started', 'session.configured'] as const)
-      this.events.push({
+      publish({
         eventId: randomUUID(),
         provider: this.provider,
         threadId: input.threadId,
@@ -319,6 +328,7 @@ describe('configureRuntimeRoutes: a station-control dispatch folder is decided a
     support.withoutConnectionReader = false;
     support.routeBase = undefined;
     support.conversationRuns = undefined;
+    support.startEventDelayMs = 0;
     for (const close of closers.splice(0)) await close();
     vi.unstubAllGlobals();
     if (previousApiBase === undefined) delete process.env.STATION_API_BASE;
@@ -591,6 +601,7 @@ describe('configureRuntimeRoutes: a station-control dispatch folder is decided a
 
   test('a dedicated automation passes its reserved conversation to the real foreground start', async () => {
     const { adapter, eventStore } = await setup();
+    support.startEventDelayMs = 50;
     const runner = support.conversationRuns;
     if (!runner)
       throw new Error('runtime did not wire the conversation runner');
@@ -620,6 +631,18 @@ describe('configureRuntimeRoutes: a station-control dispatch folder is decided a
     expect(eventStore.conversationSessions(conversationId)).toHaveLength(1);
     expect(['completed', 'indeterminate']).toContain(result.kind);
     expect(result).toMatchObject({ conversationId });
+    // The next run is queued to the conversation as its creator, which the
+    // inbox decides from the recorded owner: the projected start event, which
+    // can land after the start call returned. A later scheduled run finds it
+    // recorded; this one waits for it rather than racing the projection.
+    const service = support.service as OrchestrationService;
+    await waitFor(
+      () =>
+        service.sessionRecordedOwnerId(
+          service.currentConversationSessionId(conversationId),
+        ),
+      (owner) => owner === LOCAL_OPERATOR_PRINCIPAL_ID,
+    );
     const next = new AbortController();
     const recovered = await runner.run({
       jobId: randomUUID(),
@@ -667,6 +690,11 @@ describe('configureRuntimeRoutes: a station-control dispatch folder is decided a
             : mintStationControlMcpHeaderAuth(4321, sessionId).token,
     });
 
+  /**
+   * `detail` carries what a non-2xx answer said (its `error` text, else the
+   * raw body), for the assertion message only: an untyped failure answers 400
+   * with no `code`, and its text is the only trace of what threw.
+   */
   async function post(
     base: string,
     path: string,
@@ -676,6 +704,7 @@ describe('configureRuntimeRoutes: a station-control dispatch folder is decided a
     status: number;
     code?: string;
     data?: Record<string, unknown>;
+    detail?: string;
   }> {
     const response = await fetch(`${base}${path}`, {
       method: 'POST',
@@ -687,7 +716,11 @@ describe('configureRuntimeRoutes: a station-control dispatch folder is decided a
       ),
     });
     const text = await response.text();
-    let parsed: { code?: string; data?: Record<string, unknown> } = {};
+    let parsed: {
+      code?: string;
+      error?: unknown;
+      data?: Record<string, unknown>;
+    } = {};
     try {
       parsed = JSON.parse(text) as typeof parsed;
     } catch {
@@ -697,6 +730,15 @@ describe('configureRuntimeRoutes: a station-control dispatch folder is decided a
       status: response.status,
       ...(parsed.code ? { code: parsed.code } : {}),
       ...(parsed.data ? { data: parsed.data } : {}),
+      ...(response.ok
+        ? {}
+        : {
+            detail: `HTTP ${response.status}: ${
+              typeof parsed.error === 'string'
+                ? parsed.error
+                : text.slice(0, 2_000)
+            }`,
+          }),
     };
   }
 
@@ -768,7 +810,10 @@ describe('configureRuntimeRoutes: a station-control dispatch folder is decided a
         as('delegated-custody', 'op-caller-global'),
         request.body,
       );
-      expect([response.status, response.code]).toEqual([200, undefined]);
+      expect([response.status, response.code], response.detail).toEqual([
+        200,
+        undefined,
+      ]);
       expect(adapter.starts.map((start) => start.cwd)).toEqual([folder]);
       expect(
         adapter.starts[0]!.input.metadata?.[
@@ -804,7 +849,10 @@ describe('configureRuntimeRoutes: a station-control dispatch folder is decided a
         as('bearer-exposed', 'op-caller-a'),
         request.body,
       );
-      expect([response.status, response.code]).toEqual([200, undefined]);
+      expect([response.status, response.code], response.detail).toEqual([
+        200,
+        undefined,
+      ]);
       expect(adapter.starts.map((start) => start.cwd)).toEqual([
         join(root, 'proj'),
       ]);
@@ -1004,7 +1052,10 @@ describe('configureRuntimeRoutes: a station-control dispatch folder is decided a
         as('delegated-custody', 'op-caller-global'),
         request.body,
       );
-      expect([response.status, response.code]).toEqual([200, undefined]);
+      expect([response.status, response.code], response.detail).toEqual([
+        200,
+        undefined,
+      ]);
       expect(
         adapter.starts[0]!.input.metadata?.[
           SESSION_CONFINEMENT_ROOT_METADATA_KEY
@@ -1020,7 +1071,10 @@ describe('configureRuntimeRoutes: a station-control dispatch folder is decided a
       const { folder } = layout();
       const request = DISPATCH[route]({ kind: 'directory', cwd: folder });
       const response = await post(base, request.path, operatorUi, request.body);
-      expect([response.status, response.code]).toEqual([200, undefined]);
+      expect([response.status, response.code], response.detail).toEqual([
+        200,
+        undefined,
+      ]);
       expect(adapter.starts.map((start) => start.cwd)).toEqual([folder]);
       expect(
         adapter.starts[0]!.input.metadata &&
@@ -1049,7 +1103,10 @@ describe('configureRuntimeRoutes: a station-control dispatch folder is decided a
       );
       // The swap happened after the route admitted the request.
       expect(swapped).toBe(true);
-      expect([response.status, response.code]).toEqual([403, OUT_OF_SCOPE]);
+      expect([response.status, response.code], response.detail).toEqual([
+        403,
+        OUT_OF_SCOPE,
+      ]);
       expect(adapter.starts).toEqual([]);
     },
   );
@@ -1072,7 +1129,10 @@ describe('configureRuntimeRoutes: a station-control dispatch folder is decided a
         request.body,
       );
       expect(swapped).toBe(true);
-      expect([response.status, response.code]).toEqual([403, OUT_OF_SCOPE]);
+      expect([response.status, response.code], response.detail).toEqual([
+        403,
+        OUT_OF_SCOPE,
+      ]);
       expect(adapter.starts).toEqual([]);
     },
   );
@@ -1105,7 +1165,10 @@ describe('configureRuntimeRoutes: a station-control dispatch folder is decided a
         request.body,
       );
       expect(swapped).toBe(true);
-      expect([response.status, response.code]).toEqual([403, OUT_OF_SCOPE]);
+      expect([response.status, response.code], response.detail).toEqual([
+        403,
+        OUT_OF_SCOPE,
+      ]);
       expect(adapter.starts).toEqual([]);
     },
   );
@@ -1133,7 +1196,10 @@ describe('configureRuntimeRoutes: a station-control dispatch folder is decided a
       as('delegated-custody', 'op-caller-global'),
       request.body,
     );
-    expect([response.status, response.code]).toEqual([403, OUT_OF_SCOPE]);
+    expect([response.status, response.code], response.detail).toEqual([
+      403,
+      OUT_OF_SCOPE,
+    ]);
     expect(adapter.starts).toEqual([]);
   });
 
@@ -1151,7 +1217,10 @@ describe('configureRuntimeRoutes: a station-control dispatch folder is decided a
       as('delegated-custody', 'op-caller-global'),
       request.body,
     );
-    expect([response.status, response.code]).toEqual([403, OUT_OF_SCOPE]);
+    expect([response.status, response.code], response.detail).toEqual([
+      403,
+      OUT_OF_SCOPE,
+    ]);
     expect(adapter.starts).toEqual([]);
   });
 
@@ -1169,7 +1238,10 @@ describe('configureRuntimeRoutes: a station-control dispatch folder is decided a
       as('bound', 'op-caller-global'),
       request.body,
     );
-    expect([response.status, response.code]).toEqual([200, undefined]);
+    expect([response.status, response.code], response.detail).toEqual([
+      200,
+      undefined,
+    ]);
     expect(adapter.starts.map((start) => start.cwd)).toEqual([folder]);
     expect(realpathSync(folder)).toBe(join(root, 'proj', 'sub'));
   });
@@ -1220,7 +1292,10 @@ describe('configureRuntimeRoutes: a station-control dispatch folder is decided a
         as('delegated-custody', 'op-caller-global'),
         request.body,
       );
-      expect([response.status, response.code]).toEqual([200, undefined]);
+      expect([response.status, response.code], response.detail).toEqual([
+        200,
+        undefined,
+      ]);
       const taskId = String(response.data?.taskId);
       await waitFor(
         () =>
@@ -1246,7 +1321,10 @@ describe('configureRuntimeRoutes: a station-control dispatch folder is decided a
       const { base, folder, taskId, restart } = await dispatched();
       const respawned = restart();
       const response = await followUp(base, taskId);
-      expect([response.status, response.code]).toEqual([200, undefined]);
+      expect([response.status, response.code], response.detail).toEqual([
+        200,
+        undefined,
+      ]);
       // The same session, started again: the restored row had no engine.
       expect(respawned.starts.map((start) => start.input.threadId)).toEqual([
         taskId,
@@ -1281,7 +1359,10 @@ describe('configureRuntimeRoutes: a station-control dispatch folder is decided a
     test('a child session that continues it in the same folder carries the record', async () => {
       const { base, folder, taskId, adapter } = await dispatchedAndExited();
       const response = await followUp(base, taskId);
-      expect([response.status, response.code]).toEqual([200, undefined]);
+      expect([response.status, response.code], response.detail).toEqual([
+        200,
+        undefined,
+      ]);
       expect(
         adapter.starts.map((start) => [
           start.input.threadId === taskId,
@@ -1336,10 +1417,10 @@ describe('configureRuntimeRoutes: a station-control dispatch folder is decided a
           as('delegated-custody', 'op-caller-global'),
           request.body,
         );
-        expect([globalCaller.status, globalCaller.code]).toEqual([
-          403,
-          OUT_OF_SCOPE,
-        ]);
+        expect(
+          [globalCaller.status, globalCaller.code],
+          globalCaller.detail,
+        ).toEqual([403, OUT_OF_SCOPE]);
         expect(adapter.starts).toEqual([]);
         // The in-scope control is the global-space connection below. A
         // Project's own agent with no workspace starts in its Project's
@@ -1359,11 +1440,14 @@ describe('configureRuntimeRoutes: a station-control dispatch folder is decided a
         as('delegated-custody', 'op-caller-global'),
         request.body,
       );
-      expect([response.status, response.code]).toEqual([403, ROLE]);
+      expect([response.status, response.code], response.detail).toEqual([
+        403,
+        ROLE,
+      ]);
       expect(adapter.starts).toEqual([]);
       // The operator's own request is not decided, so it still starts.
       const ui = await post(base, request.path, operatorUi, request.body);
-      expect([ui.status, ui.code]).toEqual([200, undefined]);
+      expect([ui.status, ui.code], ui.detail).toEqual([200, undefined]);
       expect(adapter.starts).toHaveLength(1);
     });
 
@@ -1422,7 +1506,10 @@ describe('configureRuntimeRoutes: a station-control dispatch folder is decided a
         as('delegated-custody', 'op-caller-global'),
         request.body,
       );
-      expect([response.status, response.code]).toEqual([403, OUT_OF_SCOPE]);
+      expect([response.status, response.code], response.detail).toEqual([
+        403,
+        OUT_OF_SCOPE,
+      ]);
       expect(adapter.starts).toEqual([]);
     });
 
@@ -1439,7 +1526,10 @@ describe('configureRuntimeRoutes: a station-control dispatch folder is decided a
           as('delegated-custody', 'op-caller-global'),
           request.body,
         );
-        expect([inGlobal.status, inGlobal.code]).toEqual([200, undefined]);
+        expect([inGlobal.status, inGlobal.code], inGlobal.detail).toEqual([
+          200,
+          undefined,
+        ]);
         support.connectionCwd = undefined;
         const none = await post(
           base,
@@ -1447,7 +1537,7 @@ describe('configureRuntimeRoutes: a station-control dispatch folder is decided a
           as('delegated-custody', 'op-caller-global'),
           DISPATCH[route]().body,
         );
-        expect([none.status, none.code]).toEqual([200, undefined]);
+        expect([none.status, none.code], none.detail).toEqual([200, undefined]);
         expect(adapter.starts.map((start) => start.cwd)).toEqual([
           join(root, 'ws', 'other'),
           undefined,

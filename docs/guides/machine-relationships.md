@@ -86,6 +86,9 @@ already-paired device, or keeps when approving a request that asked for
 access** leaves them out; `station environment access scopes` lists them all
 with their meanings). The operator can change them per device on the Station's
 own host, or explicitly grant `access:devices` to an already-paired administrator.
+One of the owner's own devices that already has a host shell can also change
+ordinary devices' access, with the host browser's limits
+([owner-device standing](../security/remote-access-threat-model.md#owner-device-standing-2026-11-02)).
 That device can use the same commands remotely with `--station=<name>` and its
 own credential. Without a global install, prefix these with
 `npx @kontourai/station-cli@<tag>` (`nightly` for a nightly Station, otherwise

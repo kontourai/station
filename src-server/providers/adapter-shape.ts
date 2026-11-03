@@ -41,6 +41,7 @@ import type {
   SessionGoalControlResult,
   SessionGoalRead,
 } from '@kontourai/station-contracts/session-goal';
+import type { ModelOption } from '@kontourai/station-contracts/tool';
 import type { ReservedStationSession } from '../runtime/conversation/reserved-station-turn.js';
 import { ProviderRefusalError } from './provider-failure.js';
 
@@ -339,13 +340,7 @@ export interface ProviderAdapterMetadata {
 }
 
 export interface ProviderAdapterModelCatalog {
-  models: Array<{
-    id: string;
-    name: string;
-    originalId: string;
-    /** Concrete catalog identity for an alias; not per-turn served-model proof. */
-    resolvedModel?: string;
-  }>;
+  models: ModelOption[];
   /** True when a bounded entry limit omitted additional adapter results. */
   truncated?: boolean;
 }

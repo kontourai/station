@@ -70,8 +70,13 @@ The production request resolver now attributes each request/session as one of:
 - a verified identity, with the stable `human:<provider>:<subject>`
   `PrincipalRef` id; paired devices without a person binding may receive
   per-device attribution, which does not prove independent human membership;
-- the contract-defined `human:local:operator`, but only after verifying the
-  personal-mode home-possession or operator-credential authority fact; or
+- the contract-defined `human:local:operator`, but only after verifying a
+  personal-mode authority fact: home-possession, the operator credential, or
+  owner-device standing (one of the owner's own paired devices that already
+  has a host shell; owner decision 2026-11-02, see the
+  [threat model](../security/remote-access-threat-model.md#owner-device-standing-2026-11-02)).
+  An owner device is one more position of the one principal (§2(a)); its acts
+  keep the device's id in their client origin, so R1 attribution holds; or
 - a bound hosted tenant principal when no human identity is present.
 
 Task-room request authority consumes that resolved `PrincipalRef.id` and fails

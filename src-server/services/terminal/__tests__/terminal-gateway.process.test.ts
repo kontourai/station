@@ -1,5 +1,5 @@
 import { once } from 'node:events';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, realpath, writeFile } from 'node:fs/promises';
 import { createServer, type Server } from 'node:http';
 import { join } from 'node:path';
 import {
@@ -63,6 +63,7 @@ const controlSchema = z.object({
   replayThrough: z.number().optional(),
   lastSeq: z.number().optional(),
   maxOutstandingOutputFrames: z.number().optional(),
+  restartedAfterSeq: z.number().optional(),
 });
 type Control = z.infer<typeof controlSchema>;
 type Output = { channel: number; seq: number; data: string };
@@ -717,6 +718,70 @@ describe.skipIf(process.platform === 'win32')(
       expect(
         (await sessions.read('operator', scope, attached.terminalId!)).status,
       ).toBe('exited');
+    });
+
+    test('restarts the attached session over the socket, confined to its binding', async () => {
+      await mkdir(join(root, 'sub'));
+      const client = await connect();
+      client.send({
+        type: 'open',
+        requestId: 'restart-open',
+        channel: 1,
+        ...scope,
+        ...dimensions,
+      });
+      const attached = await client.result('restart-open');
+      const id = attached.terminalId!;
+      await client.ready();
+      await write(client, 1, 1, "printf '%s%s\\n' 'before:' 'marker'\r");
+      await journal(id, 'before:marker');
+      const { pid } = await sessions.read('operator', scope, id);
+
+      // An observer cannot restart, and nothing leaves the binding.
+      const observer = await connect('observer');
+      await observer.attach(id, 1);
+      observer.send({ type: 'restart', requestId: 'observed', channel: 1 });
+      expect((await observer.result('observed')).code).toBe('terminal-refused');
+      client.send({
+        type: 'restart',
+        requestId: 'escape',
+        channel: 1,
+        subdirectory: '../..',
+      });
+      expect((await client.result('escape')).code).toBe('terminal-refused');
+      expect((await sessions.read('operator', scope, id)).pid).toBe(pid);
+
+      client.send({
+        type: 'restart',
+        requestId: 'restart',
+        channel: 1,
+        subdirectory: 'sub',
+      });
+      const done = await client.result('restart');
+      expect(done.type).toBe('done');
+      const restarted = await sessions.read('operator', scope, id);
+      expect(restarted.pid).not.toBe(pid);
+      expect(restarted.cwd).toBe(join(await realpath(root), 'sub'));
+      expect(done.restartedAfterSeq).toBe(restarted.restart?.afterSeq);
+      // The same channel carries the new run's output after the old run's.
+      await write(client, 1, 2, "printf '%s%s\\n' 'after:' 'marker'; pwd\r");
+      await expect
+        .poll(() => client.output.map((frame) => frame.data).join(''), {
+          timeout: 10_000,
+        })
+        .toContain('after:marker');
+      const after = client.output.filter(
+        (frame) => frame.seq > done.restartedAfterSeq!,
+      );
+      expect(after.map((frame) => frame.data).join('')).toContain(
+        join(await realpath(root), 'sub'),
+      );
+      expect(
+        client.output
+          .filter((frame) => frame.seq <= done.restartedAfterSeq!)
+          .map((frame) => frame.data)
+          .join(''),
+      ).toContain('before:marker');
     });
 
     test('resumes after a drop without a sequence gap while the same PTY continues', async () => {

@@ -22,6 +22,7 @@ import { forgetRegionPaneState } from '../regions/region-surface-panes';
 import { readActivityReviewPane } from '../workspace-panes/activityReviewPane';
 import { readFilePreviewPaneState } from '../workspace-panes/filePreviewPaneStateStorage';
 import { readPluginPaneState } from '../workspace-panes/pluginPaneOccurrence';
+import { readTerminalPaneState } from '../workspace-panes/terminalPaneOccurrence';
 import { navigationStore } from './navigation-store';
 import type {
   PaneRelationsRefusal,
@@ -148,6 +149,8 @@ export function relatedOccurrenceExists(instanceId: string): boolean {
     return readPluginPaneState(storage, instanceId) !== null;
   if (instanceId.startsWith('activity-review:'))
     return readActivityReviewPane(storage, instanceId) !== null;
+  if (instanceId.startsWith('terminal-pane:'))
+    return readTerminalPaneState(storage, instanceId) !== null;
   return true;
 }
 
