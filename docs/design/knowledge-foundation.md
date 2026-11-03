@@ -87,8 +87,9 @@ export interface KnowledgeStoreRoot {
 
 /**
  * The Kit's adapter contract, §8 verbatim (+ A.6 supersede, B.5 retire).
- * Historical interface sketch. The current implementations are Station-owned
- * default-store and obsidian-store adapters over the published format. The original Kit contract described:
+ * Historical interface sketch. The original implementations were Station-owned
+ * default-store and obsidian-store adapters over the published format. The private-memory
+ * preview now composes Corpus Store through its public contract. The original Kit contract described:
  * "a JavaScript module (ESM) exporting a default class or factory function" whose
  * constructor/factory accepts `{ storeRoot }`.
  */
