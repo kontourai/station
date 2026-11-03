@@ -137,7 +137,15 @@ export interface TerminalSessionRecord {
   launch?:
     | { kind: 'shell' }
     | { kind: 'agent'; connectionId: string; mode: string }
-    | { kind: 'server' };
+    | { kind: 'server' }
+    /** A package script, restartable by name. */
+    | { kind: 'script'; name: string }
+    /** An agent's command a person approved. */
+    | { kind: 'run'; command: string };
+  /** A program without a terminal (a script or an agent's command). */
+  kind?: 'command';
+  /** How an ended session's program exited. */
+  exitCode?: number | null;
   legacy?: { projectSlug: string; terminalId: string; imported: boolean };
   /** A shell's stable number in its binding ("Shell N"); absent from older hosts. */
   ordinal?: number;
@@ -192,8 +200,12 @@ const record = z
           mode: z.string(),
         }),
         z.object({ kind: z.literal('server') }),
+        z.object({ kind: z.literal('script'), name: z.string() }),
+        z.object({ kind: z.literal('run'), command: z.string() }),
       ])
       .optional(),
+    kind: z.literal('command').optional(),
+    exitCode: z.number().nullable().optional(),
     legacy: z
       .object({
         projectSlug: z.string(),
@@ -375,6 +387,8 @@ export class TerminalSessionStore {
             status: item.status,
             createdAt: item.createdAt,
             ...(item.launch && { launch: item.launch }),
+            ...(item.kind && { kind: item.kind }),
+            ...(item.exitCode !== undefined && { exitCode: item.exitCode }),
             ...(item.legacy && { legacy: item.legacy }),
           }) satisfies TerminalSessionRecord,
       )

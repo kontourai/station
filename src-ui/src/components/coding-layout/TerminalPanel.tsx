@@ -12,11 +12,9 @@ import {
   toTerminalViewSession,
 } from '@kontourai/station-sdk/terminal-view';
 import { useEffect, useRef, useState } from 'react';
-import {
-  activeChatsStore,
-  useActiveChatActions,
-} from '../../contexts/ActiveChatsContext';
+import { activeChatsStore } from '../../contexts/ActiveChatsContext';
 import { useApiBase } from '../../contexts/ApiBaseContext';
+import { chatDraftsStore } from '../../contexts/chat-drafts-store';
 import { setShortcutContext } from '../../contexts/KeyboardShortcutsContext';
 import { useNavigation } from '../../contexts/NavigationContext';
 import {
@@ -26,13 +24,11 @@ import {
 } from '../../contexts/useOpenInRegion';
 import { MOBILE_MEDIA_QUERY, useIsMobile } from '../../hooks/useIsMobile';
 import { isComposingKeyEvent } from '../../lib/isComposingKeyEvent';
+import { MAX_TERMINAL_QUOTE_CHARS } from '../../utils/answer-quotes';
 import { browserPaneApi } from '../../workspace-panes/browser-pane/browserPaneApi';
 import { activeTerminalWriter } from './activeTerminal';
 import { terminalLinkRelativePath } from './terminalLinkPath';
-import {
-  buildTerminalSelectionHandoff,
-  selectionContainsCredential,
-} from './terminalSelectionHandoff';
+import { selectionContainsCredential } from './terminalSelectionHandoff';
 import { useTerminalSessionStore } from './terminalSessionStore';
 
 /**
@@ -53,6 +49,7 @@ export function TerminalPanel({
   isActive = false,
   attachOnly = false,
   readOnly = false,
+  ended,
 }: {
   projectSlug: string;
   workingDir: string;
@@ -72,6 +69,8 @@ export function TerminalPanel({
   attachOnly?: boolean;
   /** Watch without typing, pasting or resizing, whatever the session allows. */
   readOnly?: boolean;
+  /** What to say once the program ends, and how to run it again (a script). */
+  ended?: { message: string; restart?: () => void };
   /** True when this is the visible terminal tab; only then does it accept
    * externally-injected input (e.g. "Send to terminal" from the file tree). */
   isActive?: boolean;
@@ -81,7 +80,6 @@ export function TerminalPanel({
   const openFilePreview = useOpenFilePreviewInRegion();
   const openBrowserSession = useOpenBrowserSessionInRegion();
   const activeChat = useNavigation((state) => state.activeChat);
-  const { getDraft, setDraft, updateChat } = useActiveChatActions();
   const sessionRef = useRef<TerminalSession | null>(null);
   const [viewSession, setViewSession] = useState<TerminalViewSession | null>(
     null,
@@ -89,6 +87,7 @@ export function TerminalPanel({
   const [wsError, setWsError] = useState<string | null>(null);
   const [connectionAttempt, setConnectionAttempt] = useState(0);
   const [connected, setConnected] = useState(false);
+  const [exited, setExited] = useState(false);
   const isMobile = useIsMobile();
   // #1244: the server's specific degraded-terminal reason (node-pty failed
   // to load). Distinct from wsError so a dead PTY backend reads as "here is
@@ -119,6 +118,7 @@ export function TerminalPanel({
     setUnavailableReason(null);
     setWsError(null);
     setConnected(false);
+    setExited(false);
 
     const scope = { projectId, bindingKey };
     const intent = intentRef.current;
@@ -181,6 +181,7 @@ export function TerminalPanel({
         return;
       }
       if (current.status === 'exited' || current.status === 'failed') {
+        setExited(true);
         setWsError('The shell has exited.');
         return;
       }
@@ -224,7 +225,18 @@ export function TerminalPanel({
       );
       return;
     }
-    if (!activeChat) {
+    if (terminalOutput.length > MAX_TERMINAL_QUOTE_CHARS) {
+      setHandoffError(
+        `Select less output: chat takes up to ${MAX_TERMINAL_QUOTE_CHARS.toLocaleString()} characters from a terminal.`,
+      );
+      return;
+    }
+    // The chats store keys a chat by its session id; the navigation may name
+    // it by its conversation id.
+    const chatKey = activeChat
+      ? activeChatsStore.getChatKeyForExecutionSession(activeChat)
+      : undefined;
+    if (!chatKey || !activeChatsStore.getSnapshot()[chatKey]) {
       setHandoffError('Open a chat before sending terminal output to it.');
       return;
     }
@@ -235,22 +247,24 @@ export function TerminalPanel({
       );
       return;
     }
-
-    const existingDraft =
-      activeChatsStore.getSnapshot()[activeChat]?.input ?? getDraft(activeChat);
-    const handoff = buildTerminalSelectionHandoff({
-      selection: terminalOutput,
-      cwd,
-    });
-    const nextDraft = existingDraft
-      ? `${existingDraft}\n\n${handoff}`
-      : handoff;
-    // Persist and project the same draft through the real composer seams.
-    // Neither operation dispatches a provider turn; sending remains the
-    // composer's explicit user action.
-    setDraft(activeChat, nextDraft);
-    updateChat(activeChat, { input: getDraft(activeChat) });
-    setHandoffError(null);
+    // A chip in the composer, sent with the next message the person sends;
+    // nothing is dispatched here.
+    try {
+      chatDraftsStore.addQuote(chatKey, {
+        version: 1,
+        kind: 'terminal',
+        origin: apiBase,
+        cwd,
+        excerpt: terminalOutput,
+      });
+      setHandoffError(null);
+    } catch (error) {
+      setHandoffError(
+        error instanceof Error
+          ? error.message
+          : 'Output was not added to chat.',
+      );
+    }
   };
 
   // URLs open in the Browser pane and `path:line` in the file preview, the
@@ -333,13 +347,19 @@ export function TerminalPanel({
     <div className="coding-terminal-shell">
       {wsError ? (
         <div className="coding-terminal-connection" role="alert">
-          <span>{wsError}</span>
-          <button
-            type="button"
-            onClick={() => setConnectionAttempt((attempt) => attempt + 1)}
-          >
-            Reconnect terminal
-          </button>
+          <span>{(exited && ended?.message) || wsError}</span>
+          {exited && ended?.restart ? (
+            <button type="button" onClick={ended.restart}>
+              Restart
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setConnectionAttempt((attempt) => attempt + 1)}
+            >
+              Reconnect terminal
+            </button>
+          )}
         </div>
       ) : !connected ? (
         <p role="status">Connecting to the terminal…</p>

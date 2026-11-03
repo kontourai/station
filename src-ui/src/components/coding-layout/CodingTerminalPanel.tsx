@@ -1,3 +1,4 @@
+import { type SemanticTone, StatusBadge } from '@kontourai/ui/react';
 import { type ReactNode, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { isComposingKeyEvent } from '../../lib/isComposingKeyEvent';
@@ -6,6 +7,26 @@ import { ACPChatPanel } from '../acp-connections/ACPChatPanel';
 import { AgentGlyph, MessageGlyph } from '../icons/Glyph';
 import { TerminalPanel } from './TerminalPanel';
 import type { TerminalTab } from './types';
+
+/** A script tab's run as a badge: how it is going, or how it ended. */
+function scriptStatus(tab: TerminalTab): { text: string; tone: SemanticTone } {
+  if (tab.status === 'failed') return { text: 'Failed', tone: 'negative' };
+  if (tab.status === 'exited') {
+    if (tab.exitCode === 0) return { text: 'Done', tone: 'positive' };
+    return typeof tab.exitCode === 'number'
+      ? { text: `Exit ${tab.exitCode}`, tone: 'negative' }
+      : { text: 'Ended', tone: 'neutral' };
+  }
+  return { text: 'Running', tone: 'active' };
+}
+
+/** Said in the terminal once its script has ended. */
+function scriptEndedText(tab: TerminalTab): string {
+  if (tab.status === 'failed') return `${tab.label} failed.`;
+  return typeof tab.exitCode === 'number'
+    ? `${tab.label} exited with code ${tab.exitCode}.`
+    : `${tab.label} has ended.`;
+}
 
 export function CodingTerminalPanel({
   id,
@@ -27,6 +48,11 @@ export function CodingTerminalPanel({
   onCloseTab,
   closingTabIds = new Set(),
   closeErrors = {},
+  onRestartTab,
+  restartingTabIds = new Set(),
+  restartErrors = {},
+  restarts = {},
+  notice,
   onToggleTabMode,
   canTogglePTY,
   onOpenNewTerminal,
@@ -57,6 +83,14 @@ export function CodingTerminalPanel({
   closingTabIds?: ReadonlySet<string>;
   /** Per-tab close errors remain visible and can be retried. */
   closeErrors?: Readonly<Record<string, string>>;
+  /** Runs a script tab's program again under the same session. */
+  onRestartTab?: (id: string) => void | Promise<void>;
+  restartingTabIds?: ReadonlySet<string>;
+  restartErrors?: Readonly<Record<string, string>>;
+  /** How many times each tab restarted; a restart starts a new view. */
+  restarts?: Readonly<Record<string, number>>;
+  /** A failure that belongs to no tab (a script that did not start). */
+  notice?: string | null;
   onToggleTabMode: (id: string) => void;
   canTogglePTY: (tab: TerminalTab) => boolean;
   onOpenNewTerminal: () => void;
@@ -122,6 +156,7 @@ export function CodingTerminalPanel({
         {tabs.map((tab, index) => {
           const selected = tab.id === activeTabId;
           const isClosing = closingTabIds.has(tab.id);
+          const status = tab.type === 'script' ? scriptStatus(tab) : null;
           const tabId = `coding-terminal-tab-${tab.id}`;
           const panelId = `coding-terminal-panel-${tab.id}`;
           return (
@@ -144,7 +179,9 @@ export function CodingTerminalPanel({
                   id={tabId}
                   type="button"
                   role="tab"
-                  aria-label={tab.label}
+                  aria-label={
+                    status ? `${tab.label}, ${status.text}` : tab.label
+                  }
                   aria-controls={panelId}
                   aria-selected={selected}
                   tabIndex={selected ? 0 : -1}
@@ -155,11 +192,36 @@ export function CodingTerminalPanel({
                   onKeyDown={(event) => moveFocus(event, index)}
                 >
                   <span className="coding-layout__terminal-tab-icon">
-                    {tab.type === 'agent' ? <AgentGlyph /> : '>'}
+                    {tab.type === 'agent' ? (
+                      <AgentGlyph />
+                    ) : tab.type === 'script' ? (
+                      '▷'
+                    ) : (
+                      '>'
+                    )}
                   </span>
                   <span className="coding-layout__terminal-tab-label">
                     {tab.label}
                   </span>
+                  {status && (
+                    <StatusBadge
+                      className="coding-layout__terminal-tab-status"
+                      status={status.text}
+                      tone={status.tone}
+                    />
+                  )}
+                </button>
+              )}
+              {tab.type === 'script' && onRestartTab && (
+                <button
+                  type="button"
+                  className="coding-layout__terminal-tab-toggle"
+                  aria-label={`Restart ${tab.label}`}
+                  title="Restart"
+                  disabled={restartingTabIds.has(tab.id)}
+                  onClick={() => onRestartTab(tab.id)}
+                >
+                  ↻
                 </button>
               )}
               {tab.type === 'agent' && canTogglePTY(tab) && (
@@ -258,6 +320,27 @@ export function CodingTerminalPanel({
           ? createPortal(bar, headSlots.leading)
           : null
         : bar}
+      {notice ? (
+        <div className="coding-layout__terminal-close-error" role="alert">
+          <span>{notice}</span>
+        </div>
+      ) : null}
+      {tabs.map((tab) =>
+        restartErrors[tab.id] ? (
+          <div
+            className="coding-layout__terminal-close-error"
+            key={`restart-error-${tab.id}`}
+            role="alert"
+          >
+            <span>
+              Unable to restart {tab.label}: {restartErrors[tab.id]}
+            </span>
+            <button type="button" onClick={() => onRestartTab?.(tab.id)}>
+              Retry restart
+            </button>
+          </div>
+        ) : null,
+      )}
       {tabs.map((tab) =>
         closeErrors[tab.id] ? (
           <div
@@ -315,8 +398,19 @@ export function CodingTerminalPanel({
                   target={
                     projectId ? { projectId, bindingKey: 'project' } : undefined
                   }
-                  viewKey={tab.id}
+                  viewKey={
+                    restarts[tab.id] ? `${tab.id}:${restarts[tab.id]}` : tab.id
+                  }
                   terminalId={tab.terminalId}
+                  {...(tab.type === 'script' && {
+                    attachOnly: true,
+                    ended: {
+                      message: scriptEndedText(tab),
+                      ...(onRestartTab && {
+                        restart: () => onRestartTab(tab.id),
+                      }),
+                    },
+                  })}
                   legacyTerminalId={tab.legacyTerminalId}
                   launch={
                     tab.type === 'agent' && tab.connectionId

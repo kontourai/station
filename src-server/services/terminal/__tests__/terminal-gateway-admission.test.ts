@@ -106,6 +106,10 @@ describe('terminal gateway admission (#3994)', () => {
             throw new Error('unknown profile');
           return { file: 'claude-cli', args: ['--mode', profile.mode] };
         },
+        resolveCommand: async (_principal, _scope, program) => ({
+          file: 'package-manager',
+          args: program.kind === 'script' ? ['run', program.name] : [],
+        }),
       },
     );
     tickets = new TerminalTickets<string>();
@@ -563,6 +567,31 @@ describe('terminal gateway admission (#3994)', () => {
       terminalId: 'term-1700000000001',
       imported: true,
     });
+  });
+
+  test('the SDK store lists a script session with its program, kind and exit code', async () => {
+    await start();
+    const { record } = await sessions.openCommand('operator', scope, {
+      program: { kind: 'script', name: 'test' },
+    });
+    expect(spawned.at(-1)?.launch).toEqual({
+      file: 'package-manager',
+      args: ['run', 'test'],
+    });
+    spawned.at(-1)!.write('exit');
+    const store = storeFor('operator');
+    await expect
+      .poll(async () =>
+        (await store.list(scope)).find(
+          (item) => item.terminalId === record.terminalId,
+        ),
+      )
+      .toMatchObject({
+        launch: { kind: 'script', name: 'test' },
+        kind: 'command',
+        status: 'exited',
+        exitCode: 7,
+      });
   });
 
   test('a server-owned launch exits with its code and is attachable by id', async () => {

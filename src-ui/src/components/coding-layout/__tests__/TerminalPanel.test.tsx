@@ -19,6 +19,7 @@ import {
   navigationStore,
 } from '../../../contexts/NavigationContext';
 import { MOBILE_MEDIA_QUERY } from '../../../hooks/useIsMobile';
+import { composeQuotedReply } from '../../../utils/answer-quotes';
 import { TerminalPanel } from '../TerminalPanel';
 
 const { executeCodingCommand, store, FakeSession } = vi.hoisted(() => {
@@ -380,8 +381,8 @@ test('scans one selection spanning two PTY reads without redacting the live term
   );
   // The live terminal still shows exactly what the shell wrote.
   expect(view.output.map(([text]) => text)).toEqual([firstRead, secondRead]);
+  expect(chatDraftsStore.getQuotes('chat-a')).toEqual([]);
   expect(chatDraftsStore.get('chat-a')).toBe('');
-  expect(activeChatsStore.getSnapshot()['chat-a']?.input).toBe('');
 });
 
 test.each([
@@ -400,21 +401,19 @@ test.each([
       expect((await screen.findByRole('alert')).textContent).toContain(
         'Selection contains a credential',
       );
-      expect(chatDraftsStore.get('chat-a')).toBe('');
-      expect(activeChatsStore.getSnapshot()['chat-a']?.input).toBe('');
+      expect(chatDraftsStore.getQuotes('chat-a')).toEqual([]);
     } else {
       await waitFor(() =>
-        expect(chatDraftsStore.get('chat-a')).toContain(selection),
-      );
-      expect(activeChatsStore.getSnapshot()['chat-a']?.input).toContain(
-        selection,
+        expect(chatDraftsStore.getQuotes('chat-a')).toMatchObject([
+          { kind: 'terminal', excerpt: selection },
+        ]),
       );
       expect(screen.queryByRole('alert')).toBeNull();
     }
   },
 );
 
-test('appends a fenced live-CWD selection to the real composer draft without dispatching a chat turn', async () => {
+test('adds the selection as a terminal chip with the live directory, leaving the draft text and sending nothing', async () => {
   const dispatch = vi.fn();
   vi.stubGlobal('fetch', dispatch);
   activeChatsStore.updateChat('chat-a', { input: 'Keep this existing draft.' });
@@ -424,16 +423,36 @@ test('appends a fenced live-CWD selection to the real composer draft without dis
 
   await act(async () => latestView().onAddToChat?.('build failed'));
 
-  const expected = [
+  await waitFor(() =>
+    expect(chatDraftsStore.getQuotes('chat-a')).toEqual([
+      {
+        version: 1,
+        kind: 'terminal',
+        origin: expect.any(String),
+        cwd: '/workspace/live',
+        excerpt: 'build failed',
+      },
+    ]),
+  );
+  // The chip is sent with the next message as a fenced block.
+  expect(
+    composeQuotedReply(
+      chatDraftsStore.get('chat-a'),
+      chatDraftsStore.getQuotes('chat-a'),
+    ),
+  ).toBe(
+    [
+      'Keep this existing draft.',
+      '',
+      'Terminal output (working directory: "/workspace/live"):',
+      '```',
+      'build failed',
+      '```',
+    ].join('\n'),
+  );
+  expect(activeChatsStore.getSnapshot()['chat-a']?.input).toBe(
     'Keep this existing draft.',
-    '',
-    'Terminal output (working directory: "/workspace/live"):',
-    '```',
-    'build failed',
-    '```',
-  ].join('\n');
-  await waitFor(() => expect(chatDraftsStore.get('chat-a')).toBe(expected));
-  expect(activeChatsStore.getSnapshot()['chat-a']?.input).toBe(expected);
+  );
   expect(dispatch).not.toHaveBeenCalled();
   // The working directory came from the session, and nothing was typed.
   expect(session.cwd).toHaveBeenCalledTimes(1);

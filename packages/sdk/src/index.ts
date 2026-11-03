@@ -237,13 +237,18 @@ export {
   applyProjectLayout,
   bindProjectResource,
   closeProjectTerminal,
+  closeProjectTerminalSession,
   getProjectChatDefaults,
   getProjectCheckoutFreshness,
   getProjectResolution,
   getProjectView,
   listProjectRunLocations,
+  listProjectTerminalScripts,
   listProjectViews,
   openOrAdoptProjectShell,
+  type ProjectTerminalScript,
+  restartProjectTerminalSession,
+  runProjectTerminalScript,
 } from './client/projects';
 export {
   getReviewReceipt,
@@ -277,6 +282,13 @@ export {
   listTaskOutputs,
   listTaskOutputs as fetchTaskOutputs,
 } from './client/task-outputs';
+export {
+  approveTerminalRun,
+  declineTerminalRun,
+  listConversationTerminalRuns,
+  type TerminalRun,
+  type TerminalRunState,
+} from './client/terminal-runs';
 export type {
   TerminalSession,
   TerminalSessionErrorCode,

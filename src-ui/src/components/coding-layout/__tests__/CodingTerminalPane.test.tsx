@@ -15,27 +15,34 @@ import type { ReactNode } from 'react';
 import { beforeEach, expect, test, vi } from 'vitest';
 import { CodingTerminalPane } from '../CodingTerminalPane';
 
-const { closeProjectTerminal, connections, server, adopt } = vi.hoisted(() => ({
-  closeProjectTerminal: vi.fn(),
-  /**
-   * `POST …/terminal-sessions` with `adopt`: the binding's running shell, or
-   * a new one. `supported: false` is a host that predates it.
-   */
-  adopt: { supported: true, calls: 0 },
-  /** What `useACPConnections` answers: the agent kinds, or not yet. */
-  connections: { data: [] as unknown[], isPending: false },
-  /**
-   * The server's terminal sessions, as the store reaches them: `list` per
-   * Project binding (ended sessions stay listed), `open` adds one, `attach`
-   * views one.
-   */
-  server: {
-    records: [] as Record<string, unknown>[],
-    list: vi.fn(),
-    open: vi.fn(),
-    attach: vi.fn(),
-  },
-}));
+const { closeProjectTerminal, connections, server, adopt, scripts } =
+  vi.hoisted(() => ({
+    closeProjectTerminal: vi.fn(),
+    /** The Project's package scripts, and the runner's run and restart. */
+    scripts: {
+      list: [] as { name: string; command: string }[],
+      run: vi.fn(),
+      restart: vi.fn(),
+    },
+    /**
+     * `POST …/terminal-sessions` with `adopt`: the binding's running shell, or
+     * a new one. `supported: false` is a host that predates it.
+     */
+    adopt: { supported: true, calls: 0 },
+    /** What `useACPConnections` answers: the agent kinds, or not yet. */
+    connections: { data: [] as unknown[], isPending: false },
+    /**
+     * The server's terminal sessions, as the store reaches them: `list` per
+     * Project binding (ended sessions stay listed), `open` adds one, `attach`
+     * views one.
+     */
+    server: {
+      records: [] as Record<string, unknown>[],
+      list: vi.fn(),
+      open: vi.fn(),
+      attach: vi.fn(),
+    },
+  }));
 const SHELL_ONE = '11111111-1111-4111-8111-111111111111';
 const AGENT_ONE = '22222222-2222-4222-8222-222222222222';
 let clock = 10;
@@ -79,6 +86,36 @@ vi.mock('@kontourai/station-sdk', () => ({
     });
     return { terminalId, ordinal, adopted: false };
   },
+  listProjectTerminalScripts: async () => ({
+    packageManager: 'npm',
+    scripts: scripts.list,
+  }),
+  // A script runs as a command session the list keeps after it ends.
+  runProjectTerminalScript: async (
+    _apiBase: string,
+    slug: string,
+    name: string,
+  ) => {
+    const terminalId = await scripts.run(slug, name);
+    server.records.push({
+      terminalId,
+      projectId: `${slug}-id`,
+      bindingKey: 'project',
+      status: 'running',
+      createdAt: ++clock,
+      kind: 'command',
+      launch: { kind: 'script', name },
+    });
+    return { terminalId };
+  },
+  restartProjectTerminalSession: async (...args: [string, string, string]) => {
+    await scripts.restart(...args);
+    for (const record of server.records)
+      if (record.terminalId === args[2]) {
+        record.status = 'running';
+        delete record.exitCode;
+      }
+  },
   // The service ends the session; the list keeps it, ended.
   closeProjectTerminal: async (...args: [string, string, string]) => {
     const result = await closeProjectTerminal(...args);
@@ -108,11 +145,13 @@ vi.mock('../TerminalPanel', async () => {
       target,
       launch,
       onOpened,
+      viewKey,
     }: {
       terminalId?: string;
       target?: { projectId: string; bindingKey: string };
       launch?: unknown;
       onOpened?: (terminalId: string) => void;
+      viewKey?: string;
     }) => {
       const projectId = target?.projectId;
       useEffect(() => {
@@ -130,7 +169,8 @@ vi.mock('../TerminalPanel', async () => {
         return () => {
           live = false;
         };
-      }, [projectId]);
+        // Like the real view: a new view key is a new view of the session.
+      }, [projectId, viewKey]);
       return <div>Terminal renderer without a snapshot</div>;
     },
   };
@@ -157,6 +197,9 @@ beforeEach(() => {
   connections.data = [];
   connections.isPending = false;
   server.records = [];
+  scripts.list = [];
+  scripts.run.mockReset();
+  scripts.restart.mockReset();
   adopt.supported = true;
   adopt.calls = 0;
   server.list
@@ -670,4 +713,82 @@ test('a host without the open-or-adopt answer opens the empty binding through th
   expect(await screen.findByRole('tab', { name: 'Shell 1' })).toBeTruthy();
   await waitFor(() => expect(server.open).toHaveBeenCalledTimes(1));
   expect(adopt.calls).toBe(1);
+});
+
+test('a package script runs from the "+" picker in its own tab, shows how it ended and restarts in place', async () => {
+  const SCRIPT = '33333333-3333-4333-8333-333333333333';
+  scripts.list = [{ name: 'test', command: 'vitest run' }];
+  scripts.run.mockResolvedValue(SCRIPT);
+  server.records = [running(SHELL_ONE, { ordinal: 1 })];
+  renderPane([]);
+  await screen.findByRole('tab', { name: 'Shell 1' });
+  // With scripts, "+" is the picker, and the script is listed by name.
+  await waitFor(() =>
+    expect(screen.getByRole('button', { name: 'New terminal' })).toBeTruthy(),
+  );
+  await act(async () => {
+    await queryClient.refetchQueries({ queryKey: ['coding-terminal-scripts'] });
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'New terminal' }));
+  const picker = await screen.findByRole('dialog', { name: 'New terminal' });
+  expect(within(picker).getByText('Run a script')).toBeTruthy();
+  expect(within(picker).getByText('vitest run')).toBeTruthy();
+  fireEvent.click(within(picker).getByRole('button', { name: /test/ }));
+
+  expect(
+    await screen.findByRole('tab', { name: 'test, Running' }),
+  ).toBeTruthy();
+  expect(scripts.run).toHaveBeenCalledWith('project-a', 'test');
+  await waitFor(() => expect(server.attach).toHaveBeenCalledWith(SCRIPT));
+
+  // It ends: the tab stays, saying how.
+  const record = server.records.find((item) => item.terminalId === SCRIPT)!;
+  record.status = 'exited';
+  record.exitCode = 1;
+  expect(
+    await screen.findByRole(
+      'tab',
+      { name: 'test, Exit 1' },
+      { timeout: 5_000 },
+    ),
+  ).toBeTruthy();
+
+  // Restart runs it again under the same session, in a new view.
+  server.attach.mockClear();
+  fireEvent.click(screen.getByRole('button', { name: 'Restart test' }));
+  await waitFor(() =>
+    expect(scripts.restart).toHaveBeenCalledWith(
+      'http://station.test',
+      'project-a',
+      SCRIPT,
+    ),
+  );
+  await waitFor(() => expect(server.attach).toHaveBeenCalledWith(SCRIPT));
+  expect(
+    await screen.findByRole('tab', { name: 'test, Running' }),
+  ).toBeTruthy();
+});
+
+test('closing an ended script tab ends nothing on the server and hides it', async () => {
+  const SCRIPT = '44444444-4444-4444-8444-444444444444';
+  server.records = [
+    running(SHELL_ONE, { ordinal: 1 }),
+    {
+      ...running(SCRIPT, {
+        kind: 'command',
+        launch: { kind: 'script', name: 'lint' },
+      }),
+      status: 'exited',
+      exitCode: 0,
+    },
+  ];
+  renderPane([]);
+  await screen.findByRole('tab', { name: 'lint, Done' });
+  fireEvent.click(screen.getByRole('button', { name: 'Close lint' }));
+  await waitFor(() =>
+    expect(screen.queryByRole('tab', { name: 'lint, Done' })).toBeNull(),
+  );
+  expect(closeProjectTerminal).not.toHaveBeenCalled();
+  // The shells keep their names: a script is not a numbered shell.
+  expect(screen.getByRole('tab', { name: 'Shell 1' })).toBeTruthy();
 });

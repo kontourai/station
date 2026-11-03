@@ -1,8 +1,12 @@
 /** @vitest-environment jsdom */
 import { beforeEach, expect, test, vi } from 'vitest';
-import type { SavedAnswerQuote } from '../utils/answer-quotes';
+import type {
+  SavedAnswerQuote,
+  SavedTerminalQuote,
+} from '../utils/answer-quotes';
 import {
   composeQuotedReply,
+  parseDraftQuote,
   parseSavedAnswerQuote,
   quoteFromHref,
   quoteHref,
@@ -121,4 +125,43 @@ test('portable drafts retain quote metadata separately from the bounded plain-te
   const draft = reloaded.getPortableSnapshot()[0];
   expect(draft.text).toBe(words);
   expect(draft.quotes).toEqual([quote]);
+});
+
+const terminalQuote: SavedTerminalQuote = {
+  version: 1,
+  kind: 'terminal',
+  origin: 'http://station.test',
+  cwd: '/work/alpha',
+  excerpt: 'FAIL ```nested``` ![x](https://invalid.test/i)',
+};
+
+test('terminal output is sent as a literal block naming its directory', () => {
+  expect(composeQuotedReply('Why?', [terminalQuote])).toBe(
+    [
+      'Why?',
+      '',
+      'Terminal output (working directory: "/work/alpha"):',
+      '````',
+      terminalQuote.excerpt,
+      '````',
+    ].join('\n'),
+  );
+  expect(
+    parseDraftQuote({ ...terminalQuote, excerpt: 'x'.repeat(32 * 1024 + 1) }),
+  ).toBeNull();
+  expect(parseDraftQuote({ ...terminalQuote, cwd: '' })).toBeNull();
+  expect(parseDraftQuote(quote)).toEqual(quote);
+});
+
+test('a terminal chip survives reload beside an answer quote', async () => {
+  const { chatDraftsStore: store } = await import(
+    '../contexts/chat-drafts-store'
+  );
+  store.addQuote('reply-t', quote);
+  store.addQuote('reply-t', terminalQuote);
+  vi.resetModules();
+  const { chatDraftsStore: restored } = await import(
+    '../contexts/chat-drafts-store'
+  );
+  expect(restored.getQuotes('reply-t')).toEqual([quote, terminalQuote]);
 });
