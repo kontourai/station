@@ -5713,7 +5713,8 @@ The person's leaves are on personal hosts only, refuse a request that may be an
 agent's, and require the operator (in person or on their own device):
 
 - `GET /api/terminal/runs?conversationId=` (`terminal:observe`, and reading the
-  conversation) lists its runs that wait, are starting or run.
+  conversation) lists its runs that wait, are starting or run, and approved
+  runs that exited or failed in the last minute.
 - `POST /api/terminal/runs/:runId/approve` (`terminal:operate`, and sending to
   the conversation) claims that one request and starts it as a command session
   (`launch: {kind: "run", command}`) in the `thread:<session id>` binding, as

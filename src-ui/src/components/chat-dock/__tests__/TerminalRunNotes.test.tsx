@@ -116,3 +116,20 @@ test('a finished terminal_run call re-reads the runs; a call still running does 
   expect(terminalRunRefreshKey('t1', [call('running')])).toBe('t1:0');
   expect(terminalRunRefreshKey('t1', [call('result')])).toBe('t1:1');
 });
+
+test('a run that ended says how, with no Stop', async () => {
+  runs.list = [
+    {
+      ...pending('run-1', 'npm test'),
+      state: 'exited',
+      terminalId: 't-1',
+      exitCode: 1,
+    },
+  ];
+  renderNotes();
+  expect(await screen.findByText('Exit 1')).toBeTruthy();
+  expect(screen.getByText('npm test').closest('span')?.textContent).toBe(
+    'Ran npm test',
+  );
+  expect(screen.queryByRole('button', { name: /Stop/ })).toBeNull();
+});

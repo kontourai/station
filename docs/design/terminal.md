@@ -794,7 +794,8 @@ is the sample plugin.
   chat code blocks and the end-marker busy check remain open.
 - **Agent tools.** `terminal_run` records a request and returns at once; the
   person sees a card above the composer with the exact command and the
-  absolute directory, and approves (Run) or declines that one run. Owner
+  absolute directory, and approves (Run) or declines that one run; for a
+  minute after an approved run ends, a note says how it ended. Owner
   decision: ask each time, with no remembered approval. An approved run starts
   as a command session in the agent's `thread:<id>` binding as the approving
   person, under their terminal authority, and is refused if its directory no

@@ -6,12 +6,26 @@ import {
   listConversationTerminalRuns,
   type TerminalRun,
 } from '@kontourai/station-sdk';
+import { Badge, type SemanticTone } from '@kontourai/ui/react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect } from 'react';
 import { useHostRequestAuthorityScope } from '../../contexts/ApiBaseContext';
 import { Button } from '../Button';
 import { TerminalGlyph } from '../icons/Glyph';
 import './AgentScheduleNotes.css';
+
+function endedRun(run: TerminalRun): boolean {
+  return run.state === 'exited' || run.state === 'failed';
+}
+
+/** How an approved run ended, as a badge. */
+function runOutcome(run: TerminalRun): { value: string; tone: SemanticTone } {
+  if (run.state === 'failed') return { value: 'Failed', tone: 'negative' };
+  if (run.exitCode === 0) return { value: 'Done', tone: 'positive' };
+  return typeof run.exitCode === 'number'
+    ? { value: `Exit ${run.exitCode}`, tone: 'negative' }
+    : { value: 'Ended', tone: 'neutral' };
+}
 
 /** While a run waits or runs, the chat reads it again this often. */
 const OPEN_RUN_POLL_MS = 2_000;
@@ -39,8 +53,9 @@ export function terminalRunRefreshKey(
 
 /**
  * Commands an agent asked to run in this chat (#3994): an approval card for
- * each one waiting, showing exactly what runs and where, and a note for each
- * one running. Every run asks; approving one never approves the next.
+ * each one waiting, showing exactly what runs and where, a note while one
+ * runs, and for a minute after it ends, how it ended. Every run asks;
+ * approving one never approves the next.
  */
 export function TerminalRunNotes({
   conversationId,
@@ -155,12 +170,17 @@ export function TerminalRunNotes({
               </div>
             </section>
           ) : (
-            <div className="agent-schedule-notes__note" title={run.cwd}>
+            <div
+              className="agent-schedule-notes__note"
+              title={run.failure ?? run.cwd}
+            >
               <TerminalGlyph className="agent-schedule-notes__glyph" />
               <span className="agent-schedule-notes__text">
-                Running <code>{run.command}</code>
+                {endedRun(run) ? 'Ran' : 'Running'} <code>{run.command}</code>
               </span>
-              {run.terminalId ? (
+              {endedRun(run) ? (
+                <Badge {...runOutcome(run)} />
+              ) : run.terminalId ? (
                 <Button
                   size="sm"
                   variant="ghost"

@@ -380,7 +380,7 @@ export function createTerminalRunRoutes(deps: TerminalRunRoutesDeps) {
         success: true,
         data: {
           runs: deps.runs
-            .openForConversation(conversationId.data)
+            .visibleForConversation(conversationId.data)
             .map(publicTerminalRun),
         },
       },

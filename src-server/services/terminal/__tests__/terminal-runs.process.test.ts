@@ -208,6 +208,13 @@ describe.runIf(posix)('agent terminal runs', () => {
     const finished = (await readRun(app, first.runId)).body.data;
     expect(finished.exitCode).toBe(0);
     expect(finished.output).toContain('first-run-output');
+    // The person still sees how the run they approved ended.
+    const ended = await (
+      await person(app, `/runs?conversationId=${CONVERSATION}`)
+    ).json();
+    expect(ended.data.runs).toMatchObject([
+      { runId: first.runId, state: 'exited', exitCode: 0 },
+    ]);
 
     // The same command again is a new request that waits for the person.
     const second = await requestRun(app, 'echo first-run-output');
@@ -219,8 +226,10 @@ describe.runIf(posix)('agent terminal runs', () => {
       await person(app, `/runs?conversationId=${CONVERSATION}`)
     ).json();
     expect(
-      pending.data.runs.map((run: { runId: string }) => run.runId),
-    ).toEqual([second.runId]);
+      pending.data.runs.map(
+        (run: { runId: string; state: string }) => `${run.runId}:${run.state}`,
+      ),
+    ).toEqual([`${first.runId}:exited`, `${second.runId}:needs_approval`]);
 
     // Declining it runs nothing, and the decision cannot be reversed.
     expect(

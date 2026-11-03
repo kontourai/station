@@ -44,6 +44,8 @@ export interface TerminalRun {
   /** An unanswered request expires at this time. */
   expiresAt: number;
   decidedAt?: number;
+  /** When an approved run exited or failed. */
+  endedAt?: number;
   terminalId?: string;
   exitCode?: number | null;
   signal?: number | null;
@@ -54,6 +56,8 @@ export interface TerminalRun {
 export const TERMINAL_RUN_APPROVAL_TTL_MS = 10 * 60_000;
 export const TERMINAL_RUN_MAX_PENDING_PER_CONVERSATION = 3;
 export const TERMINAL_RUN_MAX_COMMAND_CHARS = 8192;
+/** A run that ended is still shown to the person this long, with its exit. */
+export const TERMINAL_RUN_RECENT_MS = 60_000;
 /** Settled requests kept per conversation, so an agent can still read one. */
 const MAX_RECORDS_PER_CONVERSATION = 20;
 const MAX_RECORDS = 512;
@@ -111,10 +115,16 @@ export class TerminalRunRequests {
       .sort((a, b) => a.createdAt - b.createdAt);
   }
 
-  /** The conversation's requests a person can still act on or watch. */
-  openForConversation(conversationId: string): TerminalRun[] {
-    return this.forConversation(conversationId).filter((run) =>
-      OPEN_STATES.has(run.state),
+  /**
+   * The conversation's requests a person can still act on or watch, and the
+   * approved runs that ended within `TERMINAL_RUN_RECENT_MS`.
+   */
+  visibleForConversation(conversationId: string): TerminalRun[] {
+    const since = this.now() - TERMINAL_RUN_RECENT_MS;
+    return this.forConversation(conversationId).filter(
+      (run) =>
+        OPEN_STATES.has(run.state) ||
+        (run.endedAt !== undefined && run.endedAt >= since),
     );
   }
 
@@ -155,11 +165,13 @@ export class TerminalRunRequests {
           state: 'exited',
           exitCode: exit.exitCode,
           signal: exit.signal,
+          endedAt: this.now(),
         }),
       (error: unknown) =>
         this.transition(run, {
           state: 'failed',
           failure: error instanceof Error ? error.message : String(error),
+          endedAt: this.now(),
         }),
     );
   }
@@ -167,7 +179,7 @@ export class TerminalRunRequests {
   failed(id: string, failure: string): void {
     const run = this.runs.get(id);
     if (run?.state === 'starting')
-      this.transition(run, { state: 'failed', failure });
+      this.transition(run, { state: 'failed', failure, endedAt: this.now() });
   }
 
   /**

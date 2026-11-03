@@ -83,7 +83,8 @@ ends a session in any binding the caller may operate.
 
 An agent's `terminal_run` requests are read and answered with
 `listConversationTerminalRuns(apiBase, conversationId)` (the runs that wait,
-start or run; empty on a host without them), `approveTerminalRun(apiBase,
+start or run, and approved runs that ended in the last minute; empty on a host
+without them), `approveTerminalRun(apiBase,
 runId)` and `declineTerminalRun(apiBase, runId)`, typed `TerminalRun` and
 `TerminalRunState`. Each approval runs that one command once; see
 [agent terminal runs](api.md#agent-terminal-runs).
