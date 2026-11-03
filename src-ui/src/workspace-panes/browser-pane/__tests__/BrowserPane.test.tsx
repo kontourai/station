@@ -242,11 +242,12 @@ function RegistryProbe() {
 }
 
 /**
- * Run a Browser command the way the command palette does: the registered
- * shortcut's handler, offered only while it is enabled and its `when` holds.
- * Focus inside the pane first, which is what makes Browser commands current.
+ * Run a Browser command through the shortcut registry the command palette
+ * lists: the registered handler, only while it is enabled and its `when`
+ * holds. This does not drive the palette's own UI. Focus inside the pane
+ * first, which is what makes Browser commands current.
  */
-async function runPaletteCommand(id: string) {
+async function runRegisteredCommand(id: string) {
   act(() =>
     (
       screen.getByRole('button', {
@@ -352,7 +353,7 @@ describe('BrowserPane honest states', () => {
     }
   });
 
-  test('the Screenshot to chat command hands the image to the active Project chat', async () => {
+  test('the registered Screenshot to chat command hands the image to the active Project chat', async () => {
     const received = vi.fn(async (files: File[]) => ({
       added: files.length,
       errors: [],
@@ -381,7 +382,7 @@ describe('BrowserPane honest states', () => {
           }),
       });
       await screen.findByTestId('live-canvas');
-      await runPaletteCommand('browser.screenshotChat');
+      await runRegisteredCommand('browser.screenshotChat');
       await waitFor(() => expect(received).toHaveBeenCalledOnce());
       expect(received.mock.calls[0]![0][0]).toMatchObject({
         name: 'browser-screenshot.png',
@@ -1277,8 +1278,8 @@ describe('Browser empty state', () => {
   });
 });
 
-describe('Browser commands in the command palette', () => {
-  test('console, sessions, rotate, stop loading, float and Browser settings each run from the palette', async () => {
+describe('Browser commands in the shortcut registry', () => {
+  test('console, sessions, rotate, stop loading, float and Browser settings each run as a registered command', async () => {
     const release = registerFloatHost();
     const navigate = vi
       .spyOn(navigationStore, 'navigate')
@@ -1301,19 +1302,19 @@ describe('Browser commands in the command palette', () => {
         [`POST /api/browser/sessions/${SESSION}/history`]: ok(sessionView()),
       });
       await screen.findByTestId('live-canvas');
-      await runPaletteCommand('browser.console');
+      await runRegisteredCommand('browser.console');
       expect(
         await screen.findByRole('region', { name: 'Console' }),
       ).toBeTruthy();
-      await runPaletteCommand('browser.sessions');
+      await runRegisteredCommand('browser.sessions');
       expect(
         await screen.findByRole('heading', { name: 'Sessions' }),
       ).toBeTruthy();
-      await runPaletteCommand('browser.rotate');
+      await runRegisteredCommand('browser.rotate');
       await waitFor(() =>
         expect(calls.some((c) => c.path.endsWith('/viewport'))).toBe(true),
       );
-      await runPaletteCommand('browser.stop');
+      await runRegisteredCommand('browser.stop');
       await waitFor(() =>
         expect(
           calls.some(
@@ -1323,12 +1324,12 @@ describe('Browser commands in the command palette', () => {
           ),
         ).toBe(true),
       );
-      await runPaletteCommand('browser.float');
+      await runRegisteredCommand('browser.float');
       expect(takeFloatRequest()?.source).toMatchObject({
         kind: 'browser',
         browserSessionId: SESSION,
       });
-      await runPaletteCommand('browser.settings');
+      await runRegisteredCommand('browser.settings');
       expect(navigate).toHaveBeenCalledWith(
         '/settings',
         expect.objectContaining({ view: 'advanced', project: 'alpha' }),

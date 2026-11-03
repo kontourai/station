@@ -493,11 +493,6 @@
   width: 8px;
 }
 
-.browser-pane__details summary {
-  cursor: pointer;
-  font-size: 0.8125rem;
-}
-
 /* An agent is driving: hovering the page says how to take over. */
 .browser-pane__takeover-hint {
   backdrop-filter: blur(6px);

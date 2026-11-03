@@ -107,6 +107,19 @@ describe('the device picker (#1970)', () => {
       screen.getByText(/Add a runtime in Xcode › Settings › Components/),
     ).toBeTruthy();
     expect(screen.getByText(/No Android emulators/)).toBeTruthy();
+    // With nothing to start, the heading does not ask the person to start one.
+    expect(screen.getByRole('heading', { name: 'Devices' })).toBeTruthy();
+    expect(
+      screen.queryByRole('heading', { name: 'Start a simulator' }),
+    ).toBeNull();
+  });
+
+  test('devices that are all stopped: the heading says to start one', async () => {
+    stubDeviceFetch({ inventory: readyInventory([STOPPED_AVD]) });
+    renderInQueryClient(<DeviceWorkspacePane />);
+    expect(
+      await screen.findByRole('heading', { name: 'Start a simulator' }),
+    ).toBeTruthy();
   });
 
   test('Refresh devices re-reads the list', async () => {

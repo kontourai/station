@@ -33,12 +33,12 @@ export const DEVICE_HOST_FAILURE_COPY: Record<
   'not-configured': {
     title: 'Set up devices to start a simulator',
     description:
-      'Station runs a device hub to list simulators and emulators. Or point the Device helper URL setting at your own.',
+      'Choose Set up devices, or set Device helper URL in Settings › Advanced › Host options and restart Station.',
   },
   'invalid-configuration': {
     title: 'Device helper address refused',
     description:
-      'Use http://127.0.0.1:<port> (not 3000 or 3141) in the Device helper URL setting, then restart Station.',
+      'Set Device helper URL in Settings › Advanced › Host options to http://127.0.0.1:<port> (not 3000 or 3141), then restart Station.',
   },
   'hub-unavailable': {
     title: 'Device helper not answering',

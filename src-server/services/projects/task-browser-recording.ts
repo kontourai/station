@@ -419,6 +419,7 @@ export class TaskBrowserRecording {
           'feature_preview_disabled',
           'Enable Walkthroughs in feature previews.',
         );
+      assertRecordingBounds(input);
       release ??= this.admit(access, input.admissionKey);
       return await this.recordAdmitted(access, input, resolveSource);
     } finally {
@@ -433,19 +434,6 @@ export class TaskBrowserRecording {
   ) {
     if (input.signal?.aborted) throw cancelled();
     if (input.stopSignal?.aborted) throw cancelled();
-    if (
-      !Number.isSafeInteger(input.durationMs) ||
-      input.durationMs < 1 ||
-      input.durationMs > BROWSER_RECORD_MAX_DURATION_MS ||
-      (input.maxBytes !== undefined &&
-        (!Number.isSafeInteger(input.maxBytes) ||
-          input.maxBytes < 1 ||
-          input.maxBytes > BROWSER_RECORD_MAX_ENCODED_BYTES))
-    )
-      throw new TaskBrowserRecordingError(
-        'invalid-request',
-        'Recording duration or byte limit is out of bounds.',
-      );
     if (!this.enabled())
       throw new TaskBrowserRecordingError(
         'feature_preview_disabled',
@@ -781,4 +769,21 @@ export class TaskBrowserRecording {
       }
     }
   }
+}
+
+/** Input bounds, checked before a recording takes a capacity slot. */
+function assertRecordingBounds(input: RecordingInput) {
+  if (
+    !Number.isSafeInteger(input.durationMs) ||
+    input.durationMs < 1 ||
+    input.durationMs > BROWSER_RECORD_MAX_DURATION_MS ||
+    (input.maxBytes !== undefined &&
+      (!Number.isSafeInteger(input.maxBytes) ||
+        input.maxBytes < 1 ||
+        input.maxBytes > BROWSER_RECORD_MAX_ENCODED_BYTES))
+  )
+    throw new TaskBrowserRecordingError(
+      'invalid-request',
+      'Recording duration or byte limit is out of bounds.',
+    );
 }

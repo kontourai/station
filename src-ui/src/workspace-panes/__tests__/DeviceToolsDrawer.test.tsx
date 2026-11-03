@@ -818,7 +818,6 @@ describe('a device on an SSH device host (#2442)', () => {
       <DeviceToolsDrawer
         axOverlay={false}
         deviceName="Studio iPhone"
-        id="tools"
         layout="docked"
         onAxOverlayChange={() => {}}
         onClose={() => {}}
@@ -834,6 +833,84 @@ describe('a device on an SSH device host (#2442)', () => {
     });
     return { log, drawer, rendered, DeviceToolsDrawer };
   }
+
+  test('logs poll only while the Logs view is showing', async () => {
+    const { log, rendered, DeviceToolsDrawer } = await renderDrawer(
+      ({ method, path }) => {
+        if (method === 'GET' && path.endsWith('/tools'))
+          return {
+            body: { success: true, data: snapshot({ hostId: REMOTE }) },
+          };
+        if (method === 'GET' && path.endsWith('/tools/logs'))
+          return {
+            body: {
+              success: true,
+              data: {
+                ...REMOTE_TARGET,
+                appId: 'com.example.app',
+                processId: '42',
+                truncated: false,
+                output: 'info ready',
+              },
+            },
+          };
+        return undefined;
+      },
+      'logs',
+    );
+    const drawer = screen.getByRole('complementary', { name: 'Logs' });
+    fireEvent.change(await within(drawer).findByLabelText('App ID'), {
+      target: { value: 'com.example.app' },
+    });
+    await click(within(drawer).getByRole('button', { name: 'Start logs' }));
+    await within(drawer).findByText(/info ready/);
+    const reads = toolsRequests(log, '/logs').length;
+    rendered.rerenderWrapped(
+      <DeviceToolsDrawer
+        axOverlay={false}
+        deviceName="Studio iPhone"
+        layout="docked"
+        onAxOverlayChange={() => {}}
+        onClose={() => {}}
+        projectSlug="app"
+        requestScope={scope}
+        streamVisible
+        target={REMOTE_TARGET}
+        view="apps"
+      />,
+    );
+    await screen.findByRole('complementary', { name: 'Apps' });
+    // Past one 5 s poll interval: nothing is read while Apps shows.
+    await new Promise((resolve) => setTimeout(resolve, 5_600));
+    expect(toolsRequests(log, '/logs')).toHaveLength(reads);
+  }, 15_000);
+
+  test('Device settings says so when the device reports none', async () => {
+    const { drawer } = await renderDrawer(({ method, path }) => {
+      if (method === 'GET' && path.endsWith('/tools'))
+        return {
+          body: {
+            success: true,
+            data: snapshot({
+              hostId: REMOTE,
+              capabilities: {
+                appearance: false,
+                location: false,
+                clearLocation: false,
+                push: false,
+                permissions: [],
+                permissionDecisions: [],
+                accessibility: false,
+              },
+            }),
+          },
+        };
+      return undefined;
+    }, 'settings');
+    expect(
+      await within(drawer).findByText('This device offers no settings here.'),
+    ).toBeTruthy();
+  });
 
   test('logs use the selected host and can be filtered and paused', async () => {
     const { log, drawer } = await renderDrawer(({ method, path }) => {
@@ -1118,7 +1195,6 @@ describe('a device on an SSH device host (#2442)', () => {
       <DeviceToolsDrawer
         axOverlay={false}
         deviceName="Other"
-        id="tools"
         layout="docked"
         onAxOverlayChange={() => {}}
         onClose={() => {}}

@@ -831,7 +831,7 @@ describe('the device toolbar', () => {
     ).toEqual(['Home', 'Back', 'More station-test actions']);
   });
 
-  test('the ⋯ menu groups its rows under Capture, Tools and Session', async () => {
+  test('the ⋯ menu groups its rows under Capture, Tools and Session, with Power off and End last on their own', async () => {
     const { stream, surfaceId } = await live(ANDROID_DEVICE);
     await stream.push(stateRecord(surfaceId, { inputChannel: 'connected' }));
     const { trigger, menu } = await openDeviceMenu('station-test');
@@ -847,9 +847,16 @@ describe('the device toolbar', () => {
       'Recents',
       'Float over chat (open a chat first)',
       'Close',
-      'Power off',
-      'End for everyone',
     ]);
+    // The rows that stop the device for everyone stand apart, last.
+    const groups = within(menu).getAllByRole('group');
+    const last = groups.at(-1)!;
+    expect(last.hasAttribute('aria-label')).toBe(false);
+    expect(
+      within(last)
+        .getAllByRole('menuitem')
+        .map((row) => row.getAttribute('aria-label')),
+    ).toEqual(['Power off', 'End for everyone']);
     // Escape shuts it without running anything.
     fireEvent.keyDown(document, { key: 'Escape' });
     expect(screen.queryByRole('menu')).toBeNull();

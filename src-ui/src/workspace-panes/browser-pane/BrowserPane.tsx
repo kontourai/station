@@ -29,10 +29,14 @@ import {
   GlobeGlyph,
   glyph,
   LockGlyph,
+  MessageGlyph,
+  MoonGlyph,
+  PauseGlyph,
   PhoneGlyph,
   RecordGlyph,
   RefreshGlyph,
-  ShieldGlyph,
+  SearchGlyph,
+  SettingsGlyph,
   TerminalGlyph,
 } from '../../components/icons/Glyph';
 import { Empty, ErrorState, SkeletonBlock } from '../../components/state';
@@ -1550,7 +1554,7 @@ function BrowserSessionPane({
             kind: 'list' as const,
             id: 'zoom',
             label: 'Zoom',
-            glyph: <GlobeGlyph />,
+            glyph: <SearchGlyph />,
             hint: `${Math.round(zoomFactor * 100)}%`,
             disabled: !canDriveLive || zoom.isPending,
             choices: BROWSER_ZOOM_STEPS.map((factor) => ({
@@ -1564,7 +1568,7 @@ function BrowserSessionPane({
             kind: 'list' as const,
             id: 'appearance',
             label: 'Appearance',
-            glyph: <GlobeGlyph />,
+            glyph: <MoonGlyph />,
             hint: record?.colorScheme ?? 'system',
             disabled: !canDriveLive || appearance.isPending,
             choices: (['system', 'light', 'dark'] as const).map((scheme) => ({
@@ -1637,7 +1641,7 @@ function BrowserSessionPane({
             label: floatAvailable
               ? 'Float over chat'
               : 'Float over chat (open a chat first)',
-            glyph: <BoardGlyph />,
+            glyph: <MessageGlyph />,
             disabled: !canFloat,
             onSelect: floatOverChat,
           },
@@ -1657,7 +1661,7 @@ function BrowserSessionPane({
       kind: 'action',
       id: 'stop',
       label: 'Stop loading',
-      glyph: <CloseGlyph />,
+      glyph: <PauseGlyph />,
       disabled: !canDriveLive,
       onSelect: () => history.mutate('stop'),
     },
@@ -1672,12 +1676,14 @@ function BrowserSessionPane({
       kind: 'action',
       id: 'settings',
       label: 'Browser settings…',
-      glyph: <ShieldGlyph />,
+      glyph: <SettingsGlyph />,
       disabled: !canDrive,
       onSelect: openBrowserSettings,
     },
     ...(canDriveLive
       ? [
+          // The destructive row stands alone, last, in a group of its own.
+          { kind: 'heading' as const, id: 'end', label: '' },
           {
             kind: 'danger' as const,
             id: 'close',

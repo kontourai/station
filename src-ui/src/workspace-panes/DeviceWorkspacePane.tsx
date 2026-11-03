@@ -29,7 +29,6 @@ import {
   type ReactNode,
   type RefObject,
   useEffect,
-  useId,
   useRef,
   useState,
 } from 'react';
@@ -37,9 +36,11 @@ import { Button } from '../components/Button';
 import {
   CameraGlyph,
   CloseGlyph,
+  DashboardGlyph,
   HomeGlyph,
   MoreGlyph,
   RecordGlyph,
+  TerminalGlyph,
 } from '../components/icons/Glyph';
 import { LazyBoundary } from '../components/LazyBoundary';
 import {
@@ -716,9 +717,9 @@ function DeviceWorkspacePaneSurface({
       {pending ? <DeviceLoading pending={pending} /> : null}
       <div className="device-pane__picker-header">
         <h2 className="device-pane__picker-title">
-          {devices.some((device) => device.booted)
-            ? 'Devices'
-            : 'Start a simulator'}
+          {devices.length > 0 && !devices.some((device) => device.booted)
+            ? 'Start a simulator'
+            : 'Devices'}
         </h2>
         <div className="device-pane__picker-actions">
           <Button
@@ -926,7 +927,6 @@ function DeviceStage({
   const layout = deviceToolsLayout(useElementWidth(workspaceRef));
   const [toolsView, setToolsView] = useState<DeviceToolsView | null>(null);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
-  const toolsDrawerId = useId();
   // Closing the drawer (its Close or Escape) returns focus to the ⋯ button,
   // so a keyboard user is not dropped on <body>.
   const wasOpen = useRef(false);
@@ -1249,7 +1249,6 @@ function DeviceStage({
             view: toolsView,
             axOverlay,
             deviceName: session.name,
-            id: toolsDrawerId,
             layout,
             onAxOverlayChange: setAxOverlay,
             onClose: () => setToolsView(null),
@@ -1382,11 +1381,15 @@ function DeviceToolbar({
     );
   };
   const ended = surface.status === 'unavailable' || surface.status === 'denied';
-  const tools = (view: DeviceToolsView, label: string): PaneMenuItem => ({
+  const tools = (
+    view: DeviceToolsView,
+    label: string,
+    glyph: ReactNode,
+  ): PaneMenuItem => ({
     kind: 'action',
     id: view,
     label,
-    glyph: <ToolsGlyph />,
+    glyph,
     hint: toolsView === view ? 'Open' : undefined,
     onSelect: () => onOpenTools(view),
   });
@@ -1413,9 +1416,9 @@ function DeviceToolbar({
         ]
       : []),
     { kind: 'heading', id: 'tools', label: 'Tools' },
-    ...(deviceLoopEnabled ? [tools('logs', 'Logs')] : []),
-    tools('apps', 'Apps'),
-    tools('settings', 'Device settings'),
+    ...(deviceLoopEnabled ? [tools('logs', 'Logs', <TerminalGlyph />)] : []),
+    tools('apps', 'Apps', <DashboardGlyph />),
+    tools('settings', 'Device settings', <ToolsGlyph />),
     { kind: 'heading', id: 'session', label: 'Session' },
     ...(session.platform === 'android'
       ? [
@@ -1448,6 +1451,8 @@ function DeviceToolbar({
     },
     ...(canManage
       ? [
+          // The rows that stop the device for everyone stand apart, last.
+          { kind: 'heading' as const, id: 'end', label: '' },
           {
             kind: 'action' as const,
             id: 'power-off',

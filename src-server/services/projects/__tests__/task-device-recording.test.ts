@@ -132,7 +132,7 @@ test('disposing the recording owner cancels in-flight work', async () => {
   expect(cancelled).toBe(true);
 });
 
-test('starting jobs are cancellable', async () => {
+test('starting jobs are cancellable and capacity is scoped to the Task and author', async () => {
   const recordSource = vi.fn(
     async (
       _access: TaskReviewAccess,
@@ -149,8 +149,12 @@ test('starting jobs are cancellable', async () => {
       throw new Error('unexpected');
     },
   );
+  const recorder = new TaskBrowserRecording({
+    preview: { select: ({ enabled }: { enabled: () => boolean }) => enabled() },
+  } as never);
+  // The real shared limiter decides capacity; only the recording is stubbed.
   const owner = new TaskDeviceRecording({
-    admit: () => () => {},
+    admit: (task) => recorder.admit(task),
     recordSource,
   });
   const source = async (): Promise<never> => {
@@ -158,9 +162,9 @@ test('starting jobs are cancellable', async () => {
   };
   const first = owner.start(access('alice'), { durationMs: 1000 }, source);
   owner.start(access('alice'), { durationMs: 1000 }, source);
-  expect(owner.start(access('alice'), { durationMs: 1000 }, source).state).toBe(
-    'starting',
-  );
+  expect(() =>
+    owner.start(access('alice'), { durationMs: 1000 }, source),
+  ).toThrow('capacity');
   expect(owner.start(access('bob'), { durationMs: 1000 }, source).state).toBe(
     'starting',
   );
@@ -169,24 +173,38 @@ test('starting jobs are cancellable', async () => {
     expect(owner.status(access('alice'), first.id).state).toBe('cancelled'),
   );
   await owner.dispose();
+  await recorder.dispose();
 });
 
 test('finished jobs do not consume recording capacity', async () => {
+  const recorder = new TaskBrowserRecording({
+    preview: { select: ({ enabled }: { enabled: () => boolean }) => enabled() },
+  } as never);
+  // The real shared limiter (two active per author) decides capacity; only
+  // the recording itself is stubbed to fail.
   const owner = new TaskDeviceRecording({
-    admit: () => () => {},
+    admit: (task) => recorder.admit(task),
     recordSource: async () => {
       throw new Error('failure');
     },
   });
-  for (let i = 0; i < 12; i++) {
-    const job = owner.start(access('alice'), { durationMs: 1000 }, async () => {
-      throw new Error('unused');
-    });
+  const source = async (): Promise<never> => {
+    throw new Error('unused');
+  };
+  const failed = [
+    owner.start(access('alice'), { durationMs: 1000 }, source),
+    owner.start(access('alice'), { durationMs: 1000 }, source),
+  ];
+  for (const job of failed)
     await vi.waitFor(() =>
       expect(owner.status(access('alice'), job.id).state).toBe('failed'),
     );
-  }
+  // Both slots came back: a third start is admitted, not refused.
+  expect(owner.start(access('alice'), { durationMs: 1000 }, source).state).toBe(
+    'starting',
+  );
   await owner.dispose();
+  await recorder.dispose();
 });
 
 test('device jobs report the shared recorder capacity refusal', async () => {
@@ -326,4 +344,22 @@ test('shared recorder bounds active recordings Station-wide across owners', asyn
       message: 'Recording capacity is exhausted.',
     },
   });
+});
+
+test('an out-of-bounds recording is refused as invalid even when capacity is full', async () => {
+  const recorder = new TaskBrowserRecording({
+    preview: { select: ({ enabled }: { enabled: () => boolean }) => enabled() },
+  } as never);
+  const task = access('alice');
+  const holds = [recorder.admit(task), recorder.admit(task)];
+  expect(() => recorder.admit(task)).toThrow('capacity');
+  const resolveSource = vi.fn(async (): Promise<never> => {
+    throw new Error('unused');
+  });
+  await expect(
+    recorder.recordSource(task, { durationMs: 0 }, resolveSource),
+  ).rejects.toMatchObject({ code: 'invalid-request' });
+  expect(resolveSource).not.toHaveBeenCalled();
+  for (const release of holds) release();
+  await recorder.dispose();
 });

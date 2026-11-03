@@ -116,9 +116,10 @@ export const SETTINGS_SECTIONS = [
     title: 'Plugin visibility',
     group: 'this-station',
   },
+  // Configuration the Browser and Device panes keep out of their chrome.
+  { id: 'browser-devices', title: 'Browser & devices', group: 'this-station' },
   // #1973: operator-only, like plugin visibility: the hosts are machines
   // Station reaches with the operator's own ssh keys.
-  { id: 'browser-devices', title: 'Browser & devices', group: 'this-station' },
   { id: 'device-hosts', title: 'Device hosts', group: 'this-station' },
   // #3557: operator-only, like device hosts: the groups and every person's
   // tokens live on this Station, and only its operator changes them.

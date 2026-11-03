@@ -162,8 +162,6 @@ export interface DeviceToolsDrawerProps {
   sourceSessionId?: string;
   target: DeviceToolsTarget;
   deviceName: string;
-  /** The drawer's element id (the ⋯ trigger's `aria-controls`). */
-  id: string;
   /** `overlay` below 560px of container width, `docked` (288px) above. */
   layout: 'overlay' | 'docked';
   axOverlay: boolean;
@@ -224,7 +222,8 @@ export function DeviceToolsDrawer(props: DeviceToolsDrawerProps) {
     target,
     projectSlug,
     logAppId,
-    deviceLoopEnabled &&
+    view === 'logs' &&
+      deviceLoopEnabled &&
       !logsPaused &&
       logsTarget === targetKey &&
       APP_ID.test(logAppId),
@@ -271,7 +270,6 @@ export function DeviceToolsDrawer(props: DeviceToolsDrawerProps) {
       className={`device-tools device-tools--${props.layout}`}
       data-layout={props.layout}
       data-testid="device-tools-drawer"
-      id={props.id}
       onKeyDown={onKeyDown}
       ref={drawerRef}
       tabIndex={-1}
@@ -474,6 +472,17 @@ export function DeviceToolsDrawer(props: DeviceToolsDrawerProps) {
           </Section>
         ) : null}
 
+        {view === 'settings' &&
+        capabilities &&
+        !capabilities.appearance &&
+        !capabilities.accessibility &&
+        !capabilities.push &&
+        !capabilities.location &&
+        capabilities.permissions.length === 0 ? (
+          <p className="device-tools__muted">
+            This device offers no settings here.
+          </p>
+        ) : null}
         {view === 'settings' && capabilities ? (
           <SectionsCollapsed.Provider value={true}>
             {capabilities.appearance ? (

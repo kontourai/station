@@ -51,8 +51,8 @@ export function BrowserAgentSettingsPanel({
           <span>
             <strong>Let agents run JavaScript in this Project's pages</strong>
             <span id={descriptionId} className="browser-settings__hint">
-              A script acts as the page: it can read its content, cookies and
-              local storage, and keep running after the agent's call ends.
+              A script acts as you on the signed-in site: it can read the page,
+              cookies and local storage, and keep running after the call ends.
             </span>
             <details className="browser-settings__details">
               <summary>Details</summary>

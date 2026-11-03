@@ -16,6 +16,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
@@ -135,6 +136,9 @@ describe('Browser agent JavaScript (D4)', () => {
     );
     expect(description?.textContent).toMatch(/cookies and\s+local storage/);
     expect(description?.textContent).toMatch(/keep running/);
+    expect(description?.textContent).toMatch(
+      /acts as you on the signed-in site/,
+    );
     fireEvent.click(toggle);
     await waitFor(() =>
       expect(
@@ -371,5 +375,31 @@ describe('Device setup', () => {
     expect(
       await screen.findByRole('dialog', { name: 'Set up devices' }),
     ).toBeTruthy();
+  });
+
+  test('a caller who is not the operator is refused inside device setup, with nothing to change', async () => {
+    stub({
+      'GET /api/browser/projects/alpha/access': () => ok(ADMIN_ACCESS),
+      'GET /api/browser/projects/alpha/settings': () =>
+        ok({ browserEvaluate: false }),
+      'GET /api/mobile-devices/toolchain': () =>
+        new Response(
+          JSON.stringify({ success: false, error: { code: 'forbidden' } }),
+          { status: 403, headers: { 'Content-Type': 'application/json' } },
+        ),
+    });
+    mount();
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Open device setup' }),
+    );
+    const dialog = await screen.findByRole('dialog', {
+      name: 'Set up devices',
+    });
+    expect(
+      await within(dialog).findByText(
+        'Ask the Station operator to set up devices.',
+      ),
+    ).toBeTruthy();
+    expect(within(dialog).queryByRole('switch')).toBeNull();
   });
 });

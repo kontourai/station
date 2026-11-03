@@ -710,13 +710,13 @@ describe('the toolbar', () => {
     const menu = await screen.findByRole('menu', {
       name: /^More browser actions/,
     });
-    // Grouped the way a person reads: Capture, View, Inspect, Session; Close
-    // session last, at the end of Session.
+    // Grouped the way a person reads: Capture, View, Inspect, Session; then
+    // Close session alone, last, in an unlabelled group of its own.
     expect(
       within(menu)
         .getAllByRole('group')
         .map((group) => group.getAttribute('aria-label')),
-    ).toEqual(['Capture', 'View', 'Inspect', 'Session']);
+    ).toEqual(['Capture', 'View', 'Inspect', 'Session', null]);
     const items = within(menu).getAllByRole('menuitem');
     expect(items.map((item) => item.getAttribute('aria-label'))).toEqual([
       'Screenshot',
@@ -730,10 +730,11 @@ describe('the toolbar', () => {
       'Close session',
     ]);
     const close = items.at(-1)!;
-    expect(close.closest('[role="group"]')?.getAttribute('aria-label')).toBe(
-      'Session',
-    );
-    expect(close.nextElementSibling).toBeNull();
+    const closeGroup = close.closest('[role="group"]')!;
+    expect(closeGroup.hasAttribute('aria-label')).toBe(false);
+    expect(within(closeGroup as HTMLElement).getAllByRole('menuitem')).toEqual([
+      close,
+    ]);
     fireEvent.click(close);
     await waitFor(() =>
       expect(
