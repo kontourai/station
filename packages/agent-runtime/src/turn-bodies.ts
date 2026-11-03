@@ -20,6 +20,10 @@ export const bodyChunkDefinitions = [
   "CREATE TRIGGER agent_steps_body_chunks_no_update BEFORE UPDATE ON agent_steps_body_chunks BEGIN SELECT RAISE(ABORT,'immutable agent chunk'); END",
   "CREATE TRIGGER agent_steps_body_chunks_no_delete BEFORE DELETE ON agent_steps_body_chunks BEGIN SELECT RAISE(ABORT,'immutable agent chunk'); END",
 ] as const;
+export const binaryBodyChunkDefinition = bodyChunkDefinitions[0].replace(
+  'wire TEXT',
+  'wire BLOB',
+);
 export const bodyNodeDefinitions = [
   'CREATE TABLE agent_steps_body_nodes(digest BLOB PRIMARY KEY CHECK(length(digest)=32), wire BLOB NOT NULL, refs TEXT NOT NULL, byte_length INTEGER NOT NULL CHECK(byte_length>=0)) STRICT',
   "CREATE TRIGGER agent_steps_body_nodes_no_update BEFORE UPDATE ON agent_steps_body_nodes BEGIN SELECT RAISE(ABORT,'immutable agent node'); END",
@@ -182,9 +186,21 @@ export function readAgentBodyChunk(
     database,
     'SELECT wire,byte_length FROM agent_steps_body_chunks WHERE digest=?',
   ).get(digest);
-  if (!row || typeof row.wire !== 'string')
+  return decodeAgentBodyChunk(row, digest);
+}
+function decodeAgentBodyChunk(
+  row: Record<string, unknown> | undefined,
+  digest: string,
+): string {
+  if (
+    !row ||
+    (typeof row.wire !== 'string' && !(row.wire instanceof Uint8Array))
+  )
     throw new Error('DURABLE_AGENT_CHUNK_DAMAGED');
-  let wire = row.wire;
+  let wire =
+    typeof row.wire === 'string'
+      ? row.wire
+      : inflateSync(row.wire, { maxOutputLength: 128 * 1024 }).toString('utf8');
   if (wire.startsWith('{')) {
     const packed = z
       .object({ version: z.literal('agent-text/1'), payload: z.string() })
@@ -210,18 +226,21 @@ function putChunk(database: DatabaseSync, value: string): string {
     knownChunks.set(database, known);
   }
   if (known.has(digest)) return digest;
-  const packed = JSON.stringify({
+  const format = agentStatement(
+    database,
+    'SELECT writer_format FROM agent_steps_meta WHERE id=1',
+  ).get()?.writer_format;
+  const compressed = deflateSync(encoded);
+  const legacy = JSON.stringify({
     version: 'agent-text/1',
-    payload: deflateSync(encoded).toString('base64'),
+    payload: compressed.toString('base64'),
   });
   const stored =
-    packed.length < encoded.length &&
-    agentStatement(
-      database,
-      "SELECT writer_format IN ('agent-steps/11','agent-steps/12') AS compact FROM agent_steps_meta WHERE id=1",
-    ).get()?.compact === 1
-      ? packed
-      : encoded;
+    format === 'agent-steps/12'
+      ? compressed
+      : format === 'agent-steps/11' && legacy.length < encoded.length
+        ? legacy
+        : encoded;
   const inserted = agentStatement(
     database,
     'INSERT INTO agent_steps_body_chunks VALUES(?,?,?) ON CONFLICT(digest) DO NOTHING',
@@ -315,6 +334,28 @@ export function putAgentBody(database: DatabaseSync, wire: string): string {
   else if (readAgentBody(database, digest) !== wire)
     throw new Error('DURABLE_AGENT_BODY_DAMAGED');
   return digest;
+}
+
+export function migrateBinaryAgentText(database: DatabaseSync) {
+  database.exec(
+    'DROP TRIGGER agent_steps_body_chunks_no_update; DROP TRIGGER agent_steps_body_chunks_no_delete; ALTER TABLE agent_steps_body_chunks RENAME TO agent_steps_body_chunks_legacy',
+  );
+  database.exec(binaryBodyChunkDefinition);
+  const insert = agentStatement(
+    database,
+    'INSERT INTO agent_steps_body_chunks VALUES(?,?,?)',
+  );
+  for (const row of agentStatement(
+    database,
+    'SELECT digest,wire,byte_length FROM agent_steps_body_chunks_legacy',
+  ).iterate()) {
+    const digest = String(row.digest);
+    const wire = agentWire(decodeAgentBodyChunk(row, digest));
+    insert.run(digest, deflateSync(wire), Buffer.byteLength(wire));
+  }
+  database.exec('DROP TABLE agent_steps_body_chunks_legacy');
+  database.exec(bodyChunkDefinitions[1]);
+  database.exec(bodyChunkDefinitions[2]);
 }
 
 export function repackAgentBodies(database: DatabaseSync) {

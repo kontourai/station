@@ -26,9 +26,11 @@ import {
   validateAgentApprovals,
 } from './turn-approvals.js';
 import {
+  binaryBodyChunkDefinition,
   bodyChunkDefinitions,
   bodyDefinitions,
   bodyNodeDefinitions,
+  migrateBinaryAgentText,
   readAgentBody,
   readAgentBodyChunk,
   readAgentBodyNode,
@@ -310,6 +312,7 @@ const writer11Definitions = [
 const currentDefinitions = [
   writer11Definitions[0]!.replaceAll('agent-steps/11', 'agent-steps/12'),
   ...writer11Definitions.slice(1).map((sql) => {
+    if (sql === bodyChunkDefinitions[0]) return binaryBodyChunkDefinition;
     if (sql.startsWith('CREATE TRIGGER agent_steps_bodies_no_delete'))
       return indexedBodyGuards[0]!;
     if (sql.startsWith('CREATE TRIGGER agent_steps_body_chunks_no_delete'))
@@ -1134,6 +1137,7 @@ export function openSqliteAgentJournal(options: {
       throw new Error('DURABLE_AGENT_MIGRATION_REFUSED');
     database.exec('BEGIN IMMEDIATE');
     try {
+      migrateBinaryAgentText(database);
       for (const sql of referenceDefinitions) database.exec(sql);
       seedAgentReferences(database);
       for (const name of ['bodies', 'body_chunks', 'body_nodes'])
@@ -1428,8 +1432,14 @@ export function openSqliteAgentJournal(options: {
             (command.type === 'open' || command.type === 'settle') &&
             answer.kind === 'owned'
           ) {
-            if (retainAgentTurns(database, clock()))
-              database.exec('PRAGMA incremental_vacuum(8)');
+            retainAgentTurns(database, clock());
+            if (
+              Number(
+                agentStatement(database, 'PRAGMA freelist_count').get()
+                  ?.freelist_count,
+              ) > 0
+            )
+              database.exec('PRAGMA incremental_vacuum(16)');
             invalidateAgentValidation(database);
           }
           return answer;

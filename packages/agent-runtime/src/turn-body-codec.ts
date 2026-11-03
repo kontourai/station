@@ -95,8 +95,8 @@ export function encodeAgentBody(
           0;
         const length = index + 1 - start;
         if (
-          length >= 4096 ||
-          (length >= 1024 && (rolling & 2047) === 0) ||
+          length >= 16384 ||
+          (length >= 4096 && (rolling & 8191) === 0) ||
           index === node.length - 1
         ) {
           const ref = putText(node.slice(start, index + 1));
