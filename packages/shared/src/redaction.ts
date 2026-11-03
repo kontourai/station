@@ -42,36 +42,13 @@ const SECRET_PATTERNS: ReadonlyArray<{
     replacement: `Basic ${REDACTED}`,
   },
   { pattern: /\bsk-[A-Za-z0-9_-]{20,}\b/g, replacement: REDACTED },
-  // Generic connection-string credentials (postgres://user:pass@host,
-  // mysql://..., mongodb://..., amqp://..., or any other `scheme://` URL
-  // carrying inline `user:pass@`). None of the patterns above are
-  // shaped like this, so a connection string embedded in free-text error
-  // output (an error message, a stack line) was passing through both
-  // `redactSecrets` and `redactDeep` untouched (station#1896 logging
-  // slice 2, filed as station#1922: server log entries are durable NDJSON
-  // on disk, so a leaked credential here is a standing secret, not just a
-  // point-in-time one). Keeps the scheme and host visible (operationally
-  // useful, not secret) and redacts only the `user:pass` segment.
-  //
-  // The password group (`[^\s'"/]+`, note: unlike the username group it
-  // does NOT exclude `@`) intentionally allows `@` inside the password —
-  // station#1896 review round 2, HIGH #3: a password containing an
-  // unescaped `@` (`postgres://dbuser:p@ssw0rd@host`) previously matched
-  // only up to the FIRST `@`, leaving the password's tail
-  // (`ssw0rd@host`) unredacted in the output. Because the group is
-  // greedy and `@` is the next required literal, the regex engine
-  // backtracks from the end of its match until it finds an `@` — which,
-  // for a greedy match, is the LAST `@` before the next boundary
-  // character (whitespace/quote/`/`), i.e. the actual credential/host
-  // separator. No nested/overlapping quantifiers are introduced (the two
-  // `+` groups are separated by required literal `:`/`@` anchors), so
-  // this stays linear-time — see this file's redaction.test.ts for a
-  // timing probe against a pathological near-miss input.
-  {
-    pattern: /([a-z][a-z0-9+.-]{1,20}:\/\/)[^\s'"/:@]+:[^\s'"/]+@/gi,
-    replacement: `$1${REDACTED}@`,
-  },
 ];
+
+// Redact complete URL credentials before contextual fields interpret a colon
+// inside a password (#1922). Passwords may contain `@`; the greedy password
+// group uses the last `@` before a path/quote/whitespace boundary (#1896).
+const CONNECTION_STRING_CREDENTIAL_PATTERN =
+  /([a-z][a-z0-9+.-]{1,20}:\/\/)[^\s'"/:@]+:[^\s'"/]+@/gi;
 
 // Native asset URLs can contain a launch secret. Keep the plugin identity
 // and source coordinates useful to a bug report, never the query or fragment.
@@ -278,7 +255,9 @@ function redactKnownCredentials(text: string): string {
   return SECRET_PATTERNS.reduce(
     (redacted, { pattern, replacement }) =>
       redacted.replace(pattern, replacement),
-    redactContextualFields(text),
+    redactContextualFields(
+      text.replace(CONNECTION_STRING_CREDENTIAL_PATTERN, `$1${REDACTED}@`),
+    ),
   );
 }
 
@@ -288,8 +267,9 @@ export function containsKnownCredential(text: string): boolean {
 }
 
 /**
- * Redacts KNOWN credential shapes from free text. Two passes:
+ * Redacts KNOWN credential shapes from free text:
  *
+ * - Connection-string `user:pass@` credentials are removed before field scanning.
  * - **Contextual**, `redactContextualFields`: a `key: value` / `key=value` pair
  *   (JSON, query string, env line, or a `--flag=value` command line) whose KEY
  *   `isSecretField` — `apiKey`, `authorization`, `cookie`, `credential(s)`,
@@ -299,8 +279,7 @@ export function containsKnownCredential(text: string): boolean {
  *   without queries or fragments; capability query values are also redacted
  *   when the origin has already been removed.
  * - **Pattern**, `SECRET_PATTERNS`: AWS access-key ids, GitHub tokens and PATs,
- *   `Bearer`/`Basic` authorization values, `sk-` API keys, and `user:pass@` in
- *   a connection-string URL.
+ *   `Bearer`/`Basic` authorization values, and `sk-` API keys.
  *
  * It is NOT a guarantee that no secret survives. A high-entropy token in a
  * field name this does not recognise is returned as written. Callers that

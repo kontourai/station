@@ -66,6 +66,14 @@ describe('redactSecrets', () => {
       'postgres://dbuser:p@ss@w@rd@host:5432/db',
       'postgres://[REDACTED]@host:5432/db',
     ],
+    [
+      'postgres://private-user:password:foo@host/db',
+      'postgres://[REDACTED]@host/db',
+    ],
+    [
+      'postgres://private-user:token:foo@host/db',
+      'postgres://[REDACTED]@host/db',
+    ],
   ])('redacts %s', (input, expected) => {
     expect(redactSecrets(input)).toBe(expected);
   });
