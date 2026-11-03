@@ -7,12 +7,10 @@ import {
 import { Hono } from 'hono';
 import {
   isOperatorInPersonNotAgent,
-  isOperatorsOwnDevice,
-  type OperatorDeviceRecord,
   requestMayBeAnAgent,
 } from '../../security/coding-authority.js';
 import {
-  isBoundRuntimeLocalOperator,
+  isBoundRuntimeOwner,
   resolveClientOriginForRequest,
 } from '../../security/runtime-request-security.js';
 import { stationControlRequestAuthority } from '../../security/station-control-request-authority.js';
@@ -44,10 +42,6 @@ export function createDiagnosticsRoutes(
     agentGrant?: (sessionId: string) => boolean;
     /** #4470: absent leaves the troubleshoot prepare route unmounted. */
     troubleshoot?: TroubleshootService;
-    /** Re-reads a paired device so the owner's own phone counts as the owner. */
-    identifyDevice?: (
-      credential: string,
-    ) => OperatorDeviceRecord | null | undefined;
   },
 ) {
   const app = new Hono();
@@ -90,11 +84,9 @@ export function createDiagnosticsRoutes(
           surface?: TroubleshootPrepareInput['surface'];
           seed?: TroubleshootPrepareInput['seed'];
         };
-        const owner =
-          isOperatorInPersonNotAgent(c.req.raw) ||
-          (access?.identifyDevice
-            ? isOperatorsOwnDevice(c.req.raw, access.identifyDevice)
-            : false);
+        // The operator at the host or on one of the owner's own devices
+        // (owner-device standing): the single in-person owner check.
+        const owner = isOperatorInPersonNotAgent(c.req.raw);
         const reported = resolveClientOriginForRequest(c.req.raw).reported
           ?.surface;
         const surface =
@@ -210,10 +202,10 @@ export function createDiagnosticsRoutes(
         ...(until !== undefined ? { until } : {}),
         ...(limit !== undefined ? { limit } : {}),
         ...(q !== undefined ? { q } : {}),
-        // One derivation, bound by the auth boundary: mint-time
-        // `locality: 'home-possession'`. Absent (or a second call that
-        // skipped the boundary) fails closed to redacted.
-        redact: !isBoundRuntimeLocalOperator(c.req.raw),
+        // One derivation, bound by the auth boundary: the owner (mint-time
+        // `locality: 'home-possession'` or owner-device standing). Absent (or a
+        // second call that skipped the boundary) fails closed to redacted.
+        redact: !isBoundRuntimeOwner(c.req.raw),
       };
 
       const result = await logReader.query(options);

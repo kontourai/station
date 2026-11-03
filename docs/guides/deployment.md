@@ -191,7 +191,8 @@ the reusable environment credential:
 
 On successful completion the browser receives a revocable HttpOnly Device
 session and can reconnect. A paired browser is not automatically an approver:
-approval requires the route's current operator/local-home authority or an
+approval requires the route's current operator/local-home authority,
+owner-device standing, or an
 explicitly promoted `access:approve` Device (one tied to a person only while
 that person's Station group is Admin). Use the connection manager's
 **Paired devices** view to revoke access. Registration, successful enrollment
@@ -213,9 +214,11 @@ for its exact scope and remaining native/release limits. Its source is distinct
 from existing dogfood receipts.
 
 Developer → Monitoring → Companion exposes the operator-only host prerequisite
-check. The in-person operator and an explicitly promoted human operator Device
-can read it. The Device needs read scope, `telemetry:manage` and its current
-operator role; agents and unpromoted paired Devices remain refused. This read
+check. The in-person operator (including one of the owner's own Devices with
+[owner-device standing](../security/remote-access-threat-model.md#owner-device-standing-2026-11-02))
+and an explicitly promoted human operator Device can read it. A promoted Device
+needs read scope, `telemetry:manage` and its current operator role; agents and
+other paired Devices remain refused. This read
 does not install, start or qualify the deployment.
 See the [prerequisite API](../../deployment/telemetry/README.md#station-host-prerequisite-api)
 for supported container capabilities and explicit failure states.

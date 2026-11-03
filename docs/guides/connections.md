@@ -2012,7 +2012,9 @@ never granted this way. A phone or browser that uses Station's **Request
 access** screen asks for full device access: Standard plus **Run commands**
 and **Skip approval prompts**. Whoever approves sees "asks for full device
 access" and approves it as asked, or opens **Limit access** to untick
-permissions first; only the operator can approve the two elevated ones. In
+permissions first; only the operator (including one of the owner's own devices
+with [owner-device standing](../security/remote-access-threat-model.md#owner-device-standing-2026-11-02))
+can approve the two elevated ones. In
 **Needs attention** the request is one line with **Review**, which opens the
 details. A paired browser can sign in with an enrolled operator passkey and
 confirm an ordinary pairing request on the consent origin; the request remains
