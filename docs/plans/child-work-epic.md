@@ -46,6 +46,27 @@ publication at shutdown; direct Flow returns preparation refusal at 120108ms.
 No unchanged rerun or deadline increase follows. Fewer Home acquisitions do not
 establish a latency repair or supported-group acceptance.
 
+The separate input-runtime close gap is repaired at `55ce9503872`. Invocation
+controllers and completion fences are registered before authorization/evidence
+work; owner close aborts and joins them through final ledger settlement, even
+after physical MCP retirement. All original grant, custody and retry checks stay
+in place. The real-owner pre-allocation and final-ledger controls fail on the old
+code and pass with the repair. The selected protocol/lifetime/publication/resource
+matrix passes 45 checks and server-test types. Removing only the invocation-set
+registration causes all three intended early-close failures; exact-restored
+verification passes all three. Independent source review found no P0–P2 defect
+in this repair, with the controller-abort loop not separately isolated by a
+mutation. Fixture extraction diagnostics (a missing import and MCP mock ordering)
+and earlier sampled-liveness timeouts are not counted as passing evidence.
+
+The unchanged full caller file ran once on that repair and still fails twice.
+HTTP reaches the Flow join step, then fails at 120419ms with two provider calls;
+the direct case reaches `syncReportGroupAfterInput` and receives HTTP 503 after
+initial execution and renewal controls. Both runtime shutdowns complete in this
+run. This does not prove the earlier pending-publication error's sole cause,
+resolve the deadline failures or qualify the full journey. Assertions and product
+deadlines remain unchanged; no unchanged rerun follows.
+
 Sealed Queue and Steer are both disabled by the trusted Session declaration,
 with the plain report/group continuation explanation. The Queue-only mutant
 failed and restored browser verification passed at isolated `f138f28e20b`.
@@ -55,10 +76,13 @@ layout approval alone does not approve the corrected behavior or final source.
 Provider, native and hosted acceptance are not inferred from these fixtures.
 
 Ten changed-input documentation reviews were committed at `dcf6a3ed02f`, and
-sixteen security/orchestration reviews at `53b89e7c7d1`. These are bounded source
-reviews with preserved classifications and execution limits. The learning atlas
+sixteen security/orchestration reviews at `53b89e7c7d1`, followed by twelve user
+and security-reference reviews at `cf86043f409`. The report-member Queue/Steer
+exception and symbolic-link token-file wording are corrected at `e23058af509`.
+These are bounded source reviews with preserved classifications and execution
+limits. The learning atlas
 now builds 543 documents; MCP generation retains 136 topics. The last frozen
-readiness at `dcf6a3ed02f` still fails required documentation truth and records
+readiness at `a1a6f360dec` still fails required documentation truth and records
 the optional provider-policy warning. These completed reviews do not clear the
 remaining currency or qualification obligations.
 
