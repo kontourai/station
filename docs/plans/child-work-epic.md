@@ -29,10 +29,22 @@ A diagnostic worker capture at `dcf6a3ed02f` also failed both callers: HTTP
 refused before input this time, and direct Flow reached the deadline. Sampled
 Home/currentness and filesystem work overlap; the capture proves neither a
 sole cause nor recoverable time. Assertions, product deadlines and original
-caller bytes were restored exactly. Initial authority-installation batching is
-being qualified separately. It retains each published issue/derive transaction,
-live fences and post-return uncertainty checks; a lower Home-hold count is not
-an end-to-end latency or supported-group result.
+caller bytes were restored exactly. Guarded initial authority installation at
+`4692f07bcfe` retains each published issue/derive transaction, live fence and
+post-return uncertainty check. Its 37-case focused selection passes; removing
+only the per-step return checks produces two intended classification failures
+and leaves the group-create control passing. Exact-restored verification passes
+all three controls. A further six-case selection includes three-seat,
+two-provider Flow and four-member queued revocation, independent abort and
+sixteen-member source-capacity refusal. It passes without changing the Home
+admission timeout. These tests stop before provider dispatch and do not qualify
+the full report journey.
+
+The unchanged full callers at `4692f07bcfe` still fail twice: HTTP refuses before
+canonical input is observed (`inputInvocations=1`) and also reports pending
+publication at shutdown; direct Flow returns preparation refusal at 120108ms.
+No unchanged rerun or deadline increase follows. Fewer Home acquisitions do not
+establish a latency repair or supported-group acceptance.
 
 Sealed Queue and Steer are both disabled by the trusted Session declaration,
 with the plain report/group continuation explanation. The Queue-only mutant

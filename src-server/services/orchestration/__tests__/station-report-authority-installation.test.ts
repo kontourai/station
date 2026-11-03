@@ -21,12 +21,14 @@ import { StationDelegationPersistence } from '../delegation-group-persistence.js
 import { EventBus } from '../event-bus.js';
 import { OrchestrationService } from '../orchestration-service.js';
 import { StationReportGroupRuntime } from '../station-report-group-runtime.js';
+import { createReportFlow } from './delegation-source-fixtures/flow.js';
 import { setup } from './delegation-source-fixtures/report.js';
 
 test.each([
   'observe',
   'queued-revocation',
   'four-member-queued-revocation',
+  'flow-queued-revocation',
   'over-capacity',
   'abort',
 ] as const)(
@@ -35,17 +37,58 @@ test.each([
     const h = await setup();
     const queuedRevocation =
       scenario === 'queued-revocation' ||
-      scenario === 'four-member-queued-revocation';
+      scenario === 'four-member-queued-revocation' ||
+      scenario === 'flow-queued-revocation';
+    const flow =
+      scenario === 'flow-queued-revocation'
+        ? await createReportFlow(h.f, 'authority-flow-installation', [
+            { id: 'left' },
+            { id: 'right' },
+            { id: 'join', needs: ['left', 'right'] },
+          ])
+        : undefined;
+    if (flow) {
+      await h.f.storage.saveProviderConnection({
+        id: 'google-1',
+        name: 'Controlled Google',
+        type: 'google',
+        enabled: true,
+        capabilities: ['llm'],
+        config: {
+          apiKey: 'synthetic-google-not-live',
+          baseUrl: 'https://generativelanguage.googleapis.com/v1beta',
+        },
+      });
+      await h.f.loader.saveAgent('google-reviewer', {
+        name: 'Google reviewer',
+        prompt: 'Review source',
+        execution: {
+          modelConnectionId: 'google-1',
+          modelId: 'gemini-2.5-flash-lite',
+        },
+      });
+    }
     const count =
       scenario === 'over-capacity'
         ? 16
         : scenario === 'four-member-queued-revocation'
           ? 4
-          : 2;
+          : flow
+            ? 3
+            : 2;
     const input = {
       ...h.input,
+      ...(flow
+        ? {
+            flow: {
+              ...flow,
+              steps: { 'seat-0': 'left', 'seat-1': 'right', 'seat-2': 'join' },
+            },
+          }
+        : {}),
       members: Array.from({ length: count }, (_, index) => ({
         ...h.input.members[0],
+        ...(flow && index === 1 ? { agentId: 'google-reviewer' } : {}),
         seatId: `seat-${index}`,
       })),
       budget: {
