@@ -229,6 +229,8 @@ function parseBlockRecord(row: Record<string, unknown>): AgentFrame[] {
       times: z.array(z.iso.datetime()).max(1024).optional(),
       elapsed: z.array(z.number().int()).max(1024).optional(),
       positions: z.array(z.number().int().nonnegative()).max(1024).optional(),
+      ticks: z.array(z.number().int()).max(1024).optional(),
+      gaps: z.array(z.number().int().nonnegative()).max(1024).optional(),
     })
     .strict()
     .parse(
@@ -241,6 +243,31 @@ function parseBlockRecord(row: Record<string, unknown>): AgentFrame[] {
   if ((raw.wires === undefined) === (raw.packed === undefined))
     throw new Error('DURABLE_AGENT_FRAME_DAMAGED');
   const wires = raw.wires ?? unpackWires(raw.packed!);
+  const expand = (deltas: number[], start: number) =>
+    deltas.map((delta) => {
+      start += delta;
+      return start;
+    });
+  const positions = raw.gaps
+    ? expand(raw.gaps, Number(row.position))
+    : raw.positions;
+  const elapsed = raw.ticks ? expand(raw.ticks, 0) : raw.elapsed;
+  if (
+    raw.ticks &&
+    (raw.times ||
+      raw.elapsed ||
+      raw.ticks.length !== wires.length ||
+      raw.ticks[0] !== 0)
+  )
+    throw new Error('DURABLE_AGENT_FRAME_DAMAGED');
+  if (
+    raw.gaps &&
+    (raw.positions ||
+      raw.gaps.length !== wires.length ||
+      raw.gaps[0] !== 0 ||
+      raw.gaps.some((gap, index) => index > 0 && gap < 1))
+  )
+    throw new Error('DURABLE_AGENT_FRAME_DAMAGED');
   if (
     hash(
       canonical([
@@ -258,15 +285,15 @@ function parseBlockRecord(row: Record<string, unknown>): AgentFrame[] {
       (raw.times !== undefined ||
         raw.elapsed.length !== wires.length ||
         raw.elapsed[0] !== 0)) ||
-    (raw.positions !== undefined &&
-      (raw.positions.length !== wires.length ||
-        raw.positions[0] !== row.position ||
-        raw.positions.some(
+    (positions !== undefined &&
+      (positions.length !== wires.length ||
+        positions[0] !== row.position ||
+        positions.some(
           (position, index, positions) =>
             index > 0 && position <= positions[index - 1]!,
         ))) ||
     Number(row.last_position) !==
-      (raw.positions?.at(-1) ?? Number(row.position) + wires.length - 1) ||
+      (positions?.at(-1) ?? Number(row.position) + wires.length - 1) ||
     Number(row.last_ordinal) !== Number(row.first_ordinal) + wires.length - 1
   )
     throw new Error('DURABLE_AGENT_FRAME_DAMAGED');
@@ -276,11 +303,11 @@ function parseBlockRecord(row: Record<string, unknown>): AgentFrame[] {
       id: group.startsWith('ordinal:')
         ? `${group.slice(8)}:${Number(row.first_ordinal) + index}`
         : group.slice(8),
-      position: raw.positions?.[index] ?? Number(row.position) + index,
+      position: positions?.[index] ?? Number(row.position) + index,
       wire,
       digest: hash(wire),
-      createdAt: raw.elapsed
-        ? new Date(Date.parse(raw.at) + raw.elapsed[index]!).toISOString()
+      createdAt: elapsed
+        ? new Date(Date.parse(raw.at) + elapsed[index]!).toISOString()
         : (raw.times?.[index] ?? raw.at),
     }),
   );
@@ -326,14 +353,18 @@ function putBlock(
     ...(times.some((at) => at !== first.createdAt)
       ? times.every((at) => new Date(Date.parse(at)).toISOString() === at)
         ? {
-            elapsed: times.map(
-              (at) => Date.parse(at) - Date.parse(first.createdAt),
+            ticks: times.map((at, index) =>
+              index === 0 ? 0 : Date.parse(at) - Date.parse(times[index - 1]!),
             ),
           }
         : { times }
       : {}),
     ...(frames.some((frame, index) => frame.position !== first.position + index)
-      ? { positions: frames.map((frame) => frame.position) }
+      ? {
+          gaps: frames.map((frame, index) =>
+            index === 0 ? 0 : frame.position - frames[index - 1]!.position,
+          ),
+        }
       : {}),
   };
   const digest = hash(
