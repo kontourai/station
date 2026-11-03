@@ -1148,10 +1148,7 @@ describe('ChatInputArea', () => {
       (screen.getByPlaceholderText(/Type a message/) as HTMLTextAreaElement)
         .value,
     ).toBe('keep this draft');
-    fireEvent.click(screen.getByRole('button', { name: 'Options' }));
-    expect(
-      screen.getByRole('combobox', { name: 'Thinking effort' }),
-    ).toBeTruthy();
+    expect(screen.getByRole('group', { name: 'Thinking effort' })).toBeTruthy();
   });
 
   test('#1291 anchors the model popover from the start (left) edge, matching its left-edge trigger', () => {

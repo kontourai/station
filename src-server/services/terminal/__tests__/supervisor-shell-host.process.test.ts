@@ -7,7 +7,7 @@
  * same home is a core restart.
  */
 import { readFileSync } from 'node:fs';
-import { realpath } from 'node:fs/promises';
+import { mkdir, readdir, realpath } from 'node:fs/promises';
 import { join } from 'node:path';
 import type {
   WorkloadEventMessage,
@@ -17,6 +17,9 @@ import type {
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { NodePtyAdapter } from '../../../adapters/node-pty-adapter.js';
+import { createACPBridgeClient } from '../../acp/acp-bridge-client.js';
+import { AcpSessionTerminals } from '../../acp/acp-session-terminals.js';
+import { ApprovalRegistry } from '../../approvals/approval-registry.js';
 import { PtyWorkloadHost, WorkloadFailure } from '../pty-workload-host.js';
 import {
   SupervisorShellHost,
@@ -325,5 +328,158 @@ describe('terminals as supervisor workloads (real PTYs)', () => {
     );
     expect(bytes).toBeGreaterThan(0);
     expect(bytes).toBeLessThanOrEqual(64 * 1024);
+  }, 60_000);
+
+  it('runs an agent ACP terminal as a command workload that survives a core restart', async () => {
+    const home = makeTempDir('workload-acp-');
+    const root = await realpath(makeTempDir('workload-acp-root-'));
+    const { host, routes } = startHost();
+    const first = connect(host, routes);
+    const before = core(home, root, first);
+    const client = createACPBridgeClient({
+      cwd: root,
+      terminals: new Map(),
+      sessionTerminals: new AcpSessionTerminals(before, scope, root),
+      approvalRegistry: new ApprovalRegistry({
+        info() {},
+        warn() {},
+        error() {},
+        debug() {},
+      } as never),
+      getActiveWriter: () => null,
+      nextTerminalId: () => 'acp-term-1',
+      onSessionUpdate: async () => {},
+      onExtNotification: () => {},
+      onExtMethod: async () => ({}),
+    });
+    const { terminalId } = (await client.createTerminal({
+      sessionId: 's',
+      command: process.execPath,
+      args: [
+        '-e',
+        "console.log('ready');process.stdin.on('data',d=>{console.log('got-'+String(d).trim());process.exit(4)})",
+      ],
+    })) as { terminalId: string };
+    await vi.waitFor(async () => {
+      const out = await client.terminalOutput({ sessionId: 's', terminalId });
+      expect(out.output).toContain('ready');
+      expect(out.exitStatus).toBeNull();
+    }, WAIT);
+    const [opened] = await before.listObservable('operator');
+    expect(opened).toMatchObject({ kind: 'command', status: 'running' });
+    const workload = (await host.handle({
+      op: 'attach',
+      workloadId: opened!.terminalId,
+    })) as WorkloadInfo;
+    expect(workload).toMatchObject({ kind: 'command', state: 'running' });
+
+    // The core hands off: the command lives on in the workload host.
+    await before.dispose();
+    first.close();
+    expect(pidAlive(workload.pid)).toBe(true);
+
+    // The next core reattaches it; the operator can watch and take it over.
+    const after = core(home, root, connect(host, routes));
+    const [listed] = await after.listObservable('operator');
+    expect(listed).toMatchObject({
+      terminalId: opened!.terminalId,
+      kind: 'command',
+      status: 'running',
+      pid: workload.pid,
+    });
+    await after.write('operator', scope, opened!.terminalId, 'go\n');
+    await vi.waitFor(async () => {
+      const [record] = await after.listObservable('operator');
+      expect(record).toMatchObject({ status: 'exited', exitCode: 4 });
+    }, WAIT);
+    const replay = (
+      await after.read('operator', scope, opened!.terminalId)
+    ).journal.records
+      .map((record) => record.data)
+      .join('');
+    expect(count(replay, 'ready')).toBe(1);
+    expect(count(replay, 'got-go')).toBe(1);
+    await after.dispose();
+  }, 60_000);
+
+  it('reports a command workload ended at its output cap through the core', async () => {
+    const home = makeTempDir('workload-command-cap-');
+    const root = await realpath(makeTempDir('workload-command-cap-root-'));
+    const { host, routes } = startHost();
+    const sessions = core(home, root, connect(host, routes));
+    const { terminalId, exited } = await sessions.openInternal(scope, {
+      cwd: root,
+      cols: 80,
+      rows: 24,
+      kind: 'command',
+      outputCapBytes: 64 * 1024,
+      launch: {
+        file: process.execPath,
+        args: [
+          '-e',
+          "const line='x'.repeat(1023)+'\\n';setInterval(()=>process.stdout.write(line.repeat(16)),5)",
+        ],
+      },
+    });
+    expect((await exited).outputCapped).toBe(true);
+    const output = (
+      await sessions.readInternal(scope, terminalId)
+    ).journal.records
+      .map((record) => record.data)
+      .join('');
+    expect(Buffer.byteLength(output)).toBeGreaterThan(0);
+    expect(Buffer.byteLength(output)).toBeLessThanOrEqual(64 * 1024);
+    await sessions.dispose();
+  }, 60_000);
+
+  it('restarts a workload shell under the same id, continuing its journal in a new segment', async () => {
+    const home = makeTempDir('workload-restart-');
+    const root = await realpath(makeTempDir('workload-restart-root-'));
+    await mkdir(join(root, 'sub'));
+    const { host, routes } = startHost();
+    const sessions = core(home, root, connect(host, routes));
+    const opened = await sessions.open('operator', scope, {
+      cols: 80,
+      rows: 24,
+    });
+    const id = opened.terminalId;
+    await sessions.write('operator', scope, id, SET_MARK + mark('first'));
+    await vi.waitFor(
+      async () => expect(count(await text(sessions, id), 'first-mark')).toBe(1),
+      WAIT,
+    );
+    await expect(
+      sessions.restart('operator', scope, id, { subdirectory: '..' }),
+    ).rejects.toThrow('outside its binding');
+
+    const restarted = await sessions.restart('operator', scope, id, {
+      subdirectory: 'sub',
+    });
+    expect(restarted).toMatchObject({
+      terminalId: id,
+      status: 'running',
+      cwd: join(root, 'sub'),
+    });
+    expect(restarted.pid).not.toBe(opened.pid);
+    expect(pidAlive(opened.pid as number)).toBe(false);
+    const afterSeq = restarted.restart!.afterSeq;
+    await sessions.write('operator', scope, id, SET_MARK + mark('second'));
+    await vi.waitFor(async () => {
+      const tail = await text(sessions, id, afterSeq);
+      expect(count(tail, 'second-mark')).toBe(1);
+      expect(tail).not.toContain('first-mark');
+    }, WAIT);
+    const all = await sessions.read('operator', scope, id);
+    const seqs = all.journal.records.map((record) => record.seq);
+    expect(seqs).toEqual(seqs.map((_, index) => index + 1));
+    expect(
+      count(all.journal.records.map((r) => r.data).join(''), 'first-mark'),
+    ).toBe(1);
+    await sessions.close('operator', scope, id);
+    const segments = (
+      await readdir(join(home, 'terminal-journals', id))
+    ).filter((name) => name.endsWith('.jsonl'));
+    expect(segments.length).toBeGreaterThanOrEqual(2);
+    await sessions.dispose();
   }, 60_000);
 });

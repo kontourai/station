@@ -72,6 +72,7 @@ const BUILTIN_PANE_GLYPHS = {
   // A handset, not the Browser Preview globe: the tile names a simulator
   // or emulator screen, not a page (#1969).
   'workspace-device': PhoneGlyph,
+  'workspace-terminal': TerminalGlyph,
   'workspace-spatial-board': PinGlyph,
   'workspace-board': BoardGlyph,
   'workspace-basis': DatabaseGlyph,

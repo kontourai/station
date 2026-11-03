@@ -119,6 +119,7 @@ import {
 } from './settings/settings-pages';
 import { buildStationResetPlan } from './settings/station-reset';
 import { TelemetryDelivery } from './settings/TelemetryDelivery';
+import { TerminalHistoryUsage } from './settings/TerminalHistoryUsage';
 import {
   buildSettingsExportPayload,
   getSettingsValidation,
@@ -1267,6 +1268,7 @@ export function SettingsView({ onBack, onSaved }: SettingsViewProps) {
                       containerScope="station"
                       projectOverride={projectOverride}
                     />
+                    <TerminalHistoryUsage />
                     {/* Behind the workload-budget-settings Feature Preview;
                   renders nothing while it is off. */}
                     <WorkloadBudgetSettings />
