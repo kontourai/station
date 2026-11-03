@@ -747,6 +747,20 @@ function redactReportUrls(text: string): string {
     return (publicReportUrl(core) ?? REDACTED_URL) + delimiters + dropped;
   });
 }
+
+// SSH-style Git remotes (`git@github.com:owner/repo.git`) have no scheme, so
+// the URL pattern never sees them. Only Station's own remote is kept.
+const SCP_REMOTE_PATTERN = /\b[A-Za-z0-9._-]+@[A-Za-z0-9.-]+:[^\s<>"'`]+/g;
+const STATION_SCP_REMOTE = /^git@github\.com:kontourai\/station(?:\.git)?$/i;
+
+function redactScpRemotes(text: string): string {
+  return text.replace(SCP_REMOTE_PATTERN, (match) => {
+    const core = match.replace(TRAILING_PUNCTUATION, '');
+    return STATION_SCP_REMOTE.test(core)
+      ? match
+      : REDACTED_URL + match.slice(core.length);
+  });
+}
 // Station's pairing and device credentials are 32 random bytes in base64url
 // (43 characters). Requiring upper, lower and digit keeps commit SHAs, UUIDs
 // and kebab-case identifiers readable.
@@ -769,7 +783,7 @@ export function redactTroubleshootReportText(text: string): string {
   if (typeof text !== 'string') {
     throw new TypeError('troubleshoot report redaction requires a string');
   }
-  let result = redactReportUrls(redactSecrets(text));
+  let result = redactScpRemotes(redactReportUrls(redactSecrets(text)));
   result = result.replace(OPAQUE_CREDENTIAL_PATTERN, REDACTED);
   for (const pattern of HOME_PATH_PATTERNS)
     result = result.replace(pattern, '~');

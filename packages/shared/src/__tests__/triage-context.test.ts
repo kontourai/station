@@ -158,6 +158,24 @@ describe('redactTroubleshootReportText', () => {
     }
   });
 
+  test('SSH-style Git remotes are redacted unless they are Station', () => {
+    expect(
+      redactTroubleshootReportText(
+        'remote git@github.com:acme/secret-product.git.',
+      ),
+    ).toBe('remote [REDACTED_URL].');
+    expect(
+      redactTroubleshootReportText(
+        'remote deploy@git.internal:secret-product/x',
+      ),
+    ).toBe('remote [REDACTED_URL]');
+    expect(
+      redactTroubleshootReportText(
+        'remote git@github.com:kontourai/station.git',
+      ),
+    ).toBe('remote git@github.com:kontourai/station.git');
+  });
+
   test('many adjacent URLs finish without deep recursion', () => {
     const input = 'https://github.com/kontourai/station/)'.repeat(5_000);
     expect(() => redactTroubleshootReportText(input)).not.toThrow();
