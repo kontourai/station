@@ -32,6 +32,7 @@ import {
   readFileSync,
   rmSync,
   statSync,
+  symlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -341,11 +342,11 @@ describe('migratePreIndexKnowledge', () => {
       scope: { kind: 'personal' },
       readPolicy: { kind: 'author-private', ownerId: 'human:other' },
       adapterId: 'kit-default-store',
-      storeRoot: knowledgeStoreRootPathForNamespace(
+      storeRoot: `${knowledgeStoreRootPathForNamespace(
         homeDir,
         fixture.projectSlug,
         fixture.namespace,
-      ),
+      )}/`,
       displayName: 'Private',
     });
     const embedder = new StubEmbedder(4);
@@ -360,6 +361,62 @@ describe('migratePreIndexKnowledge', () => {
     ).toEqual([]);
     expect(embed).not.toHaveBeenCalled();
   });
+
+  test('migration refuses a destination nested inside a private root', async () => {
+    const fixture = seedPreIndexFixture(homeDir, { vectorDim: 4 });
+    const destination = knowledgeStoreRootPathForNamespace(
+      homeDir,
+      fixture.projectSlug,
+      fixture.namespace,
+    );
+    await store.createRoot({
+      scope: { kind: 'personal' },
+      readPolicy: { kind: 'author-private', ownerId: 'human:other' },
+      adapterId: 'kit-default-store',
+      storeRoot: join(destination, '..'),
+      displayName: 'Private parent',
+    });
+    const embedder = new StubEmbedder(4);
+    const embed = vi.spyOn(embedder, 'embed');
+    const result = await migratePreIndexKnowledge(
+      { dataDir: homeDir, store, indexProvider, embedder },
+      { projectSlug: fixture.projectSlug },
+    );
+    expect(result.namespaceResults[0]?.status).toBe('error');
+    expect(embed).not.toHaveBeenCalled();
+    expect(existsSync(destination)).toBe(false);
+  });
+
+  test.skipIf(process.platform === 'win32')(
+    'migration refuses a symlink alias of a private root',
+    async () => {
+      const fixture = seedPreIndexFixture(homeDir, { vectorDim: 4 });
+      const destination = knowledgeStoreRootPathForNamespace(
+        homeDir,
+        fixture.projectSlug,
+        fixture.namespace,
+      );
+      mkdirSync(destination, { recursive: true });
+      const alias = join(homeDir, 'private-alias');
+      symlinkSync(destination, alias, 'dir');
+      await store.createRoot({
+        scope: { kind: 'personal' },
+        readPolicy: { kind: 'author-private', ownerId: 'human:other' },
+        adapterId: 'kit-default-store',
+        storeRoot: alias,
+        displayName: 'Private alias',
+      });
+      const embedder = new StubEmbedder(4);
+      const embed = vi.spyOn(embedder, 'embed');
+      const result = await migratePreIndexKnowledge(
+        { dataDir: homeDir, store, indexProvider, embedder },
+        { projectSlug: fixture.projectSlug },
+      );
+      expect(result.namespaceResults[0]?.status).toBe('error');
+      expect(embed).not.toHaveBeenCalled();
+      expect(readdirSync(destination)).toEqual([]);
+    },
+  );
 
   // ── (b) Data-carrying ────────────────────────────────────────────────────────────────────
 

@@ -29,6 +29,10 @@ import {
 } from '../services/knowledge/knowledge-storage.js';
 import { knowledgeMigrationOps } from '../telemetry/metrics.js';
 import { createLogger } from '../utils/logger.js';
+import {
+  canonicalPathThroughExistingAncestor,
+  isCanonicalPathWithin,
+} from '../utils/path-containment.js';
 import { KeyedInFlightGuard } from './inflight-guard.js';
 import { assertSafePathSegment, isSafePathSegment } from './path-safety.js';
 
@@ -210,11 +214,7 @@ async function ensureMigrationRoot(
     projectSlug,
     namespace,
   );
-  const matches = (await store.listRoots()).filter(
-    (root) => root.storeRoot === storeRoot,
-  );
-  if (matches.some((root) => root.readPolicy !== undefined))
-    throw new Error('Migration destination is unavailable.');
+  const matches = await migrationDestinationRoots(store, storeRoot);
   const existing = matches[0];
   if (existing) return existing;
 
@@ -224,6 +224,25 @@ async function ensureMigrationRoot(
     storeRoot,
     displayName: `${projectSlug} (migrated from pre-index vectordb namespace ${vectorNamespace})`,
   });
+}
+
+async function migrationDestinationRoots(
+  store: KnowledgeStoreProvider,
+  storeRoot: string,
+) {
+  const destination = canonicalPathThroughExistingAncestor(storeRoot);
+  const matches: KnowledgeStoreRoot[] = [];
+  for (const root of await store.listRoots()) {
+    const candidate = canonicalPathThroughExistingAncestor(root.storeRoot);
+    if (
+      root.readPolicy !== undefined &&
+      (isCanonicalPathWithin(candidate, destination) ||
+        isCanonicalPathWithin(destination, candidate))
+    )
+      throw new Error('Migration destination is unavailable.');
+    if (candidate === destination) matches.push(root);
+  }
+  return matches;
 }
 
 /**
@@ -294,13 +313,7 @@ async function migrateNamespace(
   const migrateIntoRoot = async (
     adapter: Awaited<ReturnType<KnowledgeStoreProvider['adapterFor']>>,
   ) => {
-    if (
-      (await store.listRoots()).some(
-        (entry) =>
-          entry.storeRoot === root.storeRoot && entry.readPolicy !== undefined,
-      )
-    )
-      throw new Error('Migration destination is unavailable.');
+    await migrationDestinationRoots(store, root.storeRoot);
     let namespaceDocsMigrated = 0;
 
     for (const doc of docs) {
@@ -336,22 +349,30 @@ async function migrateNamespace(
       observeMigration('write', 'created');
     }
 
-    // Re-derive the whole root from its records with the current embedder.
-    const rebuildResult = await indexProvider.rebuildRoot(root.id, {
-      store,
-      embedder,
-    });
-    const chunksIndexed = rebuildResult.chunks;
-
-    return {
-      documentsMigrated: namespaceDocsMigrated,
-      chunksIndexed,
-      vectorNamespace,
-    };
+    return namespaceDocsMigrated;
   };
-  return store.withRootRevision
-    ? store.withRootRevision(root, migrateIntoRoot)
-    : migrateIntoRoot(await store.adapterFor(root.id));
+  const documentsMigrated = store.withRootRevision
+    ? await store.withRootRevision(root, migrateIntoRoot)
+    : await migrateIntoRoot(await store.adapterFor(root.id));
+  const withRootRevision: Parameters<
+    KnowledgeIndexProvider['rebuildRoot']
+  >[1]['withRootRevision'] = store.withRootRevision
+    ? (operation) =>
+        store.withRootRevision!(root, async (adapter) => {
+          await migrationDestinationRoots(store, root.storeRoot);
+          return operation(adapter);
+        })
+    : undefined;
+  const rebuildResult = await indexProvider.rebuildRoot(root.id, {
+    store,
+    embedder,
+    withRootRevision,
+  });
+  return {
+    documentsMigrated,
+    chunksIndexed: rebuildResult.chunks,
+    vectorNamespace,
+  };
 }
 
 /**

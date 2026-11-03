@@ -47,6 +47,7 @@ import { ConsentChannelService } from '../../../services/consent/consent-channel
  * service, which is the same shape `/chat` stamps onto its dispatched turn.
  */
 
+import { randomUUID } from 'node:crypto';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -4106,6 +4107,7 @@ describe('device-session chat principal resolution over the REAL auth path (stat
       });
       const foreignRoot = await knowledgeProvider!.createRoot({
         scope: { kind: 'project', projectSlug: 'private' },
+        projectId: '11111111-1111-4111-8111-111111111111',
         readPolicy: {
           kind: 'author-private',
           ownerId: 'human:tailscale-serve:stranger@example',
@@ -4121,6 +4123,35 @@ describe('device-session chat principal resolution over the REAL auth path (stat
         category: 'test',
         provenance: { agent: 'fixture' },
       });
+      for (const credential of [OPERATOR_SECRET, paired.credential]) {
+        const response = await app.request(
+          '/api/knowledge/document-imports',
+          {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${credential}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              requestId: randomUUID(),
+              expectedRoot: foreignRoot,
+              documents: [
+                {
+                  filename: 'private.md',
+                  contentBase64: Buffer.from('No import').toString('base64'),
+                },
+              ],
+            }),
+          },
+          REMOTE_TAILNET_ENV,
+        );
+        expect(response.status).toBe(400);
+      }
+      expect(
+        await (await knowledgeProvider!.adapterFor(foreignRoot.id)).listByType(
+          'raw',
+        ),
+      ).toHaveLength(1);
       const beforeForeignRebuild = embedded.length;
       const foreignRebuild = await app.request(
         '/api/knowledge/index/rebuild',

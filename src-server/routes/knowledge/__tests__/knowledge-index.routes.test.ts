@@ -133,6 +133,190 @@ describe('knowledge-index routes', () => {
 
   describe('POST /index/rebuild', () => {
     const makeAdditionalStoreDir = trackTempDirs();
+    test('private rebuild refuses when the registry cannot pin a revision', async () => {
+      const root = await store.createRoot({
+        scope: { kind: 'personal' },
+        readPolicy: { kind: 'author-private', ownerId: 'human:owner' },
+        adapterId: 'kit-default-store',
+        storeRoot: storeDir,
+        displayName: 'Private',
+      });
+      const app = createKnowledgeIndexRoutes({
+        store,
+        indexProvider,
+        dataDir,
+        getEmbedder: () => embedder,
+        mayBuildSessionBackedRoot: () => true,
+        mayBuildPrivateRoot: () => true,
+      });
+      const res = await app.request('/index/rebuild', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rootId: root.id }),
+      });
+      expect(res.status).toBe(503);
+      expect((await indexProvider.stats(root.id)).chunks).toBe(0);
+    });
+    test('a private registration changed during embedding is not published', async () => {
+      const persistence = new FileStorageAdapter(dataDir);
+      const actualStore = new KnowledgeStoreProvider(persistence);
+      const root = await actualStore.createRoot({
+        scope: { kind: 'personal' },
+        readPolicy: { kind: 'author-private', ownerId: 'human:owner' },
+        adapterId: 'kit-default-store',
+        storeRoot: storeDir,
+        displayName: 'Private',
+      });
+      await (await actualStore.adapterFor(root.id)).create({
+        type: 'raw',
+        title: 'Record',
+        body: 'private content',
+        category: 'test',
+        provenance: { agent: 'fixture' },
+      });
+      let release!: () => void;
+      let entered!: () => void;
+      const blocked = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const started = new Promise<void>((resolve) => {
+        entered = resolve;
+      });
+      const originalEmbed = embedder.embed.bind(embedder);
+      vi.spyOn(embedder, 'embed').mockImplementation(async (texts) => {
+        entered();
+        await blocked;
+        return originalEmbed(texts);
+      });
+      const app = createKnowledgeIndexRoutes({
+        store: actualStore,
+        indexProvider,
+        dataDir,
+        getEmbedder: () => embedder,
+        mayBuildSessionBackedRoot: () => true,
+        mayBuildPrivateRoot: () => true,
+      });
+      const run = app.request('/index/rebuild', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rootId: root.id }),
+      });
+      await started;
+      try {
+        await persistence.saveKnowledgeStoreRoot({
+          ...root,
+          displayName: 'Replacement',
+        });
+      } finally {
+        release();
+      }
+      expect((await run).status).toBe(403);
+      expect((await indexProvider.stats(root.id)).chunks).toBe(0);
+    }, 30000);
+    test('private rebuild rechecks authority after reading records and before embedding', async () => {
+      const actualStore = new KnowledgeStoreProvider(
+        new FileStorageAdapter(dataDir),
+      );
+      const root = await actualStore.createRoot({
+        scope: { kind: 'personal' },
+        readPolicy: { kind: 'author-private', ownerId: 'human:owner' },
+        adapterId: 'kit-default-store',
+        storeRoot: storeDir,
+        displayName: 'Private',
+      });
+      const adapter = await actualStore.adapterFor(root.id);
+      await adapter.create({
+        type: 'raw',
+        title: 'Record',
+        body: 'private text',
+        category: 'test',
+        provenance: { agent: 'fixture' },
+      });
+      let allowed = true;
+      const list = adapter.listByType.bind(adapter);
+      vi.spyOn(adapter, 'listByType').mockImplementation(
+        async (type, options) => {
+          const records = await list(type, options);
+          if (type === 'raw') allowed = false;
+          return records;
+        },
+      );
+      const embed = vi.spyOn(embedder, 'embed');
+      const app = createKnowledgeIndexRoutes({
+        store: actualStore,
+        indexProvider,
+        dataDir,
+        getEmbedder: () => embedder,
+        mayBuildSessionBackedRoot: () => true,
+        mayBuildPrivateRoot: () => allowed,
+      });
+      const res = await app.request('/index/rebuild', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rootId: root.id }),
+      });
+      expect(embed).not.toHaveBeenCalled();
+      expect(res.status).toBe(403);
+    });
+    test('real-registry concurrent shared rebuilds fail fast and do not lock registry while embedding', async () => {
+      const persistence = new FileStorageAdapter(dataDir);
+      const actualStore = new KnowledgeStoreProvider(persistence);
+      const root = await actualStore.createRoot({
+        scope: { kind: 'personal' },
+        adapterId: 'kit-default-store',
+        storeRoot: storeDir,
+        displayName: 'Shared',
+      });
+      await (await actualStore.adapterFor(root.id)).create({
+        type: 'raw',
+        title: 'Record',
+        body: 'shared content',
+        category: 'test',
+        provenance: { agent: 'fixture' },
+      });
+      let release!: () => void;
+      let entered!: () => void;
+      const blocked = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const started = new Promise<void>((resolve) => {
+        entered = resolve;
+      });
+      const originalEmbed = embedder.embed.bind(embedder);
+      vi.spyOn(embedder, 'embed').mockImplementation(async (texts) => {
+        entered();
+        await blocked;
+        return originalEmbed(texts);
+      });
+      const app = createKnowledgeIndexRoutes({
+        store: actualStore,
+        indexProvider,
+        dataDir,
+        getEmbedder: () => embedder,
+      });
+      const request = () =>
+        app.request('/index/rebuild', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ rootId: root.id }),
+        });
+      const first = request();
+      await started;
+      try {
+        const second = await request();
+        expect(second.status).toBe(409);
+        const added = await actualStore.createRoot({
+          scope: { kind: 'personal' },
+          adapterId: 'kit-default-store',
+          storeRoot: makeAdditionalStoreDir('knowledge-concurrent-'),
+          displayName: 'Concurrent',
+        });
+        expect(added.id).not.toBe(root.id);
+      } finally {
+        release();
+      }
+      expect((await first).status).toBe(200);
+    }, 30000);
     test('a registration swapped at the revision boundary never reaches the embedder', async () => {
       const persistence = new FileStorageAdapter(dataDir);
       const actualStore = new KnowledgeStoreProvider(persistence);

@@ -267,24 +267,28 @@ export function createKnowledgeIndexRoutes(deps: KnowledgeIndexRouteDeps) {
         }
         try {
           const snapshot = snapshots.get(rootId);
-          const build = async () => {
-            if (
-              expected &&
-              (!deps.mayBuildPrivateRoot ||
-                !(await deps.mayBuildPrivateRoot(c.req.raw, expected)))
-            )
-              throw new Error('Knowledge root access ended.');
-            return runAsIndexer(() =>
-              deps.indexProvider.rebuildRoot(rootId, {
-                store: deps.store,
-                embedder,
-              }),
-            );
-          };
-          const result =
+          const withRootRevision: Parameters<
+            KnowledgeIndexProvider['rebuildRoot']
+          >[1]['withRootRevision'] =
             snapshot && deps.store.withRootRevision
-              ? await deps.store.withRootRevision(snapshot, build)
-              : await build();
+              ? (operation) =>
+                  deps.store.withRootRevision!(snapshot, async (adapter) => {
+                    if (
+                      expected &&
+                      (!deps.mayBuildPrivateRoot ||
+                        !(await deps.mayBuildPrivateRoot(c.req.raw, expected)))
+                    )
+                      throw new Error('Knowledge root access ended.');
+                    return operation(adapter);
+                  })
+              : undefined;
+          const result = await runAsIndexer(() =>
+            deps.indexProvider.rebuildRoot(rootId, {
+              store: deps.store,
+              embedder,
+              withRootRevision,
+            }),
+          );
           roots.push({
             rootId,
             status: 'ok',
