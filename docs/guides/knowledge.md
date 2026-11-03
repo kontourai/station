@@ -23,6 +23,12 @@ replaces a record. A session’s owner must have access to the selected store;
 Project writes also require edit access. Personal stores belong to the local
 operator. Session-backed conversation stores remain read only.
 
+An internally registered author-private root is readable by its recorded
+owner and the owner's approved personal devices. Project membership and
+delegation peers do not grant access. This classification is available in
+personal mode; hosted reads fail closed. Existing root policies are unchanged.
+Older Station versions cannot read a registry containing this new policy.
+
 Claude receives an in-process server. Codex and ACP receive separate,
 short-lived Knowledge credentials for the local HTTP endpoint; ACP requires
 observed HTTP MCP support. Native agents use a local HTTP connection only

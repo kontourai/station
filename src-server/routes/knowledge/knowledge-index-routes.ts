@@ -68,6 +68,11 @@ interface KnowledgeIndexRouteDeps {
     request: Request,
     root: KnowledgeStoreRoot,
   ) => boolean | Promise<boolean>;
+  guardReadResponse?: (
+    request: Request,
+    roots: readonly KnowledgeStoreRoot[],
+    response: Response,
+  ) => Promise<Response>;
 }
 
 interface RebuildRootReport {
@@ -177,10 +182,8 @@ export function createKnowledgeIndexRoutes(deps: KnowledgeIndexRouteDeps) {
         for (const rootId of rootIds) {
           // An unregistered root (or one whose adapter is gone) fails in
           // `rebuildRoot`'s first step, before its partition is touched.
-          if (
-            (await knowledgeRootReadKind(deps.store, rootId)) ===
-            'session-backed'
-          ) {
+          const kind = await knowledgeRootReadKind(deps.store, rootId);
+          if (kind === 'session-backed' || kind === 'author-private') {
             return c.json(
               { success: false, error: SESSION_BACKED_BUILD_FORBIDDEN_ERROR },
               403,
@@ -294,6 +297,7 @@ export function createKnowledgeIndexRoutes(deps: KnowledgeIndexRouteDeps) {
       const embeddingIdentity = knowledgeEmbeddingIdentity(embedder);
 
       const rootReadable = new Map<string, boolean>();
+      const visibleRoots = new Map<string, KnowledgeStoreRoot>();
       const mayReadRoot = async (rootId: string): Promise<boolean> => {
         if (!deps.mayReadHitRoot) return true;
         let readable = rootReadable.get(rootId);
@@ -301,6 +305,7 @@ export function createKnowledgeIndexRoutes(deps: KnowledgeIndexRouteDeps) {
           const root = await deps.store.getRoot(rootId);
           // An unregistered root decides nothing: fail closed.
           readable = !!root && (await deps.mayReadHitRoot(c.req.raw, root));
+          if (readable && root) visibleRoots.set(rootId, root);
           rootReadable.set(rootId, readable);
         }
         return readable;
@@ -402,7 +407,14 @@ export function createKnowledgeIndexRoutes(deps: KnowledgeIndexRouteDeps) {
         staleRecords: staleRecordKeys.size,
         scanLimitReached,
       };
-      return c.json({ success: true, data: results, index });
+      const response = c.json({ success: true, data: results, index });
+      return deps.guardReadResponse
+        ? deps.guardReadResponse(
+            c.req.raw,
+            [...visibleRoots.values()],
+            response,
+          )
+        : response;
     } catch (e: unknown) {
       return c.json({ success: false, error: errorMessage(e) }, 500);
     }

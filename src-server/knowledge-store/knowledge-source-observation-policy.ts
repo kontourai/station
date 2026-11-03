@@ -78,6 +78,7 @@ export function createLocalKnowledgeSourceObservationPolicy(options: {
       const root = registry.roots.find((entry) => entry.id === target.rootId);
       if (
         root?.scope.kind !== 'personal' ||
+        root.readPolicy !== undefined ||
         root.adapterId !== 'kit-default-store' ||
         encodeURIComponent(knowledgeRootIncarnationKey(root)) !== expected
       )

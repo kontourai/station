@@ -4332,6 +4332,23 @@ describe('project guest administration over the production composition', () => {
       storeRoot: join(directories[directories.length - 1], 'private-notes'),
       displayName: 'Private notes',
     });
+    const authorPrivate = await h.knowledgeStoreProvider.createRoot({
+      scope: { kind: 'project', projectSlug: 'knowledge' },
+      projectId: scope.localProjectId,
+      readPolicy: { kind: 'author-private', ownerId: 'human:private-author' },
+      adapterId: 'kit-default-store',
+      storeRoot: join(directories[directories.length - 1], 'author-private'),
+      displayName: 'Author private',
+    });
+    const privateId = await (
+      await h.knowledgeStoreProvider.adapterFor(authorPrivate.id)
+    ).create({
+      type: 'raw',
+      title: 'Private record',
+      body: 'Private content',
+      category: 'test',
+      provenance: { agent: 'fixture' },
+    });
     const personal = await h.knowledgeStoreProvider.createRoot({
       scope: { kind: 'personal' },
       adapterId: 'kit-default-store',
@@ -4388,6 +4405,12 @@ describe('project guest administration over the production composition', () => {
     expect(list.status, await list.clone().text()).toBe(200);
     const body = await readJson<{ data: { id: string }[] }>(list);
     expect(body.data.map((root) => root.id)).toEqual([allowed.id]);
+    for (const path of [
+      `/api/knowledge/roots/${encodeURIComponent(authorPrivate.id)}/records?type=raw`,
+      `/api/knowledge/roots/${encodeURIComponent(authorPrivate.id)}/records/${privateId}`,
+    ]) {
+      expect((await h.request(path, guest())).status).toBe(403);
+    }
     const importId = crypto.randomUUID();
     const originalText = '\ufeff\nExact shared original\r\n';
     const imported = await h.request(

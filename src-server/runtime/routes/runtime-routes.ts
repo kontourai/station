@@ -385,6 +385,7 @@ import { KnowledgeIndexAdapterRegistry } from '../../knowledge-index/index-adapt
 import { CONVERSATION_STORE_ADAPTER_ID } from '../../knowledge-store/adapters/conversation-store.js';
 import { isLocalKnowledgeSourceRequestCurrent } from '../../knowledge-store/knowledge-source-observation-policy.js';
 import type { KnowledgeStoreProvider } from '../../knowledge-store/knowledge-store-provider.js';
+import { classifyKnowledgeRoot } from '../../knowledge-store/session-backed-roots.js';
 import type { MonitoringEmitter } from '../../monitoring/emitter.js';
 import { monitoringSessionIdentity } from '../../monitoring/monitoring-session-identity.js';
 import { createOtlpReceiverRoutes } from '../../monitoring/otlp-receiver.js';
@@ -10633,6 +10634,12 @@ export function configureRuntimeRoutes(
     await next();
   });
   context.app.use('/api/knowledge/*', bindRequestReadAuthority);
+  const knowledgeReadAuthorities = new WeakMap<Request, SessionReadAuthority>();
+  context.app.use('/api/knowledge/*', async (c, next) => {
+    const authority = currentRequestReadAuthority();
+    if (authority) knowledgeReadAuthorities.set(c.req.raw, authority);
+    await next();
+  });
   const mayUseProjectKnowledge = async (
     request: Request,
     root: NonNullable<Awaited<ReturnType<KnowledgeStoreProvider['getRoot']>>>,
@@ -10680,6 +10687,30 @@ export function configureRuntimeRoutes(
     action: 'view' | 'edit',
   ): Promise<boolean> => {
     if (!root) return false;
+    if (classifyKnowledgeRoot(root) === 'author-private') {
+      const authority = knowledgeReadAuthorities.get(request);
+      const ownerId = root.readPolicy?.ownerId;
+      if (
+        !authority ||
+        authority.mode !== 'personal' ||
+        !ownerId ||
+        !isRuntimeRequestPrincipalCurrent(
+          request,
+          context.environmentSecurityService,
+        ) ||
+        resolveInboundDeviceKindForRequest(request, (credential) =>
+          context.environmentSecurityService.identifyDevice(credential),
+        ) === 'delegation'
+      )
+        return false;
+      return (
+        authority.userId === ownerId ||
+        context.environmentSecurityService.canSharePersonalConversation(
+          authority.userId,
+          ownerId,
+        )
+      );
+    }
     if (root.scope.kind === 'project')
       return mayUseProjectKnowledge(request, root, action);
     try {
@@ -10757,6 +10788,7 @@ export function configureRuntimeRoutes(
       // owner's access to each root. Every other caller is unchanged.
       mayReadHitRoot: (request, root) =>
         mayUseKnowledgeRoot(request, root, 'view'),
+      guardReadResponse: guardKnowledgeReadResponse,
       indexProvider: knowledgeIndexProvider,
       dataDir: context.configLoader.getProjectHomeDir(),
       getEmbedder: () => context.resolveEmbeddingProvider(),

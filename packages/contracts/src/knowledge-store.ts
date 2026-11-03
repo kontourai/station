@@ -24,6 +24,8 @@ export interface KnowledgeStoreRoot {
   scope: KnowledgeRootScope;
   /** Durable Project identity; absent on legacy registrations, never inferred from slug for member access. */
   projectId?: string;
+  /** Absent preserves the existing root policy. Private roots require their recorded author. */
+  readPolicy?: { kind: 'author-private'; ownerId: string };
   /** Server-issued generation for a registration created or explicitly attached by the provider. */
   registrationId?: string;
   adapterId: string; // which registered adapter serves this root
