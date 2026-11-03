@@ -64,7 +64,7 @@ function isOperatorAtHost(request: Request): boolean {
 /**
  * The Station owner acting: the operator in person ({@link isOperatorAtHost})
  * or, on a personal Station, one of the owner's own paired devices
- * (owner-device standing, owner decision 2026-11-02; bound once by the auth
+ * (owner-device standing, bound once by the auth
  * boundary as {@link isBoundRuntimeOwner}). A LAN browser admitted through
  * an access request with a narrower grant, a device tied to another person,
  * a delegation, and a request no auth boundary saw are all NOT the owner.
