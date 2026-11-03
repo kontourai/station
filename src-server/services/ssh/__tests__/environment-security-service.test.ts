@@ -62,7 +62,7 @@ interface EnvironmentSecurityServiceInstance {
       granted: boolean,
       approval: { kind: string },
     ): { id: string; scope: string };
-    createOffer(input: { endpoint: string }): {
+    createOffer(input: { endpoint: string; scope?: string }): {
       offerId: string;
       challenge: string;
     };
