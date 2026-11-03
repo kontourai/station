@@ -982,6 +982,14 @@ test('stops a session completed by an adapter replaced during launch', async () 
   }
 });
 
+function consumerGate() {
+  let resolve!: () => void;
+  const promise = new Promise<void>((accept) => {
+    resolve = accept;
+  });
+  return { promise, resolve };
+}
+
 test.each([
   ['claude', 'release'],
   ['claude', 'timeout'],
@@ -1008,9 +1016,9 @@ test.each([
           });
     const threadId = `consumer-lag-${provider}-${mode}`;
     const owner = 'consumer-lag-owner';
-    const held = Promise.withResolvers<void>();
-    const consumingPriorEvent = Promise.withResolvers<void>();
-    const announced = Promise.withResolvers<void>();
+    const held = consumerGate();
+    const consumingPriorEvent = consumerGate();
+    const announced = consumerGate();
     const stream = adapter.streamEvents.bind(adapter);
     vi.spyOn(adapter, 'streamEvents').mockImplementation((options) => ({
       async *[Symbol.asyncIterator]() {
