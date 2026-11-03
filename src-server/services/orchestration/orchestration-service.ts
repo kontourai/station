@@ -2429,6 +2429,12 @@ export class OrchestrationService {
   private readonly sessionConnectionIds = new Map<string, string>();
   private readonly quarantinedThreads = new Set<string>();
   /**
+   * Threads whose adapter `session.started` this process has settled
+   * (appended, declined or abandoned after retries). A start whose event
+   * settled before the start hook ran binds no interim owner (#4480).
+   */
+  private readonly settledStartEvents = new Set<string>();
+  /**
    * #2312: threads deleted by `discardDraft`. The stopped engine may still
    * deliver a late event (`session.exited` above all), and projecting it
    * would re-create the row the discard just deleted — the Draft would come
@@ -7591,7 +7597,7 @@ export class OrchestrationService {
         },
         releaseStart: (threadId) =>
           this.startingSessionThreads.delete(threadId),
-        attachStarted: (session, adapter, tenant, startInput) => {
+        attachStarted: (session, adapter, tenant, startInput, startedBy) => {
           if (
             startInput.metadata?.[SESSION_VISIBILITY_METADATA_KEY] ===
             'ephemeral'
@@ -7619,8 +7625,20 @@ export class OrchestrationService {
             this.sessionAuthz.bindTenantContext(session.threadId, tenant);
             session.tenantExecutionContext = tenant;
           }
+          // #4480: only a fresh start's own stamp, for its own dispatcher (or
+          // an internal start), and only while its `session.started` is
+          // still unsettled. See `SessionAuthorization.startOwners`.
           const startOwner = startInput.metadata?.userId;
-          if (typeof startOwner === 'string' && startOwner)
+          if (
+            typeof startOwner === 'string' &&
+            startOwner &&
+            (startedBy === undefined || startedBy === startOwner) &&
+            !this.settledStartEvents.has(session.threadId) &&
+            !this.options.eventStore?.latestEventByMethod(
+              session.threadId,
+              'session.started',
+            )
+          )
             this.sessionAuthz.bindStartOwner(session.threadId, startOwner);
           this.options.eventStore?.upsertSession(session);
         },
@@ -8281,6 +8299,7 @@ export class OrchestrationService {
           return session;
         },
         cleanupFailedStart: async (adapter, threadId) => {
+          this.sessionAuthz.settleStartOwner(threadId);
           // Revoke even if provider teardown fails or exceeds its deadline.
           revokeStationControlMcpToken(threadId);
           try {
@@ -12965,8 +12984,9 @@ export class OrchestrationService {
         // `projectAndPublishEvent` with a bounded retry of its publish half,
         // holding this event until it is appended before the next one is
         // consumed (#3560).
-        if (
-          !(await this.publishObservedEvent(
+        let published: boolean;
+        try {
+          published = await this.publishObservedEvent(
             normalized,
             adapter,
             controller,
@@ -12974,9 +12994,15 @@ export class OrchestrationService {
               normalized = normalizeLifecycle(normalized);
               return normalizeLifecycle(admitted);
             },
-          ))
-        )
-          continue;
+          );
+        } finally {
+          // Appended, declined or abandoned: the store now answers ownership.
+          if (normalized.method === 'session.started') {
+            this.settledStartEvents.add(normalized.threadId);
+            this.sessionAuthz.settleStartOwner(normalized.threadId);
+          }
+        }
+        if (!published) continue;
         this.cooperativeStop.applyPendingTurnInterrupt(adapter, normalized);
         if (normalized.method === 'session.exited') {
           this.sessionAdapters.delete(normalized.threadId);
@@ -13496,6 +13522,7 @@ export class OrchestrationService {
     // re-derives from the store (or records a fresh verdict at start) and can
     // never inherit a dead session's positive.
     this.portableConsentByThread.delete(threadId);
+    this.settledStartEvents.delete(threadId);
     this.sessionAuthz.forgetTenantContext(threadId);
     if (divergent.policyThreads) this.flowPolicy.forgetPolicyBinding(threadId);
     if (divergent.flowBoundThreads) this.flowPolicy.forgetFlowBinding(threadId);
@@ -15065,6 +15092,15 @@ export class OrchestrationService {
     ) {
       sessionOwnerCacheOps.add(1, { outcome: 'invalidated' });
     }
+    // #4480: a durable start or owner ends any interim start owner. An exit
+    // needs no clause: a service stop tears the thread down, and an adapter's
+    // exit is consumed after the start's own session.started settled.
+    if (
+      projectedEvent.method === 'session.started' ||
+      (projectedEvent.method === 'session.configured' &&
+        typeof projectedEvent.metadata?.userId === 'string')
+    )
+      this.sessionAuthz.settleStartOwner(projectedEvent.threadId);
     this.options.eventBus.emit(SERVER_EVENTS.ORCHESTRATION_EVENT, {
       event: projectedEvent,
       globalSequence: this.options.eventStore?.readGlobalSequence(
