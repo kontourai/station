@@ -1089,7 +1089,7 @@ type HonoApp = Parameters<NonNullable<HonoServerConfig['configureApp']>>[0];
  * work belongs to the owner (setup imports, pull requests, conversation PR
  * links, the owner's own agents' unattended grants). The owner in person,
  * by the operator credential, at the host, or through one of their own
- * paired devices (owner standing, owner decision 2026-11-02). Never an
+ * paired devices (owner-device standing). Never an
  * agent's request: Station's internal principal is excluded. `undefined`
  * refuses.
  */
@@ -14826,7 +14826,7 @@ export function configureDevicePairingHostRoutes(
               'home-possession' &&
             (pairing.credentialMintKind(actor.credential) === 'local-grant' ||
               pairing.credentialMayManagePairing(actor.credential));
-          // Owner standing (2026-11-02): the owner's own device approves
+          // Owner-device standing: the owner's own device approves
           // device-use grants exactly as the host-issued browser does.
           const ownerDevice =
             actor?.authority === 'device-credential' &&

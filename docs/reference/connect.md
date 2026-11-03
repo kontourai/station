@@ -671,17 +671,20 @@ to the selected Station server. The panel asks the Station for its reachable
 routes (`GET /api/system/routes`) and opens straight to a pre-approved code on
 the first HTTPS one (a code carries a secret, and the phone's decoder accepts
 only HTTPS, so cleartext LAN and Tailscale IP routes are not listed); choosing
-another route replaces the code and cancels the old one, and **Other options**
-shows the address and access form below. If no route works or the code cannot
-be created, the panel shows why and opens that form. The existing client and the phone both connect
+another route replaces the code and cancels the old one. Beside the routes, the
+code card shows the QR, the manual code, a countdown, **Copy link** and
+**Copy code**; an expired code offers **New code**. The scan target, app channel,
+browser link and access sit under **More options**. If no HTTPS route exists or
+the code cannot be created, the panel says why and opens the address and access
+form. The existing client and the phone both connect
 to that server; the existing client does not become a server. Check the visible
 server address: the phone needs a reachable HTTPS address, not localhost.
 The panel warns when the address is a loopback one, and remembers the last
 reachable address an offer was created with for that Station, offering it back
 as the field's starting value the next time (#2228).
-Scan the code (from **Other options**, choose **Create pairing code** first) with the phone camera to open the selected
+Scan the code with the phone camera to open the selected
 installed Station channel, then redeem the invitation. Creating it approves
-the selected access; no second approval is needed. For Station’s in-app scanner, select **Scanner inside Station** above the QR instead.
+the selected access; no second approval is needed. For Station’s in-app scanner, select **Scanner inside Station** under **More options**.
 **Paired devices → Approve another device** also opens the invitation panel.
 The selected client channel controls both the app-opening QR and any published
 mobile download links. Public store and beta invitation URLs are maintained in

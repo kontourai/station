@@ -10,8 +10,8 @@ import { ArrowDownGlyph, MonitorGlyph } from '../icons/Glyph';
  * server reports another Station this caller may run on, it is a picker
  * trigger: `onOpen` opens the start menus' Station list, which only chooses
  * the destination — Start still does the starting. With nothing else to
- * choose (or before the caller's Station reads have answered), it is plain
- * text: no button, no caret, nothing to tap.
+ * choose after successful reads, it is plain text. Failed discovery keeps
+ * the list reachable so its error and retry action are not hidden.
  */
 export function StartStationControl({
   environmentId,
@@ -32,9 +32,10 @@ export function StartStationControl({
   disabled?: boolean;
   onOpen: (trigger: HTMLElement) => void;
 }) {
-  const { stations, nameFor, settled } = useExecutionStations({
-    projectSelected,
-  });
+  const { stations, nameFor, settled, stationsUnavailable } =
+    useExecutionStations({
+      projectSelected,
+    });
   const selectedId = effectiveExecutionStationId(
     environmentId,
     defaultEnvironment,
@@ -51,7 +52,10 @@ export function StartStationControl({
   const choosable =
     canChoose &&
     settled &&
-    (stations.length > 1 || !selected || selectedId !== 'current');
+    (stationsUnavailable ||
+      stations.length > 1 ||
+      !selected ||
+      selectedId !== 'current');
   if (!choosable)
     return (
       <span className="choice-trigger start-composer__station start-composer__station--fixed">
