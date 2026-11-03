@@ -1,5 +1,5 @@
-export const TASK_RECORDING_MAX_ACTIVE = 4;
-export const TASK_RECORDING_MAX_PER_OWNER = 2;
+const TASK_RECORDING_MAX_ACTIVE = 4;
+const TASK_RECORDING_MAX_PER_OWNER = 2;
 
 /** One runtime's active recording budget, shared by every recording source. */
 export class RecordingLimiter {

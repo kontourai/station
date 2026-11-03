@@ -237,6 +237,12 @@ async function digest(
   }
   return `sha256:${hash.digest('hex')}`;
 }
+/** The files a device host installs: an iOS app bundle, or the one APK. */
+export function installFilesFor(payload: Payload): AppFile[] {
+  return payload.platform === 'ios'
+    ? payload.files
+    : [{ path: 'Application.apk', executable: false, bytes: payload.apk }];
+}
 function sizeOf(payload: Payload): number {
   return payload.platform === 'android'
     ? payload.apk.length

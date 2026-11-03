@@ -15,6 +15,7 @@ import type { DeviceAccess } from '../services/devices/device-access.js';
 import {
   DeviceArtifactError,
   type DeviceArtifactStaging,
+  installFilesFor,
 } from '../services/devices/device-app-artifacts.js';
 import type {
   DeviceHistoryAction,
@@ -27,6 +28,7 @@ import {
   DeviceToolsAdmissionError,
   DeviceToolsError,
   type DeviceToolsService,
+  type DeviceToolsTarget,
   isDeviceAppId,
   isDeviceToolsTarget,
   parseDeviceAppAction,
@@ -73,30 +75,13 @@ import type {
 export interface DeviceToolsRouteOptions {
   isRequestPrincipalCurrent: (request: Request) => boolean;
   actionHistory?: {
-    read(target: {
-      hostId: string;
-      platform: MobileDevicePlatform;
-      deviceId: string;
-    }): { sessionId: string; entries: DeviceHistoryEntry[] } | undefined;
-    installed?(target: {
-      hostId: string;
-      platform: MobileDevicePlatform;
-      deviceId: string;
-    }): DeviceInstallation | undefined;
-    installation(
-      target: {
-        hostId: string;
-        platform: MobileDevicePlatform;
-        deviceId: string;
-      },
-      value: DeviceInstallation,
-    ): void;
+    read(
+      target: DeviceToolsTarget,
+    ): { sessionId: string; entries: DeviceHistoryEntry[] } | undefined;
+    installed?(target: DeviceToolsTarget): DeviceInstallation | undefined;
+    installation(target: DeviceToolsTarget, value: DeviceInstallation): void;
     note(
-      target: {
-        hostId: string;
-        platform: MobileDevicePlatform;
-        deviceId: string;
-      },
+      target: DeviceToolsTarget,
       action: DeviceHistoryAction,
       outcome: DeviceHistoryEntry['outcome'],
     ): void;
@@ -567,21 +552,11 @@ export function createDeviceToolsRoutes(options: DeviceToolsRouteOptions) {
                 code: 'incompatible-artifact',
                 effect: 'none' as const,
               };
-            const files =
-              payload.platform === 'ios'
-                ? payload.files
-                : [
-                    {
-                      path: 'Application.apk',
-                      executable: false,
-                      bytes: payload.apk,
-                    },
-                  ];
             started = true;
             outcome = await config.run({
               ...target,
               digest: receipt.digest,
-              files,
+              files: installFilesFor(payload),
               signal,
               beforeInstall: async () =>
                 (await current()) &&
@@ -711,17 +686,16 @@ export function createDeviceToolsRoutes(options: DeviceToolsRouteOptions) {
         let dispatched = false;
         try {
           await readmit();
+          const installed = options.actionHistory?.installed?.(target);
           const result = await service.appAction(target, action, {
             beforeRun: readmit,
             onDispatch: () => {
               dispatched = true;
             },
-            declaredSchemes: (() => {
-              const receipt = options.actionHistory?.installed?.(target);
-              return receipt?.metadata.appId === action.appId
-                ? receipt.metadata.urlSchemes
-                : undefined;
-            })(),
+            declaredSchemes:
+              installed?.metadata.appId === action.appId
+                ? installed.metadata.urlSchemes
+                : undefined,
             signal: c.req.raw.signal,
           });
           await readmit();

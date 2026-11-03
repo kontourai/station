@@ -24,6 +24,7 @@ import {
 import {
   DeviceArtifactError,
   type DeviceArtifactStaging,
+  installFilesFor,
 } from './device-app-artifacts.js';
 import type {
   DeviceHistoryAction,
@@ -710,23 +711,13 @@ export class DeviceAutomation {
                   code: 'incompatible-artifact',
                   effect: 'none' as const,
                 };
-              const files =
-                payload.platform === 'ios'
-                  ? payload.files
-                  : [
-                      {
-                        path: 'Application.apk',
-                        executable: false,
-                        bytes: payload.apk,
-                      },
-                    ];
               started = true;
               result = await installApp({
                 hostId: selected.session.hostId,
                 platform: selected.session.platform,
                 deviceId: selected.session.deviceId,
                 digest: receipt.digest,
-                files,
+                files: installFilesFor(payload),
                 signal: activeSignal,
                 beforeInstall: async () =>
                   (await current()) &&
