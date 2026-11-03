@@ -57,23 +57,32 @@ class EchoingAdapter extends GateTestAdapter {
   constructor(private readonly echoUserId?: string | null) {
     super();
   }
+  deferStart = false;
+  private announceStart?: () => void;
+  publishStarted() {
+    if (!this.announceStart) throw new Error('Session has not started');
+    this.announceStart();
+  }
   override async startSession(input: ProviderSessionStartInput) {
     const session = await super.startSession(input);
     this.sessions.set(input.threadId, session);
     const metadata = { ...input.metadata };
     if (this.echoUserId === null) delete metadata.userId;
     else if (this.echoUserId !== undefined) metadata.userId = this.echoUserId;
-    this.beforeStartEvent?.(input.threadId);
-    if (this.emitStart)
-      this.events.push({
-        eventId: randomUUID(),
-        provider: this.provider,
-        threadId: input.threadId,
-        sessionId: input.threadId,
-        method: 'session.started',
-        createdAt: session.createdAt,
-        metadata,
-      });
+    this.announceStart = () => {
+      this.beforeStartEvent?.(input.threadId);
+      if (this.emitStart)
+        this.events.push({
+          eventId: randomUUID(),
+          provider: this.provider,
+          threadId: input.threadId,
+          sessionId: input.threadId,
+          method: 'session.started',
+          createdAt: session.createdAt,
+          metadata,
+        });
+    };
+    if (!this.deferStart || this.settledBeforeReturn) this.publishStarted();
     await this.beforeReturn?.();
     const store = this.settledBeforeReturn;
     if (store)
@@ -164,6 +173,8 @@ function fixture(
   const path = join(makeTempDir('start-owner-contention-'), 'events.sqlite');
   const store = new EventStore(path);
   const adapter = new EchoingAdapter(options.echoUserId);
+  // Window tests announce after acceptance; announced starts now await commit.
+  adapter.deferStart = true;
   const replaced = new EchoingAdapter();
   let current: EchoingAdapter = options.replaceable ? replaced : adapter;
   const registry: IProviderAdapterRegistry = {
@@ -233,14 +244,14 @@ function fixture(
       return waitForWrite(thread, signal);
     },
   );
-  const start = (
+  const start = async (
     ownerStamp: string,
     context: {
       userId?: string;
       tenantExecutionContext?: TenantExecutionContext;
     },
-  ) =>
-    sessions.dispatchWithReceipt(
+  ) => {
+    const result = await sessions.dispatchWithReceipt(
       {
         type: 'startSession',
         input: {
@@ -252,11 +263,15 @@ function fixture(
       },
       context,
     );
+    if (adapter.deferStart && !adapter.settledBeforeReturn)
+      adapter.publishStarted();
+    return result;
+  };
   /**
    * A ready replay-seed fork of `owner`'s conversation into `thread`, started
    * the way a foreground send starts it: stamped with the requester.
    */
-  const startFork = (requester: string) => {
+  const startFork = async (requester: string) => {
     const snapshot = createConversationForkContext({
       forkEventId: 'fork-event',
       sourceConversationId: 'source',
@@ -298,7 +313,7 @@ function fixture(
     // The start below takes the fork path: a ready reference for `thread`.
     expect(store.conversationForkContextReference(thread)?.state).toBe('ready');
     const origin = { contextId: 'fork-event', contextDigest: snapshot.digest };
-    return sessions.startSessionInternal(
+    const result = await sessions.startSessionInternal(
       {
         type: 'start-session',
         input: {
@@ -321,6 +336,8 @@ function fixture(
       { userId: requester },
       {},
     );
+    if (adapter.deferStart) adapter.publishStarted();
+    return result;
   };
   const send = (userId: string, tenant?: TenantExecutionContext) =>
     sessions
@@ -560,6 +577,7 @@ test('regression: a hosted interim owner is refused under another tenant', async
 test('a start whose session.started publish gave up before the start hook binds no interim owner', async () => {
   const f = fixture({ contend: 'all' });
   try {
+    f.adapter.deferStart = false;
     // The engine reports its start, and the publish exhausts its retries
     // (nothing is appended) before startSession returns.
     f.adapter.beforeReturn = () =>
@@ -571,7 +589,10 @@ test('a start whose session.started publish gave up before the start hook binds 
           ),
         { timeout: 7500 },
       );
-    await f.start('owner', { userId: 'owner' });
+    await expect(f.start('owner', { userId: 'owner' })).rejects.toMatchObject({
+      kind: 'indeterminate',
+      failurePhase: 'indeterminate',
+    });
     expect(
       f.store.latestEventByMethod(threadId, 'session.started'),
     ).toBeUndefined();
@@ -584,6 +605,7 @@ test('a start whose session.started publish gave up before the start hook binds 
 test('a start event lost to a store fault before publishing leaves no interim owner', async () => {
   const f = fixture({ contend: 'none' });
   try {
+    f.adapter.deferStart = false;
     let armed = false;
     const read = f.store.listSessionProjectionEvents.bind(f.store);
     vi.spyOn(f.store, 'listSessionProjectionEvents').mockImplementation(
@@ -599,7 +621,10 @@ test('a start event lost to a store fault before publishing leaves no interim ow
     f.adapter.beforeStartEvent = () => {
       armed = true;
     };
-    await f.start('owner', { userId: 'owner' });
+    await expect(f.start('owner', { userId: 'owner' })).rejects.toMatchObject({
+      kind: 'indeterminate',
+      failurePhase: 'indeterminate',
+    });
     await vi.waitFor(() =>
       expect(f.warn).toHaveBeenCalledWith(
         'Provider adapter event stream stopped',
@@ -763,6 +788,197 @@ test('the injected peer writer is real contention for the zero-timeout publish',
   } finally {
     peer.exec('ROLLBACK');
     peer.close();
+    store.close();
+  }
+});
+
+test.each(['transient', 'abandoned', 'timeout'] as const)(
+  'start acknowledgement waits for session.started publication under %s contention',
+  async (mode) => {
+    const threadId = `start-publication-${mode}`;
+    const owner = 'start-publication-owner';
+    const store = new EventStore(
+      join(makeTempDir('start-commit-'), 'events.sqlite'),
+    );
+    const adapter = new EchoingAdapter();
+    if (mode !== 'transient')
+      vi.spyOn(adapter, 'stopSession').mockRejectedValue(
+        new Error('stop failed'),
+      );
+    const sessions = new OrchestrationService({
+      adapterRegistry: createGateTestRegistry(adapter),
+      eventBus: new EventBus(),
+      eventStore: store,
+      logger: { debug: vi.fn(), warn: vi.fn() },
+    });
+    let releaseRetry = () => {};
+    if (mode === 'timeout') {
+      const held = new Promise<void>((resolve) => {
+        releaseRetry = resolve;
+      });
+      const waitForWrite = store.waitForPublicationWrite.bind(store);
+      vi.spyOn(store, 'waitForPublicationWrite').mockImplementation(
+        async (thread, signal) => {
+          if (thread === threadId) await held;
+          return waitForWrite(thread, signal);
+        },
+      );
+    }
+    const append = store.appendEvent.bind(store);
+    let attempts = 0;
+    vi.spyOn(store, 'appendEvent').mockImplementation((event, ...rest) => {
+      if (event.method === 'session.started' && event.threadId === threadId) {
+        attempts++;
+        if (mode === 'abandoned' || attempts === 1)
+          throw Object.assign(new Error('database is locked'), {
+            code: 'SQLITE_BUSY',
+          });
+      }
+      return append(event, ...rest);
+    });
+    try {
+      const outcome = await sessions.sessionCommands.execute(
+        {
+          type: 'start-session',
+          input: { threadId, provider: 'claude', metadata: { userId: owner } },
+        },
+        { userId: owner },
+      );
+      if (mode !== 'transient') {
+        expect(outcome.status).toBe('indeterminate');
+        expect(
+          store.latestEventByMethod(threadId, 'session.started'),
+        ).toBeUndefined();
+        expect(sessions.sessionRecordedOwnerId(threadId)).toBeUndefined();
+        expect(adapter.sessions.has(threadId)).toBe(true);
+        await expect(
+          sessions.dispatchWithReceipt(
+            {
+              type: 'sendTurn',
+              input: { threadId, input: 'unconfirmed start cannot send' },
+            },
+            { userId: owner },
+          ),
+        ).rejects.toThrow(`Session not found: ${threadId}`);
+        expect(adapter.turns).toEqual([]);
+      } else {
+        expect(outcome.status).toBe('accepted');
+        expect(
+          store.latestEventByMethod(threadId, 'session.started')?.payload,
+        ).toMatchObject({
+          threadId,
+          method: 'session.started',
+          metadata: { userId: owner },
+        });
+        expect(sessions.sessionRecordedOwnerId(threadId)).toBe(owner);
+        await sessions.dispatchWithReceipt(
+          {
+            type: 'sendTurn',
+            input: { threadId, input: 'immediate authorized send' },
+          },
+          { userId: owner },
+        );
+        expect(adapter.turns.map((turn) => turn.input)).toEqual([
+          'immediate authorized send',
+        ]);
+        expect(attempts).toBeGreaterThanOrEqual(2);
+      }
+    } finally {
+      releaseRetry();
+      await sessions.shutdown();
+      store.close();
+    }
+  },
+);
+
+test('a publication-timeout smoke retains its failed-stop handle without a durable start', async () => {
+  const store = new EventStore(
+    join(makeTempDir('start-smoke-retained-'), 'events.sqlite'),
+  );
+  const adapter = new EchoingAdapter();
+  vi.spyOn(adapter, 'stopSession').mockRejectedValue(new Error('stop failed'));
+  const append = store.appendEvent.bind(store);
+  vi.spyOn(store, 'appendEvent').mockImplementation((event, ...rest) => {
+    if (event.method === 'session.started')
+      throw Object.assign(new Error('database is locked'), {
+        code: 'SQLITE_BUSY',
+      });
+    return append(event, ...rest);
+  });
+  const sessions = new OrchestrationService({
+    adapterRegistry: createGateTestRegistry(adapter),
+    eventBus: new EventBus(),
+    eventStore: store,
+    logger: { debug: vi.fn(), warn: vi.fn() },
+  });
+  sessions.initialize();
+  try {
+    const result = await sessions.runConnectionSmoke({
+      connectionId: 'claude',
+      provider: 'claude',
+      cwd: process.cwd(),
+      timeoutMs: 500,
+    });
+    expect(result).toMatchObject({ ok: false, reasonCode: 'cleanup-failed' });
+    expect(adapter.sessions.size).toBe(1);
+    const retained = store.readSessions();
+    expect(retained).toHaveLength(1);
+    expect(
+      store.latestEventByMethod(retained[0]!.threadId, 'session.started'),
+    ).toBeUndefined();
+    expect(
+      sessions.sessionRecordedOwnerId(retained[0]!.threadId),
+    ).toBeUndefined();
+  } finally {
+    await sessions.shutdown();
+    store.close();
+  }
+});
+
+test('stops a session completed by an adapter replaced during launch', async () => {
+  const store = new EventStore(
+    join(makeTempDir('start-replaced-'), 'events.sqlite'),
+  );
+  const launching = new EchoingAdapter();
+  let resolveStart!: (session: ProviderSession) => void;
+  const started = new Promise<ProviderSession>((resolve) => {
+    resolveStart = resolve;
+  });
+  const start = vi
+    .spyOn(launching, 'startSession')
+    .mockReturnValueOnce(started);
+  const stop = vi.spyOn(launching, 'stopSession');
+  const registry = createGateTestRegistry(launching);
+  const sessions = new OrchestrationService({
+    adapterRegistry: registry,
+    eventBus: new EventBus(),
+    eventStore: store,
+    logger: { debug: vi.fn(), warn: vi.fn() },
+  });
+  try {
+    const launch = sessions.dispatch({
+      type: 'startSession',
+      input: { threadId: 'start-race', provider: 'claude', cwd: process.cwd() },
+    });
+    await vi.waitFor(() => expect(start).toHaveBeenCalled());
+    vi.spyOn(registry, 'get').mockReturnValue(new EchoingAdapter());
+    const session: ProviderSession = {
+      provider: 'claude',
+      threadId: 'start-race',
+      status: 'ready',
+      createdAt: '2026-07-19T00:00:00.000Z',
+      updatedAt: '2026-07-19T00:00:00.000Z',
+    };
+    launching.sessions.set(session.threadId, session);
+    resolveStart(session);
+    await expect(launch).rejects.toThrow('replaced while');
+    expect(stop).toHaveBeenCalledWith('start-race');
+    expect(launching.sessions.size).toBe(0);
+    expect(
+      store.readSessions().find((row) => row.threadId === 'start-race'),
+    ).toBeUndefined();
+  } finally {
+    await sessions.shutdown();
     store.close();
   }
 });
