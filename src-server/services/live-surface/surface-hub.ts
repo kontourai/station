@@ -101,6 +101,7 @@ interface HubFrame {
   header: LiveSurfaceFrameHeader;
   body: Uint8Array;
   acked: boolean;
+  arrival: number;
 }
 
 const FPS_CEILING = LIVE_SURFACE_STREAM_PARAM_BOUNDS.maxFps.max;
@@ -156,6 +157,8 @@ class HubViewer implements LiveSurfaceViewer {
     /** `h264` until the viewer falls back to images; never the reverse. */
     public codec: LiveSurfaceViewerCodec,
     readonly freshOnly: boolean,
+    readonly attachedAt: number,
+    readonly attachedAfter: number,
   ) {}
 
   /**
@@ -299,6 +302,7 @@ export class LiveSurfaceHub {
   private lifecycle: Promise<void> = Promise.resolve();
   private running = false;
   private runGeneration = 0;
+  private frameArrival = 0;
   private startedParams: LiveSurfaceStreamParams | null = null;
   private adaptiveFps: number = FPS_CEILING;
   private lastSlowAt = 0;
@@ -368,11 +372,10 @@ export class LiveSurfaceHub {
       options?.agentActions,
       codec,
       options?.freshOnly === true,
+      this.now(),
+      this.frameArrival,
     );
-    if (options?.freshOnly) {
-      viewer.skipFrame = this.pending;
-      if (this.lastPublished) this.releaseReference(this.lastPublished);
-    }
+    if (options?.freshOnly) viewer.skipFrame = this.pending;
     if (
       codec === 'image' &&
       !options?.freshOnly &&
@@ -551,8 +554,20 @@ export class LiveSurfaceHub {
 
   /** @internal A viewer switched from H.264 to images. */
   viewerCodecChanged(viewer: HubViewer): void {
-    if (viewer.freshOnly) viewer.skipFrame = this.pending;
-    else if (this.running && this.lastPublished)
+    if (viewer.freshOnly) {
+      const candidate = this.pending ?? this.lastPublished;
+      // Arrival order rejects old frames even if producer clocks are ahead;
+      // a behind-skewed clock can conservatively suppress this one-time seed.
+      if (
+        this.running &&
+        candidate &&
+        candidate.arrival > viewer.attachedAfter &&
+        candidate.header.capturedAt >= viewer.attachedAt
+      ) {
+        viewer.slot = candidate;
+        viewer.skipFrame = candidate === this.pending ? candidate : null;
+      } else viewer.skipFrame = this.pending;
+    } else if (this.running && this.lastPublished)
       viewer.slot = this.lastPublished;
     this.onTargetChanged();
   }
@@ -734,7 +749,12 @@ export class LiveSurfaceHub {
         this.ackSeq(seq);
       return;
     }
-    const frame: HubFrame = { header: valid, body, acked: false };
+    const frame: HubFrame = {
+      header: valid,
+      body,
+      acked: false,
+      arrival: ++this.frameArrival,
+    };
     if (valid.codec === 'h264') {
       for (const viewer of this.viewers) {
         if (viewer.codec === 'h264') viewer.offerVideo(frame);

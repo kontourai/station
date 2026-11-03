@@ -23,10 +23,52 @@
   flex-basis: 100%;
   margin: 0;
   color: var(--k-text);
-  font-size: var(--k-text-xl);
+  font-size: var(--k-text-2xl);
+  font-weight: 500;
 }
-/* Above the text box they read as part of the heading; in the dock
-   draft's chip row they keep the chip frame. */
+.start-composer__destination h2 .start-composer__project {
+  display: inline-flex;
+  vertical-align: baseline;
+  padding-inline: 0;
+  font: inherit;
+  text-decoration: underline;
+  text-underline-offset: var(--k-space-1);
+}
+.start-composer__destination h2 .start-composer__project > svg,
+.start-composer__destination h2 .start-composer__project > .project-icon {
+  display: none;
+}
+.start-composer__without-project {
+  flex-basis: 100%;
+  color: var(--k-text-muted);
+}
+.start-composer__location {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--k-space-3);
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+}
+.start-composer__location .start-composer__station {
+  border-color: transparent;
+  background: transparent;
+  color: inherit;
+}
+.start-composer__folder {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.start-composer .composer-choice {
+  border-color: transparent;
+  background: transparent;
+}
+.start-composer .chat-input__chip-caption {
+  display: none;
+}
+/* Project lives in the heading; Station lives below the composer. */
 .start-composer__project,
 .start-composer__station {
   min-height: 44px;
@@ -77,10 +119,6 @@
 }
 .start-composer__box:focus-within {
   border-color: var(--k-focus);
-}
-.start-composer__box .start-composer__input:focus-visible {
-  outline: 2px solid var(--k-focus);
-  outline-offset: 2px;
 }
 .start-composer--compact .start-composer__destination {
   justify-content: flex-start;

@@ -483,9 +483,7 @@ show what **Start** will use:
   now (it is read-only, still loading, the check failed, or it is waiting on a
   turn the server reports as still running), the other engines are not listed
   and **Use Agent defaults** is unavailable.
-- The **project** control (above the message on Home, beside the Agent chip
-  in the dock) shows the Project's icon (or
-  its colour when none is displayable) and name, or **Without a project**.
+- The **project** control in the start heading shows its name, or **Without a project**.
   Open it to choose a project. The list shows each project's folder and the
   folder this chat will run in. For a linked checkout, that is its resolved
   execution root. An unavailable location states why Station cannot start
@@ -504,20 +502,31 @@ show what **Start** will use:
 - **⋯** holds **Use a visual skill** while the **Visual skills** Feature
   Preview is on; with it off there is no **⋯**.
 
-**Runs on <Station>** says which Station runs the work. When you can run work
-on another Station (a verified SSH environment when no Project is chosen,
-or a paired Station you are allowed to list whose pairing can run work, with
-permission to start tasks), it opens **Where this work runs**, with the current one
-checked. Choosing another Station continues to its **Engine & model**, since
-that Station's own engines run the work. **Start** then opens **Run on a
-Station** with your message, Project and choices, and **Run task** starts a
-resumable task there. Unavailable destinations keep their refusal instead of
-falling back to this computer, and Cancel returns to your message, including
-edits made in the task chooser. A started task shows **Task started on
-<Station>.** with **Open task** to follow it in Activity. A
-foreground chat stays on its existing Station; choosing a remote task
-destination does not move that chat. With no other Station to choose, the
-control is plain text.
+The start heading includes a clickable **Project** name. **Or start without a
+project** clears it. Home and New Chat use the same composer and pickers;
+**Runs on <Station>** sits below the message box.
+
+When another Station is available, **Runs on <Station>** opens **Where this work
+runs**. Choose the Station, then its **Engine & model**. With **Paired Station
+chats** enabled in Settings → Advanced → Feature previews, choose a Project
+from that Station’s own list, or **start without a project**. **Start** opens a
+chat tab that reads and replies to the conversation on the chosen Station.
+It keeps the destination visible, supports Stop and answers requests there.
+A failed or uncertain send keeps its text and delivery identity; **Check
+conversation** reads what arrived, and **Retry this message** reuses that
+message’s identity. **Edit in New Chat** opens a separate editable draft with
+those remote choices and keeps the original message. Check whether it arrived
+before sending changed work. You choose the receiver’s Project again before Start.
+This preview takes text only; attachment and visual-reply reads are unavailable.
+
+Choose the destination’s Project explicitly; Station does not match Projects
+between computers by name. Remote Tasks keep their separate execution consent.
+
+With that preview off, or for SSH destinations, **Start** opens **Run on a
+Station** and **Run task** starts a resumable Task there. Its existing portable
+Project admission still applies. A foreground chat stays on its owning Station;
+choosing another destination starts new work. With no other Station to choose,
+the control is plain text.
 
 The Project page opens on **Overview**. **Project room** is shared discussion
 with people in that Project; use **Bring an Agent** for an explicit request

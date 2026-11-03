@@ -1138,6 +1138,13 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
   },
   // Retaining a capture persists Task data and requires operate scope.
   {
+    id: '/api/mobile-devices/projects/:slug/device-artifacts:terminal-operate',
+    method: 'POST',
+    prefix: '/api/mobile-devices/projects/:slug/device-artifacts',
+    scope: PAIRING_SCOPE_TERMINAL_OPERATE,
+    origin: 'explicit',
+  },
+  {
     id: '/api/tasks/:taskId/review/device-capture-sessions:terminal-operate',
     method: 'GET',
     prefix: '/api/tasks/:taskId/review/device-capture-sessions',
@@ -1149,6 +1156,14 @@ export const PAIRING_SCOPE_ROUTE_TABLE: readonly PairingScopeRouteRule[] = [
     id: '/api/tasks/:taskId/review/device-recordings:terminal-operate',
     method: '*',
     prefix: '/api/tasks/:taskId/review/device-recordings',
+    scope: PAIRING_SCOPE_TERMINAL_OPERATE,
+    origin: 'explicit',
+  },
+  {
+    id: '/api/tasks/:taskId/review/device-repro-bundles:terminal-operate',
+    method: 'POST',
+    prefix: '/api/tasks/:taskId/review/device-repro-bundles',
+    exact: true,
     scope: PAIRING_SCOPE_TERMINAL_OPERATE,
     origin: 'explicit',
   },

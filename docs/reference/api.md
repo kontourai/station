@@ -7505,6 +7505,42 @@ reachability or that the review was addressed. Tags and blobs remain claims.
 resolve to the exact current passing evaluation. A passing gate linked only
 to another Task stays claimed. Receipt references remain claims.
 
+Browser artifact routes on personal hosts require the `browser-artifacts`
+feature preview and Browser view authority:
+
+- `POST /api/browser/sessions/:browserSessionId/pick` takes target viewport
+  coordinates `{x, y, generation, screenshot?}`. It returns element metadata
+  and, by default, a base64 PNG crop with its digest. It refuses a changed
+  session generation or viewport and a page that changes during inspection.
+  It is a person-facing operation; requests that may originate from an Agent
+  are refused, including when Browser evaluation is enabled. Picking elements
+  inside iframes, including same-origin iframes, is not supported.
+- `GET /api/browser/sessions/:browserSessionId/network?after=<sequence>`
+  returns a bounded page of in-memory request metadata. Query values, URL
+  credentials and fragments are redacted; bodies and headers are not retained.
+  `seq` advances when a request changes; `requestSeq` identifies the request
+  across updates. Advance the cursor through pages before using `latestSeq`.
+  Requests from an Agent also require **Let agents run JavaScript in this
+  Project's pages** (`browserEvaluate`).
+- `POST /api/browser/sessions/:browserSessionId/recordings` takes
+  `{generation, taskSessionId?}` and starts a person-owned silent recording. A
+  Task lead Session selector may establish a person-authorized clean-workspace
+  pin before frames are captured; it is not authority. It returns
+  `{recordingId}`. `GET .../recordings/:recordingId` reads its state;
+  `POST .../recordings/:recordingId/stop` requests completion, and `DELETE`
+  cancels or discards it. `GET .../recordings/:recordingId/video` returns a
+  bounded WebM while it is retained. Each operation rechecks person and Browser
+  authority, preview state, session generation and recording ownership. There
+  are at most four active Browser recordings per Station and two per owner;
+  finished recordings no longer consume active slots. Capture stops at 30 seconds and
+  finishes at 300 frames or 64 MiB of raw input, retaining earlier frames; encoded output is limited to 16 MiB and a
+  completed result is retained for at most one minute; at most four completed
+  results are retained, so an older one may be discarded sooner. This path offers a local save;
+  `POST .../recordings/:recordingId/task` publishes to the pinned Task after
+  authority and workspace rechecks. `GET .../recordings/:recordingId/frames`
+  returns four sampled JPEGs and provenance while retained, or `409` when the
+  bounded sample is unavailable. The same person, session and preview checks apply.
+
 Browser capture routes on personal hosts:
 
 - `GET /api/tasks/:taskId/review/capture-sessions` returns `data.sessions` with
@@ -7543,6 +7579,11 @@ Project authority:
 - `GET /api/tasks/:taskId/review/device-recordings/:jobId?projectSlug=...` reads its state.
 - `POST /api/tasks/:taskId/review/device-recordings/:jobId/stop?projectSlug=...` requests a stop.
 - `GET /api/mobile-devices/hosts/:hostId/devices/:platform/:deviceId/tools/logs?appId=...` reads one bounded app log sample.
+- `POST /api/mobile-devices/projects/:slug/device-artifacts/workspace` stages a Project-relative app path; `/upload?platform=...` accepts bounded app bytes within ten minutes; quotas are per Project with host-wide stored-byte and concurrent-install limits. A staged handle is not an installation receipt.
+- `POST /api/mobile-devices/hosts/:hostId/devices/:platform/:deviceId/tools/install?projectSlug=...` installs a staged handle on that host. The result reports an unknown effect if installation may have started but cannot be confirmed.
+- `POST /api/mobile-devices/hosts/:hostId/devices/:platform/:deviceId/tools/app-actions?projectSlug=...` performs a typed launch, terminate or open-URL action and reports its observed postcondition. URL schemes are restricted to the target app’s declared schemes, with HTTP and HTTPS additionally allowed on Android; telephone, SMS, mail, preferences and web-search schemes are refused.
+- `GET /api/mobile-devices/hosts/:hostId/devices/:platform/:deviceId/tools/history?projectSlug=...` reads bounded session action metadata.
+- `POST /api/tasks/:taskId/review/device-repro-bundles?projectSlug=...` captures a screenshot, redacted app logs and session action metadata as a JSON attachment in the Task room. If the app is not running, the logs state reports `app-not-running`. It requires current Task, Project and device authority and `terminal:operate`; the attachment may contain private screen and log data.
 
 See
 [device capture](../guides/mobile-device-workspace.md#capture-a-device-screen-to-a-task)

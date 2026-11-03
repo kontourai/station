@@ -2189,6 +2189,18 @@ test('Task write-back log is a declared Task read', () => {
 });
 
 test('Task capture and review comments require operate scope; capture reads use read scope', () => {
+  expect(
+    requiredPairingScope(
+      'POST',
+      '/api/mobile-devices/projects/demo/device-artifacts/upload',
+    ),
+  ).toBe('terminal:operate');
+  expect(
+    requiredPairingScope(
+      'POST',
+      '/api/tasks/task-a/review/device-repro-bundles',
+    ),
+  ).toBe('terminal:operate');
   for (const path of [
     '/api/tasks/task-a/review/walkthroughs',
     '/api/tasks/task-a/review/walkthroughs/clip-a',

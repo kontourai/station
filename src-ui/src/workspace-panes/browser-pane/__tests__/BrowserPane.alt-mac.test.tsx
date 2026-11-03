@@ -28,6 +28,7 @@ vi.mock('../../../live-surface/LiveSurfaceCanvas', () => ({
 }));
 
 import { KeyboardShortcutsProvider } from '../../../contexts/KeyboardShortcutsContext';
+import { NavigationProvider } from '../../../contexts/NavigationContext';
 import BrowserPane from '../BrowserPane';
 
 afterEach(() => vi.restoreAllMocks());
@@ -77,20 +78,22 @@ test('macOS Alt+Left and Alt+Right stay with the address field', async () => {
     });
   });
   render(
-    <KeyboardShortcutsProvider>
-      <QueryClientProvider
-        client={
-          new QueryClient({ defaultOptions: { queries: { retry: false } } })
-        }
-      >
-        <BrowserPane
-          projectSlug="alpha"
-          target={{ kind: 'session', browserSessionId: sessionId }}
-          onAttach={() => {}}
-          transport={transport as never}
-        />
-      </QueryClientProvider>
-    </KeyboardShortcutsProvider>,
+    <NavigationProvider>
+      <KeyboardShortcutsProvider>
+        <QueryClientProvider
+          client={
+            new QueryClient({ defaultOptions: { queries: { retry: false } } })
+          }
+        >
+          <BrowserPane
+            projectSlug="alpha"
+            target={{ kind: 'session', browserSessionId: sessionId }}
+            onAttach={() => {}}
+            transport={transport as never}
+          />
+        </QueryClientProvider>
+      </KeyboardShortcutsProvider>
+    </NavigationProvider>,
   );
   const address = await screen.findByLabelText('Address');
   await screen.findByTestId('live-canvas');

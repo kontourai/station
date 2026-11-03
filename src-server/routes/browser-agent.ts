@@ -37,10 +37,8 @@ import {
   TaskBrowserCaptureError,
   type TaskCaptureBrowserRegistry,
 } from '../services/projects/task-browser-capture.js';
-import {
-  type TaskBrowserRecording,
-  TaskBrowserRecordingError,
-} from '../services/projects/task-browser-recording.js';
+import type { TaskBrowserRecording } from '../services/projects/task-browser-recording.js';
+import { TaskBrowserRecordingError } from '../services/projects/task-recording-errors.js';
 import {
   BROWSER_RECORD_MAX_DURATION_MS,
   BROWSER_RECORD_MAX_ENCODED_BYTES,
@@ -63,6 +61,7 @@ export interface BrowserAgentRoutesDeps {
     | 'navigate'
     | 'resize'
     | 'snapshot'
+    | 'network'
     | 'hover'
     | 'drag'
     | 'selectOption'
@@ -458,6 +457,27 @@ export function createBrowserAgentRoutes(deps: BrowserAgentRoutesDeps) {
           });
         }
       }
+      case 'network':
+        if (
+          (body.after !== undefined &&
+            (typeof body.after !== 'number' ||
+              !Number.isSafeInteger(body.after) ||
+              body.after < 0)) ||
+          (body.limit !== undefined &&
+            (typeof body.limit !== 'number' ||
+              !Number.isSafeInteger(body.limit) ||
+              body.limit < 1 ||
+              body.limit > 100))
+        )
+          return c.json(invalid('Invalid network page bounds.'));
+        return c.json(
+          await automation.network(
+            authority,
+            id,
+            body.after as number | undefined,
+            body.limit as number | undefined,
+          ),
+        );
       case 'snapshot':
         return c.json(
           await automation.snapshot(authority, id, {

@@ -5,6 +5,7 @@ import {
 } from '@kontourai/station-sdk';
 import { useEffect, useRef } from 'react';
 import { Button } from '../../components/Button';
+import { useChatRequestTarget } from '../../components/chat/ChatRequestContext';
 import { LazyMarkdown } from '../../components/chat/LazyMarkdown';
 import { Empty, SkeletonBlock } from '../../components/state';
 import './ChildWorkTranscript.css';
@@ -124,7 +125,11 @@ export function ChildWorkTranscript({
    */
   revision: string;
 }) {
-  const transcript = useChildWorkTranscriptQuery({ threadId, childId });
+  const target = useChatRequestTarget();
+  const transcript = useChildWorkTranscriptQuery(
+    { threadId, childId, requestScope: target?.requestScope },
+    target?.apiBase,
+  );
   const { refetch } = transcript;
   const seenRevision = useRef(revision);
   const pendingRefresh = useRef<ReturnType<typeof setTimeout> | null>(null);

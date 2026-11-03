@@ -379,6 +379,16 @@ export function useComposerAttachments(options: {
           added: 0,
           errors: ['The target changed before file intake completed.'],
         };
+      if (
+        operation?.allOrNothing &&
+        (result.errors.length || result.attachments.length !== files.length)
+      ) {
+        const errors = result.errors.length
+          ? result.errors
+          : ['The files could not all be attached.'];
+        setError(errors[0]!);
+        return { added: 0, errors };
+      }
       const existing = options.getCurrentAttachments?.() ?? options.attachments;
       if (
         existing.length + result.attachments.length >

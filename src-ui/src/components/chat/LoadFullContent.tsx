@@ -3,6 +3,7 @@ import { useResolvedRuntimeEventValueQuery } from '@kontourai/station-sdk/runtim
 import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { Button } from '../Button';
 import { ErrorState, SkeletonBlock } from '../state';
+import { useChatRequestTarget } from './ChatRequestContext';
 
 /**
  * docs/design/event-content-spill.md: a value Station stored out of line
@@ -79,7 +80,12 @@ function ResolvedValueLoader<T>({
   value: T;
   onLoaded: (resolved: T) => void;
 }) {
-  const query = useResolvedRuntimeEventValueQuery({ threadId, value });
+  const target = useChatRequestTarget();
+  const query = useResolvedRuntimeEventValueQuery({
+    threadId,
+    value,
+    ...target,
+  });
   const { data, isError, refetch } = query;
   // biome-ignore lint/correctness/useExhaustiveDependencies: onLoaded is a fresh closure per render; the loaded data is what matters.
   useEffect(() => {

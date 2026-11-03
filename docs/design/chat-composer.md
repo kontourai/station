@@ -120,24 +120,19 @@ only an explicit Agent request starts Agent work. Files & connections contains
 source and workspace controls, with specialist management still in Settings.
 
 Home and the chat dock share one start composer (`StartComposer`, driven in
-the dock by `NewChatModal`). On Home it sits under **What would you like to
-do?** with the Project and Station controls above the text box.
+the dock by `NewChatModal`). Both use a heading with the inline Project picker,
+compact Agent and Model controls inside the message box, and a Station/location
+line below it.
 
 **New chat** is not a dialog. It opens a draft in the chat dock's body, in place
 of the chat on screen, in any dock region or placement (full screen on a phone):
 
-- **Layout.** One quiet line, **Start a chat in <Project> on <Station>**, then
-  the composer where a reply composer sits. The line uses the Project chip's
-  words (**without a project** for No project) and the Agent chip's Station
-  from the shared `useExecutionStations` catalog; the Station name appears
-  only once known, and the line shows only while the draft is empty. There is
-  no title bar, close button, hero or recent-chats list. The Project control
-  and **Runs on <Station>** join the chip row under the text. Runs on opens
-  the Station chooser when another permitted destination is available;
-  choosing one continues to its Engine & model. Setup,
-  repair and read errors render in the body; while a setup panel shows, setup
-  and the composer scroll together. Otherwise the composer stays pinned and, in
-  a short dock, a plain New chat's text box shrinks toward one line.
+- **Layout.** The heading includes the selected Project and a **start without
+  a project** action. The composer is centered in the available space; in a
+  short dock its heading, spacing and text box shrink so the Station line stays
+  visible. **Runs on <Station>** opens the Station chooser when another
+  permitted destination is available; choosing one continues to its Engine &
+  model. Setup, repair and read errors scroll above the composer.
 - **Header.** The dock's title slot (and the phone header) reads **New chat**,
   **New Task** or **Fork from here** (**Regenerate** or **Edit and resend**
   for a fork a message action started), and the header's project controls
@@ -222,16 +217,18 @@ have the same Agent ID and receiver-computed definition fingerprint; names do
 not establish equivalence. The fingerprint covers the authored definition and
 referenced resource IDs, not the installed contents of those resources. An
 unverified counterpart or failed inventory read stays an explicit gap. Selecting
-a remote route opens the task launcher and its portable Project consent; it
-does not relocate an existing conversation. Runtime and native-device execution
+a paired route starts a new foreground conversation when the Paired Station
+chats preview is enabled; its Project is explicitly selected from that Station.
+The existing task launcher and portable Project consent remain the path for
+SSH and when that preview is off. Neither route relocates an existing conversation. Runtime and native-device execution
 of these routes require separate evidence from the source and controlled tests.
 
 Home keeps a screen-reader page title while the shared composer owns the
 visible start heading. A confirmed empty Station shows a first-conversation
 heading and two next steps: review available agents (or open engine setup when
-none can run), and optionally open a Project. The same inline composer starts
-the conversation. Empty Recent work is omitted only for this confirmed first
-session; loading and failed reads retain their status and recovery.
+none can run), and optionally open a Project. The same compact inline composer
+starts the conversation. Empty Recent work is omitted only for this confirmed
+first session; loading and failed reads retain their status and recovery.
 
 The **Runs on <Station>** control names where this start runs: the explicit
 Station choice, else the Project's saved default environment, else the
@@ -248,7 +245,8 @@ nothing, since starting the task still needs `orchestration:operate` and the
 launcher and the server refuse what is not allowed. It only chooses the destination: This Station
 closes the list, and another Station continues into that Station's Engine &
 model picker, because a remote route needs a verified engine there. **Start**
-then opens the task launcher with the message, Project, Agent and selection,
+then opens the task launcher with the message, Project, Agent and selection
+when Paired Station chats is off or the destination uses SSH,
 retaining portable Project/resource admission and the explicit no-fallback
 refusals; **Run task** starts a task and does not place or migrate a
 foreground chat on a peer. Once the task is accepted the composer closes
@@ -264,6 +262,45 @@ reads answer, or when a read is refused (a scoped Device without
 `access:manage` cannot list paired Stations), the control is plain text with
 no caret. Prepared visual skills and coding-context drafts keep their
 existing chat-only path.
+
+### Paired Station foreground chats
+
+The `paired-station-chats` Feature Preview is off by default and offered only
+on personal hosts. [Peer chat routes](../../src-server/routes/environments/peer-chat-routes.ts)
+own its server branch. Every read and write rechecks the preview and source
+request authority. The existing `access:manage` peer-family boundary and the
+agent-origin refusal prevent a delegated agent from using another Station’s
+saved credential for an onward hop. The receiver still applies its credential,
+Project, engine, approval and full-access checks.
+
+New Chat reads the receiver’s Projects through that bridge. It never sends the
+source Project’s slug as a receiver selection. This is an explicit foreground
+chat under the existing personal-peer grant, not portable Task placement;
+portable Project offers retain their existing separate consent. The bridge
+allows only bounded chat/history/request reads and typed foreground sends,
+Stop and request decisions. It confirms the saved environment identity,
+forwards only the saved peer credential, refuses redirects, withholds results
+after authority or credential rotation, and publishes no remote cookies.
+
+[PeerChatBody](../../src-ui/src/components/chat-dock/PeerChatBody.tsx) opens in the
+normal dock. The active-chat store retains its remote binding and keyed pending
+message; it never promotes the remote identity to a local conversation ID.
+It polls bounded conversation windows, shares `SessionTranscript` and the shared
+approval and input-form controls, and reuses `SessionReplyComposer` with Activity.
+An uncertain message stays pending and an explicit retry keeps the same key.
+**Edit in New Chat** copies it into a separate draft with the remote choices,
+requires the receiver Project to be chosen again, and never sends automatically.
+The original pending message remains available; the warning asks the person to
+check for delivery before sending changed work. Invalid saved remote bindings
+show a recovery action and cannot fall back to the source chat composer.
+Turning the preview off stops remote operations and leaves retained work visible.
+
+Home and New Chat share the heading with its inline Project picker, optional
+No project action, compact Agent/Model row, and Station/location line below the
+message. They reuse the same menus and selection memory. Responsive browser
+captures establish layout only; two-machine provider execution, reconnect,
+Windows lifecycle, and approval journeys require separate qualification before
+promoting this preview.
 
 The Project header leads with its name, description and observed Git branch.
 Files & connections holds source controls and the **Where Agent work starts**

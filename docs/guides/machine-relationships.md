@@ -63,6 +63,20 @@ the CLI still excludes native broker routes from defaults and explicit targets.
 See [Connections](connections.md) for the setup steps and the separate fresh,
 public application, physical-device and release qualification limits.
 
+### Starting a chat on a paired Station
+
+With the personal-host **Paired Station chats** Feature Preview enabled,
+New Chat can use a paired Station’s ordinary foreground chat API. Choose its
+Engine & model and explicitly choose a Project from its own list, or No project.
+The source keeps a dock tab; the receiver owns the conversation, providers and
+credits. Replies, Stop and request answers go to that receiver. The bridge uses
+its saved credential server-side and refuses agent-originated onward hops.
+
+This path is text only and polls bounded history. It does not grant portable
+Project execution or change Task placement consent. Preview-off and SSH starts
+retain the existing Task launcher. See [starting work](../user/getting-started.md#start-your-first-chat)
+and the [bridge design](../design/chat-composer.md#paired-station-foreground-chats).
+
 ### What a paired device may do, and full access
 
 A paired device holds scopes: `orchestration:read`, `orchestration:operate`,
