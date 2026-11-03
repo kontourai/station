@@ -1,13 +1,7 @@
-import {
-  existsSync,
-  mkdtempSync,
-  readdirSync,
-  rmSync,
-  symlinkSync,
-} from 'node:fs';
-import { tmpdir } from 'node:os';
+import { existsSync, readdirSync, symlinkSync } from 'node:fs';
 import { join } from 'node:path';
-import { afterEach, describe, expect, test } from 'vitest';
+import { describe, expect, test } from 'vitest';
+import { trackTempDirs } from '../../../../src-server/__test-utils__/temp-dirs.js';
 import {
   admitTroubleshootSeed,
   boundedTriageLogTail,
@@ -27,20 +21,16 @@ import {
   validateTroubleshootContext,
 } from '../triage-context.js';
 
-const roots: string[] = [];
-afterEach(() => {
-  for (const root of roots.splice(0))
-    rmSync(root, { recursive: true, force: true });
-});
+const makeTempDir = trackTempDirs();
 function tempRoot(): string {
-  const root = mkdtempSync(join(tmpdir(), 'station-triage-context-'));
-  roots.push(root);
-  return root;
+  return makeTempDir('station-triage-context-');
 }
 
 const GITHUB_TOKEN = `ghp_${'a'.repeat(36)}`;
 // The shape of a Station pairing/device credential: 32 bytes, base64url.
-const PAIRING_CREDENTIAL = 'Qm9vdHN0cmFwU2VjcmV0MTIzNDU2Nzg5MGFiY2RlZmdo';
+// Same shape as a real credential (43 base64url chars, mixed case, digits),
+// built at runtime so secret scanners do not read a literal key.
+const PAIRING_CREDENTIAL = `${'Ab1'.repeat(14)}Z`;
 
 describe('redactTroubleshootReportText', () => {
   test('redacts credentials, pairing secrets, private URLs and home paths', () => {
