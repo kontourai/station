@@ -3584,12 +3584,14 @@ function BuiltinChatWorkspacePane(props: ChatWorkspacePaneProps) {
                     }
               }
               extentToggle={
-                isFullscreenPlacement || !isPaneOpen
+                isFullscreenPlacement
                   ? null
                   : {
-                      maximized: isDockMaximized,
+                      maximized: isPaneOpen && isDockMaximized,
                       onToggle: () =>
-                        applyDockSnap(isDockMaximized ? 'half' : 'full'),
+                        applyDockSnap(
+                          isPaneOpen && isDockMaximized ? 'half' : 'full',
+                        ),
                     }
               }
               // Shared creation action opens a draft without starting an engine.

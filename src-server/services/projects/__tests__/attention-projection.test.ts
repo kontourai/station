@@ -106,6 +106,7 @@ function makeService(opts: {
   unanswerable?: string[];
   /** archive#1914: the acknowledgement store, and the identity that scopes it. */
   acknowledgementStore?: {
+    isOwnerDevice?: (deviceId: string) => boolean;
     getMany(
       userId: string,
       conversationIds: readonly string[],
@@ -2059,6 +2060,57 @@ describe('AttentionProjectionService', () => {
         );
       });
 
+      test('an owner phone dismissal survives reload for every owner device without clearing another person', async () => {
+        const dataDir = mkdtempSync(join(tmpdir(), 'station-phone-attention-'));
+        const isOwnerDevice = (id: string) =>
+          id === 'owner-phone' || id === 'owner-desktop';
+        const sessions = [
+          baseSession({ threadId: 'thread-phone', lifecycleState: 'failed' }),
+        ];
+        const authority = (id: string) =>
+          sessionReadAuthorityFromRequest(
+            `human:device:${id}`,
+            undefined,
+            undefined,
+          );
+        try {
+          const service = makeService({
+            sessions,
+            acknowledgementStore: new FileConversationAcknowledgementStore(
+              dataDir,
+              isOwnerDevice,
+            ),
+          });
+          expect(
+            (await service.list(authority('owner-phone'))).pendingCount,
+          ).toBe(1);
+          expect(
+            await service.acknowledge(
+              'session-failed:thread-phone',
+              authority('owner-phone'),
+            ),
+          ).toBe(true);
+
+          const restarted = makeService({
+            sessions,
+            acknowledgementStore: new FileConversationAcknowledgementStore(
+              dataDir,
+              isOwnerDevice,
+            ),
+          });
+          for (const id of ['owner-phone', 'owner-desktop']) {
+            const result = await restarted.list(authority(id));
+            expect(result.pendingCount).toBe(0);
+            expect(result.items[0]?.acknowledgedAt).toBe(now);
+          }
+          expect(
+            (await restarted.list(authority('another-person'))).pendingCount,
+          ).toBe(1);
+        } finally {
+          rmSync(dataDir, { recursive: true, force: true });
+        }
+      });
+
       /*
        * archive#3203: the owner's complaint was that the count stayed at 4
        * after acting on ONE entry. The all-at-once case above proves the
@@ -3304,9 +3356,10 @@ describe('#2323 S5 plugin lifecycle proposal attention', () => {
 
   test('an open proposal projects for the operator with a deep link into Plugins, and stops once dismissed', async () => {
     const store = proposalStore();
+    const source = join(tmpdir(), 'plugins', 'pulse');
     const { proposal } = await store.propose({
       kind: 'install',
-      source: '/tmp/plugins/pulse',
+      source,
       rationale: 'Adds the pulse pane.',
       author: {
         principal: 'agent',
@@ -3326,7 +3379,7 @@ describe('#2323 S5 plugin lifecycle proposal attention', () => {
         title: 'Install plugin from a local folder',
         rationale: 'Adds the pulse pane.',
         proposalKind: 'install',
-        pluginSource: '/tmp/plugins/pulse',
+        pluginSource: source,
         author: {
           principal: 'agent',
           agentSlug: 'station',

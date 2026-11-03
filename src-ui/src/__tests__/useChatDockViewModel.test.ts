@@ -2,7 +2,10 @@
  * @vitest-environment jsdom
  */
 
-import { engineConnectionId } from '@kontourai/station-contracts/agent-identity';
+import {
+  agentId,
+  engineConnectionId,
+} from '@kontourai/station-contracts/agent-identity';
 import { renderHook } from '@testing-library/react';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { useChatDockViewModel } from '../components/chat-dock/useChatDockViewModel';
@@ -88,6 +91,80 @@ afterEach(() => {
 });
 
 describe('useChatDockViewModel (memoized bindingStatus/effectiveModels)', () => {
+  test.each(['codex', undefined])(
+    'a Claude profile running on Codex never offers Claude aliases (override %s)',
+    (executionAgentId) => {
+      queryState.agentConnections = [
+        {
+          id: 'codex',
+          kind: 'agent',
+          type: 'codex',
+          engineId: 'codex',
+          name: 'Codex',
+          enabled: true,
+          status: 'ready',
+          config: {},
+          capabilities: ['agent-runtime'],
+          runtimeCatalog: {
+            source: 'live',
+            models: [
+              {
+                id: 'gpt-6.1-terra',
+                name: 'GPT 6.1 Terra',
+                originalId: 'gpt-6.1-terra',
+              },
+            ],
+            builtInModels: [],
+          },
+        },
+      ];
+      const { result } = renderHook(() =>
+        useChatDockViewModel({
+          activeSessionId: 's1',
+          availableModels: [],
+          agents: [
+            {
+              slug: agentId('claude'),
+              name: 'Claude',
+              model: 'default',
+              execution: { agentConnectionId: engineConnectionId('claude') },
+              modelOptions: [
+                { id: 'default', name: 'Default' },
+                { id: 'opus', name: 'Opus' },
+              ],
+            },
+            {
+              slug: agentId('codex'),
+              name: 'Codex',
+              model: 'gpt-6.1-terra',
+              execution: { agentConnectionId: engineConnectionId('codex') },
+            },
+          ],
+          sessions: [
+            {
+              ...sessions[0],
+              agentSlug: agentId('claude'),
+              executionAgentId,
+              executionMode: 'external',
+              agentConnectionId: engineConnectionId('codex'),
+              defaultModel: 'default',
+              model: 'gpt-6.1-terra',
+            },
+          ],
+        }),
+      );
+      expect(result.current.effectiveModels.map((model) => model.id)).toEqual([
+        'gpt-6.1-terra',
+      ]);
+      expect(
+        result.current.bindingStatus.visibleModels.map((model) => model.id),
+      ).toEqual(['gpt-6.1-terra']);
+      expect(result.current.agentDefaultModelId).toBe(
+        executionAgentId ? 'gpt-6.1-terra' : undefined,
+      );
+    },
+  );
+
   test('an engine-reported model missing from the catalog keeps its display name', () => {
     const { result } = renderHook(() =>
       useChatDockViewModel({
