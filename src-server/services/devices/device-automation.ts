@@ -30,16 +30,23 @@ import type {
   DeviceHistoryAction,
   DeviceSessionService,
 } from './device-session-service.js';
-import { DeviceHostBusyError } from './device-shares.js';
 import {
-  DeviceToolsAdmissionError,
-  DeviceToolsError,
   type DeviceToolsService,
+  deviceActionRefused,
 } from './device-tools.js';
 import type {
   DeviceInstallFile,
   DeviceInstallOutcome,
 } from './hosts/device-app-install.js';
+
+/** Actions that may have changed the device even when their outcome is unknown. */
+const MUTATING_ACTIONS: ReadonlySet<DeviceHistoryAction> = new Set([
+  'input',
+  'install-app',
+  'launch',
+  'terminate',
+  'open-url',
+]);
 
 interface DeviceAutomationHost {
   host: Pick<LocalMobileDeviceHost, 'inventory' | 'capture'>;
@@ -324,19 +331,12 @@ export class DeviceAutomation {
             effect?: unknown;
             code?: unknown;
           };
-          const mutating = [
-            'input',
-            'install-app',
-            'launch',
-            'terminate',
-            'open-url',
-          ].includes(action);
           selected.services.sessions.noteAction(
             id,
             action,
             'agent',
             state.effect === 'unknown' ||
-              (mutating &&
+              (MUTATING_ACTIONS.has(action) &&
                 state.code === 'interrupted' &&
                 state.effect !== 'none')
               ? 'unknown'
@@ -352,19 +352,9 @@ export class DeviceAutomation {
             id,
             action,
             'agent',
-            !wasDispatched?.() &&
-              (error instanceof DeviceToolsAdmissionError ||
-                error instanceof DeviceHostBusyError ||
-                (error instanceof DeviceToolsError &&
-                  error.code === 'invalid-request'))
+            !wasDispatched?.() && deviceActionRefused(error)
               ? 'failed'
-              : [
-                    'input',
-                    'install-app',
-                    'launch',
-                    'terminate',
-                    'open-url',
-                  ].includes(action)
+              : MUTATING_ACTIONS.has(action)
                 ? 'unknown'
                 : 'failed',
           );

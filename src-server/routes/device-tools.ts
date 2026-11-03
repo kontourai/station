@@ -29,6 +29,7 @@ import {
   DeviceToolsError,
   type DeviceToolsService,
   type DeviceToolsTarget,
+  deviceActionRefused,
   isDeviceAppId,
   isDeviceToolsTarget,
   parseDeviceAppAction,
@@ -496,19 +497,15 @@ export function createDeviceToolsRoutes(options: DeviceToolsRouteOptions) {
       } catch {
         value = null;
       }
+      if (!value || typeof value !== 'object' || Array.isArray(value))
+        return failure(c, 'invalid-request');
+      const handle = (value as { artifactHandle?: unknown }).artifactHandle;
       if (
-        !value ||
-        typeof value !== 'object' ||
-        Array.isArray(value) ||
         Object.keys(value).length !== 1 ||
-        typeof (value as { artifactHandle?: unknown }).artifactHandle !==
-          'string' ||
-        !/^[0-9a-f-]{36}$/.test(
-          (value as { artifactHandle: string }).artifactHandle,
-        )
+        typeof handle !== 'string' ||
+        !/^[0-9a-f-]{36}$/.test(handle)
       )
         return failure(c, 'invalid-request');
-      const handle = (value as { artifactHandle: string }).artifactHandle;
       const admitted = await admit(c, 'drive');
       if (!admitted.ok) return admitted.response;
       const { target, caller, service } = admitted;
@@ -705,13 +702,7 @@ export function createDeviceToolsRoutes(options: DeviceToolsRouteOptions) {
           options.actionHistory?.note(
             target,
             action.type,
-            !dispatched &&
-              (error instanceof DeviceToolsAdmissionError ||
-                error instanceof DeviceHostBusyError ||
-                (error instanceof DeviceToolsError &&
-                  error.code === 'invalid-request'))
-              ? 'failed'
-              : 'unknown',
+            !dispatched && deviceActionRefused(error) ? 'failed' : 'unknown',
           );
           throw error;
         }
@@ -797,12 +788,7 @@ export function createDeviceToolsRoutes(options: DeviceToolsRouteOptions) {
           options.actionHistory?.note(
             admitted.target,
             'tool-action',
-            error instanceof DeviceToolsAdmissionError ||
-              error instanceof DeviceHostBusyError ||
-              (error instanceof DeviceToolsError &&
-                error.code === 'invalid-request')
-              ? 'failed'
-              : 'unknown',
+            deviceActionRefused(error) ? 'failed' : 'unknown',
           );
           throw error;
         }

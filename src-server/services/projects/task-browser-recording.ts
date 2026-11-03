@@ -32,8 +32,6 @@ import {
 import { TaskBrowserRecordingError } from './task-recording-errors.js';
 import { publishTaskRecording } from './task-recording-publication.js';
 
-export { TaskBrowserRecordingError } from './task-recording-errors.js';
-
 const MAX_RAW_FRAME_BYTES = 64 * 1024 * 1024;
 const MAX_FRAMES = 300;
 const ENCODE_TIMEOUT_MS = 60_000;

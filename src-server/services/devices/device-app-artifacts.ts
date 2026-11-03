@@ -355,7 +355,6 @@ export class DeviceArtifactStaging {
       revision: null,
       state: 'staged',
     };
-    const stored = payload;
     const timer = setTimeout(() => {
       const entry = this.entries.get(handle);
       if (entry) {
@@ -367,7 +366,7 @@ export class DeviceArtifactStaging {
     this.entries.set(handle, {
       projectId,
       receipt,
-      payload: stored,
+      payload,
       bytes,
       expiresAt: Date.now() + RETENTION_MS,
       timer,
