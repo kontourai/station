@@ -5,13 +5,11 @@
  * The owner's own standard device pairs a phone and resolves to the owner;
  * a read-only device keeps every refusal.
  */
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import type { HttpBindings } from '@hono/node-server';
 import { pairingScopePresetString } from '@kontourai/station-contracts';
 import { Hono } from 'hono';
-import { afterEach, describe, expect, test } from 'vitest';
+import { describe, expect, test } from 'vitest';
+import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import {
   isBoundRuntimeLocalOperator,
   isBoundRuntimeOwner,
@@ -46,15 +44,10 @@ const silentLogger = {
   },
 };
 
-const homes: string[] = [];
-afterEach(() => {
-  for (const home of homes.splice(0))
-    rmSync(home, { recursive: true, force: true });
-});
+const makeTempDir = trackTempDirs();
 
 async function harness() {
-  const homeDir = mkdtempSync(join(tmpdir(), 'station-owner-boundary-'));
-  homes.push(homeDir);
+  const homeDir = makeTempDir('station-owner-boundary-');
   const security = new EnvironmentSecurityService({ homeDir, environment: {} });
   await security.initialize();
   const pairing = security.devicePairing;

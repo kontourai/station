@@ -4,27 +4,20 @@
  * owner. These tests drive the real pairing store and environment security
  * service, so each case is a device minted the way production mints it.
  */
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import {
   PAIRING_SCOPE_ACCESS_MANAGE,
   pairingScopeIncludes,
   pairingScopePresetString,
 } from '@kontourai/station-contracts';
-import { afterEach, describe, expect, test } from 'vitest';
+import { describe, expect, test } from 'vitest';
+import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { HOSTED_TENANT_REGISTRY_FILE_ENV } from '../../../runtime/bootstrap/hosted-tenant-mode.js';
 import { EnvironmentSecurityService } from '../environment-security-service.js';
 
-const homes: string[] = [];
-afterEach(() => {
-  for (const home of homes.splice(0))
-    rmSync(home, { recursive: true, force: true });
-});
+const makeTempDir = trackTempDirs();
 
 async function station(environment: NodeJS.ProcessEnv = {}) {
-  const homeDir = mkdtempSync(join(tmpdir(), 'station-owner-standing-'));
-  homes.push(homeDir);
+  const homeDir = makeTempDir('station-owner-standing-');
   const security = new EnvironmentSecurityService({ homeDir, environment });
   await security.initialize();
   const pairing = security.devicePairing;
