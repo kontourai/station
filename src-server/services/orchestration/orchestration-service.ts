@@ -4384,8 +4384,13 @@ export class OrchestrationService {
     return this.sessionRecoveryCompletedSignal.promise;
   }
 
-  async shutdown(): Promise<void> {
+  stopCascadeDelivery(): void {
     this.cascadeDeliveryStopped = true;
+    this.cascadeDeliveryAbort.abort();
+  }
+
+  async shutdown(): Promise<void> {
+    this.stopCascadeDelivery();
     this.stopSessionDeletionNotifications?.();
     // #3562: boot recovery retries on a backoff; none of it may publish once
     // the publish path below starts coming down. Its rows stay for next boot.
@@ -5524,14 +5529,18 @@ export class OrchestrationService {
 
   async steerFidelityForThread(
     threadId: string,
-  ): Promise<'native' | 'emulated' | 'none'> {
+  ): Promise<'native' | 'emulated' | 'none' | 'pending'> {
     const provider =
       this.threadProviders.get(threadId) ??
       this.sessionReadModel.get(threadId)?.provider ??
       this.options.eventStore?.readSessionByThread(threadId)?.provider;
     return (
       this.durabilityProfileForProvider(provider)?.steerPlacement.state ??
-      'none'
+      ((!provider || !this.options.adapterRegistry.get(provider)) &&
+      (this.startingSessionThreads.has(threadId) ||
+        this.materializingSessions.has(threadId))
+        ? 'pending'
+        : 'none')
     );
   }
 
@@ -12243,6 +12252,7 @@ export class OrchestrationService {
    */
   private cascadeStopReconciliation?: Promise<void>;
   private cascadeDeliveryStopped = false;
+  private readonly cascadeDeliveryAbort = new AbortController();
   private cascadeStopReconcileAgain = false;
   private readonly cascadeStopAdapters = new Map<
     string,
@@ -12279,6 +12289,7 @@ export class OrchestrationService {
         ...(turnId ? { turnId } : {}),
       });
     }
+    store.requestCascadeDelivery(threadId, terminalId);
     store.requestCascadeRecheck(threadId);
     await this.reconcileCascadeStops();
     if (
@@ -12320,6 +12331,10 @@ export class OrchestrationService {
           ReturnType<EventStore['cascadeStopOwner']>
         >();
         for (const intent of intents) {
+          const recheckGeneration = store.cascadeStopRecheckGeneration(
+            intent.childId,
+            intent.terminalId,
+          );
           const retained = this.cascadeStopAdapters.get(intent.childId);
           let adapter = this.sessionAdapters.get(intent.childId) ?? retained;
           let held = retained !== undefined;
@@ -12330,10 +12345,14 @@ export class OrchestrationService {
             );
             held ||=
               adapter !== undefined &&
-              (await adapter.hasSession(intent.childId));
+              (await raceWithSignal(
+                Promise.resolve(adapter.hasSession(intent.childId)),
+                this.cascadeDeliveryAbort.signal,
+              ));
           } catch {
             unavailable = true;
           }
+          if (this.cascadeDeliveryStopped) return;
           let owner = store.cascadeStopOwner(
             intent.childId,
             held || this.startingSessionThreads.has(intent.childId),
@@ -12357,7 +12376,15 @@ export class OrchestrationService {
             };
           owners.set(intent.childId, owner);
           if (owner.custody === 'settled') {
-            store.completeCascadeStop(intent.childId, intent.terminalId);
+            if (
+              !store.completeCascadeStop(
+                intent.childId,
+                intent.terminalId,
+                undefined,
+                recheckGeneration,
+              )
+            )
+              this.cascadeStopReconcileAgain = true;
             continue;
           }
           const recorded = store.recordCascadeStopCustody(
@@ -12367,6 +12394,7 @@ export class OrchestrationService {
             owner.reason,
             owner.custody === 'unknown' ? Date.now() + 30_000 : 0,
             owner.snapshot,
+            recheckGeneration,
           );
           if (!recorded) {
             owners.set(intent.childId, {
@@ -12448,6 +12476,7 @@ export class OrchestrationService {
               this.cascadeStopAdapters.delete(intent.childId);
               continue;
             }
+            this.cascadeStopReconcileAgain = true;
             if (
               !store
                 .pendingCascadeStops()
@@ -12461,7 +12490,11 @@ export class OrchestrationService {
             });
           }
         }
-      } while (this.cascadeStopReconcileAgain && remaining > 0);
+      } while (
+        this.cascadeStopReconcileAgain &&
+        !this.cascadeDeliveryStopped &&
+        remaining > 0
+      );
       // The durable backlog resumes on the next health tick, not another
       // recursive pass that would bypass this invocation's probe budget.
       if (remaining === 0) this.cascadeStopReconcileAgain = false;
