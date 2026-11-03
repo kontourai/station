@@ -75,11 +75,18 @@ test.each(['delayed events', 'confirmed configuration'])(
         {},
       );
       expect(started.status).toBe('accepted');
-      if (ordering === 'confirmed configuration')
-        expect(
-          store.latestEventByMethod('owned-start', 'session.configured')
-            ?.payload.metadata,
-        ).toMatchObject({ modelRoute, capabilityDelivery });
+      if (ordering === 'confirmed configuration') {
+        const configured = store.latestEventByMethod(
+          'owned-start',
+          'session.configured',
+        )?.payload;
+        if (configured?.method !== 'session.configured')
+          throw new Error('Expected persisted adapter configuration');
+        expect(configured.metadata).toMatchObject({
+          modelRoute,
+          capabilityDelivery,
+        });
+      }
       const command = {
         type: 'sendTurn' as const,
         input: {
