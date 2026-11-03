@@ -24,11 +24,12 @@
           </aside>
           <article class="docs-content">
             <h1 id="settings-you-may-not-have-found">Settings you may not have found</h1>
-<p>Most Settings rows explain themselves. This page covers four sections that change what Station offers rather than how it looks. Open <strong>Settings</strong>, pick a page in the left rail, or search for a setting by name. You can also find any Settings row from the <a href="../guides/keyboard-shortcuts.html#command-palette">command palette</a> (⌘K or Ctrl+K).</p>
+<p>Most Settings rows explain themselves. This page covers five sections that change what Station offers rather than how it looks. Open <strong>Settings</strong>, pick a page in the left rail, or search for a setting by name. You can also find any Settings row from the <a href="../guides/keyboard-shortcuts.html#command-palette">command palette</a> (⌘K or Ctrl+K).</p>
 <div class="table-scroll" tabindex="0" role="region" aria-label="Scrollable table"><table><thead><tr><th>Section</th><th>Page</th><th>Saved</th></tr></thead><tbody><tr><td>Feature previews</td><td><strong>Advanced</strong></td><td>On this Station</td></tr>
 <tr><td>Developer tools</td><td><strong>Advanced</strong></td><td>To your account when you are signed in, otherwise on this device</td></tr>
 <tr><td>Shared answers</td><td><strong>Privacy &amp; sharing</strong></td><td>On this Station</td></tr>
-<tr><td>Device hosts</td><td><strong>Devices</strong></td><td>On this Station</td></tr></tbody></table></div>
+<tr><td>Browser &amp; devices</td><td><strong>Advanced</strong></td><td>On this Station, per Project for the Browser rows</td></tr>
+<tr><td>Device hosts</td><td><strong>Advanced</strong></td><td>On this Station</td></tr></tbody></table></div>
 <h2 id="feature-previews">Feature previews</h2>
 <p>Feature previews are features that are still being evaluated. Each one has a switch, a name and a description of what turning it on does. A preview is listed only when this Station's build can run it; if none is, the section says &quot;No previews are currently offered&quot;. Previews start off unless noted below.</p>
 <div class="table-scroll" tabindex="0" role="region" aria-label="Scrollable table"><table><thead><tr><th>ID</th><th>Name</th><th>What turning it on does</th><th>Notable cost/risk</th></tr></thead><tbody><tr><td><code>durable-station-agent</code></td><td>Crash-durable Station Agent</td><td>Keeps Station-engine text turns running after a client disconnect and resumes journaled steps after restart. Stop still cancels.</td><td>Experimental; writes every model/tool step to private SQLite and can add substantial latency. An uncertain model request is surfaced without automatic resend; pending approvals still require an answer.</td></tr>
@@ -82,6 +83,16 @@
 <p><strong>Station routes preview</strong> adds <strong>Routes</strong> to the Devices page: every address this device reaches the current Station on, which one is in use, which failed and why, and <strong>Add route</strong> for an address you type. <strong>Edit</strong> removes routes you added. While connected, the app also learns the LAN, Tailscale and Tailscale HTTPS addresses the Station reports, marked &quot;found automatically&quot;. The app saved on a phone or desktop lists those addresses but still connects only through its saved one; see <a href="https://github.com/kontourai/station/blob/main/docs/design/station-routes.md">Station routes</a>.</p>
 <h2 id="shared-answers">Shared answers</h2>
 <p>This section lists the answer links you have created, with their state and expiry, and lets you revoke them. See <a href="sharing-answers.html">Share an answer</a>.</p>
+<h2 id="browser--devices">Browser &amp; devices</h2>
+<p>Configuration the Browser and Device panes keep out of their toolbars. The Browser's <strong>⋯ › Browser settings…</strong> opens it on that Browser's Project.</p>
+<ul>
+<li><strong>Agent JavaScript</strong> lets agents run scripts in the chosen Project's pages. It is off by default, and only the operator or a Project admin can change it.
+</li>
+<li><strong>Shared local servers</strong> (operator only) lists the local servers the Project's admins can open in the Browser. <strong>Find local servers</strong> suggests some, and nothing is shared until you choose it. Shared servers appear as buttons on an empty Browser.
+</li>
+<li><strong>Open device setup</strong> opens the device setup wizard: the device hub, sharing devices with Projects, and agent device access.
+</li>
+</ul>
 <h2 id="device-hosts">Device hosts</h2>
 <p>A device host is another Mac or Linux computer that runs iOS simulators or Android emulators for Station over SSH. Station uses your SSH agent and configuration and never stores a key. Only the Station operator sees this section, and only on a personal Station.</p>
 <ol>
