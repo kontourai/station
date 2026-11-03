@@ -46,6 +46,8 @@ export interface DurabilityCapability {
 
 /** Every capability is explicit; an omitted cell is an invalid declaration. */
 export interface ProviderDurabilityProfile {
+  /** Submission denial only; absence retains existing Queue behavior, never server authority. */
+  queuedFollowUp?: { state: 'none'; detail: string };
   steerPlacement: DurabilityCapability & {
     boundary?: 'engine-defined' | 'station-observed';
   };

@@ -853,6 +853,11 @@ adapter. A registered adapter without a declaration, or a declared placement of
 `none`, the Send-mode popover shows the adapter's trimmed explanation, or
 “Steering is unavailable for this session.” when that explanation is blank or
 missing. Native and emulated declarations do not show an unavailable note.
+A separate `queuedFollowUp: { state: 'none', detail }` declaration disables
+Queue and prevents the composer from submitting that follow-up. It does not
+follow from Steer being unavailable: ordinary sessions without this declaration
+keep Queue. Sealed source Sessions declare both unavailable and direct the
+person to the report or group controls for another turn.
 ACP's cancel-and-reprompt extension does not become an additive
 native composer action. Profile observations are not persisted in browser session
 state. After post-tool injection the entry remains claimed until model dispatch,

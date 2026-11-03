@@ -2178,6 +2178,13 @@ or transcript `seed` history ownership; an unreported owner preserves the seed.
 Consumers use these declarations rather than provider-name durability rules. These are
 delivery declarations, not permission to replay an effect with an unknown outcome.
 
+The optional `queuedFollowUp` cell is a separate submission denial:
+`{ state: 'none', detail: string }`. It does not grant Queue permission and
+supports no positive state. A Session can refuse Queue independently of steering;
+without this cell, clients retain their existing Queue behavior and the server
+still decides each submission. Sealed source Sessions use the denial to direct
+new work through their explicit report or group controls.
+
 Built-in adapters expose the profile in their metadata. The engine capability
 matrix carries the same profile for clients that describe an engine before a
 Session exists. Legacy third-party adapter metadata may omit it; omission is

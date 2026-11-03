@@ -199,6 +199,7 @@ interface ChatInputAreaProps {
   busyFollowUp?: 'steer' | 'queue';
   busySteeringKind?: 'native' | 'safe-stop';
   busySteeringUnavailableReason?: string;
+  busyQueueUnavailableReason?: string;
   /** Hold the draft as a follow-up instead of steering the open turn. */
   onQueueFollowUp?: () => Promise<void>;
   /**
@@ -472,6 +473,7 @@ export function ChatInputArea({
   turnInFlight,
   busySteeringKind = 'native',
   busySteeringUnavailableReason,
+  busyQueueUnavailableReason,
   busyFollowUp = 'queue',
   onQueueFollowUp,
   stopPending = false,
@@ -604,6 +606,10 @@ export function ChatInputArea({
     (sendBlockedReasonProp === undefined && busyAttachmentReason !== undefined);
   const [sendMode, setSendMode] = useState<'queue' | 'steer'>('queue');
   const [sendModeOpen, setSendModeOpen] = useState(false);
+  const queueBlocked =
+    turnInFlight &&
+    Boolean(busyQueueUnavailableReason) &&
+    (sendMode === 'queue' || busyFollowUp !== 'steer');
   useEffect(() => {
     void sessionId;
     setSendMode('queue');
@@ -617,7 +623,7 @@ export function ChatInputArea({
   const submitPending = useRef(false);
   const [submitting, setSubmitting] = useState(false);
   const submit = async () => {
-    if (submitPending.current) return;
+    if (queueBlocked || submitPending.current) return;
     submitPending.current = true;
     setSubmitting(true);
     try {
@@ -792,6 +798,7 @@ export function ChatInputArea({
   // as "ready". The send-mode segment takes the same accent when Send is ready
   // so the pair reads as one split button.
   const sendReady =
+    !queueBlocked &&
     !isOverLimit &&
     !sendBlockedReason &&
     (workspaceRefused || hasSendableDraft);
@@ -1861,6 +1868,7 @@ export function ChatInputArea({
                 disabled={
                   disabled ||
                   submitting ||
+                  queueBlocked ||
                   isOverLimit ||
                   !!sendBlockedReason ||
                   (workspaceRefused
@@ -1879,7 +1887,9 @@ export function ChatInputArea({
                 title={
                   workspaceRefused
                     ? 'Start new chat'
-                    : (sendBlockedReason ?? 'Send')
+                    : (sendBlockedReason ??
+                      (queueBlocked ? busyQueueUnavailableReason : undefined) ??
+                      'Send')
                 }
                 className={`send-button chat-input__send-btn ${
                   sendReady
@@ -1944,6 +1954,7 @@ export function ChatInputArea({
                 variant="ghost"
                 className="chat-input__mode-option"
                 type="button"
+                disabled={Boolean(busyQueueUnavailableReason)}
                 onClick={() => {
                   setSendMode('queue');
                   setSendModeOpen(false);
@@ -1965,9 +1976,10 @@ export function ChatInputArea({
                   ? 'Steer this turn'
                   : 'Steer when safe'}
               </Button>
-              {busySteeringUnavailableReason && (
+              {(busyQueueUnavailableReason ||
+                busySteeringUnavailableReason) && (
                 <p role="status" className="chat-input__mode-note">
-                  {busySteeringUnavailableReason}
+                  {busyQueueUnavailableReason || busySteeringUnavailableReason}
                 </p>
               )}
             </ResponsiveDialogSurface>

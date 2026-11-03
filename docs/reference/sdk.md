@@ -5034,6 +5034,12 @@ carry the current adapter's optional `durability` declaration; a missing field
 provides no steering authority. Conversation-open decoding accepts a complete
 adapter declaration, validates its capability states and placement/ownership
 fields, and rejects malformed declarations as `invalid-response`.
+An optional `queuedFollowUp: { state: 'none', detail: string }` cell declares
+that Queue submissions are unavailable for this Session. Its only supported
+state is `none`; omission retains existing client Queue behavior, while every
+submission still requires server admission. Older SDK versions with a closed
+profile field set may reject this extended declaration; update those clients
+before opening Sessions that declare it.
 Profile extraction uses the contracts' `readProviderDurabilityProfile` helper:
 absent carriers remain unknown, including legacy metadata without a declaration.
 Display notes have a separate 50-note capacity

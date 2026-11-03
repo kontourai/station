@@ -1157,6 +1157,11 @@ export function ChatDockBody({
     : activeOrchestrationSessionRead === 'pending'
       ? 'Loading steering support…'
       : 'Steering unavailable: the host did not report a durability profile.';
+  const queueUnavailableReason =
+    activeSession.orchestrationDurability?.queuedFollowUp?.state === 'none'
+      ? activeSession.orchestrationDurability.queuedFollowUp.detail?.trim() ||
+        'Queue is unavailable for this session.'
+      : undefined;
   const busyFollowUp =
     isTurnInFlight(activeSession) &&
     chatInput.attachments.length === 0 &&
@@ -2828,6 +2833,7 @@ export function ChatDockBody({
             turnInFlight={isTurnInFlight(activeSession)}
             busyFollowUp={busyFollowUp}
             busySteeringUnavailableReason={steeringUnavailableReason}
+            busyQueueUnavailableReason={queueUnavailableReason}
             busySteeringKind={nativeSteering ? 'native' : 'safe-stop'}
             onQueueFollowUp={handleQueueFollowUp}
             stopPending={!!activeSession.stopPending}

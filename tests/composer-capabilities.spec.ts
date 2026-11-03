@@ -449,46 +449,60 @@ async function evidence(page: Page, testInfo: TestInfo, name: string) {
 }
 
 const sealedSteeringReason =
-  'Use the report or group controls to request another turn with fresh bounded admission. This Session cannot accept Steer or Queue.';
+  "This session can't take Steer or Queue messages. To ask for another turn, use the report or group controls.";
 const steeringReasonCases: readonly {
   name: string;
   state: 'none' | 'native' | 'emulated';
+  queueBlocked: boolean;
   detail: string | undefined;
   expectedReason: string | undefined;
 }[] = [
   {
-    name: 'none with detail',
+    name: 'sealed source',
     state: 'none',
+    queueBlocked: true,
     detail: `  ${sealedSteeringReason}  `,
     expectedReason: sealedSteeringReason,
   },
   {
+    name: 'none with detail',
+    state: 'none',
+    queueBlocked: false,
+    detail: '  This engine does not support steering.  ',
+    expectedReason: 'This engine does not support steering.',
+  },
+  {
     name: 'none without detail',
     state: 'none',
+    queueBlocked: false,
     detail: undefined,
     expectedReason: 'Steering is unavailable for this session.',
   },
   {
     name: 'none with empty detail',
     state: 'none',
+    queueBlocked: false,
     detail: '',
     expectedReason: 'Steering is unavailable for this session.',
   },
   {
     name: 'none with whitespace detail',
     state: 'none',
+    queueBlocked: false,
     detail: '   ',
     expectedReason: 'Steering is unavailable for this session.',
   },
   {
     name: 'native',
     state: 'native',
+    queueBlocked: false,
     detail: 'Native placement details are not an unavailable reason.',
     expectedReason: undefined,
   },
   {
     name: 'emulated',
     state: 'emulated',
+    queueBlocked: false,
     detail: 'Emulated placement details are not an unavailable reason.',
     expectedReason: undefined,
   },
@@ -510,6 +524,11 @@ for (const [label, width] of [
           ? { boundary: 'station-observed' as const }
           : {}),
       };
+      if (scenario.queueBlocked)
+        profile.queuedFollowUp = {
+          state: 'none',
+          detail: sealedSteeringReason,
+        };
       // Exercise an older/malformed wire reason without erasing its declared state.
       if (scenario.detail === undefined)
         Reflect.deleteProperty(profile.steerPlacement, 'detail');
@@ -540,6 +559,10 @@ for (const [label, width] of [
         exact: true,
       });
       await input.getByRole('textbox').fill('keep this follow-up');
+      if (scenario.queueBlocked)
+        await expect(
+          page.getByRole('button', { name: 'Send', exact: true }),
+        ).toBeDisabled();
       for (const theme of ['dark', 'light']) {
         await page.evaluate(
           (value) => document.documentElement.setAttribute('data-theme', value),
@@ -553,12 +576,15 @@ for (const [label, width] of [
         const steer = mode.getByRole('button', {
           name: /Steer (this turn|when safe)/,
         });
+        const queue = mode.getByRole('button', { name: 'Queue for next turn' });
+        if (scenario.queueBlocked) await expect(queue).toBeDisabled();
+        else await expect(queue).toBeEnabled();
         if (scenario.expectedReason) {
           await expect(steer).toBeDisabled();
           await expect(mode.getByRole('status')).toHaveText(
             scenario.expectedReason,
           );
-          if (scenario.name === 'none with detail')
+          if (scenario.name === 'sealed source')
             await evidence(
               page,
               testInfo,
@@ -570,6 +596,12 @@ for (const [label, width] of [
         }
         await page.keyboard.press('Escape');
         await expect(mode).toBeHidden();
+        await expect(input.getByRole('textbox')).toHaveValue(
+          'keep this follow-up',
+        );
+      }
+      if (scenario.queueBlocked) {
+        await input.getByRole('textbox').press('Control+Enter');
         await expect(input.getByRole('textbox')).toHaveValue(
           'keep this follow-up',
         );
