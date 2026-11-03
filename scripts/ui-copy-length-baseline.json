@@ -390,6 +390,9 @@
       "long-copy:text:InfoTip": 1,
       "multi-sentence:text:InfoTip": 1
     },
+    "src-ui/src/views/settings/BrowserAgentSettingsPanel.tsx": {
+      "long-copy:text:div": 1
+    },
     "src-ui/src/views/settings/CoreUpdateCheck.tsx": {
       "long-copy:text:div": 1
     },
@@ -475,10 +478,6 @@
       "long-copy:text:p": 1,
       "multi-sentence:text:p": 1
     },
-    "src-ui/src/workspace-panes/browser-pane/BrowserAgentSettingsPanel.tsx": {
-      "long-copy:text:div": 1,
-      "multi-sentence:text:div": 1
-    },
     "src-ui/src/workspace-panes/browser-pane/BrowserPane.tsx": {
       "multi-sentence:text:p": 1
     },
@@ -487,7 +486,7 @@
       "multi-sentence:text:p": 1
     },
     "src-ui/src/workspace-panes/deviceOutcome.ts": {
-      "long-copy:prop:description": 4
+      "long-copy:prop:description": 1
     }
   }
 }

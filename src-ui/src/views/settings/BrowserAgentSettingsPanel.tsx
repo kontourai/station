@@ -57,10 +57,9 @@ export function BrowserAgentSettingsPanel({
             <details className="browser-settings__details">
               <summary>Details</summary>
               <p className="browser-settings__hint">
-                Agents can read, click and type without this. Station checks
-                that nothing covers an element before clicking it, but a page
-                that moves things on a timer can still redirect a click, and a
-                browser step that timed out may still finish later.
+                Agents can still read, click and type. A page that moves things
+                on a timer can redirect a click, and a timed-out step may still
+                finish.
               </p>
             </details>
           </span>
