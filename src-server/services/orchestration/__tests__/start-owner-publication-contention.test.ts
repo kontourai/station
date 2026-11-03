@@ -585,7 +585,9 @@ test('a start whose session.started publish gave up before the start hook binds 
           ),
         { timeout: 7500 },
       );
-    await f.start('owner', { userId: 'owner' });
+    await expect(f.start('owner', { userId: 'owner' })).rejects.toMatchObject({
+      receipt: { status: 'indeterminate' },
+    });
     expect(
       f.store.latestEventByMethod(threadId, 'session.started'),
     ).toBeUndefined();
@@ -664,19 +666,20 @@ test('a start event that settles after teardown is not remembered', async () => 
   try {
     const internals = f.sessions as unknown as {
       settledStartEvents: Set<string>;
-      sessionAuthz: { settleStartOwner(threadId: string): void };
     };
-    const settle = vi.spyOn(internals.sessionAuthz, 'settleStartOwner');
     await f.start('owner', { userId: 'owner' });
     await f.retrying();
     await f.sessions.dispatchWithReceipt(
       { type: 'discardDraft', threadId },
       { userId: 'owner' },
     );
-    settle.mockClear();
     f.release();
-    // The held session.started now settles for a thread that is gone.
-    await vi.waitFor(() => expect(settle).toHaveBeenCalledWith(threadId));
+    // The consumer finishes handling the held start before pulling the marker.
+    await f.adapter.drained();
+    expect(
+      f.store.latestEventByMethod(threadId, 'session.started'),
+    ).toBeUndefined();
+    expect(f.admits('owner')).toBe(false);
     expect(internals.settledStartEvents.has(threadId)).toBe(false);
   } finally {
     await f.close();
