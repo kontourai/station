@@ -678,12 +678,44 @@ export function validateTroubleshootContext(value: TroubleshootContext): void {
 const REDACTED = '[REDACTED]';
 const REDACTED_URL = '[REDACTED_URL]';
 const URL_PATTERN = /\b[a-z][a-z0-9+.-]{1,20}:\/\/[^\s<>"'`)\]]+/gi;
-// Public locations a bug report may keep verbatim. Everything else (a LAN or
-// tailnet address, a pairing link, a private host) is replaced.
-const PUBLIC_URL_PREFIXES = [
-  'https://github.com/',
-  'https://kontourai.github.io/',
-];
+// The only locations a public bug report may keep verbatim: Station's own
+// public repository and docs site. Any other GitHub path can name a private
+// repository or issue, so it is replaced like a LAN, tailnet, or pairing URL.
+const PUBLIC_GITHUB_REPOSITORIES = new Set(['kontourai/station']);
+const PUBLIC_DOCS_SITE = {
+  host: 'kontourai.github.io',
+  firstSegment: 'station',
+};
+
+/**
+ * Returns the normalized URL when it is public, else null. The URL is parsed
+ * rather than prefix-matched: `kontourai/station/../other/repo` normalizes to
+ * another repository, and keeping the raw text would leak that name.
+ */
+function publicReportUrl(raw: string): string | null {
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    return null;
+  }
+  if (url.protocol !== 'https:' || url.username || url.password) return null;
+  const segments = url.pathname.split('/').filter(Boolean);
+  const host = url.hostname.toLowerCase();
+  if (host === 'github.com') {
+    const [owner, repo] = segments;
+    if (!owner || !repo) return null;
+    const name = `${owner}/${repo.replace(/\.git$/i, '')}`.toLowerCase();
+    return PUBLIC_GITHUB_REPOSITORIES.has(name) ? url.href : null;
+  }
+  if (
+    host === PUBLIC_DOCS_SITE.host &&
+    segments[0]?.toLowerCase() === PUBLIC_DOCS_SITE.firstSegment
+  ) {
+    return url.href;
+  }
+  return null;
+}
 // Station's pairing and device credentials are 32 random bytes in base64url
 // (43 characters). Requiring upper, lower and digit keeps commit SHAs, UUIDs
 // and kebab-case identifiers readable.
@@ -706,10 +738,9 @@ export function redactTroubleshootReportText(text: string): string {
   if (typeof text !== 'string') {
     throw new TypeError('troubleshoot report redaction requires a string');
   }
-  let result = redactSecrets(text).replace(URL_PATTERN, (url) =>
-    PUBLIC_URL_PREFIXES.some((prefix) => url.startsWith(prefix))
-      ? url
-      : REDACTED_URL,
+  let result = redactSecrets(text).replace(
+    URL_PATTERN,
+    (url) => publicReportUrl(url) ?? REDACTED_URL,
   );
   result = result.replace(OPAQUE_CREDENTIAL_PATTERN, REDACTED);
   for (const pattern of HOME_PATH_PATTERNS)

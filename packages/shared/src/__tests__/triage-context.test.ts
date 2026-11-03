@@ -75,6 +75,40 @@ describe('redactTroubleshootReportText', () => {
       'src-server/tools/station-control-troubleshoot-tools.ts',
     );
   });
+
+  test('keeps only Station public links and redacts every other GitHub path', () => {
+    const kept = [
+      'https://github.com/kontourai/station/issues/4470',
+      'https://github.com/kontourai/station',
+      'https://kontourai.github.io/station/guides/troubleshooting',
+    ];
+    const redactedUrls = [
+      // Private sibling repository and a private org's issue.
+      'https://github.com/kontourai/station-archive/issues/12',
+      'https://github.com/acme-private/secret-product/issues/7',
+      // A prefix match would keep these; parsing must not.
+      'https://github.com/kontourai/station/../secret-product/issues/7',
+      'https://github.com/kontourai/stationary/pulls',
+      'https://kontourai.github.io/secret-product/',
+      'http://github.com/kontourai/station',
+    ];
+    // Userinfo is blanked by the credential pass first; it must never survive.
+    const withUserinfo = redactTroubleshootReportText(
+      'see https://user:hunter2pass@github.com/kontourai/station',
+    );
+    expect(withUserinfo).not.toContain('hunter2pass');
+    expect(withUserinfo).not.toBe(
+      'see https://user:hunter2pass@github.com/kontourai/station',
+    );
+    for (const url of kept) {
+      expect(redactTroubleshootReportText(`see ${url}`)).toBe(`see ${url}`);
+    }
+    for (const url of redactedUrls) {
+      const redacted = redactTroubleshootReportText(`see ${url}`);
+      expect(redacted).toBe('see [REDACTED_URL]');
+      expect(redacted).not.toContain('secret-product');
+    }
+  });
 });
 
 describe('troubleshoot seed admission', () => {
