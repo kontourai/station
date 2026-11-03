@@ -4925,6 +4925,14 @@ job does not transfer its earlier conversation's history to the new target.
 Older runs without a recorded target require the creator and current-target
 read access, except creatorless, untargeted jobs remain readable by the local
 operator. An agent can read only its own conversation's runs.
+`readTroubleshootCapability(apiBase)` (from `@kontourai/station-sdk/client`)
+reads the host's public handshake the same way for `troubleshootPrepare`:
+`true`, `false`, or `null` when the handshake could not be read.
+`prepareTroubleshoot(apiBase, request?)` and `usePrepareTroubleshootMutation()`
+send `POST /api/diagnostics/troubleshoot/prepare` and return its
+`TroubleshootPrepareResponse` (`@kontourai/station-contracts/troubleshoot`);
+a non-ok status throws a `StationHttpError` built by `envelopeError`, so it keeps the route's status, message and refusal `code`. See
+[troubleshoot with an agent](../design/troubleshoot-in-app.md).
 `PluginCollectionHttpError` is built the same way: it keeps the envelope's
 `code` on the error and on its `envelope`, and keeps the refusal's `details`
 and `Retry-After`.

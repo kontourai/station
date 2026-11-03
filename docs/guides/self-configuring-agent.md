@@ -34,6 +34,10 @@ owns limits, theme variables, Chromium prerequisites and page deletion semantics
 - `list_agents`, `get_agent`, `list_projects`, `get_project`
 - `list_skills`, `list_registry_skills`, `install_skill`, `uninstall_skill`, `update_skill`, `track_skill_run`, `record_skill_outcome`
 - `send_message` for a lightweight message to a Station agent
+- `get_troubleshoot_playbook` and `draft_troubleshoot_report` for an in-app
+  troubleshooting conversation: the bundled playbook, and a redacted,
+  bounded `troubleshoot-report.yml` issue link. Both are pure and send
+  nothing; see [troubleshoot with an agent](../design/troubleshoot-in-app.md)
 - `workload_status` for the calling Session's own workload memory budget and
   usage (limit, current, peak, swap, OOM kills), or why no budget is enforced;
   see [Linux service workload budgets](development.md#linux-service-workload-budgets)

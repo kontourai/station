@@ -15,6 +15,7 @@ import { createSchedulerRoutes } from '../../routes/operations/scheduler.js';
 import { createCoordinatorRoutes } from '../../routes/orchestration/coordinator.js';
 import { createOrchestrationRoutes } from '../../routes/orchestration/orchestration.js';
 import { createSessionPersonActivityRoutes } from '../../routes/orchestration/session-project-activity.js';
+import { createDiagnosticsRoutes } from '../../routes/system/diagnostics.js';
 import { createSystemStatusRoutes } from '../../routes/system/system-status-routes.js';
 import { HOSTED_TENANT_REGISTRY_FILE_ENV } from '../../runtime/bootstrap/hosted-tenant-mode.js';
 import {
@@ -22,6 +23,7 @@ import {
   resolveRuntimeWebPushEnabled,
 } from '../../runtime/routes/runtime-route-support.js';
 import { configureRuntimePublicRoutes } from '../../runtime/routes/runtime-routes.js';
+import { TroubleshootService } from '../../services/infra/troubleshoot-service.js';
 import { EventStore } from '../../services/orchestration/event-store.js';
 import { EnvironmentSecurityService } from '../../services/ssh/environment-security-service.js';
 import {
@@ -332,6 +334,34 @@ const CONSUMED_FLAGS: Record<
     });
     return (await routes.request('/activity')).status === 200;
   },
+  // POST /api/diagnostics/troubleshoot/prepare writes a run and answers the
+  // seed wherever the runtime mounts it with a troubleshoot service.
+  troubleshootPrepare: async () => {
+    const stationRoot = makeTempDir('troubleshoot-flag-');
+    const routes = createDiagnosticsRoutes(
+      {} as never,
+      { error: vi.fn() } as never,
+      {} as never,
+      {
+        troubleshoot: new TroubleshootService(stationRoot, {
+          stationRoot,
+          collectDoctor: async () =>
+            ({
+              checks: [],
+              recommendation: '',
+              chatReady: true,
+              runtimeReady: true,
+            }) as never,
+        }),
+      },
+    );
+    const response = await routes.request('/troubleshoot/prepare', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: '{}',
+    });
+    return response.status === 200;
+  },
   // GET /events honours Last-Event-ID: a cursor inside the gap replays the
   // missed event instead of sending a fresh snapshot.
   eventStreamResume: async (deployment) => {
@@ -412,6 +442,7 @@ describe('consumed capability flags match what their routes serve', () => {
     webPushNotifications: { personal: true, hosted: false },
     connectionRoutes: { personal: true, hosted: false },
     coordinatorSession: { personal: true, hosted: false },
+    troubleshootPrepare: { personal: true, hosted: true },
   };
 
   test('every flag a deployment withdraws has a row', () => {
