@@ -115,6 +115,23 @@ const PRIVACY_INVENTORY: readonly PrivacyInventoryEntry[] = [
     ],
   },
   {
+    id: 'private-memory',
+    storeDataType: 'Other User Content',
+    linkedToIdentity: true,
+    usedForTracking: false,
+    purpose: 'App Functionality',
+    collection:
+      'When the default-off Private memory preview is enabled, an operator may stage memory content and evidence in an author-private root associated with the owner identity. Pending proposals are excluded from ordinary record lists and index rebuilds. Disabling the preview retains the stored proposals. A configured embedding provider receives search queries and, when existing memory records are explicitly indexed, their chunks.',
+    destination:
+      'The user’s Station storage and, for searches or explicit indexing, the configured embedding provider. Pending proposals are not sent to that provider by index rebuild.',
+    evidence: [
+      'src-server/knowledge-store/memory-root.ts',
+      'src-server/routes/knowledge/memory-routes.ts',
+      'src-server/runtime/routes/runtime-routes.ts',
+      'src-server/knowledge-index/sqlite-vec-index-provider.ts',
+    ],
+  },
+  {
     id: 'voice-audio',
     storeDataType: 'Audio Data',
     linkedToIdentity: false,
