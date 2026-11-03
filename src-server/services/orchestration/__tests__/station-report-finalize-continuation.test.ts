@@ -1,23 +1,10 @@
 import assert from 'node:assert/strict';
-import fs, {
-  mkdirSync,
-  readFileSync,
-  unlinkSync,
-  writeFileSync,
-} from 'node:fs';
+import fs, { readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import { syncBuiltinESMExports } from 'node:module';
 import { join } from 'node:path';
-import { FileAuthorizationLedger } from '@kontourai/dispatch';
-import {
-  claimReadyStep,
-  evaluateClaimedStep,
-  flowRunHead,
-  flowTransitionRef,
-  loadRun,
-} from '@kontourai/flow';
+import { flowRunHead, flowTransitionRef, loadRun } from '@kontourai/flow';
 import { createDelegationAuthorityServiceV3 } from '@kontourai/flow-agents/delegation-authority-service-v3';
 import {
-  createDelegationRoundsController,
   DelegationRoundsTransactionParentError,
   type DelegationRoundsTransactionScope,
 } from '@kontourai/flow-agents/delegation-group-rounds';
@@ -42,202 +29,39 @@ import {
   HomeWriterUnavailableError,
 } from '../../ssh/home-writer-owner.js';
 import { StationDelegationPersistence } from '../delegation-group-persistence.js';
-import { LocalSourceAdmissionOwner } from '../delegation-group-source-admission.js';
 import { EventBus } from '../event-bus.js';
 import { OrchestrationService } from '../orchestration-service.js';
 import {
   type ReportRoundsScope,
   withReportRoundsPublication,
 } from '../report-rounds-publication.js';
-import { StationReportGroupCustody } from '../station-report-group-custody.js';
-import { StationReportGroupPreparation } from '../station-report-group-preparation.js';
 import { StationReportGroupRuntime } from '../station-report-group-runtime.js';
-import { createReportFlow } from './delegation-source-fixtures/flow.js';
+import { setupFinalizer } from './delegation-source-fixtures/finalizer.js';
 import { requestFor, setup } from './delegation-source-fixtures/report.js';
 
 test('a lost reappraisal receipt can be finalized and replayed through Station custody', async () => {
-  const h = await setup();
-  const reportRoot = join(h.f.home, 'report-groups');
-  const sourcesRoot = join(reportRoot, 'sources');
-  const dispatchRoot = join(reportRoot, 'dispatch');
-  for (const path of [reportRoot, sourcesRoot, dispatchRoot])
-    mkdirSync(path, { mode: 0o700, recursive: true });
-  h.f.store = sourcesRoot;
-  h.f.owner = new LocalSourceAdmissionOwner(
-    h.f.home,
-    h.f.environment,
-    sourcesRoot,
-  );
-  h.preparationOwners.sources = h.f.owner;
-  h.owner = new StationReportGroupPreparation(h.preparationOwners);
-  h.custodyOwners.persistence = new StationDelegationPersistence(reportRoot);
-  h.custody = new StationReportGroupCustody(h.custodyOwners);
-  const flow = await createReportFlow(h.f, 'lost-reappraisal', [
-    { id: 'first' },
-    {
-      id: 'review',
-      needs: ['first'],
-      requiredEvidence: true,
-      routeBack: 'first',
-    },
-  ]);
-  const handle = await h.owner.prepare(h.f.context(), {
-    ...h.input,
-    maxConcurrent: 1,
-    budget: {
-      inputTokens: 4 * 1_048_576,
-      outputTokens: 40,
-      costMicros: 4 * 3_145_878,
-    },
-    flow: { runId: flow.runId, steps: { left: 'first', right: 'review' } },
-    continuation: {
-      attemptsPerMember: 2,
-      maxRounds: 4,
-      maxSyncs: 0,
-      maxRenewals: 0,
-      maxEvaluations: 2,
-      maxRecoveries: 2,
-    },
-  });
-  let runtime = new StationRuntime({ projectHomeDir: h.f.home });
-  let participant = Reflect.get(
-    runtime,
-    'runtimePublicationParticipant',
-  ) as RuntimePublicationParticipant;
+  const {
+    h,
+    reportRoot,
+    dispatch,
+    prepared,
+    handle,
+    groupId,
+    current,
+    persistence,
+    controller,
+    held,
+    flow,
+    flowAfterLoss,
+    authorityBefore,
+    refuse,
+    setParticipant,
+    runtime: initialRuntime,
+    participant: initialParticipant,
+  } = await setupFinalizer();
+  let runtime = initialRuntime;
+  let participant = initialParticipant;
   try {
-    const prepared = h.owner.read(handle, h.f.req);
-    const groupId = await h.custody.retain(h.f.context(), h.owner, handle);
-    const current = (): undefined => {
-      h.owner.assertCurrent(handle, h.f.req);
-      return undefined;
-    };
-    const persistence = h.custodyOwners.persistence;
-    const authority = createDelegationAuthorityServiceV3(
-      persistence.roundsAuthorityStore(current),
-      {
-        now: () => new Date(Date.now()).toISOString(),
-        authorize: async (_action, root, envelope) =>
-          h.owner.authorizes(handle, h.f.req, root, envelope),
-        confirmExecution: async (envelope) =>
-          h.owner.confirmsExecution(handle, h.f.req, envelope),
-        authenticateRenewal: async () => null,
-      },
-      { maxRenewals: 0 },
-    );
-    await authority.issue(prepared.root);
-    for (const envelope of prepared.envelopes)
-      await authority.derive(prepared.root.authority_id, envelope);
-    const dispatch = new FileAuthorizationLedger({
-      root: dispatchRoot,
-    });
-    const refuse = (): never => {
-      throw Error('unexpected execution');
-    };
-    const retentionFails = true;
-    const controller = createDelegationRoundsController({
-      store: persistence.roundsStore(current),
-      authorityService: authority,
-      dispatchLedger: dispatch,
-      cwd: h.f.repo,
-      host: {
-        authorize: async () => prepared.root.authenticated_principal_ref,
-        executionHost: refuse,
-        prepareRequest: async () => refuse(),
-        retainObservation: async () => refuse(),
-        confirmTerminal: async () => refuse(),
-        requestDescendantCancellation: async () => refuse(),
-        retainContinuation: async (spec, receipt) => {
-          if (retentionFails) throw Error('injected receipt retention outage');
-          return persistence.retainReportContinuation(
-            spec.groupId,
-            receipt,
-            current,
-          );
-        },
-        flow: {
-          executionHost: refuse,
-          confirmRetainedResult: async () => false,
-          retainEvaluation: async () => refuse(),
-          acquireContinuationPublication: async () => {
-            const parent = participant.acquire();
-            return {
-              assertCurrent: () => {
-                parent.assertCurrent();
-                return undefined;
-              },
-              flowAdmission: {
-                acquire: async () => {
-                  const child = parent.borrow();
-                  return {
-                    assertCurrent: () => {
-                      child.assertCurrent();
-                      return undefined;
-                    },
-                    release: async () => child.release(),
-                  };
-                },
-              },
-              release: async () => parent.release(),
-            };
-          },
-        },
-      },
-    });
-    const created = await controller.create({
-      kind: 'create',
-      groupId,
-      operationKey: 'create',
-      expectedRevision: 0,
-      controller: prepared.spec.controller,
-      spec: prepared.spec,
-    });
-    const actor = { key: 'fixture-evaluator', kind: 'test' };
-    for (const [id, step] of [
-      ['a', 'first'],
-      ['b', 'review'],
-      ['c', 'first'],
-      ['d', 'review'],
-    ]) {
-      const { claim } = await claimReadyStep(flow.runId, {
-        cwd: h.f.repo,
-        step_id: step,
-        claim_id: id,
-        liveness_id: `${id}-live`,
-        actor,
-      });
-      await evaluateClaimedStep(flow.runId, {
-        cwd: h.f.repo,
-        claim_id: claim.claim_id,
-        liveness_id: claim.liveness_id,
-        actor,
-      });
-    }
-    const before = await loadRun(flow.runId, h.f.repo);
-    const blocked = before.state.transitions.at(-1);
-    assert.equal(blocked?.status, 'blocked');
-    assert.equal(
-      before.state.status,
-      'blocked',
-      JSON.stringify(before.state.transitions),
-    );
-    assert.equal(blocked.gate_id, 'review');
-    await assert.rejects(
-      controller.reappraise({
-        kind: 'reappraise',
-        groupId,
-        operationKey: 'lost',
-        expectedRevision: created.projection.revision,
-        controller: prepared.spec.controller,
-        checkpoint: prepared.root.revisions.policy,
-        flowHead: flowRunHead(before.state),
-        gate: 'review',
-        blockedTransitionRef: flowTransitionRef(blocked),
-      }),
-      /injected receipt retention outage/,
-    );
-    const held = await controller.get(groupId);
-    const flowAfterLoss = await loadRun(flow.runId, h.f.repo);
-    const authorityBefore = await authority.inspect(prepared.root.authority_id);
     const forbiddenPreparation = [
       vi.spyOn(h.f.owner, 'prepareFlowSnapshot'),
       vi.spyOn(h.f.owner, 'prepareSdkSnapshot'),
@@ -445,6 +269,7 @@ test('a lost reappraisal receipt can be finalized and replayed through Station c
       runtime,
       'runtimePublicationParticipant',
     ) as RuntimePublicationParticipant;
+    setParticipant(participant);
     assert.equal(finalized.result.replayed, false);
     assert.ok(finalized.group?.continuations[0].receipt);
     const previews = Reflect.get(
@@ -721,6 +546,7 @@ test('a lost reappraisal receipt can be finalized and replayed through Station c
       runtime,
       'runtimePublicationParticipant',
     ) as RuntimePublicationParticipant;
+    setParticipant(participant);
     const retryReplay = await h.custody.finalizeContinuation(
       h.f.context(requestFor(h, 'POST')),
       groupId,
@@ -892,6 +718,7 @@ test('a lost reappraisal receipt can be finalized and replayed through Station c
         participant,
         (historical) => historical.group,
       ),
+      { code: 'group_custody_unavailable' },
     );
     assert.deepEqual(readFileSync(winnerPath), winnerBytes);
   } finally {
