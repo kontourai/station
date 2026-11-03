@@ -207,7 +207,10 @@ import { TaskDeviceCapture } from '../../services/projects/task-device-capture.j
 import { TaskDeviceRecording } from '../../services/projects/task-device-recording.js';
 import { TaskRoomAttachments } from '../../services/projects/task-room-attachments.js';
 import { createTaskRoomContext } from '../../services/projects/task-room-context.js';
-import { TaskRoomConversationModule } from '../../services/projects/task-room-conversation-module.js';
+import {
+  TaskRoomAnswerUnavailableError,
+  TaskRoomConversationModule,
+} from '../../services/projects/task-room-conversation-module.js';
 import { PullRequestReviewGuideService } from '../../services/pull-requests/pull-request-review-guide.js';
 import { ReviewGuideError } from '../../services/pull-requests/pull-request-review-guide-errors.js';
 import {
@@ -425,6 +428,7 @@ import { createModelsRoutes } from '../../routes/connections/models.js';
 import { createProviderRoutes } from '../../routes/connections/providers.js';
 import { createConsentNativeRoutes } from '../../routes/consent/consent-native-routes.js';
 import { createHomeAuthorityRoutes } from '../../routes/environments/home-authority-routes.js';
+import { createPeerChatRoutes } from '../../routes/environments/peer-chat-routes.js';
 import { createPeerCredentialRoutes } from '../../routes/environments/peer-credential-routes.js';
 import {
   createDiffCommentRoutes,
@@ -6083,7 +6087,21 @@ export function configureRuntimeRoutes(
     })
       .then(() =>
         Promise.all([
-          roomRuntime.reconcileAgentLifecycles(roomTaskIds),
+          (async () => {
+            for (const taskId of roomTaskIds) {
+              try {
+                await roomRuntime.reconcileAgentLifecycles([taskId]);
+              } catch (error) {
+                if (!(error instanceof TaskRoomAnswerUnavailableError))
+                  throw error;
+                // Publication retains blocked presence and the original request.
+                // A later room read can retry without restarting the provider.
+                context.logger.warn('Task room answer recovery deferred', {
+                  taskId,
+                });
+              }
+            }
+          })(),
           roomRuntime.reconcileRevisionPublications(roomTaskIds),
         ]),
       )
@@ -8737,11 +8755,6 @@ export function configureRuntimeRoutes(
       '/api/projects',
       createProjectWorkingConfigurationRoutes({
         service: working.service,
-        enabled: () =>
-          working.preview.select({
-            enabled: () => true,
-            disabled: () => false,
-          }),
         authorize: async (request, slug) => {
           if (isStationInternalRequest(request)) return undefined;
           const project = context.projectService
@@ -10012,6 +10025,22 @@ export function configureRuntimeRoutes(
         context.configLoader.getProjectHomeDir(),
       ),
     ),
+  );
+  context.app.route(
+    '/api/environments/peers',
+    createPeerChatRoutes({
+      peers: peerCredentialStore,
+      remote: remoteStations,
+      current: isRequestPrincipalCurrent,
+      preview: hostedTenantRegistry
+        ? undefined
+        : context.featurePreviews.bind({
+            id: 'paired-station-chats',
+            label: 'Paired Station chats',
+            description:
+              'Start and continue chats on paired Stations. Messages use the selected Station’s providers and credits.',
+          }),
+    }),
   );
   // station#1423: the operator's own answer-share management family. The base
   // is a STRING LITERAL rather than `ANSWER_SHARE_ROUTE_PREFIX`, for the same

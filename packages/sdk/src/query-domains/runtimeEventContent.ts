@@ -1,12 +1,20 @@
 import { collectRuntimeEventContentRefs } from '@kontourai/station-contracts/runtime-event-content';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { _getApiBase } from '../api';
+import type { ClientRequestOptions } from '../client/http';
 import {
   fetchRuntimeEventContent,
   loadApprovalContent,
   loadRuntimeEventContent,
 } from '../client/runtime-event-content.js';
 import { useApiQuery } from '../query-core';
+
+type ContentTarget = {
+  apiBase?: string;
+  requestScope?: ClientRequestOptions['requestScope'];
+};
+const targetKey = (input: ContentTarget): string[] =>
+  input.apiBase ? [input.apiBase, input.requestScope?.authorityKey ?? ''] : [];
 
 export interface LoadedApprovalContent {
   /** The request with every reference resolved. */
@@ -24,15 +32,18 @@ export interface LoadedApprovalContent {
  * surface shows for its call, so a later bound `tool.started` (new
  * references) fetches the binding again instead of keeping a stale digest.
  */
-export function approvalContentQueryKey(input: {
-  threadId?: string;
-  requestId?: string;
-  requestEventId?: string;
-  shownRefs?: readonly string[];
-}): string[] {
+export function approvalContentQueryKey(
+  input: {
+    threadId?: string;
+    requestId?: string;
+    requestEventId?: string;
+    shownRefs?: readonly string[];
+  } & ContentTarget,
+): string[] {
   return [
     'runtime-event-content',
     'approval',
+    ...targetKey(input),
     input.threadId ?? '',
     input.requestId ?? '',
     input.requestEventId ?? '',
@@ -47,21 +58,24 @@ export function approvalContentQueryKey(input: {
  * and echoes them. The key includes the references the surface currently
  * shows for the call, so a later bound `tool.started` refetches.
  */
-export function useApprovalContentQuery(input: {
-  threadId?: string;
-  requestId?: string;
-  requestEventId?: string;
-  shownRefs?: readonly string[];
-}) {
+export function useApprovalContentQuery(
+  input: {
+    threadId?: string;
+    requestId?: string;
+    requestEventId?: string;
+    shownRefs?: readonly string[];
+  } & ContentTarget,
+) {
   const { threadId, requestId } = input;
   return useApiQuery<LoadedApprovalContent>(
     approvalContentQueryKey(input),
     async () => {
       if (!threadId || !requestId) throw new Error('No request to load');
       const loaded = await loadApprovalContent(
-        await _getApiBase(),
+        input.apiBase ?? (await _getApiBase()),
         threadId,
         requestId,
+        input.requestScope ? { requestScope: input.requestScope } : undefined,
       );
       const latest = loaded.bound[loaded.bound.length - 1];
       return {
@@ -81,19 +95,28 @@ export function useApprovalContentQuery(input: {
 }
 
 /** One out-of-line body on demand (tool output, plan entries, a reply). */
-export function useRuntimeEventContentQuery(input: {
-  threadId?: string;
-  ref?: string;
-  enabled?: boolean;
-}) {
+export function useRuntimeEventContentQuery(
+  input: {
+    threadId?: string;
+    ref?: string;
+    enabled?: boolean;
+  } & ContentTarget,
+) {
   return useApiQuery(
-    ['runtime-event-content', 'body', input.threadId ?? '', input.ref ?? ''],
+    [
+      'runtime-event-content',
+      'body',
+      ...targetKey(input),
+      input.threadId ?? '',
+      input.ref ?? '',
+    ],
     async () => {
       if (!input.threadId || !input.ref) throw new Error('No content to load');
       return fetchRuntimeEventContent(
-        await _getApiBase(),
+        input.apiBase ?? (await _getApiBase()),
         input.threadId,
         input.ref,
+        input.requestScope ? { requestScope: input.requestScope } : undefined,
       );
     },
     {
@@ -108,21 +131,30 @@ export function useRuntimeEventContentQuery(input: {
  * entries), loaded and resolved on demand. Mount it only when the person asks
  * for the full content.
  */
-export function useResolvedRuntimeEventValueQuery<T>(input: {
-  threadId?: string;
-  value: T;
-}) {
+export function useResolvedRuntimeEventValueQuery<T>(
+  input: {
+    threadId?: string;
+    value: T;
+  } & ContentTarget,
+) {
   const refs = collectRuntimeEventContentRefs(input.value).map(
     (ref) => ref.ref,
   );
   return useApiQuery<T>(
-    ['runtime-event-content', 'value', input.threadId ?? '', refs.join(',')],
+    [
+      'runtime-event-content',
+      'value',
+      ...targetKey(input),
+      input.threadId ?? '',
+      refs.join(','),
+    ],
     async () => {
       if (!input.threadId) throw new Error('No content to load');
       const loaded = await loadRuntimeEventContent(
-        await _getApiBase(),
+        input.apiBase ?? (await _getApiBase()),
         input.threadId,
         input.value,
+        input.requestScope ? { requestScope: input.requestScope } : undefined,
       );
       return loaded.resolved;
     },

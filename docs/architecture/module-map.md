@@ -2289,10 +2289,18 @@ Commit observers supply no binding authority. Append performs no process probe
 in the writer transaction.
 Delivery probes outside that transaction, rereads the boundary afterward, and
 compares its snapshot again while recording custody. Completion and release recheck durable facts
-under the writer lock.
+under the writer lock. The health tick starts at most one owned-work
+maintenance pass without waiting for adapter Stop before other health work or
+future ticks. Shutdown first stops cascade delivery and aborts an in-flight custody
+probe, then stops future health passes and drains maintenance with a five-second
+deadline before closing orchestration services. A late probe cannot write custody
+or deliver further stops.
 
 Open reconstructs edges through the naming index and derives stop obligations
-from retained request and terminal events. Completed, permanently fenced
+from retained request and terminal events. Constructor backfill and append-time
+derivation use durable settlement facts before runtime binding exists; reopening
+finished children must not create stop obligations or fences. Explicit delivery
+rechecks targets at the original trigger sequence with the binding-required guard. Completed, permanently fenced
 children are excluded from fresh stop targets; pending stops still redeliver.
 Completing root stop delivery releases its temporary root fence while child fences remain.
 Ownership candidate and activity reads use one SQLite snapshot. Inventory and conversation-history reads batch owned activity per request. Session
@@ -2311,8 +2319,13 @@ Unknown custody also names its reason in plain words. Session detail offers
 still be running and will no longer be tracked by this Session. The command
 closes an at-rest parent's retained adapter and removes its unknown cleanup with
 the parent record. It preserves cancellation fences against replay, child history and independent stop
-intents. Known child owners and changed custody snapshots refuse release. This
-is untracking, not a claim that the child's process stopped.
+intents. Known child owners, changed custody snapshots, and observations not refreshed
+after the release recheck refuse release. A probe captures the recheck generation
+before awaiting its adapter; custody writes and settled acknowledgements compare
+that generation under the writer lock. Effectful delivery and deletion cannot
+infer that an unbound terminal child has no local adapter. The raw custody reader retains its
+existing default, but service delivery supplies an explicit adapter observation.
+This is untracking, not a claim that the child's process stopped.
 Lifecycle transition validation and the completed-session send guard use the
 own fold, preserving those execution boundaries while the aggregate is busy.
 
@@ -2324,6 +2337,9 @@ and [`cancellation-fence.test.ts`](../../src-server/services/orchestration/__tes
 covers retained-boundary ordering, active invocations, own-PID rejection,
 transactional custody checks, probe budgets and confirmed release. These are
 ordinary focused tests; the mutation runner remains unchanged from main.
+[`ownership-cascade-gaps.test.ts`](../../src-server/services/orchestration/__tests__/ownership-cascade-gaps.test.ts)
+covers direct service confirmation, stale release observations, unbound settlement
+and event-window/history readers without modifying the review fixture.
 [`cascade-stop-delivery.process.test.ts`](../../src-server/services/orchestration/__tests__/cascade-stop-delivery.process.test.ts)
 uses a real peer owner and abrupt requester exit, including delivery before a
 failed completion write. Built-in repeat-stop behavior is exercised by
@@ -2501,7 +2517,7 @@ An automatic profile change is a compensation protocol, not a switch followed by
 
 **Interface.** `recover`, `complete`, `abandon`, and `reconcile` form one compensation protocol for credential-profile recovery. Each returns a total recovery or reconciliation outcome rather than making callers infer stage/commit/rollback order.
 
-**Behavior.** A recovery call waits for shared startup reconciliation and stages only when its result is `reconciled`. An `indeterminate` result or an unavailable durable scan blocks staging across connections, because an unreadable or unresolved obligation cannot prove that a different connection is safe. The coordinator backs off refused automatic recovery from 60 seconds to a 10-minute cap; only a `reconciled` result latches the startup pass. The module warns once per readiness outage and again when it recovers. Refused automatic attempts emit `station.recovery.admission_refused` with a bounded reason. Session recovery projections expose a blocked admission reason and next retry time, while preserving the durable intent outcome; the existing usage-limit banner displays that pause. An unavailable scan, like a visible linked receipt, suppresses the identity-free orphan sweep while independent scoped compensation still drains. `unavailable` stage truth alone permits ordinary recovery fallback; a staged or indeterminate attempt remains exact compensation work. Candidate session restore or quarantine happens independently of registry cleanup. Commit, rollback, inspect, and acknowledgement are exact, typed facts; cleanup failure keeps durable authority for later scoped retry. A live completion acts only through its original claim; bulk prepared reconciliation runs only in the startup pass, retried by later callers until it reconciles.
+**Behavior.** A recovery call waits for shared startup reconciliation and stages only when its result is `reconciled`. An `indeterminate` result or an unavailable durable scan blocks staging across connections, because an unreadable or unresolved obligation cannot prove that a different connection is safe. The coordinator backs off refused automatic recovery from 60 seconds to a 10-minute cap; only a `reconciled` result latches the startup pass. The module warns when readiness becomes blocked, when its blocking reason changes, and when it recovers. Refused automatic attempts emit `station.recovery.admission_refused` with a bounded reason. Session recovery projections expose a blocked admission reason and next retry time, while preserving the durable intent outcome; the existing usage-limit banner names the credential-read or unconfirmed-change reason and displays the next check time when known. An unavailable scan, like a visible linked receipt, suppresses the identity-free orphan sweep while independent scoped compensation still drains. `unavailable` stage truth alone permits ordinary recovery fallback; a staged or indeterminate attempt remains exact compensation work. Candidate session restore or quarantine happens independently of registry cleanup. Commit, rollback, inspect, and acknowledgement are exact, typed facts; cleanup failure keeps durable authority for later scoped retry. A live completion acts only through its original claim; bulk prepared reconciliation runs only in the startup pass, retried by later callers until it reconciles.
 
 **Code and evidence.** `OrchestrationService` composes RecoveryLedger, `RecoveryDispatchAdapter`, credential profile Adapter, session restore/quarantine functions, and clock. `SessionRecoveryCoordinator` routes profile recovery to it. Real lifecycle, compensation, two-instance, and provider-truth coverage is in `src-server/services/orchestration/__tests__/credential-recovery-module.test.ts` and `session-recovery-coordinator.test.ts`. **Do not reintroduce:** credential callbacks on the coordinator, profile policy in a provider Adapter, broad rollback for linked work, or ad-hoc restart maps.
 
@@ -3516,7 +3532,11 @@ they do not qualify native image insertion or real-provider image understanding.
 composes request publication, todo/ready to in_progress transitions, exact-session
 thread replies, and canonical completed-answer reads. Turn events and startup
 reconcile the existing agent-publish text append path; no new history body or
-storage worker is needed. Browser records add optional timestamps, opaque actor
+storage worker is needed. An unavailable canonical completed-answer query defers
+that Task's startup publication, retaining blocked presence and the original
+request while other rooms recover. An authorized agent-request list read retries publication without
+restarting its provider. Other recovery errors still fail readiness.
+Browser records add optional timestamps, opaque actor
 identity and execution/thread correlation. Older records remain readable;
 older closed DTO readers reject the additive fields. Full runs open in the dock. Idle, resumable room-bound Sessions are parked
 under the lifecycle lock at shutdown so replies retain their raw Session identity
@@ -4011,12 +4031,21 @@ improvement or human usability. See [bounded agent work](../guides/agent-efficie
 
 [ProjectWorkingConfigurationService](../../src-server/services/projects/project-working-configuration.ts)
 discovers bounded repository guidance and saves reviewed Project defaults. The
-[runtime selector](../../src-server/runtime/project-working-configuration-runtime.ts)
+[runtime owner](../../src-server/runtime/project-working-configuration-runtime.ts)
 feeds both Task brief callers and the operator Sources routes. Project/root
 identity, source digest, review revision and current access fence reads and
 writes. Apply never executes commands or grants setup permission. The brief
 shares a hard total bound with Task state and approved learning references;
-unknown scoped paths remain lazy pointers with omission disclosure.
+unknown scoped paths remain lazy pointers with omission disclosure. This is
+ordinary personal-host functionality; unreviewed Projects skip source discovery,
+including Projects without a local repository. Reviewed roots and sources remain
+mandatory at model-effect admission.
+
+Promotion preserves the retained no-guidance digest of preview-off Sessions.
+This compatibility applies only while no configuration has been reviewed; new
+reviewed guidance, learning changes and Task incarnation changes still refuse an
+older execution. Personal Device callers follow the ordinary personal Project
+rule; account-bound callers still require current Project read membership.
 
 ## Context compaction and Project supervision
 

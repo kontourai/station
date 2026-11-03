@@ -1,7 +1,6 @@
 /** @vitest-environment jsdom */
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { PROJECT_WORKING_CONFIGURATION_PREVIEW } from '@kontourai/station-contracts/project-working-configuration';
 import { setClientCredentialResolver } from '@kontourai/station-sdk/client';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
@@ -18,22 +17,16 @@ import { createProjectWorkingConfigurationRoutes } from '../../../../../src-serv
 import { ProjectWorkingConfigurationService } from '../../../../../src-server/services/projects/project-working-configuration.js';
 import { ProjectWorkingConfiguration } from '../ProjectWorkingConfiguration';
 
-const flags = vi.hoisted(() => new Set<string>());
-vi.mock('../../../hooks/useSurfaceVisibilityFlags', () => ({
-  useSurfaceVisibilityFlags: () => flags,
-}));
 const makeTempDir = trackTempDirs();
 const clients: QueryClient[] = [];
 afterEach(() => {
   cleanup();
   for (const client of clients.splice(0)) client.clear();
-  flags.clear();
   setClientCredentialResolver(undefined);
   vi.unstubAllGlobals();
 });
 
 test('the real Sources editor applies reviewed defaults once, retains edits on rediscovery, and refuses a revoked apply without running setup', async () => {
-  flags.add(PROJECT_WORKING_CONFIGURATION_PREVIEW);
   const home = makeTempDir('working-config-ui-');
   const cwd = join(home, 'checkout');
   mkdirSync(cwd);
@@ -51,7 +44,6 @@ test('the real Sources editor applies reviewed defaults once, retains edits on r
     '/api/projects',
     createProjectWorkingConfigurationRoutes({
       service,
-      enabled: () => true,
       authorize: async () => ({
         projectId: 'project-1',
         actorId: 'person',
@@ -123,27 +115,4 @@ test('the real Sources editor applies reviewed defaults once, retains edits on r
   expect((await service.discover('work', () => true)).current?.revision).toBe(
     1,
   );
-});
-
-test('disabled preview mounts no configuration requests or editor', () => {
-  const fetch = vi.fn();
-  vi.stubGlobal('fetch', fetch);
-  const client = new QueryClient();
-  clients.push(client);
-  render(
-    <QueryClientProvider client={client}>
-      <ProjectWorkingConfiguration
-        slug="work"
-        projectId="project-1"
-        authority={{
-          apiBase: 'http://working.test',
-          authorityKey: 'test',
-        }}
-      />
-    </QueryClientProvider>,
-  );
-  expect(
-    screen.queryByRole('region', { name: 'Project working configuration' }),
-  ).toBeNull();
-  expect(fetch).not.toHaveBeenCalled();
 });

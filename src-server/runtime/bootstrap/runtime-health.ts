@@ -2,6 +2,7 @@ import { monitorEventLoopDelay, PerformanceObserver } from 'node:perf_hooks';
 import { MS_PER_MINUTE } from '@kontourai/station-contracts/time';
 import { getCachedUser } from '../../routes/system/auth.js';
 import { runtimeEventLoopLag } from '../../telemetry/metrics.js';
+import { awaitSettlementWithin } from '../../utils/bounded-async.js';
 
 const EVENT_LOOP_LAG_SAMPLE_INTERVAL_MS = 10_000;
 /** A stall this long makes a request miss the desktop transport's budgets
@@ -158,20 +159,45 @@ export async function startRuntimeHealthChecks(context: {
   };
   interval?: number;
   runHealthChecks: () => Promise<void>;
-}): Promise<void> {
+}): Promise<() => Promise<void>> {
   startRuntimeEventLoopLagMonitoring({
     timers: context.timers,
     logger: context.logger,
   });
   const interval = context.interval ?? MS_PER_MINUTE;
+  let ownedWork: Promise<void> | undefined;
+  let stopped = false;
   const runHealthChecks = async () => {
-    await context.maintainOwnedWork();
+    if (stopped) return;
+    if (!ownedWork) {
+      ownedWork = Promise.resolve()
+        .then(() => {
+          if (!stopped) return context.maintainOwnedWork();
+        })
+        .catch((error) =>
+          context.logger.warn('Owned-work maintenance failed', { error }),
+        )
+        .finally(() => {
+          ownedWork = undefined;
+        });
+    }
     await context.runHealthChecks();
   };
 
   await runHealthChecks();
-  context.timers.push(setInterval(runHealthChecks, interval));
+  const timer = setInterval(runHealthChecks, interval);
+  context.timers.push(timer);
   context.logger.debug('Health checks started', { interval });
+  return async () => {
+    stopped = true;
+    clearInterval(timer);
+    const pending = ownedWork;
+    if (pending) {
+      if (!(await awaitSettlementWithin(pending, 5_000)))
+        throw new Error('Owned-work maintenance shutdown timed out.');
+      await pending;
+    }
+  };
 }
 
 /**

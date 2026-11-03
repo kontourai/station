@@ -3029,6 +3029,13 @@
   min-height: 44px;
   text-align: start;
 }
+/* Why Steer is disabled: inset to the options' text and quieter than them. */
+.chat-input__mode-note {
+  margin: 0;
+  padding: var(--k-space-2) var(--k-space-3);
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
+}
 
 .chat-input .chat-input__stop-btn {
   border: var(--k-border-thin) solid var(--k-line);
