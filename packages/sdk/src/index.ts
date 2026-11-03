@@ -1,7 +1,3 @@
-export {
-  ROOT_THEME_ATTRIBUTES,
-  rootThemeSignature,
-} from './theme-signature';
 export { sentTurnKey } from './client/sent-turn-key';
 export {
   fetchTaskWriteBack,
@@ -9,6 +5,10 @@ export {
   type TaskWriteBackLog,
   useTaskWriteBackQuery,
 } from './query-domains/taskWriteBack';
+export {
+  ROOT_THEME_ATTRIBUTES,
+  rootThemeSignature,
+} from './theme-signature';
 
 // Re-export all types
 
