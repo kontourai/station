@@ -24,7 +24,8 @@ import {
   realpathSync,
   writeFileSync,
 } from 'node:fs';
-import { join } from 'node:path';
+import { homedir } from 'node:os';
+import { basename, dirname, isAbsolute, join, relative, sep } from 'node:path';
 import {
   buildTroubleshootIssueFormUrl,
   TROUBLESHOOT_REPORT_FIELD_IDS,
@@ -344,7 +345,44 @@ export interface TriageLocalLogs {
  * `server/` subdirectory). This is the default runtime for the caller's
  * environment, which is not necessarily the Station the run targets.
  */
-export function localTriageLogFacts(runtimeHome?: string): TriageLocalLogs {
+/** Resolves symlinks through the nearest existing ancestor of `path`. */
+function canonicalPath(path: string): string {
+  const missing: string[] = [];
+  let current = path;
+  for (;;) {
+    try {
+      return join(realpathSync(current), ...missing.reverse());
+    } catch {
+      const parent = dirname(current);
+      if (parent === current) return path;
+      missing.push(basename(current));
+      current = parent;
+    }
+  }
+}
+
+/**
+ * `path` as `~/…` relative to the current user's real home directory, or null
+ * when it is outside that home (another user's home, a system path, or a
+ * symlink leading out). Compared on resolved paths, not on a name pattern.
+ */
+export function homeRelativePath(
+  path: string,
+  userHome: string = homedir(),
+): string | null {
+  if (!userHome) return null;
+  const rel = relative(canonicalPath(userHome), canonicalPath(path));
+  if (rel === '') return '~';
+  if (isAbsolute(rel) || rel === '..' || rel.startsWith(`..${sep}`)) {
+    return null;
+  }
+  return `~/${rel.split(sep).join('/')}`;
+}
+
+export function localTriageLogFacts(
+  runtimeHome?: string,
+  userHome?: string,
+): TriageLocalLogs {
   let home: string;
   try {
     home = runtimeHome ?? resolveRuntimeHome();
@@ -352,14 +390,22 @@ export function localTriageLogFacts(runtimeHome?: string): TriageLocalLogs {
     return { directory: null, status: 'absent' };
   }
   const directory = join(home, 'logs');
-  const shown = redactTroubleshootReportText(directory);
+  const shown = homeRelativePath(directory, userHome);
   return {
-    directory:
-      shown.startsWith('~') && shown.length <= MAX_TRIAGE_TEXT_LENGTH
-        ? shown
-        : null,
+    directory: shown !== null && isHomeRelativeDirectory(shown) ? shown : null,
     status: existsSync(directory) ? 'present' : 'absent',
   };
+}
+
+/** `~` or `~/a/b`: no other user's `~name`, no `.`/`..` segments, bounded. */
+function isHomeRelativeDirectory(value: string): boolean {
+  if (value.length > MAX_TRIAGE_TEXT_LENGTH) return false;
+  if (value === '~') return true;
+  if (!value.startsWith('~/')) return false;
+  return value
+    .slice(2)
+    .split('/')
+    .every((segment) => segment !== '' && segment !== '.' && segment !== '..');
 }
 
 /** The `station triage` CLI's context.json, schema v2. */
@@ -524,8 +570,7 @@ export function validateTriageContext(value: TriageContext): void {
     // Only a home-relative location may be persisted; never a raw path.
     (value.localLogs.directory !== null &&
       (typeof value.localLogs.directory !== 'string' ||
-        !value.localLogs.directory.startsWith('~') ||
-        value.localLogs.directory.length > MAX_TRIAGE_TEXT_LENGTH)) ||
+        !isHomeRelativeDirectory(value.localLogs.directory))) ||
     !['available', 'unavailable', 'not-probed'].includes(value.agents.codex) ||
     !['available', 'unavailable', 'not-probed'].includes(value.agents.claude) ||
     ![

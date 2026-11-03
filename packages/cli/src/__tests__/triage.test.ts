@@ -999,6 +999,25 @@ describe('station triage', () => {
         },
       }),
     ).toThrow('invalid bounded values');
+    for (const directory of [
+      '~/../outside/logs',
+      '~other/private/logs',
+      '~/a/./b',
+      '~//x',
+    ]) {
+      expect(() =>
+        validateTriageContext({
+          ...result.context,
+          localLogs: { directory, status: 'present' },
+        }),
+      ).toThrow('invalid bounded values');
+    }
+    expect(() =>
+      validateTriageContext({
+        ...result.context,
+        localLogs: { directory: '~/.station/logs', status: 'present' },
+      }),
+    ).not.toThrow();
     expect(() =>
       validateTriageContext({
         ...result.context,

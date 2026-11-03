@@ -357,21 +357,38 @@ describe('createTriageRunDirectory', () => {
 });
 
 describe('localTriageLogFacts', () => {
-  test('shows a home-directory location as ~ and withholds any other path', () => {
+  test('shows a location inside the real home as ~ and withholds any other path', () => {
+    const userHome = tempRoot();
     expect(
-      localTriageLogFacts('/Users/alice/.station/instances/stable'),
+      localTriageLogFacts(
+        join(userHome, '.station/instances/stable'),
+        userHome,
+      ),
     ).toEqual({
       directory: '~/.station/instances/stable/logs',
       status: 'absent',
     });
-    expect(localTriageLogFacts('/home/bob/.station/instances/stable')).toEqual({
-      directory: '~/.station/instances/stable/logs',
-      status: 'absent',
-    });
-    expect(localTriageLogFacts('/opt/station')).toEqual({
-      directory: null,
-      status: 'absent',
-    });
+    // Another user's home is not this user's ~, whatever its name looks like.
+    expect(
+      localTriageLogFacts('/home/another-user/private', userHome).directory,
+    ).toBeNull();
+    expect(localTriageLogFacts('/opt/station', userHome).directory).toBeNull();
+    // Spaces in the home path are kept intact.
+    const spaced = join(userHome, 'Alice Smith');
+    mkdirSync(spaced);
+    expect(
+      localTriageLogFacts(join(spaced, '.station'), userHome).directory,
+    ).toBe('~/Alice Smith/.station/logs');
+  });
+
+  test('a symlink leading out of the home is withheld', () => {
+    const userHome = tempRoot();
+    const outside = tempRoot();
+    symlinkSync(outside, join(userHome, 'linked'));
+    expect(
+      localTriageLogFacts(join(userHome, 'linked', 'station'), userHome)
+        .directory,
+    ).toBeNull();
   });
 
   test('reports whether the log directory exists', () => {
