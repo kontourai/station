@@ -2485,6 +2485,10 @@ export class StationAgentAdapter implements ProviderAdapterShape {
       payload: { inputRequest: form },
     };
     let registration: CanonicalApprovalRegistration | undefined;
+    let confirmOpen!: () => void;
+    const openCommitted = new Promise<void>((resolve) => {
+      confirmOpen = resolve;
+    });
     let observation: ReturnType<typeof awaitCanonicalRequestCommit> | undefined;
     const onAbort = () => {
       observation?.cancel();
@@ -2514,16 +2518,27 @@ export class StationAgentAdapter implements ProviderAdapterShape {
         if (!registration)
           throw new Error('Reserved input admission unavailable.');
         check(assertCurrent);
+        const admitted = registration;
         record.pendingRequests.set(requestId, {
           turnId,
           origin,
           elicitation: true,
           canonical: {
-            registration,
+            registration: admitted,
             eventId: event.eventId,
             form,
             assertCurrent,
-            admitCurrent,
+            admitCurrent: async (effect) => {
+              // A reply can arrive as soon as the canonical event is visible,
+              // before its queued commit-marking admission has finished.
+              await Promise.race([
+                openCommitted,
+                admitted.result.then(() => {
+                  throw new Error('Reserved input admission expired.');
+                }),
+              ]);
+              await admitCurrent(effect);
+            },
           },
         });
         observation = awaitCanonicalRequestCommit(event);
@@ -2541,6 +2556,7 @@ export class StationAgentAdapter implements ProviderAdapterShape {
       await admitCurrent(() => {
         if (!admitted.markOpenCommitted())
           throw new Error('Reserved input admission expired.');
+        confirmOpen();
       });
       const { outcome, answer } = await registration.result;
       let disclosed: InputRequestResponse = { action: 'cancel' };

@@ -151,6 +151,7 @@ test.each([
     let expectedRunRefusal = false;
     const commitStarted = deferred<void>();
     let releaseCommit: (() => void) | undefined;
+    let earlyResponse: Promise<void> | undefined;
     const acknowledge = canonicalCommit.acknowledgeCanonicalRequestCommit;
     const commitObserver = vi
       .spyOn(canonicalCommit, 'acknowledgeCanonicalRequestCommit')
@@ -412,8 +413,37 @@ test.each([
               throw Error('Input ended before canonical commit');
             }),
           ]);
+          const event = driver
+            .canonicalEvents()
+            .find((e) => e.method === 'request.opened');
+          assert.ok(event?.method === 'request.opened' && liveAdapter);
+          let settled = false;
+          earlyResponse = liveAdapter.respondToRequest(
+            event.threadId,
+            event.requestId,
+            'accept',
+            {
+              expectedRequestEventId: event.eventId,
+              inputContent: { answer: 'Only current source' },
+            },
+          );
+          void earlyResponse.then(
+            () => {
+              settled = true;
+            },
+            () => {
+              settled = true;
+            },
+          );
+          // An independent Home acquisition follows any reply admission, while the
+          // actual canonical acknowledgement is still held by its observer.
           const available = await writer.acquire();
           await available.release();
+          assert.equal(
+            settled,
+            false,
+            'reply must wait for canonical commit marking without holding Home',
+          );
           assert.ok(releaseCommit);
           releaseCommit();
           releaseCommit = undefined;
@@ -502,15 +532,17 @@ test.each([
           held = await writer.acquire();
           watchingQueue = true;
         }
-        const responding = liveAdapter.respondToRequest(
-          opened.threadId,
-          opened.requestId,
-          'accept',
-          {
-            expectedRequestEventId: opened.eventId,
-            inputContent: { answer: 'Only current source' },
-          },
-        );
+        const responding =
+          earlyResponse ??
+          liveAdapter.respondToRequest(
+            opened.threadId,
+            opened.requestId,
+            'accept',
+            {
+              expectedRequestEventId: opened.eventId,
+              inputContent: { answer: 'Only current source' },
+            },
+          );
         void responding.catch(() => {});
         if (
           scenario === 'reply-contention' ||
