@@ -29,6 +29,7 @@ import { useIsMobile } from '../../hooks/useIsMobile';
 import { isComposingKeyEvent } from '../../lib/isComposingKeyEvent';
 import { browserPaneApi } from '../../workspace-panes/browser-pane/browserPaneApi';
 import { Button } from '../Button';
+import { ErrorState } from '../state';
 import { activeTerminalWriter } from './activeTerminal';
 import { terminalLinkRelativePath } from './terminalLinkPath';
 import {
@@ -345,17 +346,22 @@ export function TerminalPanel({
   return (
     <div className="coding-terminal-shell">
       {exited ? (
-        <div className="coding-terminal-connection" role="alert">
-          <span>The shell has exited.</span>
-          {readOnly || viewSession?.readOnly ? null : (
-            <Button
-              size="sm"
-              disabled={restarting}
-              onClick={() => void restart()}
-            >
-              {restarting ? 'Restarting…' : 'Restart shell'}
-            </Button>
-          )}
+        <div className="coding-terminal-connection">
+          <ErrorState
+            variant="compact"
+            title="The shell has exited."
+            action={
+              readOnly || viewSession?.readOnly ? undefined : (
+                <Button
+                  size="sm"
+                  disabled={restarting}
+                  onClick={() => void restart()}
+                >
+                  {restarting ? 'Restarting…' : 'Restart shell'}
+                </Button>
+              )
+            }
+          />
         </div>
       ) : wsError ? (
         <div className="coding-terminal-connection" role="alert">
