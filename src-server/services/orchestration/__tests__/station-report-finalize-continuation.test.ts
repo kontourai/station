@@ -16,7 +16,11 @@ import {
   loadRun,
 } from '@kontourai/flow';
 import { createDelegationAuthorityServiceV3 } from '@kontourai/flow-agents/delegation-authority-service-v3';
-import { createDelegationRoundsController } from '@kontourai/flow-agents/delegation-group-rounds';
+import {
+  createDelegationRoundsController,
+  DelegationRoundsTransactionParentError,
+  type DelegationRoundsTransactionScope,
+} from '@kontourai/flow-agents/delegation-group-rounds';
 import { finalizeReportGroupContinuation } from '@kontourai/station-sdk/client';
 import {
   acquireStationHomeMaintenanceLease,
@@ -33,11 +37,18 @@ import {
   setRuntimeAuthenticatedRequestPrincipal,
 } from '../../../security/runtime-request-security.js';
 import { FeaturePreviewRegistry } from '../../feature-previews/feature-preview-registry.js';
-import { HomeWriterOwner } from '../../ssh/home-writer-owner.js';
+import {
+  HomeWriterOwner,
+  HomeWriterUnavailableError,
+} from '../../ssh/home-writer-owner.js';
 import { StationDelegationPersistence } from '../delegation-group-persistence.js';
 import { LocalSourceAdmissionOwner } from '../delegation-group-source-admission.js';
 import { EventBus } from '../event-bus.js';
 import { OrchestrationService } from '../orchestration-service.js';
+import {
+  type ReportRoundsScope,
+  withReportRoundsPublication,
+} from '../report-rounds-publication.js';
 import { StationReportGroupCustody } from '../station-report-group-custody.js';
 import { StationReportGroupPreparation } from '../station-report-group-preparation.js';
 import { StationReportGroupRuntime } from '../station-report-group-runtime.js';
@@ -50,7 +61,7 @@ test('a lost reappraisal receipt can be finalized and replayed through Station c
   const sourcesRoot = join(reportRoot, 'sources');
   const dispatchRoot = join(reportRoot, 'dispatch');
   for (const path of [reportRoot, sourcesRoot, dispatchRoot])
-    mkdirSync(path, { mode: 0o700 });
+    mkdirSync(path, { mode: 0o700, recursive: true });
   h.f.store = sourcesRoot;
   h.f.owner = new LocalSourceAdmissionOwner(
     h.f.home,
@@ -275,6 +286,9 @@ test('a lost reappraisal receipt can be finalized and replayed through Station c
       releaseDurable = resolve;
     });
     const originalStore = persistence.roundsStore.bind(persistence);
+    const authorityStoreSpy = vi.spyOn(persistence, 'roundsAuthorityStore');
+    const physicalHome = await HomeWriterOwner.forHome(h.f.home);
+    const lateGuards: Array<() => void> = [];
     let transactions = 0;
     const storeSpy = vi
       .spyOn(persistence, 'roundsStore')
@@ -282,16 +296,41 @@ test('a lost reappraisal receipt can be finalized and replayed through Station c
         const store = originalStore(...args);
         return {
           transact: async (id, body) => {
+            const within = args[2];
+            assert.ok(
+              within,
+              'actual finalizer store must bind the transaction Home lease',
+            );
+            const authorityWithin = authorityStoreSpy.mock.calls.find(
+              (call) => call[0] === args[0],
+            )?.[2];
+            assert.equal(authorityWithin?.owner, within.owner);
+            assert.equal(authorityWithin?.lease, within.lease);
+            assert.ok(
+              args[1],
+              'actual finalizer must retain its independent commit guard',
+            );
+            lateGuards.push(args[0], args[1]);
             const ordinal = ++transactions;
             const result = await store.transact(id, async (journal) => {
               const outcome = await body(journal);
               if (ordinal === 2) {
+                within.lease.assertCurrent();
+                assert.throws(
+                  () => physicalHome.runSynchronous(() => undefined),
+                  { reason: 'busy' },
+                );
                 callbackReached();
                 await callbackGate;
               }
               return outcome;
             });
             if (ordinal === 2) {
+              within.lease.assertCurrent();
+              assert.throws(
+                () => physicalHome.runSynchronous(() => undefined),
+                { reason: 'busy' },
+              );
               durableReached();
               await durableGate;
             }
@@ -346,6 +385,9 @@ test('a lost reappraisal receipt can be finalized and replayed through Station c
     assert.equal(close.mock.calls.length, 0);
     releaseCallback();
     await durableReady;
+    assert.throws(() => physicalHome.runSynchronous(() => undefined), {
+      reason: 'busy',
+    });
     assert.equal(close.mock.calls.length, 0);
     assert.throws(
       () => acquireStationHomeMaintenanceLease(h.f.home),
@@ -353,9 +395,18 @@ test('a lost reappraisal receipt can be finalized and replayed through Station c
     );
     releaseDurable();
     const finalized = await pending;
+    for (const guard of lateGuards)
+      assert.throws(
+        guard,
+        (error) =>
+          error instanceof DelegationRoundsTransactionParentError ||
+          (error instanceof HomeWriterUnavailableError &&
+            error.reason === 'borrow-unavailable'),
+      );
     await shutdown;
     assert.equal(close.mock.calls.length, 1);
     storeSpy.mockRestore();
+    authorityStoreSpy.mockRestore();
     runtime = new StationRuntime({ projectHomeDir: h.f.home });
     participant = Reflect.get(
       runtime,
@@ -583,21 +634,22 @@ test('a lost reappraisal receipt can be finalized and replayed through Station c
     );
     transport.mockRestore();
     await orchestration.shutdown();
-    let acquired = false;
-    const acquire = HomeWriterOwner.prototype.acquire;
-    const acquireSpy = vi
-      .spyOn(HomeWriterOwner.prototype, 'acquire')
-      .mockImplementation(async function (this: HomeWriterOwner, ...args) {
-        const lease = await acquire.apply(this, args);
-        acquired = true;
-        return lease;
+    let retainedForReleaseFault = false;
+    const retainForReleaseFault =
+      persistence.retainReportContinuation.bind(persistence);
+    const retainedSpy = vi
+      .spyOn(persistence, 'retainReportContinuation')
+      .mockImplementation(async (...args) => {
+        const result = await retainForReleaseFault(...args);
+        retainedForReleaseFault = true;
+        return result;
       });
     const remove = fs.rmSync;
     const releaseFault = vi
       .spyOn(fs, 'rmSync')
       .mockImplementation((path, options) => {
         if (
-          acquired &&
+          retainedForReleaseFault &&
           String(path).includes('.home-writer.mutation.guard.stale-')
         )
           throw new Error('injected home release fault');
@@ -620,13 +672,14 @@ test('a lost reappraisal receipt can be finalized and replayed through Station c
           status: 'published-cleanup-unknown',
         },
       );
+      assert.equal(retainedForReleaseFault, true);
       assert.throws(
         () => acquireStationHomeMaintenanceLease(h.f.home),
         StationHomeActiveError,
       );
     } finally {
       releaseFault.mockRestore();
-      acquireSpy.mockRestore();
+      retainedSpy.mockRestore();
       syncBuiltinESMExports();
     }
     await runtime.shutdown();
@@ -813,3 +866,157 @@ test('a lost reappraisal receipt can be finalized and replayed through Station c
     await runtime.shutdown();
   }
 }, 60_000);
+
+test('continuation publication binds exact operation parents and isolates transaction and Flow children', async () => {
+  const h = await setup();
+  const runtime = new StationRuntime({ projectHomeDir: h.f.home });
+  const participant = Reflect.get(
+    runtime,
+    'runtimePublicationParticipant',
+  ) as RuntimePublicationParticipant;
+  const owner = await HomeWriterOwner.forHome(h.f.home);
+  const current = (): undefined => undefined;
+  const build = (
+    scope: ReportRoundsScope,
+  ): Pick<
+    DelegationRoundsTransactionScope,
+    'store' | 'host' | 'authorityService'
+  > => ({
+    store: h.custodyOwners.persistence.roundsStore(
+      scope.current,
+      scope.current,
+      scope,
+    ),
+    authorityService: createDelegationAuthorityServiceV3(
+      h.custodyOwners.persistence.roundsAuthorityStore(
+        scope.current,
+        scope.current,
+        scope,
+      ),
+      {
+        now: () => new Date().toISOString(),
+        authorize: async () => false,
+        confirmExecution: async () => false,
+        authenticateRenewal: async () => null,
+      },
+      { maxRenewals: 0 },
+    ),
+    host: {
+      authorize: async () => null,
+      executionHost: () => {
+        throw new Error('No execution');
+      },
+      prepareRequest: async () => {
+        throw new Error('No preparation');
+      },
+      retainObservation: async () => {
+        throw new Error('No observation');
+      },
+      confirmTerminal: async () => {
+        throw new Error('No terminal');
+      },
+      requestDescendantCancellation: async () => {
+        throw new Error('No cancellation');
+      },
+    },
+  });
+  const input = {
+    participant,
+    home: h.f.home,
+    signal: new AbortController().signal,
+  };
+  try {
+    await withReportRoundsPublication(input, async (publication) => {
+      const options = { owner, current, groupId: 'parent-group', build };
+      const transactions = publication.transactionOwner(options);
+      const token = await publication.acquireContinuationPublication(options);
+      const request = {
+        groupId: 'parent-group',
+        action: 'finalizeContinuation' as const,
+        command: null,
+        publicationLease: token,
+      };
+      await assert.rejects(
+        transactions.acquire({ ...request, publicationLease: { ...token } }),
+        DelegationRoundsTransactionParentError,
+      );
+      await assert.rejects(
+        transactions.acquire({ ...request, groupId: 'foreign-group' }),
+        DelegationRoundsTransactionParentError,
+      );
+      await withReportRoundsPublication(input, async (otherPublication) => {
+        await assert.rejects(
+          otherPublication.transactionOwner(options).acquire(request),
+          DelegationRoundsTransactionParentError,
+        );
+      });
+      const foreignOwner = await HomeWriterOwner.forHome(h.f.home);
+      await assert.rejects(
+        publication
+          .transactionOwner({ ...options, owner: foreignOwner })
+          .acquire(request),
+        DelegationRoundsTransactionParentError,
+      );
+      await assert.rejects(
+        publication
+          .transactionOwner({ ...options, current: (): undefined => undefined })
+          .acquire(request),
+        DelegationRoundsTransactionParentError,
+      );
+      const first = await transactions.acquire(request);
+      const sibling = await transactions.acquire(request);
+      const flowChild = await token.flowAdmission.acquire();
+      assert.throws(() => owner.runSynchronous(() => undefined), {
+        reason: 'busy',
+      });
+      await assert.rejects(
+        token.release(),
+        DelegationRoundsTransactionParentError,
+      );
+      token.assertCurrent();
+      first.assertCurrent();
+      sibling.assertCurrent();
+      await first.release();
+      assert.throws(
+        first.assertCurrent,
+        DelegationRoundsTransactionParentError,
+      );
+      sibling.assertCurrent();
+      flowChild.assertCurrent();
+      await sibling.release();
+      token.assertCurrent();
+      await flowChild.release();
+      assert.throws(
+        flowChild.assertCurrent,
+        DelegationRoundsTransactionParentError,
+      );
+      token.assertCurrent();
+      await token.release();
+      await assert.rejects(
+        transactions.acquire(request),
+        DelegationRoundsTransactionParentError,
+      );
+      assert.throws(
+        token.assertCurrent,
+        DelegationRoundsTransactionParentError,
+      );
+      owner.runSynchronous(() => undefined);
+      const preparationError = new Error(
+        'Controlled parent preparation failure',
+      );
+      await assert.rejects(
+        publication.acquireContinuationPublication({
+          ...options,
+          prepare: async (scope) => {
+            scope.current();
+            throw preparationError;
+          },
+        }),
+        (error) => error === preparationError,
+      );
+      owner.runSynchronous(() => undefined);
+    });
+  } finally {
+    await runtime.shutdown();
+  }
+});

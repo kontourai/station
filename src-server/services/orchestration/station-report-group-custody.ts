@@ -18,6 +18,7 @@ import {
   type DelegationRoundsHost,
   type DelegationRoundsTransactionOwner,
   type DelegationRoundsTransactionScope,
+  DelegationRoundsTransactionUncertainError,
 } from '@kontourai/flow-agents/delegation-group-rounds';
 import { canonicalJson } from '@kontourai/relay';
 import type {
@@ -54,9 +55,10 @@ import {
   wireIdentityDigest,
 } from './delegation-group-wire-intent-store.js';
 import type { OrchestrationService } from './orchestration-service.js';
-import type {
-  ReportRoundsPublication,
-  ReportRoundsScope,
+import {
+  type ReportRoundsPublication,
+  type ReportRoundsScope,
+  withReportRoundsPublication,
 } from './report-rounds-publication.js';
 import {
   type ReportAccountingRecoveryIntent,
@@ -1146,221 +1148,243 @@ export class StationReportGroupCustody {
       refuse();
     if (!isRuntimePublicationParticipant(participant)) refuse();
     participant.assertHome(this.owners.environment.getProjectHomeDir());
-    const captured = await this.#context(context, 'POST');
-    const parent = participant.acquire();
-    let hold: Awaited<ReturnType<HomeWriterOwner['acquire']>> | undefined;
-    const execute = async () => {
-      const writer = await HomeWriterOwner.forHome(
-        this.owners.environment.getProjectHomeDir(),
-      );
-      hold = await writer.acquire(context.req.raw.signal);
-      const held = hold;
-      return writer.withLeaseLifetime(held, async () => {
-        const baseCurrent = (): undefined => {
-          parent.assertCurrent();
-          writer.runWithLease(held, captured.current);
-          return undefined;
-        };
-        const authorized = { ...captured, current: baseCurrent };
-        const before = await this.#inspect(authorized, groupId);
-        const group = before?.group;
-        const root = before?.authority?.epochs.at(-1)?.root;
-        if (!before || !group || !root || group.spec.topology.kind !== 'flow')
-          refuse();
-        const record = await this.owners.persistence.readReportAdmission(
-          groupId,
-          baseCurrent,
-        );
-        if (!record || !same(record.data, before.admission)) refuse();
-        const locations: Array<{ cwd: string; assertCurrent(): undefined }> =
-          [];
-        for (const member of before.admission.members) {
-          const envelopes = before.admission.envelopes.filter(
-            (entry) => entry.execution_id === member.reservedTaskId,
+    let published = false;
+    try {
+      return await withReportRoundsPublication(
+        {
+          participant,
+          home: this.owners.environment.getProjectHomeDir(),
+          signal: context.req.raw.signal,
+        },
+        async (publication) => {
+          const captured = await this.#context(context, 'POST', publication);
+          const writer = await HomeWriterOwner.forHome(
+            this.owners.environment.getProjectHomeDir(),
           );
-          if (envelopes.length !== 1) refuse();
-          locations.push(
-            await sources.readHistoricalFlowLocation({
-              source: envelopes[0]!.execution_binding.source,
-              subject: { groupId, workItemId: member.reservedTaskId },
-              admission: record,
-              principalId: captured.principal.id,
-              hostContextId: captured.lease.hostContextId,
-              current: baseCurrent,
-            }),
+          const readState = async (scope: ReportRoundsScope) => {
+            const authorized = { ...captured, current: scope.current };
+            const before = await this.#inspect(authorized, groupId);
+            const group = before?.group;
+            const root = before?.authority?.epochs.at(-1)?.root;
+            if (
+              !before ||
+              !group ||
+              !root ||
+              group.spec.topology.kind !== 'flow'
+            )
+              refuse();
+            const record = await this.owners.persistence.readReportAdmission(
+              groupId,
+              scope.current,
+            );
+            if (!record || !same(record.data, before.admission)) refuse();
+            const locations: Array<{
+              cwd: string;
+              assertCurrent(): undefined;
+            }> = [];
+            for (const member of before.admission.members) {
+              const envelopes = before.admission.envelopes.filter(
+                (entry) => entry.execution_id === member.reservedTaskId,
+              );
+              if (envelopes.length !== 1) refuse();
+              locations.push(
+                await sources.readHistoricalFlowLocation({
+                  source: envelopes[0]!.execution_binding.source,
+                  subject: { groupId, workItemId: member.reservedTaskId },
+                  admission: record,
+                  principalId: captured.principal.id,
+                  hostContextId: captured.lease.hostContextId,
+                  current: scope.current,
+                }),
+              );
+            }
+            const cwd = locations[0]?.cwd;
+            if (!cwd || locations.some((location) => location.cwd !== cwd))
+              refuse();
+            return { before, group, root, locations, cwd };
+          };
+          const initial = await publication.withHome(
+            { owner: writer, current: captured.current },
+            readState,
           );
-        }
-        const cwd = locations[0]?.cwd;
-        if (!cwd || locations.some((location) => location.cwd !== cwd))
-          refuse();
-        const current = (): undefined => {
-          baseCurrent();
-          for (const location of locations) location.assertCurrent();
-          return undefined;
-        };
-        current();
-        const service = createDelegationAuthorityServiceV3(
-          this.owners.persistence.roundsAuthorityStore(current, current, {
-            owner: writer,
-            lease: held,
-          }),
-          {
-            now: () => new Date().toISOString(),
-            authorize: async (action, candidate) => {
-              current();
-              return action === 'inspect' && same(candidate, root);
-            },
-            confirmExecution: async () => false,
-            authenticateRenewal: async () => null,
-          },
-          { maxRenewals: 0 },
-        );
-        const command = {
-          kind: 'finalizeContinuation' as const,
-          groupId,
-          ...input,
-          controller: group.spec.controller,
-        };
-        const controller = createDelegationRoundsController({
-          store: this.owners.persistence.roundsStore(current, current, {
-            owner: writer,
-            lease: held,
-          }),
-          authorityService: service,
-          dispatchLedger,
-          cwd,
-          host: {
-            authorize: async ({
-              action,
-              groupId: candidate,
-              current: projection,
-              command: sent,
-            }) => {
-              current();
-              return ['finalizeContinuation', 'replay'].includes(action) &&
-                candidate === groupId &&
-                (!projection || same(projection.spec, group.spec)) &&
-                (!sent || same(sent, command))
-                ? root.authenticated_principal_ref
-                : null;
-            },
-            retainContinuation: async (spec, receipt) => {
-              current();
-              if (!same(spec, group.spec)) refuse();
-              return this.owners.persistence.retainReportContinuation(
-                groupId,
-                receipt,
+          const { group, root, cwd } = initial;
+          const command = {
+            kind: 'finalizeContinuation' as const,
+            groupId,
+            ...input,
+            controller: group.spec.controller,
+          };
+          const states = new WeakMap<
+            ReportRoundsScope,
+            Awaited<ReturnType<typeof readState>>
+          >();
+          const prepare = async (scope: ReportRoundsScope) => {
+            const state = await readState(scope);
+            if (
+              !same(state.group.spec, group.spec) ||
+              !same(state.root, root) ||
+              state.cwd !== cwd
+            )
+              refuse();
+            states.set(scope, state);
+            assertPrepared(scope);
+          };
+          const assertPrepared = (scope: ReportRoundsScope): undefined => {
+            const state = states.get(scope);
+            if (!state) refuse();
+            return scope.check(() => {
+              for (const location of state.locations) location.assertCurrent();
+              return undefined;
+            });
+          };
+          const build = (
+            scope?: ReportRoundsScope,
+          ): Pick<
+            DelegationRoundsTransactionScope,
+            'store' | 'host' | 'authorityService'
+          > => {
+            const current = scope
+              ? (): undefined => assertPrepared(scope)
+              : refuse;
+            const service = createDelegationAuthorityServiceV3(
+              this.owners.persistence.roundsAuthorityStore(
                 current,
-              );
-            },
-            loadContinuation: async (spec, reference) => {
-              current();
-              if (!same(spec, group.spec)) refuse();
-              return this.owners.persistence.loadReportContinuation(
-                groupId,
-                reference,
                 current,
-              );
-            },
-            executionHost: () => refuse(),
-            prepareRequest: async () => refuse(),
-            retainObservation: async () => refuse(),
-            confirmTerminal: async () => refuse(),
-            requestDescendantCancellation: async () => refuse(),
-            flow: {
-              executionHost: () => refuse(),
-              confirmRetainedResult: async () => false,
-              retainEvaluation: async () => refuse(),
-              acquireContinuationPublication: async (original) => {
-                current();
-                if (
-                  original.action !== 'finalizeContinuation' ||
-                  !original.finalizerCommand ||
-                  !same(original.finalizerCommand, command) ||
-                  !same(original.originalSpec, group.spec) ||
-                  original.originalCommand.operationKey !==
-                    input.continuationOperationKey ||
-                  !/^[a-f0-9]{64}$/.test(original.originalPrefixDigest)
-                )
-                  refuse();
-                const inner = parent.borrow();
-                let released = false;
-                const assertCurrent = (): undefined => {
-                  if (released) refuse();
+                scope,
+              ),
+              {
+                now: () => new Date().toISOString(),
+                authorize: async (action, candidate) => {
                   current();
-                  inner.assertCurrent();
-                  return undefined;
-                };
-                return {
-                  assertCurrent,
-                  flowAdmission: {
-                    acquire: async () => {
-                      assertCurrent();
-                      const child = parent.borrow();
-                      return {
-                        assertCurrent: (): undefined => {
-                          assertCurrent();
-                          child.assertCurrent();
-                          return undefined;
-                        },
-                        release: async () => {
-                          child.release();
-                        },
-                      };
-                    },
-                  },
-                  release: async () => {
-                    if (!released) {
-                      inner.release();
-                      released = true;
-                    }
-                  },
-                };
+                  return action === 'inspect' && same(candidate, root);
+                },
+                confirmExecution: async () => false,
+                authenticateRenewal: async () => null,
               },
+              { maxRenewals: 0 },
+            );
+            return {
+              store: this.owners.persistence.roundsStore(
+                current,
+                current,
+                scope,
+              ),
+              authorityService: service,
+              host: {
+                authorize: async ({
+                  action,
+                  groupId: candidate,
+                  current: projection,
+                  command: sent,
+                }) => {
+                  current();
+                  return ['finalizeContinuation', 'replay'].includes(action) &&
+                    candidate === groupId &&
+                    (!projection || same(projection.spec, group.spec)) &&
+                    (!sent || same(sent, command))
+                    ? root.authenticated_principal_ref
+                    : null;
+                },
+                retainContinuation: async (spec, receipt) => {
+                  current();
+                  if (!same(spec, group.spec)) refuse();
+                  return this.owners.persistence.retainReportContinuation(
+                    groupId,
+                    receipt,
+                    current,
+                  );
+                },
+                loadContinuation: async (spec, reference) => {
+                  current();
+                  if (!same(spec, group.spec)) refuse();
+                  return this.owners.persistence.loadReportContinuation(
+                    groupId,
+                    reference,
+                    current,
+                  );
+                },
+                executionHost: () => refuse(),
+                prepareRequest: async () => refuse(),
+                retainObservation: async () => refuse(),
+                confirmTerminal: async () => refuse(),
+                requestDescendantCancellation: async () => refuse(),
+                flow: {
+                  executionHost: () => refuse(),
+                  confirmRetainedResult: async () => false,
+                  retainEvaluation: async () => refuse(),
+                  acquireContinuationPublication: async (original) => {
+                    await publication.check(
+                      { owner: writer, current: captured.current },
+                      () => undefined,
+                    );
+                    if (
+                      original.action !== 'finalizeContinuation' ||
+                      !original.finalizerCommand ||
+                      !same(original.finalizerCommand, command) ||
+                      !same(original.originalSpec, group.spec) ||
+                      original.originalCommand.operationKey !==
+                        input.continuationOperationKey ||
+                      !/^[a-f0-9]{64}$/.test(original.originalPrefixDigest)
+                    )
+                      refuse();
+                    return publication.acquireContinuationPublication({
+                      owner: writer,
+                      current: captured.current,
+                      groupId,
+                      prepare,
+                      assertPreparationCurrent: assertPrepared,
+                    });
+                  },
+                },
+              },
+            };
+          };
+          const transactionOwner = publication.transactionOwner({
+            owner: writer,
+            current: captured.current,
+            groupId,
+            prepare,
+            build,
+            assertPreparationCurrent: assertPrepared,
+          });
+          // Flow uses only parent admission outside its transaction-scoped facades.
+          const defaults = build();
+          const controller = createDelegationRoundsController({
+            ...defaults,
+            dispatchLedger,
+            cwd,
+            transactionOwner,
+          });
+          const result = await controller.finalizeContinuation(command);
+          published = true;
+          const historical = await publication.withHome(
+            { owner: writer, current: captured.current },
+            async (scope) => {
+              await prepare(scope);
+              return this.#inspect(
+                { ...captured, current: () => assertPrepared(scope) },
+                groupId,
+              );
             },
-          },
-        });
-        const result = await controller.finalizeContinuation(command);
-        current();
-        const historical = await this.#inspect(authorized, groupId);
-        if (!historical) refuse();
-        current();
-        return { result, group: project(historical) };
-      });
-    };
-    let outcome:
-      | { ok: true; value: Awaited<ReturnType<typeof execute>> }
-      | { ok: false; error: unknown };
-    try {
-      outcome = { ok: true, value: await execute() };
-    } catch (error) {
-      outcome = { ok: false, error };
-    }
-    const cleanupFailure = (error: unknown) =>
-      new ContinuationPublicationUncertainError(
-        outcome.ok ||
-          (outcome.error instanceof ContinuationPublicationUncertainError &&
-            outcome.error.status === 'published-cleanup-unknown')
-          ? 'published-cleanup-unknown'
-          : 'publication-unknown',
-        outcome.ok ? [error] : [outcome.error, error],
+          );
+          if (!historical) refuse();
+          return { result, group: project(historical) };
+        },
       );
-    let homeReleased = !hold;
-    const cleanup = participant.retainCleanup(async () => {
-      parent.assertReleasable();
-      if (!homeReleased) {
-        await hold!.release();
-        homeReleased = true;
-      }
-      parent.release();
-    });
-    try {
-      await cleanup();
     } catch (error) {
-      throw cleanupFailure(error);
+      if (error instanceof DelegationRoundsTransactionUncertainError) {
+        const original = error.errors[0];
+        throw new ContinuationPublicationUncertainError(
+          published ||
+            (original instanceof ContinuationPublicationUncertainError &&
+              original.status === 'published-cleanup-unknown')
+            ? 'published-cleanup-unknown'
+            : 'publication-unknown',
+          error.errors,
+        );
+      }
+      throw error;
     }
-    if (!outcome.ok) throw outcome.error;
-    return outcome.value;
   }
 
   async finalizeSync(

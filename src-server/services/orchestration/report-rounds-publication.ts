@@ -1,4 +1,5 @@
 import {
+  type ContinuationPublicationLease,
   type DelegationRoundsTransactionOwner,
   DelegationRoundsTransactionParentError,
   type DelegationRoundsTransactionScope,
@@ -22,6 +23,10 @@ type HomeScopeInput = {
   owner: HomeWriterOwner;
   current(): undefined;
 };
+type PreparedHomeScopeInput = HomeScopeInput & {
+  prepare?(scope: ReportRoundsScope): Promise<void>;
+  assertPreparationCurrent?(scope: ReportRoundsScope): undefined;
+};
 type Outcome<T> = { ok: true; value: T } | { ok: false; error: unknown };
 
 export interface ReportRoundsScope {
@@ -43,12 +48,13 @@ export interface ReportRoundsPublication {
     input: HomeScopeInput,
     invoke: (check: <Result>(work: () => Result) => Result) => Promise<Value>,
   ): Promise<Value>;
+  acquireContinuationPublication(
+    input: PreparedHomeScopeInput & { groupId: string },
+  ): Promise<ContinuationPublicationLease>;
   transactionOwner(
-    input: HomeScopeInput & {
+    input: PreparedHomeScopeInput & {
       groupId: string;
       build(scope: ReportRoundsScope): ScopedFacades;
-      /** Facades fence body/commit; this also checks acquisition and store return. */
-      assertPreparationCurrent?(scope: ReportRoundsScope): undefined;
     },
   ): DelegationRoundsTransactionOwner;
 }
@@ -141,6 +147,16 @@ export async function withReportRoundsPublication<T>(
       return finish<never>({ ok: false, error }, release);
     }
   };
+  const continuationParents = new WeakMap<
+    ContinuationPublicationLease,
+    {
+      owner: HomeWriterOwner;
+      groupId: string;
+      sourceCurrent(): undefined;
+      current(): undefined;
+      borrow(): { scope: ReportRoundsScope; release(): Promise<void> };
+    }
+  >();
   const publication: ReportRoundsPublication = Object.freeze({
     assertCurrent: current,
     retainCleanup: (cleanup: () => Promise<void>) => {
@@ -274,6 +290,100 @@ export async function withReportRoundsPublication<T>(
       }
       return finish(outcome, join);
     },
+    acquireContinuationPublication: async (
+      options: PreparedHomeScopeInput & { groupId: string },
+    ): Promise<ContinuationPublicationLease> => {
+      current();
+      participant.assertHome(options.owner.homeDir);
+      const held = await acquireHome(options);
+      let parentActive = true;
+      let prepared = false;
+      let closing = false;
+      const children = new Set<object>();
+      const assertCurrent = (): undefined => {
+        if (!parentActive || closing)
+          throw new DelegationRoundsTransactionParentError();
+        held.scope.current();
+        const checkPreparation = options.assertPreparationCurrent;
+        if (prepared && checkPreparation)
+          held.scope.check(() => checkPreparation(held.scope));
+        return undefined;
+      };
+      const borrow = () => {
+        assertCurrent();
+        const child = {};
+        children.add(child);
+        let childActive = true;
+        const childCurrent = (): undefined => {
+          if (!childActive || !children.has(child))
+            throw new DelegationRoundsTransactionParentError();
+          return assertCurrent();
+        };
+        const scope: ReportRoundsScope = {
+          owner: held.scope.owner,
+          lease: held.scope.lease,
+          current: childCurrent,
+          check: <Value>(work: () => Value): Value => {
+            childCurrent();
+            const value = held.scope.check(work);
+            childCurrent();
+            return value;
+          },
+        };
+        return {
+          scope,
+          release: async () => {
+            childActive = false;
+            children.delete(child);
+          },
+        };
+      };
+      let token: ContinuationPublicationLease;
+      const retire: () => Promise<void> = participant.retainCleanup(
+        async () => {
+          // Shutdown cannot close a parent while its operation or children use it.
+          if ((active && !closing) || children.size)
+            throw new DelegationRoundsTransactionParentError();
+          parentActive = false;
+          await held.release();
+          continuationParents.delete(token);
+          retiredScopes.delete(retire);
+        },
+      );
+      retiredScopes.add(retire);
+      token = Object.freeze({
+        assertCurrent,
+        flowAdmission: {
+          acquire: async () => {
+            const child = borrow();
+            return {
+              assertCurrent: child.scope.current,
+              release: child.release,
+            };
+          },
+        },
+        release: async () => {
+          if (children.size) throw new DelegationRoundsTransactionParentError();
+          closing = true;
+          await retire();
+        },
+      });
+      continuationParents.set(token, {
+        owner: options.owner,
+        groupId: options.groupId,
+        sourceCurrent: options.current,
+        current: assertCurrent,
+        borrow,
+      });
+      try {
+        await options.prepare?.(held.scope);
+        prepared = true;
+        assertCurrent();
+        return token;
+      } catch (error) {
+        return finish<never>({ ok: false, error }, token.release);
+      }
+    },
     transactionOwner: (
       options: Parameters<ReportRoundsPublication['transactionOwner']>[0],
     ) => {
@@ -285,13 +395,29 @@ export async function withReportRoundsPublication<T>(
           request: Parameters<DelegationRoundsTransactionOwner['acquire']>[0],
         ) => {
           current();
-          // Continuation borrowing needs its exact authenticated parent mapping.
-          if (request.publicationLease)
-            throw new DelegationRoundsTransactionParentError();
-          if (request.groupId !== groupId)
-            throw new HomeWriterUnavailableError('identity-unavailable');
-          const held = await acquireHome(options);
+          let held: Awaited<ReturnType<typeof acquireHome>>;
+          if (request.publicationLease) {
+            const continuation = continuationParents.get(
+              request.publicationLease,
+            );
+            if (
+              !continuation ||
+              continuation.groupId !== groupId ||
+              request.groupId !== groupId ||
+              continuation.owner !== options.owner ||
+              continuation.sourceCurrent !== options.current
+            )
+              throw new DelegationRoundsTransactionParentError();
+            continuation.current();
+            const child = continuation.borrow();
+            held = { scope: child.scope, release: child.release };
+          } else {
+            if (request.groupId !== groupId)
+              throw new HomeWriterUnavailableError('identity-unavailable');
+            held = await acquireHome(options);
+          }
           try {
+            await options.prepare?.(held.scope);
             const checkPreparation = options.assertPreparationCurrent;
             const assertPrepared = (): undefined => {
               held.scope.current();
