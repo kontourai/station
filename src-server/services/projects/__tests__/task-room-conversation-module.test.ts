@@ -1464,9 +1464,7 @@ test('Task images reach the provider on requests and same-session replies and re
     const result = await readJson<{ data: TaskRoomWorkOutcome }>(response);
     if (result.data.kind !== 'recorded')
       throw new Error('Request not recorded');
-    expect(result.data.record.state, inspect(f.failures)).toBe(
-      'dispatched',
-    );
+    expect(result.data.record.state, inspect(f.failures)).toBe('dispatched');
     expect(f.adapter.turns).toHaveLength(1);
     const sessionId = result.data.record.sessionId;
     await f.started(sessionId, 'turn-1');
