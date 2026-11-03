@@ -44,10 +44,12 @@ import { setClientCredentialResolver } from '@kontourai/station-sdk/client';
 import { DeviceWorkspacePane } from '../DeviceWorkspacePane';
 import {
   authorizeScope,
+  chooseDeviceMenuItem,
   click,
   type DeviceFetchPlan,
   frameRecord,
   IOS_DEVICE,
+  openDeviceSettingsSection,
   readyInventory,
   renderInQueryClient,
   stateRecord,
@@ -148,10 +150,11 @@ const TREE: DeviceAccessibilityTree = {
 
 type ToolsHandler = NonNullable<DeviceFetchPlan['tools']>;
 
-async function openDevice(tools: ToolsHandler) {
+async function openDevice(tools: ToolsHandler, deviceLoopPreview = false) {
   const log = stubDeviceFetch({
     inventory: readyInventory([IOS_DEVICE]),
     tools,
+    deviceLoopPreview,
   });
   renderInQueryClient(<DeviceWorkspacePane />);
   await click(
@@ -171,35 +174,96 @@ const toolsRequests = (log: ReturnType<typeof stubDeviceFetch>, leaf = '') =>
     new URL(request.url).pathname.endsWith(`/tools${leaf}`),
   );
 
+/** Device settings from the ⋯ menu, with each named section unfolded. */
+async function openSettings(...sections: string[]) {
+  await chooseDeviceMenuItem('Device settings');
+  const drawer = await screen.findByRole('complementary', {
+    name: 'Device settings',
+  });
+  for (const section of sections)
+    await openDeviceSettingsSection(drawer, section);
+  return drawer;
+}
+
 describe('the Tools drawer', () => {
-  test('the toolbar Tools button opens it, and it shows what the device reported', async () => {
+  test('switching views from the ⋯ menu keeps what the Logs view was doing', async () => {
+    await openDevice(
+      ({ method, path }) =>
+        method === 'GET' && path.endsWith('/tools')
+          ? { body: { success: true, data: snapshot() } }
+          : undefined,
+      true,
+    );
+    await chooseDeviceMenuItem('Logs');
+    const logs = await screen.findByRole('complementary', { name: 'Logs' });
+    fireEvent.change(within(logs).getByLabelText('App ID'), {
+      target: { value: 'com.example.app' },
+    });
+    fireEvent.change(within(logs).getByLabelText('Filter'), {
+      target: { value: 'failed' },
+    });
+    await chooseDeviceMenuItem('Apps');
+    await screen.findByRole('complementary', { name: 'Apps' });
+    await chooseDeviceMenuItem('Logs');
+    const back = await screen.findByRole('complementary', { name: 'Logs' });
+    expect(
+      (within(back).getByLabelText('App ID') as HTMLInputElement).value,
+    ).toBe('com.example.app');
+    expect(
+      (within(back).getByLabelText('Filter') as HTMLInputElement).value,
+    ).toBe('failed');
+  });
+
+  test('the ⋯ menu opens it, and it shows what the device reported', async () => {
     const { log } = await openDevice(({ method, path }) =>
       method === 'GET' && path.endsWith('/tools')
         ? { body: { success: true, data: snapshot() } }
         : undefined,
     );
-    const tools = screen.getByRole('button', { name: 'Tools' });
-    expect(tools.getAttribute('aria-expanded')).toBe('false');
-    await click(tools);
-    expect(tools.getAttribute('aria-expanded')).toBe('true');
-    const drawer = await screen.findByRole('complementary', { name: 'Tools' });
-    // The toggle names the region it controls.
-    expect(drawer.id).not.toBe('');
-    expect(tools.getAttribute('aria-controls')).toBe(drawer.id);
+    const more = screen.getByRole('button', {
+      name: 'More iPhone 17 Pro actions',
+    });
+    expect(more.getAttribute('aria-expanded')).toBe('false');
+    await click(more);
+    expect(more.getAttribute('aria-expanded')).toBe('true');
+    const menu = screen.getByRole('menu');
+    await click(within(menu).getByRole('menuitem', { name: 'Apps' }));
+    // The row closes the menu and opens the Apps view.
+    expect(screen.queryByRole('menu')).toBeNull();
+    expect(more.getAttribute('aria-expanded')).toBe('false');
+    const drawer = await screen.findByRole('complementary', { name: 'Apps' });
+    // The trigger controls only its menu: naming the drawer while it reports
+    // aria-expanded=false would tell assistive tech a visible panel is shut.
+    expect(more.hasAttribute('aria-controls')).toBe(false);
     expect(
       await within(drawer).findByText('com.apple.Preferences'),
     ).toBeTruthy();
+
+    await chooseDeviceMenuItem('Device settings');
+    const settings = await screen.findByRole('complementary', {
+      name: 'Device settings',
+    });
+    expect(screen.queryByRole('complementary', { name: 'Apps' })).toBeNull();
+    // Switching views moves focus into the drawer's new view.
+    await waitFor(() => expect(document.activeElement).toBe(settings));
+    await within(settings).findByRole('button', { name: 'Appearance' });
+    // Folded until its disclosure is opened.
     expect(
-      within(drawer).getByText('The device reports dark mode.'),
+      within(settings).queryByText('The device reports dark mode.'),
+    ).toBeNull();
+    await openDeviceSettingsSection(settings, 'Appearance');
+    expect(
+      within(settings).getByText('The device reports dark mode.'),
     ).toBeTruthy();
     expect(
-      within(drawer)
+      within(settings)
         .getByRole('button', { name: 'Dark' })
         .getAttribute('aria-pressed'),
     ).toBe('true');
     // iOS cannot report location: said, not guessed.
+    await openDeviceSettingsSection(settings, 'Location');
     expect(
-      within(drawer).getByText('This device cannot report it.'),
+      within(settings).getByText('This device cannot report it.'),
     ).toBeTruthy();
     // The Project the pane is in is named on every tools request (D12).
     expect(
@@ -224,8 +288,7 @@ describe('the Tools drawer', () => {
         };
       return undefined;
     });
-    await click(screen.getByRole('button', { name: 'Tools' }));
-    const drawer = await screen.findByRole('complementary', { name: 'Tools' });
+    const drawer = await openSettings('Appearance');
     await within(drawer).findByText('The device reports dark mode.');
     await click(within(drawer).getByRole('button', { name: 'Light' }));
     await waitFor(() => expect(toolsRequests(log, '/actions')).toHaveLength(1));
@@ -267,9 +330,8 @@ describe('the Tools drawer', () => {
         };
       return undefined;
     });
-    await click(screen.getByRole('button', { name: 'Tools' }));
-    const drawer = await screen.findByRole('complementary', { name: 'Tools' });
-    await within(drawer).findByText('com.apple.Preferences');
+    const drawer = await openSettings('Location');
+    await within(drawer).findByText('This device cannot report it.');
     await click(within(drawer).getByRole('button', { name: 'London' }));
     expect(
       await within(drawer).findByText(
@@ -289,9 +351,8 @@ describe('the Tools drawer', () => {
         };
       return undefined;
     });
-    await click(screen.getByRole('button', { name: 'Tools' }));
-    const drawer = await screen.findByRole('complementary', { name: 'Tools' });
-    await within(drawer).findByText('com.apple.Preferences');
+    const drawer = await openSettings('Appearance');
+    await within(drawer).findByText('The device reports dark mode.');
     await click(within(drawer).getByRole('button', { name: 'Light' }));
     expect((await within(drawer).findByRole('alert')).textContent).toContain(
       'Someone else is controlling this device',
@@ -304,9 +365,7 @@ describe('the Tools drawer', () => {
         ? { body: { success: true, data: snapshot() } }
         : undefined,
     );
-    await click(screen.getByRole('button', { name: 'Tools' }));
-    const drawer = await screen.findByRole('complementary', { name: 'Tools' });
-    await within(drawer).findByText('com.apple.Preferences');
+    const drawer = await openSettings('Push notification');
     const payload = within(drawer).getByLabelText('Payload (JSON)');
     const { fireEvent } = await import('@testing-library/react');
     fireEvent.change(payload, {
@@ -328,8 +387,7 @@ describe('drawer layout (container width)', () => {
         ? { body: { success: true, data: snapshot() } }
         : undefined,
     );
-    await click(screen.getByRole('button', { name: 'Tools' }));
-    const drawer = await screen.findByRole('complementary', { name: 'Tools' });
+    const drawer = await openSettings();
     expect(drawer.getAttribute('data-layout')).toBe('docked');
     expect(drawer.className).toContain('device-tools--docked');
     resize(559);
@@ -338,15 +396,12 @@ describe('drawer layout (container width)', () => {
     const { fireEvent } = await import('@testing-library/react');
     fireEvent.keyDown(drawer, { key: 'Escape' });
     await waitFor(() =>
-      expect(screen.queryByRole('complementary', { name: 'Tools' })).toBeNull(),
+      expect(
+        screen.queryByRole('complementary', { name: 'Device settings' }),
+      ).toBeNull(),
     );
     resize(560);
-    await click(screen.getByRole('button', { name: 'Tools' }));
-    expect(
-      (
-        await screen.findByRole('complementary', { name: 'Tools' })
-      ).getAttribute('data-layout'),
-    ).toBe('docked');
+    expect((await openSettings()).getAttribute('data-layout')).toBe('docked');
   });
 });
 
@@ -356,34 +411,42 @@ describe('drawer focus (S5)', () => {
       ? { body: { success: true, data: snapshot() } }
       : undefined;
 
-  test('opening moves focus into the drawer; Close and Escape return it to the Tools button', async () => {
+  test('opening moves focus into the drawer; Close and Escape return it to the ⋯ button', async () => {
     const { fireEvent } = await import('@testing-library/react');
     await openDevice(handler);
-    const tools = screen.getByRole('button', { name: 'Tools' });
-    await click(tools);
-    const drawer = await screen.findByRole('complementary', { name: 'Tools' });
+    const more = await chooseDeviceMenuItem('Device settings');
+    expect(more.getAttribute('aria-label')).toBe('More iPhone 17 Pro actions');
+    const drawer = await screen.findByRole('complementary', {
+      name: 'Device settings',
+    });
     await waitFor(() => expect(document.activeElement).toBe(drawer));
-    await click(within(drawer).getByRole('button', { name: 'Close tools' }));
-    await waitFor(() =>
-      expect(screen.queryByRole('complementary', { name: 'Tools' })).toBeNull(),
+    await click(
+      within(drawer).getByRole('button', { name: 'Close device settings' }),
     );
-    expect(document.activeElement).toBe(tools);
+    await waitFor(() =>
+      expect(
+        screen.queryByRole('complementary', { name: 'Device settings' }),
+      ).toBeNull(),
+    );
+    expect(document.activeElement).toBe(more);
 
-    await click(tools);
-    const again = await screen.findByRole('complementary', { name: 'Tools' });
+    await chooseDeviceMenuItem('Apps');
+    const again = await screen.findByRole('complementary', { name: 'Apps' });
     await waitFor(() => expect(document.activeElement).toBe(again));
+    expect(
+      within(again).getByRole('button', { name: 'Close apps' }),
+    ).toBeTruthy();
     fireEvent.keyDown(again, { key: 'Escape' });
     await waitFor(() =>
-      expect(screen.queryByRole('complementary', { name: 'Tools' })).toBeNull(),
+      expect(screen.queryByRole('complementary', { name: 'Apps' })).toBeNull(),
     );
-    expect(document.activeElement).toBe(tools);
+    expect(document.activeElement).toBe(more);
   });
 
   test('a docked↔overlay flip (a resize) does not move focus', async () => {
     await openDevice(handler);
-    await click(screen.getByRole('button', { name: 'Tools' }));
-    const drawer = await screen.findByRole('complementary', { name: 'Tools' });
-    await within(drawer).findByText('com.apple.Preferences');
+    const drawer = await openSettings('Appearance');
+    await within(drawer).findByText('The device reports dark mode.');
     const light = within(drawer).getByRole('button', { name: 'Light' });
     light.focus();
     resize(559);
@@ -398,11 +461,9 @@ describe('drawer focus (S5)', () => {
 });
 
 describe('drawer controls (review nits)', () => {
-  async function openDrawer(tools: ToolsHandler) {
+  async function openDrawer(tools: ToolsHandler, ...sections: string[]) {
     const env = await openDevice(tools);
-    await click(screen.getByRole('button', { name: 'Tools' }));
-    const drawer = await screen.findByRole('complementary', { name: 'Tools' });
-    await within(drawer).findByText('com.apple.Preferences');
+    const drawer = await openSettings(...sections);
     return { ...env, drawer };
   }
 
@@ -419,7 +480,7 @@ describe('drawer controls (review nits)', () => {
           },
         };
       return undefined;
-    });
+    }, 'Location');
     const latitude = within(drawer).getByLabelText('Latitude');
     const longitude = within(drawer).getByLabelText('Longitude');
     const set = within(drawer).getByRole('button', { name: 'Set location' });
@@ -480,9 +541,7 @@ describe('drawer controls (review nits)', () => {
     await click(
       await screen.findByRole('button', { name: 'Open iPhone 17 Pro' }),
     );
-    await click(await screen.findByRole('button', { name: 'Tools' }));
-    const drawer = await screen.findByRole('complementary', { name: 'Tools' });
-    await within(drawer).findByText('com.apple.Preferences');
+    const drawer = await openSettings('Permissions');
     const read = within(drawer).getByRole('button', {
       name: 'Read permissions',
     });
@@ -524,7 +583,7 @@ describe('drawer controls (review nits)', () => {
           },
         };
       return undefined;
-    });
+    }, 'Permissions');
     fireEvent.change(
       within(drawer).getByLabelText('App (bundle id or package)'),
       { target: { value: 'com.example.app' } },
@@ -553,7 +612,7 @@ describe('drawer controls (review nits)', () => {
           },
         };
       return undefined;
-    });
+    }, 'Appearance');
     await click(within(drawer).getByRole('button', { name: 'Light' }));
     expect((await within(drawer).findByRole('alert')).textContent).toContain(
       'Control is held on another device or browser',
@@ -575,8 +634,8 @@ describe('the accessibility overlay', () => {
   test('off: the tree is never requested', async () => {
     const { log, surfaceId, push } = await openDevice(treeHandler());
     await push(frameRecord(surfaceId, 1, { width: 400, height: 800 }));
-    await click(screen.getByRole('button', { name: 'Tools' }));
-    await screen.findByText('com.apple.Preferences');
+    const drawer = await openSettings('Accessibility');
+    await within(drawer).findByText('Off.');
     await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
     expect(toolsRequests(log, '/accessibility')).toHaveLength(0);
     expect(screen.queryByTestId('device-ax-overlay')).toBeNull();
@@ -585,7 +644,7 @@ describe('the accessibility overlay', () => {
   test('on and live: frames are drawn where the tree says, labelled', async () => {
     const { log, surfaceId, push } = await openDevice(treeHandler());
     await push(frameRecord(surfaceId, 1, { width: 400, height: 800 }));
-    await click(screen.getByRole('button', { name: 'Tools' }));
+    await openSettings('Accessibility');
     await click(
       await screen.findByRole('button', { name: 'Show accessibility frames' }),
     );
@@ -622,7 +681,7 @@ describe('the accessibility overlay', () => {
       },
       body: new Uint8Array([1]),
     });
-    await click(screen.getByRole('button', { name: 'Tools' }));
+    await openSettings('Accessibility');
     await click(
       await screen.findByRole('button', { name: 'Show accessibility frames' }),
     );
@@ -650,7 +709,7 @@ describe('the accessibility overlay', () => {
     };
     const { surfaceId, push } = await openDevice(treeHandler(cut));
     await push(frameRecord(surfaceId, 1, { width: 400, height: 800 }));
-    await click(screen.getByRole('button', { name: 'Tools' }));
+    await openSettings('Accessibility');
     await click(
       await screen.findByRole('button', { name: 'Show accessibility frames' }),
     );
@@ -664,7 +723,7 @@ describe('the accessibility overlay', () => {
   test('polled every 2 s while on, and not at all once turned off', async () => {
     const { log, surfaceId, push } = await openDevice(treeHandler());
     await push(frameRecord(surfaceId, 1, { width: 400, height: 800 }));
-    await click(screen.getByRole('button', { name: 'Tools' }));
+    await openSettings('Accessibility');
     await click(
       await screen.findByRole('button', { name: 'Show accessibility frames' }),
     );
@@ -683,7 +742,7 @@ describe('the accessibility overlay', () => {
 
   test('on, but no frame drawn yet: nothing is read', async () => {
     const { log } = await openDevice(treeHandler());
-    await click(screen.getByRole('button', { name: 'Tools' }));
+    await openSettings('Accessibility');
     await click(
       await screen.findByRole('button', { name: 'Show accessibility frames' }),
     );
@@ -743,14 +802,22 @@ describe('a device on an SSH device host (#2442)', () => {
   };
   const scope = { apiBase: 'http://station.test', authorityKey: 'authority-1' };
 
-  async function renderDrawer(tools: ToolsHandler) {
+  const VIEW_NAME = {
+    apps: 'Apps',
+    logs: 'Logs',
+    settings: 'Device settings',
+  } as const;
+
+  async function renderDrawer(
+    tools: ToolsHandler,
+    view: keyof typeof VIEW_NAME,
+  ) {
     const { DeviceToolsDrawer } = await import('../device/DeviceToolsDrawer');
     const log = stubDeviceFetch({ tools, deviceLoopPreview: true });
     const rendered = renderInQueryClient(
       <DeviceToolsDrawer
         axOverlay={false}
         deviceName="Studio iPhone"
-        id="tools"
         layout="docked"
         onAxOverlayChange={() => {}}
         onClose={() => {}}
@@ -758,11 +825,92 @@ describe('a device on an SSH device host (#2442)', () => {
         requestScope={scope}
         streamVisible
         target={REMOTE_TARGET}
+        view={view}
       />,
     );
-    const drawer = await screen.findByRole('complementary', { name: 'Tools' });
+    const drawer = await screen.findByRole('complementary', {
+      name: VIEW_NAME[view],
+    });
     return { log, drawer, rendered, DeviceToolsDrawer };
   }
+
+  test('logs poll only while the Logs view is showing', async () => {
+    const { log, rendered, DeviceToolsDrawer } = await renderDrawer(
+      ({ method, path }) => {
+        if (method === 'GET' && path.endsWith('/tools'))
+          return {
+            body: { success: true, data: snapshot({ hostId: REMOTE }) },
+          };
+        if (method === 'GET' && path.endsWith('/tools/logs'))
+          return {
+            body: {
+              success: true,
+              data: {
+                ...REMOTE_TARGET,
+                appId: 'com.example.app',
+                processId: '42',
+                truncated: false,
+                output: 'info ready',
+              },
+            },
+          };
+        return undefined;
+      },
+      'logs',
+    );
+    const drawer = screen.getByRole('complementary', { name: 'Logs' });
+    fireEvent.change(await within(drawer).findByLabelText('App ID'), {
+      target: { value: 'com.example.app' },
+    });
+    await click(within(drawer).getByRole('button', { name: 'Start logs' }));
+    await within(drawer).findByText(/info ready/);
+    const reads = toolsRequests(log, '/logs').length;
+    rendered.rerenderWrapped(
+      <DeviceToolsDrawer
+        axOverlay={false}
+        deviceName="Studio iPhone"
+        layout="docked"
+        onAxOverlayChange={() => {}}
+        onClose={() => {}}
+        projectSlug="app"
+        requestScope={scope}
+        streamVisible
+        target={REMOTE_TARGET}
+        view="apps"
+      />,
+    );
+    await screen.findByRole('complementary', { name: 'Apps' });
+    // Past one 5 s poll interval: nothing is read while Apps shows.
+    await new Promise((resolve) => setTimeout(resolve, 5_600));
+    expect(toolsRequests(log, '/logs')).toHaveLength(reads);
+  }, 15_000);
+
+  test('Device settings says so when the device reports none', async () => {
+    const { drawer } = await renderDrawer(({ method, path }) => {
+      if (method === 'GET' && path.endsWith('/tools'))
+        return {
+          body: {
+            success: true,
+            data: snapshot({
+              hostId: REMOTE,
+              capabilities: {
+                appearance: false,
+                location: false,
+                clearLocation: false,
+                push: false,
+                permissions: [],
+                permissionDecisions: [],
+                accessibility: false,
+              },
+            }),
+          },
+        };
+      return undefined;
+    }, 'settings');
+    expect(
+      await within(drawer).findByText('This device offers no settings here.'),
+    ).toBeTruthy();
+  });
 
   test('logs use the selected host and can be filtered and paused', async () => {
     const { log, drawer } = await renderDrawer(({ method, path }) => {
@@ -783,7 +931,7 @@ describe('a device on an SSH device host (#2442)', () => {
           },
         };
       return undefined;
-    });
+    }, 'logs');
     fireEvent.change(await within(drawer).findByLabelText('App ID'), {
       target: { value: 'com.example.app' },
     });
@@ -832,7 +980,7 @@ describe('a device on an SSH device host (#2442)', () => {
           },
         };
       return undefined;
-    });
+    }, 'apps');
     fireEvent.change(
       await within(drawer).findByLabelText('Project workspace app path'),
       { target: { value: 'build/Sample.app' } },
@@ -898,7 +1046,7 @@ describe('a device on an SSH device host (#2442)', () => {
           },
         };
       return undefined;
-    });
+    }, 'apps');
     expect(toolsRequests(log, '/history')).toHaveLength(0);
     await click(await within(drawer).findByText('Session actions'));
     await within(drawer).findByText('launch · agent · success');
@@ -926,7 +1074,7 @@ describe('a device on an SSH device host (#2442)', () => {
         };
       }
       return undefined;
-    });
+    }, 'apps');
     fireEvent.change(await within(drawer).findByLabelText('App to control'), {
       target: { value: 'com.example.app' },
     });
@@ -962,7 +1110,7 @@ describe('a device on an SSH device host (#2442)', () => {
           },
         };
       return undefined;
-    });
+    }, 'logs');
     fireEvent.change(await within(drawer).findByLabelText('App ID'), {
       target: { value: 'com.example.app' },
     });
@@ -974,10 +1122,12 @@ describe('a device on an SSH device host (#2442)', () => {
   });
 
   test('pausing, changing app ID and disconnecting abort in-flight log reads', async () => {
-    const { drawer } = await renderDrawer(({ method, path }) =>
-      method === 'GET' && path.endsWith('/tools')
-        ? { body: { success: true, data: snapshot({ hostId: REMOTE }) } }
-        : undefined,
+    const { drawer } = await renderDrawer(
+      ({ method, path }) =>
+        method === 'GET' && path.endsWith('/tools')
+          ? { body: { success: true, data: snapshot({ hostId: REMOTE }) } }
+          : undefined,
+      'logs',
     );
     const fallback = globalThis.fetch;
     const aborted: string[] = [];
@@ -1034,6 +1184,7 @@ describe('a device on an SSH device host (#2442)', () => {
           };
         return undefined;
       },
+      'logs',
     );
     fireEvent.change(await within(drawer).findByLabelText('App ID'), {
       target: { value: 'com.example.app' },
@@ -1044,7 +1195,6 @@ describe('a device on an SSH device host (#2442)', () => {
       <DeviceToolsDrawer
         axOverlay={false}
         deviceName="Other"
-        id="tools"
         layout="docked"
         onAxOverlayChange={() => {}}
         onClose={() => {}}
@@ -1055,6 +1205,7 @@ describe('a device on an SSH device host (#2442)', () => {
           ...REMOTE_TARGET,
           deviceId: '11111111-2222-4333-8444-555555555555',
         }}
+        view="logs"
       />,
     );
     await within(drawer).findByRole('button', { name: 'Start logs' });
@@ -1062,22 +1213,26 @@ describe('a device on an SSH device host (#2442)', () => {
   });
 
   test('the drawer reads the device on ITS host and shows what that host read', async () => {
-    const { log, drawer } = await renderDrawer(({ method, path }) =>
-      method === 'GET' && path.endsWith('/tools')
-        ? {
-            body: {
-              success: true,
-              data: snapshot({
-                hostId: REMOTE,
-                location: {
-                  state: 'unreadable',
-                  reason: 'device-host-not-enabled',
-                },
-              }),
-            },
-          }
-        : undefined,
+    const { log, drawer } = await renderDrawer(
+      ({ method, path }) =>
+        method === 'GET' && path.endsWith('/tools')
+          ? {
+              body: {
+                success: true,
+                data: snapshot({
+                  hostId: REMOTE,
+                  location: {
+                    state: 'unreadable',
+                    reason: 'device-host-not-enabled',
+                  },
+                }),
+              },
+            }
+          : undefined,
+      'settings',
     );
+    await openDeviceSettingsSection(drawer, 'Appearance');
+    await openDeviceSettingsSection(drawer, 'Location');
     expect(
       await within(drawer).findByText('The device reports dark mode.'),
     ).toBeTruthy();
@@ -1090,13 +1245,15 @@ describe('a device on an SSH device host (#2442)', () => {
   });
 
   test('a busy host is said as busy, not as a refusal', async () => {
-    const { drawer } = await renderDrawer(({ method, path }) =>
-      method === 'GET' && path.endsWith('/tools')
-        ? {
-            status: 503,
-            body: { success: false, code: 'device-host-busy' },
-          }
-        : undefined,
+    const { drawer } = await renderDrawer(
+      ({ method, path }) =>
+        method === 'GET' && path.endsWith('/tools')
+          ? {
+              status: 503,
+              body: { success: false, code: 'device-host-busy' },
+            }
+          : undefined,
+      'apps',
     );
     expect(
       await within(drawer).findByText(

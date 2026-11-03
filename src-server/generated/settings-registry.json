@@ -165,6 +165,20 @@
       "route": "/settings?view=plugin-visibility&highlight=plugin-visibility"
     },
     {
+      "id": "browser-project-settings",
+      "label": "Browser agent access and local servers",
+      "scope": "station",
+      "section": "browser-devices",
+      "route": "/settings?view=browser-devices&highlight=browser-project-settings"
+    },
+    {
+      "id": "device-setup",
+      "label": "Device setup",
+      "scope": "station",
+      "section": "browser-devices",
+      "route": "/settings?view=browser-devices&highlight=device-setup"
+    },
+    {
       "id": "device-hosts",
       "label": "Device hosts",
       "scope": "station",

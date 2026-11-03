@@ -47,7 +47,12 @@ mode=$(cat "$HOME/mode" 2>/dev/null)
 case "$*" in
   *ro.product.cpu.abilist) if [ "$mode" = incompatible ]; then echo x86; else echo arm64-v8a; fi ;;
   *ro.build.version.sdk) echo 35 ;;
-  *"install -r"*) if [ "$mode" = slow ]; then echo $$ > "$HOME/install-pid"; exec sleep 30; else echo Success; fi ;;
+  *"install -r"*) if [ "$mode" = slow ]; then
+    for apk; do :; done
+    echo $$ > "$HOME/install-pid.tmp"; mv "$HOME/install-pid.tmp" "$HOME/install-pid"
+    (sleep 0.5; if [ -e "$apk" ]; then echo present > "$HOME/stage-at-close"; fi) &
+    exec sleep 30
+  else echo Success; fi ;;
   *"dumpsys package"*) if [ "$mode" = wrong-version ]; then echo versionCode=99; else printf 'versionCode=12\\nversionName=1.2\\n'; fi ;;
   *) exit 1 ;;
 esac`,
@@ -300,8 +305,20 @@ test('disconnect stops the install child before cleaning its staged files', asyn
     code: 'interrupted',
     effect: 'unknown',
   });
+  // The fake adb renames its PID file into place, so the watcher that ends
+  // stdin never sees an empty file. An empty read was `Number('') === 0`, and
+  // `process.kill(0, 0)` signals this test's own process group and succeeds.
+  // The program awaits the killed child's `close` before it cleans up and
+  // reports, so the child must already be gone here: no wait is needed.
   const pid = Number(readFileSync(join(home, 'install-pid'), 'utf8'));
+  expect(Number.isSafeInteger(pid) && pid > 0).toBe(true);
   expect(() => process.kill(pid, 0)).toThrow();
+  // A helper the fake adb starts keeps its stdout open for 0.5 s after the
+  // kill, then records whether the staged APK still existed. Cleanup must wait
+  // for the child's stdio to close, so the stage is still there at that point.
+  expect(readFileSync(join(home, 'stage-at-close'), 'utf8').trim()).toBe(
+    'present',
+  );
   expect(
     readdirSync(home).filter((name) => name.startsWith('station-device-app-')),
   ).toEqual([]);
