@@ -23,21 +23,27 @@ import {
 const makeTempDir = trackTempDirs();
 
 /** Echoes the start metadata on `session.started`, as every real adapter does. */
-class EchoingAdapter extends GateTestAdapter {
+class DeferredEchoingAdapter extends GateTestAdapter {
+  private announceStart?: () => void;
+  publishStarted() {
+    if (!this.announceStart) throw new Error('Session has not started');
+    this.announceStart();
+  }
   readonly sessions = new Map<string, ProviderSession>();
   readonly turns: ProviderSendTurnInput[] = [];
   override async startSession(input: ProviderSessionStartInput) {
     const session = await super.startSession(input);
     this.sessions.set(input.threadId, session);
-    this.events.push({
-      eventId: randomUUID(),
-      provider: this.provider,
-      threadId: input.threadId,
-      sessionId: input.threadId,
-      method: 'session.started',
-      createdAt: session.createdAt,
-      metadata: input.metadata,
-    });
+    this.announceStart = () =>
+      this.events.push({
+        eventId: randomUUID(),
+        provider: this.provider,
+        threadId: input.threadId,
+        sessionId: input.threadId,
+        method: 'session.started',
+        createdAt: session.createdAt,
+        metadata: input.metadata,
+      });
     return session;
   }
   override async sendTurn(input: ProviderSendTurnInput) {
@@ -54,12 +60,12 @@ class EchoingAdapter extends GateTestAdapter {
 
 // #4480: the owner-bearing `session.started` reaches the store through the
 // zero-timeout observed-event publish. Under contention that append retries
-// asynchronously, and a turn sent right after the accepted start (a
-// delegation's initial turn) must still be admitted for its owner.
-test('a start owner can send a turn while its contended session.started publish is still retrying', async () => {
+// asynchronously. An adapter that announces after startSession returns keeps
+// deferred-start semantics; its accepted owner can send during the retry.
+test('a deferred start owner can send a turn while its contended session.started publish is still retrying', async () => {
   const path = join(makeTempDir('start-owner-contention-'), 'events.sqlite');
   const store = new EventStore(path);
-  const adapter = new EchoingAdapter();
+  const adapter = new DeferredEchoingAdapter();
   const sessions = new OrchestrationService({
     adapterRegistry: createGateTestRegistry(adapter),
     eventBus: new EventBus(),
@@ -108,6 +114,7 @@ test('a start owner can send a turn while its contended session.started publish 
       },
       { userId: 'owner' },
     );
+    adapter.publishStarted();
     await vi.waitFor(() => expect(retryReached).toHaveBeenCalledWith(threadId));
     expect(contended).toBe(1);
     // The durable owner is not written yet: this is the hosted window.

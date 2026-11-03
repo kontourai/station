@@ -23621,44 +23621,98 @@ describe('OrchestrationService', () => {
       return eventStore.listEvents(threadId).map((entry) => entry.payload);
     }
 
-    test.each(['transient','deadline'] as const)('start acknowledgement waits for session.started publication under %s contention',async(mode)=>{
-      const threadId=`start-publication-${mode}`;
-      const owner='start-publication-owner';
-      const adapter=new FakeAdapter('claude');
-      const events=adapter.events;
-      const start=adapter.startSession.getMockImplementation()!;
-      adapter.startSession.mockImplementation(async(input)=>{
-        const session=await start(input);
-        events.push({eventId:`${threadId}:started`,provider:'claude',threadId,sessionId:threadId,method:'session.started',createdAt:new Date().toISOString(),initialState:'created',metadata:{...input.metadata}});
-        return session;
-      });
-      const append=eventStore.appendEvent.bind(eventStore);
-      let attempts=0;
-      const writes=vi.spyOn(eventStore,'appendEvent').mockImplementation((event,...rest)=>{
-        if(event.method==='session.started' && event.threadId===threadId) {
-          attempts++;
-          if(mode==='deadline' || attempts===1) throw busy();
+    test.each(['transient', 'deadline'] as const)(
+      'start acknowledgement waits for session.started publication under %s contention',
+      async (mode) => {
+        const threadId = `start-publication-${mode}`;
+        const owner = 'start-publication-owner';
+        const adapter = new FakeAdapter('claude');
+        const events = adapter.events;
+        const start = adapter.startSession.getMockImplementation()!;
+        adapter.startSession.mockImplementation(async (input) => {
+          const session = await start(input);
+          events.push({
+            eventId: `${threadId}:started`,
+            provider: 'claude',
+            threadId,
+            sessionId: threadId,
+            method: 'session.started',
+            createdAt: new Date().toISOString(),
+            initialState: 'created',
+            metadata: { ...input.metadata },
+          });
+          return session;
+        });
+        const append = eventStore.appendEvent.bind(eventStore);
+        let attempts = 0;
+        const writes = vi
+          .spyOn(eventStore, 'appendEvent')
+          .mockImplementation((event, ...rest) => {
+            if (event.method === 'session.started' && event.threadId === threadId) {
+              attempts++;
+              if (mode === 'deadline' || attempts === 1) throw busy();
+            }
+            return append(event, ...rest);
+          });
+        const isolated = new OrchestrationService({
+          adapterRegistry: createRegistry([adapter]),
+          eventBus,
+          eventStore,
+          logger: { debug: vi.fn(), warn: vi.fn() },
+        });
+        isolated.initialize();
+        try {
+          const outcome = await isolated.sessionCommands.execute(
+            {
+              type: 'start-session',
+              input: {
+                threadId,
+                provider: 'claude',
+                modelId: 'claude-sonnet',
+                metadata: { userId: owner },
+              },
+            },
+            { userId: owner },
+          );
+          if (mode === 'deadline') {
+            expect(outcome.status).toBe('indeterminate');
+            expect(
+              eventStore.latestEventByMethod(threadId, 'session.started'),
+            ).toBeUndefined();
+            expect(isolated.sessionRecordedOwnerId(threadId)).toBeUndefined();
+            await expect(
+              isolated.dispatchWithReceipt(
+                {
+                  type: 'sendTurn',
+                  input: { threadId, input: 'unconfirmed start cannot send' },
+                },
+                { userId: owner },
+              ),
+            ).rejects.toThrow(`Session not found: ${threadId}`);
+            expect(adapter.sendTurn).not.toHaveBeenCalled();
+          } else {
+            expect(outcome.status).toBe('accepted');
+            expect(
+              eventStore.latestEventByMethod(threadId, 'session.started')?.payload
+                .eventId,
+            ).toBe(`${threadId}:started`);
+            expect(isolated.sessionRecordedOwnerId(threadId)).toBe(owner);
+            await isolated.dispatchWithReceipt(
+              {
+                type: 'sendTurn',
+                input: { threadId, input: 'immediate authorized send' },
+              },
+              { userId: owner },
+            );
+            expect(adapter.sendTurn).toHaveBeenCalledTimes(1);
+            expect(attempts).toBeGreaterThanOrEqual(2);
+          }
+        } finally {
+          writes.mockRestore();
+          await isolated.shutdown();
         }
-        return append(event,...rest);
-      });
-      const isolated=new OrchestrationService({adapterRegistry:createRegistry([adapter]),eventBus,eventStore,logger:{debug:vi.fn(),warn:vi.fn()}});
-      isolated.initialize();
-      try {
-        const outcome=await isolated.sessionCommands.execute({type:'start-session',input:{threadId,provider:'claude',modelId:'claude-sonnet',metadata:{userId:owner}}},{userId:owner});
-        if(mode==='deadline') {
-          expect(outcome.status).toBe('indeterminate');
-          expect(eventStore.latestEventByMethod(threadId,'session.started')).toBeUndefined();
-          expect(adapter.sendTurn).not.toHaveBeenCalled();
-        } else {
-          expect(outcome.status).toBe('accepted');
-          expect(eventStore.latestEventByMethod(threadId,'session.started')?.payload.eventId).toBe(`${threadId}:started`);
-          expect(isolated.sessionRecordedOwnerId(threadId)).toBe(owner);
-          await isolated.dispatchWithReceipt({type:'sendTurn',input:{threadId,input:'immediate authorized send'}},{userId:owner});
-          expect(adapter.sendTurn).toHaveBeenCalledTimes(1);
-          expect(attempts).toBeGreaterThanOrEqual(2);
-        }
-      } finally { writes.mockRestore();await isolated.shutdown(); }
-    });
+      },
+    );
 
     test('repeated lost write races on turn.completed retry the same event within the async budget and survive reopen without a banner', async () => {
       const threadId = 'transient-terminal-thread';

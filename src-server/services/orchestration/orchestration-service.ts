@@ -7677,7 +7677,11 @@ export class OrchestrationService {
             session.tenantExecutionContext = tenant;
           }
           const startOwner = startInput.metadata?.userId;
-          if (typeof startOwner === 'string' && startOwner)
+          if (
+            typeof startOwner === 'string' &&
+            startOwner &&
+            this.sessionAuthz.sessionOwnerUserId(session.threadId) === undefined
+          )
             this.sessionAuthz.bindStartOwner(session.threadId, startOwner);
           this.options.eventStore?.upsertSession(session);
         },
