@@ -7649,6 +7649,7 @@ export class OrchestrationService {
           this.startedSessionCommits.delete(threadId);
         },
         attachStarted: async (session, adapter, tenant, startInput) => {
+          this.assertAdapterCurrent(adapter);
           if (
             startInput.metadata?.[SESSION_VISIBILITY_METADATA_KEY] ===
             'ephemeral'
