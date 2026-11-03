@@ -171,6 +171,13 @@ vi.mock('@kontourai/station-sdk', () => ({
   // is navigation, so an empty notification list keeps it silent.
   LIVE_NOTIFICATION_STATUSES: ['pending', 'delivered'],
   useNotificationsQuery: () => ({ data: [] }),
+  // The deferred overlays' troubleshooting host (#4470) reads these at module
+  // load; a name missing here fails that lazy chunk into a second alert.
+  useEngineConnectionsQuery: () => ({ data: [] }),
+  usePrepareTroubleshootMutation: () => ({
+    mutateAsync: vi.fn(),
+    isPending: false,
+  }),
 }));
 // The SDK mock above covers the ROOT BARREL only. Query domains that ship as
 // dedicated subpath exports (to keep them out of the entry bundle's hoisted
