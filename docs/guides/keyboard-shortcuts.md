@@ -32,7 +32,7 @@ does not open while another dialog is open, and you can rebind it under
 phone or tablet without a keyboard cannot open it.
 
 Type to search. Results are grouped into commands, actions (such as opening the
-chat dock, a new Board, the tour or **Report a problem**), places to go,
+chat dock, a new Board, the tour, **Troubleshoot an issue** or **Report a problem**), places to go,
 plugins, Settings rows, open chats, Projects, workspace panes, Agents and
 skills. After two characters it also searches indexed conversation messages.
 Among close matches, items you use often rank higher; **Reset command history**

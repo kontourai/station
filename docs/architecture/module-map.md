@@ -139,12 +139,12 @@ and where to start reading; it is a pointer, not a reviewed interface contract.
 ## Durable Station Agent
 
 The [runtime owner](../../src-server/runtime/agents/durable-agent-owner.ts)
-consumes `@kontourai/agent-runtime` through its root contract and explicit `/internal` host integration entry. Its retained SQLite connection uses shared immutable history chunks, overwritten partial tails, indexed headers and per-turn change cursors. Model prefixes flush at 16 ms, 64 KiB or 128 parts; foreground projection transactions flush at 16 ms, 64 KiB or 1024 frames. Each frame keeps its identity. Owner checks and dispatch grants remain transactional. It is bound during
+consumes `@kontourai/agent-runtime` through its root contract and explicit `/internal` host integration entry. Its retained SQLite connection uses shared immutable native text, compressed frame blocks, overwritten partial tails, indexed headers and per-turn change cursors. Completed output owns its checked partial prefix; admission and settlement schedule idle reclamation through protected typed reference counts and indexed expiry/garbage queues. Retention pauses while any turn is running; SQLite FULL commits remain synchronous. Terminal replay expires after seven days, leaving a compact refusing identity tombstone and synthesized expiry frames. Uncertain nonterminal turns retain evidence. Model prefixes flush at 16 ms, 64 KiB or 1024 parts; foreground projection transactions flush at 16 ms, 64 KiB or 1024 frames. Each frame keeps its identity. Owner checks and dispatch grants remain transactional. It is bound during
 [runtime initialization](../../src-server/runtime/bootstrap/runtime-initialize.ts)
 behind the off-by-default **Crash-durable Station Agent** preview. The private
 SQLite journal owns the conversation fence, tool/model receipts, approval
 revision and deadline, cancellation request, terminal timestamp and transport
-frames. Station retains current Session authorization and native output authority. The frame ceiling is 1,048,576 per turn, above the default 200-step/400-chunk workload. New turns keep provider chunk boundaries; recovery retains the layout recorded by the original turn.
+frames. Station retains current Session authorization and native output authority. The frame ceiling is 1,048,576 per turn, above the default 200-step/400-chunk workload. New turns keep provider chunk boundaries; recovery retains the layout recorded by the original turn. Capacity reserves error/terminal positions and yields a typed output-limit message with blocked turn state. Prompt additions for post-tool steers are captured before dispatch and replay without a fresh inbox claim.
 
 [Recovery composition](../../src-server/runtime/agents/durable-agent-recovery.ts)
 waits for the original agent and Session, claims only a proven-dead owner, then

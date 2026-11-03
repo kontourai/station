@@ -472,9 +472,11 @@ test('a session.started publish that gives up leaves no interim owner', async ()
   const f = fixture({ contend: 'all' });
   try {
     await f.start('owner', { userId: 'owner' });
-    // Three contended attempts, then the publish is abandoned.
+    // Contention exhausts the asynchronous publication budget.
     await vi.waitFor(() => expect(f.attempts()).toBeGreaterThanOrEqual(3));
-    await vi.waitFor(() => expect(f.admits('owner')).toBe(false));
+    await vi.waitFor(() => expect(f.admits('owner')).toBe(false), {
+      timeout: 7500,
+    });
     expect(f.store.findSessionOwnerUserId(threadId)).toBeUndefined();
     expect(await f.send('owner')).toBe(
       `refused: Session not found: ${threadId}`,
@@ -579,11 +581,13 @@ test('a start whose session.started publish gave up before the start hook binds 
     // The engine reports its start, and the publish exhausts its retries
     // (nothing is appended) before startSession returns.
     f.adapter.beforeReturn = () =>
-      vi.waitFor(() =>
-        expect(f.warn).toHaveBeenCalledWith(
-          'Provider adapter event stream stopped',
-          expect.anything(),
-        ),
+      vi.waitFor(
+        () =>
+          expect(f.warn).toHaveBeenCalledWith(
+            'Provider adapter event stream stopped',
+            expect.anything(),
+          ),
+        { timeout: 7500 },
       );
     await expect(f.start('owner', { userId: 'owner' })).rejects.toMatchObject({
       kind: 'indeterminate',

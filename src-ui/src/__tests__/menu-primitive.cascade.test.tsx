@@ -392,7 +392,8 @@ const MENUS: readonly {
   {
     name: 'the header’s help menu',
     selector: '.app-toolbar__help-menu',
-    rowCount: 3,
+    // Two prompts, then "Troubleshoot with an agent" and "Report a problem".
+    rowCount: 4,
     open: () => {
       render(
         <HelpMenu

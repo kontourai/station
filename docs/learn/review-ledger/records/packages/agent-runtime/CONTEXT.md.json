@@ -154,7 +154,21 @@
 
     "src-server/runtime/streaming/__tests__/ReasoningHandler.test.ts",
 
-    "scripts/benchmark-agent-runtime.mts"
+    "scripts/benchmark-agent-runtime.mts",
+
+    "packages/agent-runtime/src/turn-body-codec.ts",
+
+    "packages/agent-runtime/src/turn-retention.ts",
+
+    "packages/agent-runtime/src/turn-effects.ts",
+
+    "packages/agent-runtime/src/turn-references.ts",
+
+    "packages/agent-runtime/src/__tests__/turn-retention.test.ts",
+
+    "packages/agent-runtime/src/__tests__/turn-retention-fixture.ts",
+
+    "packages/agent-runtime/src/__tests__/turn-retention.process.test.ts"
   ],
 
   "checks": []

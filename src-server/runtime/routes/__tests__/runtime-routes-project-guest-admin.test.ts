@@ -1617,8 +1617,26 @@ describe('project guest administration over the production composition', () => {
     ).toHaveLength(1);
   });
 
-  test('mounted Room Agent uses canonical orchestration, owner reads and selected answer publication without exposing private coordinates', async () => {
+  test('mounted Room Agent uses canonical orchestration, owner reads and selected answer publication without exposing private coordinates', async (testContext) => {
+    const started = performance.now();
+    const phases: Array<{ phase: string; ms: number }> = [];
+    const phase = (name: string) => {
+      if (phases.length === 24) phases.shift();
+      phases.push({
+        phase: name,
+        ms: Math.round(performance.now() - started),
+      });
+    };
+    testContext.onTestFinished(({ task }) => {
+      if (task.result?.state === 'fail')
+        console.warn(
+          'Room Agent publication timeout phases',
+          JSON.stringify(phases),
+        );
+    });
+    phase('fixture:start');
     const h = await setup(true);
+    phase('fixture:ready');
     const { project } = await h.shareWithGuestAdmin('agent-room', 'Agent Room');
     const shared = await h.graph.createTask({
       projectId: project.id,
@@ -1774,6 +1792,7 @@ describe('project guest administration over the production composition', () => {
       finishReason: 'stop',
       outputText: 'Selected shared answer',
     });
+    phase('publication:wait');
     await readRoomChangedAtLeast(roomEvents, 1);
     const reconciled = await h.request(
       `${base}/agents/${handle.requestId}/reconcile`,
@@ -1783,6 +1802,7 @@ describe('project guest administration over the production composition', () => {
     expect(
       (await readJson<{ data: { state: string } }>(reconciled)).data.state,
     ).toBe('published');
+    phase('publication:complete');
     const history = (
       await readJson<{ data: { messages: { text: string }[] } }>(
         await h.request(`${base}/messages`, guest()),
@@ -1854,12 +1874,14 @@ describe('project guest administration over the production composition', () => {
         }
         return answer;
       });
+    phase('revocation:wait');
     await answerReadAndNarrowed;
     const denied = await h.request(
       `${base}/agents/${pendingHandle.requestId}/reconcile`,
       post(guard),
     );
     expect(denied.status, await denied.clone().text()).toBe(403);
+    phase('revocation:complete');
     expect(selectedRead).toHaveBeenCalled();
     selectedRead.mockRestore();
     const repromoted = await h.request(

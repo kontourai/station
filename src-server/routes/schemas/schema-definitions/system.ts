@@ -373,6 +373,21 @@ export const pluginFetchSchema = z.object({
   body: z.unknown().optional(),
 });
 
+// Troubleshoot (#4470). Seed lengths are refused by the shared seed admitter
+// with a specific message; this schema only fixes the shape.
+export const troubleshootPrepareSchema = z
+  .object({
+    surface: z.enum(['desktop', 'web', 'mobile', 'unknown']).optional(),
+    seed: z
+      .object({
+        route: z.string().optional(),
+        errorSummary: z.string().optional(),
+      })
+      .strict()
+      .optional(),
+  })
+  .strict();
+
 // Feedback
 export const feedbackAnalyzeSchema = z.object({
   maxReinforce: z.number().int().min(1).max(50).optional(),

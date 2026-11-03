@@ -1,4 +1,5 @@
 import type { DatabaseSync } from 'node:sqlite';
+import { deflateSync, inflateSync } from 'node:zlib';
 import { z } from 'zod';
 import { canonical, fence, hash, runKey, text } from './encoding.js';
 import {
@@ -55,23 +56,28 @@ export function copyAgentEffect(effect: EffectRecord): EffectRecord {
 function partialBatches(
   parts: readonly string[],
   completeOnly = true,
+  width = 128,
 ): string[] {
   const batches: string[] = [];
   for (
     let offset = 0;
     offset <
-    (completeOnly ? parts.length - (parts.length % 128) : parts.length);
-    offset += 128
+    (completeOnly ? parts.length - (parts.length % width) : parts.length);
+    offset += width
   )
-    batches.push(agentWire(parts.slice(offset, offset + 128)));
+    batches.push(agentWire(parts.slice(offset, offset + width)));
   return batches;
 }
-function readPartialBatch(database: DatabaseSync, ref: string): string[] {
+function readPartialBatch(
+  database: DatabaseSync,
+  ref: string,
+  width = 128,
+): string[] {
   const parts = readAgentWire(readAgentBody(database, ref));
   if (
     !Array.isArray(parts) ||
     parts.length < 1 ||
-    parts.length > 128 ||
+    parts.length > width ||
     !parts.every((part) => typeof part === 'string')
   )
     throw new Error('DURABLE_AGENT_PARTIAL_BATCH_DAMAGED');
@@ -81,7 +87,12 @@ function readPartialBatch(database: DatabaseSync, ref: string): string[] {
 export function agentEffectHeader(
   database: DatabaseSync,
   effect: EffectRecord,
-  format: 1 | 2 | 3 = 3,
+  format: 1 | 2 | 3 | 4 | 5 = agentStatement(
+    database,
+    "SELECT writer_format IN ('agent-steps/11','agent-steps/12') AS compact FROM agent_steps_meta WHERE id=1",
+  ).get()?.compact === 1
+    ? 5
+    : 3,
 ): string {
   return canonical({
     ...effect,
@@ -89,23 +100,67 @@ export function agentEffectHeader(
     intent: { ...effect.intent, input: effect.inputDigest },
     attempts: effect.attempts.map((attempt) => ({
       ...attempt,
-      ...(format === 3
+      ...(format >= 3
         ? {
-            tail: attempt.partials.slice(
-              attempt.partials.length - (attempt.partials.length % 128),
-            ),
+            tail:
+              format >= 4
+                ? []
+                : attempt.partials.slice(
+                    attempt.partials.length -
+                      (attempt.partials.length % (format >= 5 ? 1024 : 128)),
+                  ),
             tailDigest: hash(
               canonical(
-                attempt.partials.slice(
-                  attempt.partials.length - (attempt.partials.length % 128),
-                ),
+                format >= 4 &&
+                  attempt.output !== null &&
+                  ['model', 'provider'].includes(effect.intent.kind)
+                  ? []
+                  : attempt.partials.slice(
+                      attempt.partials.length -
+                        (attempt.partials.length % (format >= 5 ? 1024 : 128)),
+                    ),
               ),
             ),
           }
         : {}),
-      partials: (format === 1
-        ? attempt.partials
-        : partialBatches(attempt.partials, format === 3)
+      ...(format >= 4
+        ? {
+            tailTape:
+              attempt.output !== null &&
+              ['model', 'provider'].includes(effect.intent.kind)
+                ? null
+                : deflateSync(
+                    JSON.stringify(
+                      attempt.partials.slice(
+                        attempt.partials.length -
+                          (attempt.partials.length %
+                            (format >= 5 ? 1024 : 128)),
+                      ),
+                    ),
+                  ).toString('base64'),
+            prefixLength:
+              attempt.output !== null &&
+              ['model', 'provider'].includes(effect.intent.kind)
+                ? attempt.partials.length
+                : null,
+            prefixDigest:
+              attempt.output !== null &&
+              ['model', 'provider'].includes(effect.intent.kind)
+                ? hash(canonical(attempt.partials))
+                : null,
+          }
+        : {}),
+      partials: (format >= 4 &&
+      attempt.output !== null &&
+      ['model', 'provider'].includes(effect.intent.kind)
+        ? []
+        : format === 1
+          ? attempt.partials
+          : partialBatches(
+              attempt.partials,
+              format >= 3,
+              format >= 5 ? 1024 : 128,
+            )
       ).map((wire) => agentBodyReference(database, wire)),
       output:
         attempt.output === null
@@ -325,31 +380,78 @@ export function readAgentEffect(
     return copyAgentEffect(prior.value);
   }
   const raw = JSON.parse(wire);
-  const tailed = raw?.version === 3;
+  const wide = raw?.version === 5;
+  const compact = raw?.version === 4 || wide;
+  const tailed = raw?.version === 3 || compact;
+  const prefixes: Array<{ length: number | null; digest: string | null }> = [];
   const batched = raw?.version === 2 || tailed;
   const tails: string[][] = [];
   if (tailed) {
     const stored = effectSchema
       .extend({
-        version: z.literal(3),
+        version: z.union([z.literal(3), z.literal(4), z.literal(5)]),
         attempts: z
           .array(
             effectSchema.shape.attempts.element.extend({
-              tail: z.array(payload).max(127),
+              tail: z.array(payload).max(1023),
               tailDigest: text,
+              tailTape: z.string().nullable().optional(),
+              prefixLength: z
+                .number()
+                .int()
+                .nonnegative()
+                .nullable()
+                .optional(),
+              prefixDigest: text.nullable().optional(),
             }),
           )
           .max(1024),
       })
       .parse(raw);
     for (const attempt of stored.attempts) {
-      if (hash(canonical(attempt.tail)) !== attempt.tailDigest)
+      const tail =
+        compact && attempt.tailTape !== undefined
+          ? attempt.tailTape === null
+            ? []
+            : z
+                .array(payload)
+                .max(wide ? 1023 : 127)
+                .parse(
+                  JSON.parse(
+                    inflateSync(Buffer.from(attempt.tailTape, 'base64'), {
+                      maxOutputLength: 64 * 1024 * 1024,
+                    }).toString('utf8'),
+                  ),
+                )
+          : attempt.tail;
+      if ((!wide && tail.length > 127) || (wide && tail.length > 1023))
         throw new Error('DURABLE_AGENT_PARTIAL_TAIL_DAMAGED');
-      for (const part of attempt.tail) readAgentWire(part);
-      tails.push(attempt.tail);
+      if (compact && attempt.tailTape !== undefined && attempt.tail.length)
+        throw new Error('DURABLE_AGENT_PARTIAL_TAIL_DAMAGED');
+      if (hash(canonical(tail)) !== attempt.tailDigest)
+        throw new Error('DURABLE_AGENT_PARTIAL_TAIL_DAMAGED');
+      for (const part of tail) readAgentWire(part);
+      tails.push(tail);
+      if (
+        compact &&
+        (attempt.prefixLength === undefined ||
+          attempt.prefixDigest === undefined)
+      )
+        throw new Error('DURABLE_AGENT_PARTIAL_BATCH_DAMAGED');
+      prefixes.push({
+        length: attempt.prefixLength ?? null,
+        digest: attempt.prefixDigest ?? null,
+      });
     }
     raw.attempts = stored.attempts.map(
-      ({ tail: _tail, tailDigest: _digest, ...attempt }) => attempt,
+      ({
+        tail: _tail,
+        tailDigest: _digest,
+        tailTape: _tape,
+        prefixLength: _length,
+        prefixDigest: _prefix,
+        ...attempt
+      }) => attempt,
     );
   }
   const header = effectSchema.parse(batched ? { ...raw, version: 1 } : raw);
@@ -375,6 +477,8 @@ export function readAgentEffect(
         'agent-steps/8',
         'agent-steps/9',
         'agent-steps/10',
+        'agent-steps/11',
+        'agent-steps/12',
       ].includes(
         String(
           agentStatement(
@@ -394,23 +498,52 @@ export function readAgentEffect(
         ...header.intent,
         input: readAgentBody(database, header.intent.input),
       },
-      attempts: header.attempts.map((attempt, index) => ({
-        ...attempt,
-        partials: [
-          ...attempt.partials.flatMap((ref) => {
-            if (!batched) return [readAgentBody(database, ref)];
-            const batch = readPartialBatch(database, ref);
-            if (tailed && batch.length !== 128)
-              throw new Error('DURABLE_AGENT_PARTIAL_BATCH_DAMAGED');
-            return batch;
-          }),
-          ...(tails[index] ?? []),
-        ],
-        output:
+      attempts: header.attempts.map((attempt, index) => {
+        const output =
           attempt.output === null
             ? null
-            : readAgentBody(database, attempt.output),
-      })),
+            : readAgentBody(database, attempt.output);
+        const prefix = prefixes[index];
+        if (prefix?.length !== null && prefix?.length !== undefined) {
+          if (
+            output === null ||
+            attempt.partials.length ||
+            tails[index]?.length ||
+            !['model', 'provider'].includes(header.intent.kind)
+          )
+            throw new Error('DURABLE_AGENT_PARTIAL_BATCH_DAMAGED');
+          const decoded = readAgentWire(output);
+          const parts =
+            header.intent.codec === 'strands-native/1' &&
+            decoded &&
+            typeof decoded === 'object' &&
+            'events' in decoded
+              ? decoded.events
+              : decoded;
+          if (!Array.isArray(parts) || prefix.length > parts.length)
+            throw new Error('DURABLE_AGENT_PARTIAL_BATCH_DAMAGED');
+          const partials = parts.slice(0, prefix.length).map(agentWire);
+          if (hash(canonical(partials)) !== prefix.digest)
+            throw new Error('DURABLE_AGENT_PARTIAL_BATCH_DAMAGED');
+          return { ...attempt, partials, output };
+        }
+        if (prefix?.digest !== null && prefix?.digest !== undefined)
+          throw new Error('DURABLE_AGENT_PARTIAL_BATCH_DAMAGED');
+        return {
+          ...attempt,
+          partials: [
+            ...attempt.partials.flatMap((ref) => {
+              if (!batched) return [readAgentBody(database, ref)];
+              const batch = readPartialBatch(database, ref, wide ? 1024 : 128);
+              if (tailed && batch.length !== (wide ? 1024 : 128))
+                throw new Error('DURABLE_AGENT_PARTIAL_BATCH_DAMAGED');
+              return batch;
+            }),
+            ...(tails[index] ?? []),
+          ],
+          output,
+        };
+      }),
     },
     true,
     header.intent.input,
@@ -424,14 +557,27 @@ function write(
   database: DatabaseSync,
   turnId: string,
   effect: EffectRecord,
-  format: 1 | 2 | 3 = 3,
+  format: 1 | 2 | 3 | 4 | 5 = agentStatement(
+    database,
+    "SELECT writer_format IN ('agent-steps/11','agent-steps/12') AS compact FROM agent_steps_meta WHERE id=1",
+  ).get()?.compact === 1
+    ? 5
+    : 3,
 ) {
   const input = putAgentBody(database, effect.intent.input);
   validate(effect, true, input);
   for (const attempt of effect.attempts) {
-    for (const part of format === 1
-      ? attempt.partials
-      : partialBatches(attempt.partials, format === 3))
+    for (const part of format >= 4 &&
+    attempt.output !== null &&
+    ['model', 'provider'].includes(effect.intent.kind)
+      ? []
+      : format === 1
+        ? attempt.partials
+        : partialBatches(
+            attempt.partials,
+            format >= 3,
+            format >= 5 ? 1024 : 128,
+          ))
       putAgentBody(database, part);
     if (attempt.output !== null) putAgentBody(database, attempt.output);
   }
@@ -442,9 +588,24 @@ function write(
     wire,
     effect,
   );
+  const compactRow =
+    effect.state === 'completed' &&
+    ['model', 'provider'].includes(effect.intent.kind);
+  const indexed =
+    agentStatement(
+      database,
+      'SELECT writer_format FROM agent_steps_meta WHERE id=1',
+    ).get()?.writer_format === 'agent-steps/12';
+  if (compactRow && indexed)
+    agentStatement(
+      database,
+      'DELETE FROM agent_steps_effects WHERE turn_id=? AND id=?',
+    ).run(turnId, effect.intent.id);
   agentStatement(
     database,
-    'INSERT INTO agent_steps_effects VALUES(?,?,?) ON CONFLICT(turn_id,id) DO UPDATE SET record=excluded.record',
+    compactRow && !indexed
+      ? 'INSERT OR REPLACE INTO agent_steps_effects VALUES(?,?,?)'
+      : 'INSERT INTO agent_steps_effects VALUES(?,?,?) ON CONFLICT(turn_id,id) DO UPDATE SET record=excluded.record',
   ).run(turnId, effect.intent.id, wire);
 }
 export function validateAgentEffects(database: DatabaseSync, turnId: string) {

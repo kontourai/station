@@ -60,6 +60,8 @@
     "./portability": "./src/portability.ts",
     "./ports": "./src/ports.ts",
     "./redaction": "./src/redaction.ts",
+    "./triage-context": "./src/triage-context.ts",
+    "./troubleshoot-playbook": "./src/troubleshoot-playbook.ts",
     "./regular-file": "./src/regular-file.ts",
     "./release-version-order": "./src/release-version-order.ts",
     "./tool-request-preview": "./src/tool-request-preview.ts",
