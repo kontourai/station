@@ -11,6 +11,7 @@ import {
   useCallback,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
 } from 'react';
@@ -24,10 +25,12 @@ import {
   BoardGlyph,
   CameraGlyph,
   CloseGlyph,
+  EditGlyph,
   GlobeGlyph,
   glyph,
   LockGlyph,
   PhoneGlyph,
+  RecordGlyph,
   RefreshGlyph,
   ShieldGlyph,
   TerminalGlyph,
@@ -68,16 +71,23 @@ import {
 } from '../../live-surface/LiveSurfaceCanvas';
 import { BrowserAcquisitionPanel } from './BrowserAcquisitionPanel';
 import { BrowserAgentSettingsPanel } from './BrowserAgentSettingsPanel';
+import { BrowserAnnotationFlow } from './BrowserAnnotationFlow';
 import {
   BrowserConsoleDrawer,
   useBrowserConsole,
 } from './BrowserConsoleDrawer';
 import { BrowserLocalTargetsPanel } from './BrowserLocalTargetsPanel';
+import { BrowserNetworkDrawer } from './BrowserNetworkDrawer';
 import {
   type BrowserMenuItem,
   BrowserOverflowMenu,
 } from './BrowserOverflowMenu';
 import { BrowserPageDialog } from './BrowserPageDialog';
+import {
+  BrowserRecordingButton,
+  BrowserRecordingStatus,
+  useBrowserRecording,
+} from './BrowserRecording';
 import {
   BrowserScreenshot,
   type BrowserScreenshotShot,
@@ -88,6 +98,7 @@ import {
 } from './BrowserSessionList';
 import { BrowserTabs } from './BrowserTabs';
 import { browserAddressInput } from './browserAddressInput';
+import { BROWSER_PAGE_CONTENT_NOTICE } from './browserArtifactContent';
 import {
   BROWSER_DEVICE_PRESETS,
   presetFor,
@@ -102,6 +113,7 @@ import {
   browserPaneKeys,
   describeBrowserFailure,
 } from './browserPaneApi';
+import { useBrowserArtifactIntake } from './useBrowserArtifactIntake';
 import './BrowserPane.css';
 
 /**
@@ -352,7 +364,10 @@ export default function BrowserPane({
 }: BrowserPaneProps) {
   const { apiBase } = useApiBase();
   const requestScope = useHostRequestAuthorityScope();
-  const api = browserPaneApi(apiBase, transport);
+  const api = useMemo(
+    () => browserPaneApi(apiBase, transport),
+    [apiBase, transport],
+  );
   const queryClient = useQueryClient();
   const visibility = useSurfaceVisibilityFlags();
   const [browserFocused, setBrowserFocused] = useState(false);
@@ -708,6 +723,7 @@ function BrowserSessionPane({
   transport: BrowserFetch;
 }) {
   const queryClient = useQueryClient();
+  const attachFiles = useBrowserArtifactIntake();
   const sessionKey = browserPaneKeys.session(apiBase, browserSessionId);
   /** Who controls the live view, as the canvas's own stream reports it. */
   const [control, setControl] = useState<LiveSurfaceControlState | null>(null);
@@ -731,9 +747,10 @@ function BrowserSessionPane({
     },
   });
   const [panel, setPanel] = useState<
-    'none' | 'sessions' | 'targets' | 'agents' | 'console'
+    'none' | 'sessions' | 'targets' | 'agents' | 'console' | 'network'
   >('none');
   const [addressFocused, setAddressFocused] = useState(false);
+  const artifactsEnabled = useSurfaceVisibilityFlags().has('browser-artifacts');
   const paneRef = useRef<HTMLDivElement>(null);
   const addressRef = useRef<HTMLInputElement>(null);
   const shortcutStore = useOptionalKeyboardShortcuts();
@@ -741,6 +758,7 @@ function BrowserSessionPane({
   const coarsePointer = useCoarsePointer();
   const narrow = useIsMobile();
   const [shot, setShot] = useState<BrowserScreenshotShot | null>(null);
+  const [annotating, setAnnotating] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [floating, setFloating] = useState(false);
   const floatVersion = useFloatStoreVersion();
@@ -908,6 +926,15 @@ function BrowserSessionPane({
       blob: await api.screenshot(browserSessionId),
       host: hostOf(record?.url ?? ''),
       takenAt: new Date(),
+      ...(record
+        ? {
+            provenance: {
+              browserSessionId,
+              generation: record.generation,
+              url: record.url,
+            },
+          }
+        : {}),
     }),
     onSuccess: (next) => {
       setShot(next);
@@ -973,6 +1000,12 @@ function BrowserSessionPane({
   });
 
   const live = record?.state === 'live';
+  const recording = useBrowserRecording(
+    api,
+    browserSessionId,
+    generation,
+    live && artifactsEnabled && generation !== undefined,
+  );
   const consoleState = useBrowserConsole({
     apiBase,
     api,
@@ -1208,8 +1241,9 @@ function BrowserSessionPane({
     if (preset) viewport.mutate(preset.viewport);
   };
 
-  const togglePanel = (next: 'sessions' | 'targets' | 'agents' | 'console') =>
-    setPanel((current) => (current === next ? 'none' : next));
+  const togglePanel = (
+    next: 'sessions' | 'targets' | 'agents' | 'console' | 'network',
+  ) => setPanel((current) => (current === next ? 'none' : next));
 
   let body: ReactNode;
   if (session.isPending) {
@@ -1330,6 +1364,35 @@ function BrowserSessionPane({
       disabled: !live || screenshot.isPending,
       onSelect: () => screenshot.mutate(),
     },
+    ...(artifactsEnabled
+      ? [
+          {
+            kind: 'action' as const,
+            id: 'record',
+            label: recording.active ? 'Stop recording' : 'Record',
+            glyph: <RecordGlyph />,
+            disabled:
+              !live ||
+              generation === undefined ||
+              recording.busy ||
+              recording.stopping ||
+              (!recording.active && recording.phase !== 'idle'),
+            onSelect: recording.toggle,
+          },
+        ]
+      : []),
+    ...(artifactsEnabled
+      ? [
+          {
+            kind: 'action' as const,
+            id: 'annotate',
+            label: 'Annotate',
+            glyph: <EditGlyph />,
+            disabled: !live || floating || generation === undefined,
+            onSelect: () => setAnnotating(true),
+          },
+        ]
+      : []),
     ...(experienceEnabled
       ? [
           {
@@ -1627,6 +1690,21 @@ function BrowserSessionPane({
             </span>
           ) : null}
         </IconButton>
+        {artifactsEnabled ? (
+          <BrowserRecordingButton
+            recording={recording}
+            live={live && generation !== undefined}
+          />
+        ) : null}
+        {artifactsEnabled ? (
+          <Button
+            size="sm"
+            disabled={!live}
+            onClick={() => togglePanel('network')}
+          >
+            Network
+          </Button>
+        ) : null}
         <BrowserOverflowMenu label="More browser actions" items={menuItems}>
           <MoreGlyph />
         </BrowserOverflowMenu>
@@ -1634,6 +1712,15 @@ function BrowserSessionPane({
       {!canDrive ? <p className="browser-pane__hint">View only</p> : null}
       {panel === 'console' ? (
         <BrowserConsoleDrawer read={consoleState.read} live={live} />
+      ) : null}
+      {panel === 'network' && artifactsEnabled ? (
+        <BrowserNetworkDrawer
+          api={api}
+          apiBase={apiBase}
+          browserSessionId={browserSessionId}
+          generation={generation ?? 0}
+          live={live}
+        />
       ) : null}
       {panel === 'sessions' ? (
         <BrowserSessionList
@@ -1680,6 +1767,20 @@ function BrowserSessionPane({
             {Math.round(zoomFactor * 100)}%
           </output>
         ) : null}
+        {annotating &&
+        live &&
+        !floating &&
+        record &&
+        generation !== undefined ? (
+          <BrowserAnnotationFlow
+            key={`${browserSessionId}:${generation}:${record.url}:${record.viewport.width}:${record.viewport.height}:${record.zoomFactor ?? 1}`}
+            stageRef={stageRef}
+            record={record}
+            api={api}
+            onClose={() => setAnnotating(false)}
+            onError={setNotice}
+          />
+        ) : null}
         {canDriveLive && record?.surfaceId && chipTone === 'agent' ? (
           <span className="browser-pane__takeover-hint" aria-hidden="true">
             {coarsePointer ? 'Tap' : 'Click'} anywhere to take over from the
@@ -1711,10 +1812,16 @@ function BrowserSessionPane({
             />
           </div>
         ) : null}
-        {notice || shot || (newDialog && !isDismissed(newDialog)) ? (
+        {notice ||
+        shot ||
+        (artifactsEnabled && (recording.phase !== 'idle' || recording.error)) ||
+        (newDialog && !isDismissed(newDialog)) ? (
           // Laid over the live view, never above it: a notice appearing must
           // not move the canvas under someone's pointer.
           <div className="browser-pane__notices">
+            {artifactsEnabled ? (
+              <BrowserRecordingStatus recording={recording} />
+            ) : null}
             {notice ? (
               <div className="browser-pane__overlay-notice">
                 <p className="browser-pane__notice" role="alert">
@@ -1730,7 +1837,73 @@ function BrowserSessionPane({
               </div>
             ) : null}
             {shot ? (
-              <BrowserScreenshot shot={shot} onDismiss={() => setShot(null)} />
+              <BrowserScreenshot
+                shot={shot}
+                onDismiss={() => setShot(null)}
+                {...(artifactsEnabled
+                  ? {
+                      onAttach: () => {
+                        void Promise.resolve()
+                          .then(async () => {
+                            const attach = attachFiles();
+                            const provenance = shot.provenance;
+                            if (!provenance)
+                              throw new Error(
+                                'Screenshot provenance is unavailable.',
+                              );
+                            const current = await api.sessionSummary(
+                              provenance.browserSessionId,
+                            );
+                            if (
+                              current.state !== 'live' ||
+                              current.generation !== provenance.generation ||
+                              current.url !== provenance.url
+                            )
+                              throw new Error(
+                                'The browser changed before the screenshot could be attached.',
+                              );
+                            return attach([
+                              new File(
+                                [shot.blob],
+                                `browser-screenshot.${shot.blob.type === 'image/jpeg' ? 'jpg' : 'png'}`,
+                                { type: shot.blob.type },
+                              ),
+                              new File(
+                                [
+                                  JSON.stringify(
+                                    {
+                                      kind: 'browser-screenshot',
+                                      observedAt: shot.takenAt.toISOString(),
+                                      browserSessionId:
+                                        provenance.browserSessionId,
+                                      generation: provenance.generation,
+                                      untrustedPageContent: {
+                                        notice: BROWSER_PAGE_CONTENT_NOTICE,
+                                        url: provenance.url,
+                                      },
+                                    },
+                                    null,
+                                    2,
+                                  ),
+                                ],
+                                'browser-screenshot.json',
+                                { type: 'application/json' },
+                              ),
+                            ]);
+                          })
+                          .then(
+                            () => setShot(null),
+                            (error) =>
+                              setNotice(
+                                error instanceof Error
+                                  ? error.message
+                                  : 'Could not attach screenshot.',
+                              ),
+                          );
+                      },
+                    }
+                  : {})}
+              />
             ) : null}
             {newDialog && !isDismissed(newDialog) ? (
               <div className="browser-pane__overlay-notice" role="status">

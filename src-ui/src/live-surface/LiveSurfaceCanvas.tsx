@@ -331,6 +331,9 @@ export function LiveSurfaceCanvas(props: LiveSurfaceCanvasProps) {
     if (canvas.width !== shown.width) canvas.width = shown.width;
     if (canvas.height !== shown.height) canvas.height = shown.height;
     headerRef.current = header;
+    canvas.dataset.surfaceWidth = String(shown.width);
+    canvas.dataset.surfaceHeight = String(shown.height);
+    canvas.dataset.surfaceScale = String(header.deviceScaleFactor);
     setFrameRotation(header.rotation ?? 0);
     setFrameSize((previous) =>
       previous?.width === shown.width && previous.height === shown.height

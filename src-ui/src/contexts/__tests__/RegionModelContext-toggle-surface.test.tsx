@@ -14,6 +14,7 @@
 import { act, cleanup, render, waitFor } from '@testing-library/react';
 import { useEffect } from 'react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { registerDevicePanePromotion } from '../../float-over-chat/floatStore';
 import { deviceSettingsStore } from '../../lib/device-settings-store';
 import { KeyboardShortcutsProvider } from '../KeyboardShortcutsContext';
 import { NavigationProvider } from '../NavigationContext';
@@ -243,4 +244,25 @@ describe('RegionModelProvider.toggleSurface', () => {
 
     expect(model?.regions).toBe(before);
   });
+});
+
+test('hiding a visible Device region requests promotion for both region and surface controls', async () => {
+  await mount();
+  act(() => model?.placeSurface('device', 'right'));
+  await waitFor(() =>
+    expect(model?.regions.right).toMatchObject({
+      occupant: 'device',
+      visible: true,
+    }),
+  );
+  const promote = vi.fn();
+  const release = registerDevicePanePromotion(promote);
+  act(() => model?.setRegion('right', { visible: false }));
+  expect(promote).toHaveBeenCalledTimes(1);
+  act(() => model?.setRegion('right', { visible: true }));
+  act(() => model?.toggleSurface('device'));
+  expect(promote).toHaveBeenCalledTimes(2);
+  act(() => model?.setRegion('right', { visible: false }));
+  expect(promote).toHaveBeenCalledTimes(2);
+  release();
 });
