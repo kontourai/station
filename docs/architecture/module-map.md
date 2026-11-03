@@ -603,8 +603,8 @@ Token routes recheck their caller, person binding and required scope inside the
 held mutation, after any wait; reset or narrowed access refuses publication.
 Personal group composition explicitly selects the environment owner's canonical
 raw-grant facet. Within its synchronous observation region, contiguous wrapper
-entries before each raw read share that read's fresh Home and physical-lease
-entry fence. This changes the number of filesystem observations; it does not
+entries before each raw read are omitted. Each raw read freshly validates both
+its originating Home context and its current physical-lease context. This changes the number of filesystem observations; it does not
 preserve failure injection at an eliminated redundant open. Both complete
 principal checks, independent request policy, signer reads and outer registry
 closing check remain. The raw reader checks uncertain publication before and

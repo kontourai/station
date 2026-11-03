@@ -1218,6 +1218,7 @@ interface CanonicalPairingReadOperations {
   withCurrentRegistry<Value>(check: () => Value): Value;
   readUnboundScope(candidate: string): string | undefined;
   readBorrowedUnboundScope(candidate: string): string | undefined;
+  assertBorrowedScope(): void;
   isRegistryScopeActive(): boolean;
 }
 const canonicalPairingReads = new WeakMap<
@@ -1351,6 +1352,7 @@ export class DevicePairingService {
           this.#writer.assertSynchronous();
           return this.#readUnboundScope(candidate);
         },
+        assertBorrowedScope: () => this.#writer.assertSynchronous(),
         isRegistryScopeActive: () =>
           this.#registrySnapshotActive || this.#registrySpanDepth > 0,
       }),

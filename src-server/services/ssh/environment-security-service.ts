@@ -557,7 +557,7 @@ export class EnvironmentSecurityService {
       [canonicalLocalGrantOriginBrand]: true as const,
     });
     const regions = new AsyncLocalStorage<object>();
-    const active = new WeakSet<object>();
+    const active = new WeakMap<object, () => void>();
     const requireOwner = () => {
       if (!this.#initialized || this.#devicePairingService !== pairing)
         throw new HomeWriterUnavailableError('identity-unavailable');
@@ -580,7 +580,9 @@ export class EnvironmentSecurityService {
         requireOwner();
         return reads.withCurrentRegistry(() => {
           const region = Object.freeze({});
-          active.add(region);
+          // A release notification can clear Home context independently.
+          const originalContext = AsyncLocalStorage.snapshot();
+          active.set(region, () => originalContext(reads.assertBorrowedScope));
           try {
             return regions.run(region, check);
           } finally {
@@ -594,8 +596,16 @@ export class EnvironmentSecurityService {
       },
       borrowedRegion,
       readBorrowedUnboundScope: (candidate: string, region: object) => {
-        if (borrowedRegion() !== region)
+        const assertOriginal = active.get(region);
+        if (borrowedRegion() !== region || !assertOriginal)
           throw new HomeWriterUnavailableError('borrow-unavailable');
+        try {
+          assertOriginal();
+        } catch (error) {
+          throw new HomeWriterUnavailableError('borrow-unavailable', false, {
+            cause: error,
+          });
+        }
         return reads.readBorrowedUnboundScope(candidate);
       },
     });

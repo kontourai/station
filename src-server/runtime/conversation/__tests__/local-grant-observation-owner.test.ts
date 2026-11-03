@@ -1090,6 +1090,8 @@ test('canonical origin refuses copied and foreign facets before independent poli
 
 test('borrowed canonical raw reads are confined to the issued synchronous region', async () => {
   const h = await setup();
+  const other = await setup();
+  const notifier = await HomeWriterOwner.forHome(other.home);
   const raw = readCanonicalLocalGrantOrigin(
     h.environment,
     h.environment.canonicalLocalGrantOrigin(),
@@ -1119,6 +1121,29 @@ test('borrowed canonical raw reads are confined to the issued synchronous region
       { reason: 'busy' },
     );
     assert.equal(escapedBody, false);
+    let notificationReached = false;
+    let notificationBody = false;
+    let notificationRefusal: unknown;
+    notifier.runSynchronous(() =>
+      notifier.afterRelease(() => {
+        notificationReached = true;
+        try {
+          raw.readBorrowedUnboundScope(h.paired.credential, region);
+          notificationBody = true;
+        } catch (error) {
+          notificationRefusal = error;
+        }
+      }),
+    );
+    assert.equal(notificationReached, true);
+    assert.equal(
+      notificationBody,
+      false,
+      'a valid original lease does not replace the missing current Home context',
+    );
+    assert.ok(notificationRefusal instanceof HomeWriterUnavailableError);
+    assert.equal(notificationRefusal.reason, 'borrow-unavailable');
+
     assert.ok(raw.readBorrowedUnboundScope(h.paired.credential, region));
     assert.throws(() => raw.readBorrowedUnboundScope(h.paired.credential, {}), {
       reason: 'borrow-unavailable',
@@ -1169,7 +1194,11 @@ test('borrowed canonical raw reads are confined to the issued synchronous region
 });
 
 test('canonical borrowed entry detects missing Home lease before independent policy', async () => {
-  const h = await setup();
+  let rawClockCalls = 0;
+  const h = await setup('local-grant', undefined, () => {
+    rawClockCalls++;
+    return Date.now();
+  });
   const authorize = vi.fn(
     (credential: string, route: { method: string; path: string }) =>
       h.environment.authorizeCredential(credential, route),
@@ -1193,8 +1222,14 @@ test('canonical borrowed entry detects missing Home lease before independent pol
   owner.withObservationScope(h.request, () => {
     authorize.mockClear();
     renameSync(path, moved);
+    rawClockCalls = 0;
     try {
       denied(lease.assertCurrent);
+      assert.equal(
+        rawClockCalls,
+        0,
+        'entry loss must refuse before the configurable raw clock',
+      );
       assert.equal(
         authorize.mock.calls.length,
         0,
@@ -1206,66 +1241,77 @@ test('canonical borrowed entry detects missing Home lease before independent pol
   });
   owner.withObservationScope(h.request, () => lease.assertCurrent());
   assert.ok(
+    rawClockCalls > 0,
+    'restored custody must reach the real raw clock',
+  );
+  assert.ok(
     authorize.mock.calls.length > 0,
     'restored custody must reach the real policy port',
   );
 });
 
-test('canonical region cannot borrow a new physical span after its original lease is released', async () => {
-  const h = await setup();
-  const writer = await HomeWriterOwner.forHome(h.home);
-  const raw = readCanonicalLocalGrantOrigin(
-    h.environment,
-    h.environment.canonicalLocalGrantOrigin(),
-  );
-  const lease = await writer.acquire();
-  const outside = AsyncLocalStorage.snapshot();
-  let released: Promise<void> | undefined;
-  let reachedNewSpan = false;
-  let protectedBody = false;
-  let refusal: unknown;
-  let closingFailure: unknown;
-  try {
+test.each(['snapshot', 'after-release'] as const)(
+  'canonical region cannot borrow a new physical span after its original lease is released (%s)',
+  async (contextEscape) => {
+    const h = await setup();
+    const other = await setup();
+    const notifier = await HomeWriterOwner.forHome(other.home);
+    const writer = await HomeWriterOwner.forHome(h.home);
+    const raw = readCanonicalLocalGrantOrigin(
+      h.environment,
+      h.environment.canonicalLocalGrantOrigin(),
+    );
+    const lease = await writer.acquire();
+    const outside = AsyncLocalStorage.snapshot();
+    let released: Promise<void> | undefined;
+    let reachedNewSpan = false;
+    let protectedBody = false;
+    let refusal: unknown;
+    let closingFailure: unknown;
     try {
-      writer.runWithLease(lease, () =>
-        raw.withObservationScope(() => {
-          const region = raw.borrowedRegion();
-          assert.ok(region);
-          released = lease.release();
-          outside(() =>
-            writer.runSynchronous(() => {
-              reachedNewSpan = true;
-              try {
-                raw.readBorrowedUnboundScope(h.paired.credential, region);
-                protectedBody = true;
-              } catch (error) {
-                refusal = error;
-              }
-            }),
-          );
-        }),
+      try {
+        writer.runWithLease(lease, () =>
+          raw.withObservationScope(() => {
+            const region = raw.borrowedRegion();
+            assert.ok(region);
+            released = lease.release();
+            const inNewSpan = () =>
+              writer.runSynchronous(() => {
+                reachedNewSpan = true;
+                try {
+                  raw.readBorrowedUnboundScope(h.paired.credential, region);
+                  protectedBody = true;
+                } catch (error) {
+                  refusal = error;
+                }
+              });
+            if (contextEscape === 'snapshot') outside(inNewSpan);
+            else
+              notifier.runSynchronous(() => notifier.afterRelease(inNewSpan));
+          }),
+        );
+      } catch (error) {
+        closingFailure = error;
+      }
+      assert.equal(
+        reachedNewSpan,
+        true,
+        'the replacement physical span must actually acquire',
       );
-    } catch (error) {
-      closingFailure = error;
+      assert.equal(
+        protectedBody,
+        false,
+        'old region must refuse before a protected read in the new span',
+      );
+      assert.ok(refusal instanceof HomeWriterUnavailableError);
+      assert.equal(refusal.reason, 'borrow-unavailable');
+      assert.ok(
+        closingFailure instanceof HomeWriterUnavailableError,
+        'the original released lease still fails its closing check',
+      );
+    } finally {
+      await released;
+      await lease.release();
     }
-    assert.equal(
-      reachedNewSpan,
-      true,
-      'the replacement physical span must actually acquire',
-    );
-    assert.equal(
-      protectedBody,
-      false,
-      'old region must refuse before a protected read in the new span',
-    );
-    assert.ok(refusal instanceof HomeWriterUnavailableError);
-    assert.equal(refusal.reason, 'borrow-unavailable');
-    assert.ok(
-      closingFailure instanceof HomeWriterUnavailableError,
-      'the original released lease still fails its closing check',
-    );
-  } finally {
-    await released;
-    await lease.release();
-  }
-});
+  },
+);
