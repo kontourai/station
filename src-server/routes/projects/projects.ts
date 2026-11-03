@@ -318,7 +318,7 @@ interface ProjectRouteDeps {
     terminalId: string,
   ) => Promise<boolean>;
   /** #3994: ends a deleted Project's running terminal sessions. */
-  endProjectTerminals?: (projectId: string) => Promise<unknown>;
+  endProjectTerminals?: (projectId: string) => Promise<number | undefined>;
   /**
    * archive#3778 — `OperatingStateService.hasBuilderRun`, the ONE Builder-run
    * predicate the Board's nav entry and route guard already consume. Injected
@@ -1513,7 +1513,7 @@ export function createProjectRoutes(
       // not reported as a failed delete.
       if (projectId && deps.endProjectTerminals)
         await deps.endProjectTerminals(projectId).catch((error: unknown) =>
-          logger.error('Ending a deleted Project terminals failed', {
+          logger.error("Ending a deleted Project's terminals failed", {
             error: errorMessage(error),
           }),
         );

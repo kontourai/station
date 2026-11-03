@@ -84,14 +84,21 @@ vi.mock('../../contexts/AuthorityPersistenceContext', () => ({
   }),
 }));
 const projects = vi.hoisted(() => ({
-  list: [{ id: 'project-a-id', slug: 'project-a', name: 'Project A' }] as {
+  list: [
+    {
+      id: 'project-a-id',
+      slug: 'project-a',
+      name: 'Project A',
+      workingDirectory: '/workspace',
+    },
+  ] as {
     id: string;
     slug: string;
     name: string;
+    workingDirectory: string;
   }[],
 }));
 vi.mock('../../contexts/ProjectsContext', () => ({
-  useProject: () => ({ project: { workingDirectory: '/workspace' } }),
   useScopedProjectsQuery: () => ({
     data: projects.list,
     isLoading: false,
@@ -182,7 +189,12 @@ beforeEach(() => {
   view.output = [];
   viewer.grant = { kind: 'operator' };
   projects.list = [
-    { id: 'project-a-id', slug: 'project-a', name: 'Project A' },
+    {
+      id: 'project-a-id',
+      slug: 'project-a',
+      name: 'Project A',
+      workingDirectory: '/workspace',
+    },
   ];
   vi.stubGlobal('matchMedia', () => ({ matches: false }));
 });

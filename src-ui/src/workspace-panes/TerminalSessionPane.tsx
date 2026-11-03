@@ -1,9 +1,9 @@
+import type { ProjectMetadata } from '@kontourai/station-contracts';
 import type { WorkspacePaneInstance } from '@kontourai/station-contracts/workspace-pane';
 import { useMemo } from 'react';
 import { TerminalPanel } from '../components/coding-layout/TerminalPanel';
 import { Empty } from '../components/state';
 import { useAuthorityPersistence } from '../contexts/AuthorityPersistenceContext';
-import { useProject } from '../contexts/ProjectsContext';
 import { FencedRelatedPane, RelatedPaneStrip } from './RelatedPaneStrip';
 import { viewerTerminalAuthority } from './relatedTerminalSessions';
 import {
@@ -65,11 +65,7 @@ function TerminalSessionRecord({
   return (
     <div className="related-pane">
       <RelatedPaneStrip instanceId={id} />
-      <TerminalSession
-        id={id}
-        state={state}
-        projectSlug={identity.project.slug}
-      />
+      <TerminalSession id={id} state={state} project={identity.project} />
     </div>
   );
 }
@@ -77,22 +73,21 @@ function TerminalSessionRecord({
 function TerminalSession({
   id,
   state,
-  projectSlug,
+  project,
 }: {
   id: string;
   state: TerminalPaneState;
-  projectSlug: string;
+  project: ProjectMetadata;
 }) {
   const { observation } = useAuthorityPersistence();
-  const { project } = useProject(projectSlug);
   const target = useMemo(
     () => ({ projectId: state.projectId, bindingKey: state.binding }),
     [state.binding, state.projectId],
   );
   return (
     <TerminalPanel
-      projectSlug={projectSlug}
-      workingDir={project?.workingDirectory ?? ''}
+      projectSlug={project.slug}
+      workingDir={project.workingDirectory ?? ''}
       target={target}
       terminalId={state.terminalId}
       viewKey={id}
