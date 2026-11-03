@@ -419,6 +419,7 @@ describe('device-session chat principal resolution over the REAL auth path (stat
        * orchestration service, behind `/api/knowledge`.
        */
       knowledge?: boolean;
+      onKnowledgeEmbed?: (texts: string[]) => void;
       fileMemoryKnowledge?: boolean;
       /**
        * M1: the real session read model and Flow-run read behind the spatial
@@ -673,7 +674,10 @@ describe('device-session chat principal resolution over the REAL auth path (stat
               id: 'stub-embedder',
               displayName: 'Stub embedder',
               dimensions: () => 4,
-              embed: async (texts: string[]) => texts.map(() => [1, 0, 0, 0]),
+              embed: async (texts: string[]) => {
+                orchestrationExtras.onKnowledgeEmbed?.(texts);
+                return texts.map(() => [1, 0, 0, 0]);
+              },
             }),
             knowledgeStoreProvider: await (async () => {
               const persistence = new FileStorageAdapter(roomHomeDir);
@@ -3963,9 +3967,11 @@ describe('device-session chat principal resolution over the REAL auth path (stat
     });
 
     test('author-private roots follow the personal account and refuse a delegation peer', async () => {
+      const embedded: string[][] = [];
       const { app, pairing, paired, knowledgeProvider, roomHomeDir } =
         await principalSetup({
           knowledge: true,
+          onKnowledgeEmbed: (texts) => embedded.push(texts),
         });
       const root = await knowledgeProvider!.createRoot({
         scope: { kind: 'project', projectSlug: 'private' },
@@ -4099,6 +4105,14 @@ describe('device-session chat principal resolution over the REAL auth path (stat
         storeRoot: makeTempDir('station-private-foreign-'),
         displayName: 'Another person private memory',
       });
+      await (await knowledgeProvider!.adapterFor(foreignRoot.id)).create({
+        type: 'raw',
+        title: 'Foreign',
+        body: 'Foreign private content',
+        category: 'test',
+        provenance: { agent: 'fixture' },
+      });
+      const beforeForeignRebuild = embedded.length;
       const foreignRebuild = await app.request(
         '/api/knowledge/index/rebuild',
         {
@@ -4111,6 +4125,7 @@ describe('device-session chat principal resolution over the REAL auth path (stat
         },
         REMOTE_TAILNET_ENV,
       );
+      expect(embedded).toHaveLength(beforeForeignRebuild);
       expect(foreignRebuild.status).toBe(403);
       for (const [credential, visible] of [
         [paired.credential, true],
