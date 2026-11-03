@@ -74,10 +74,13 @@
   pointer-events: none;
 }
 
+/* In the inline-end inset, out of flow: scrollback appearing must not take
+   columns from the grid and reflow the shell. */
 .station-terminal__scrollbar {
-  position: relative;
+  position: absolute;
+  inset-block: var(--k-space-2);
+  inset-inline-end: 1px;
   width: 10px;
-  flex: none;
   cursor: default;
   touch-action: none;
 }
@@ -301,7 +304,8 @@
   }
 
   .station-terminal__scrollbar {
-    width: 14px;
+    width: 12px;
+    inset-inline-end: 0;
   }
 }
 
