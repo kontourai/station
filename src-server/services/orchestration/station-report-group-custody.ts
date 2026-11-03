@@ -235,22 +235,52 @@ export class StationReportGroupCustody {
     context: RuntimeSourceRequestContext,
     preparer: StationReportGroupPreparation,
     handle: PreparedStationReportGroup,
+    publication?: ReportRoundsPublication,
   ): Promise<string> {
-    this.#request(context, 'POST');
-    const before = preparer.read(handle, context.req.raw);
+    const owner = publication
+      ? await HomeWriterOwner.forHome(
+          this.owners.environment.getProjectHomeDir(),
+        )
+      : undefined;
+    const admit =
+      publication && owner
+        ? <Value>(check: () => Value): Promise<Value> =>
+            publication.check(
+              {
+                owner,
+                current: () => {
+                  context.req.raw.signal.throwIfAborted();
+                  return undefined;
+                },
+              },
+              check,
+            )
+        : undefined;
+    const readBefore = () => {
+      this.#request(context, 'POST');
+      return preparer.read(handle, context.req.raw);
+    };
+    const before = admit ? await admit(readBefore) : readBefore();
     const authority = await captureEnvironmentLocalGrantObservationOwner(
       context.req.raw,
       this.owners.environment,
       this.owners.security,
+      admit,
     );
-    const lease = authority.requireCurrentLocalGrant(context.req.raw);
-    const prepared = preparer.read(handle, context.req.raw);
-    if (
-      !same(before, prepared) ||
-      prepared.root.issuer_host_id !== lease.hostContextId
-    )
-      refuse();
-    const preparationCurrent = (): undefined => {
+    const readPrepared = () => {
+      const lease = authority.requireCurrentLocalGrant(context.req.raw);
+      const prepared = preparer.read(handle, context.req.raw);
+      if (
+        !same(before, prepared) ||
+        prepared.root.issuer_host_id !== lease.hostContextId
+      )
+        refuse();
+      return { lease, prepared };
+    };
+    const { lease, prepared } = admit
+      ? await admit(readPrepared)
+      : readPrepared();
+    const assertPrepared = (): undefined => {
       return this.owners.environment.withCurrentAuthority(() => {
         lease.assertCurrent();
         this.#request(context, 'POST');
@@ -258,42 +288,65 @@ export class StationReportGroupCustody {
         return undefined;
       });
     };
-    if (prepared.intent.continuation) {
-      const reference = await this.owners.persistence.retainReportIntent(
-        prepared.spec.groupId,
-        prepared.intent,
-        preparationCurrent,
-      );
-      if (
-        !same(
-          reference,
-          reportAdmissionData(
-            prepared,
-            reportCredentialDigest(lease.principalCredential),
-          ).intentRef,
+    const retain = async (scope?: ReportRoundsScope) => {
+      const check = <Value>(work: () => Value): Value =>
+        scope ? scope.check(work) : work();
+      const preparationCurrent = (): undefined => check(assertPrepared);
+      const assertReturned = (current: () => undefined): void => {
+        try {
+          current();
+        } catch (error) {
+          if (!scope) throw error;
+          throw new DelegationRoundsTransactionUncertainError(
+            'returned-cleanup-unknown',
+            [error],
+          );
+        }
+      };
+      if (prepared.intent.continuation) {
+        const reference = await this.owners.persistence.retainReportIntent(
+          prepared.spec.groupId,
+          prepared.intent,
+          preparationCurrent,
+        );
+        if (scope) assertReturned(preparationCurrent);
+        if (
+          !same(
+            reference,
+            reportAdmissionData(
+              prepared,
+              reportCredentialDigest(lease.principalCredential),
+            ).intentRef,
+          )
         )
-      )
-        refuse();
-    }
-    const data = reportAdmissionData(
-      prepared,
-      reportCredentialDigest(lease.principalCredential),
-    );
-    const record: StationReportAdmission = {
-      data,
-      signature: reportAdmissionSignature(data, this.owners.environment),
+          refuse();
+      }
+      const data = reportAdmissionData(
+        prepared,
+        reportCredentialDigest(lease.principalCredential),
+      );
+      const record: StationReportAdmission = {
+        data,
+        signature: check(() =>
+          reportAdmissionSignature(data, this.owners.environment),
+        ),
+      };
+      const current = (): undefined =>
+        check(() =>
+          this.owners.environment.withCurrentAuthority(() => {
+            assertPrepared();
+            this.#verify(record);
+            return undefined;
+          }),
+        );
+      current();
+      await this.owners.persistence.retainReportAdmission(record, current);
+      assertReturned(current);
+      return data.spec.groupId;
     };
-    const current = (): undefined => {
-      return this.owners.environment.withCurrentAuthority(() => {
-        preparationCurrent();
-        this.#verify(record);
-        return undefined;
-      });
-    };
-    current();
-    await this.owners.persistence.retainReportAdmission(record, current);
-    current();
-    return data.spec.groupId;
+    return publication && owner
+      ? publication.withHome({ owner, current: assertPrepared }, retain)
+      : retain();
   }
 
   async #context(

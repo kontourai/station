@@ -132,7 +132,12 @@ export class StationReportGroupExecution {
         this.owners.environment.getProjectHomeDir(),
       );
       const prepared = preparation.read(handle, context.req.raw);
-      const groupId = await custody.retain(context, preparation, handle);
+      const groupId = await custody.retain(
+        context,
+        preparation,
+        handle,
+        publication,
+      );
       const current = (): undefined => {
         publication?.assertCurrent();
         requestCurrent();
@@ -1089,6 +1094,7 @@ export class StationReportGroupExecution {
         group: await custody.findOperationForMutation(
           context,
           input.operationId,
+          publication,
         ),
       };
     } finally {
