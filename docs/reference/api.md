@@ -2718,7 +2718,8 @@ Tombstones are pruned only when a new admission would exceed the 1,024-record or
 4 MiB budget, oldest first. Live claims and completed receipts within their
 window are never pruned to admit a new request. If eligible tombstones cannot
 free enough capacity, HTTP 429 `create_request_capacity` refuses before effects.
-Each pending request reserves 3 KiB. An invalid or oversized returned receipt
+Each pending request reserves 3 KiB for its receipt plus bounded ledger
+bookkeeping, including retention observations. An invalid or oversized returned receipt
 remains indeterminate rather than overflowing storage.
 
 A pruned tombstone no longer protects its key. Retain the original Session

@@ -2383,7 +2383,8 @@ remain indeterminate. This host-local clock uses the same host scope as the owne
 locks, not a cross-host lease. Unresolved claims remain inspection obligations:
 after their window, a durable Session start leaves a tombstone; without such a
 record the same key can retry and may repeat an earlier unrecorded effect. Before effects,
-the owner enforces 1,024 records and 4 MiB with 3 KiB reserved per pending receipt;
+the owner enforces 1,024 records and 4 MiB with 3 KiB reserved per pending receipt
+plus bounded ledger bookkeeping;
 capacity is a typed HTTP 429. Legacy unfinished claims remain indeterminate.
 Evidence: [claim lifecycle and capacity](../../src-server/services/orchestration/__tests__/create-request-claims.test.ts),
 [SIGKILL cuts](../../src-server/services/orchestration/__tests__/create-request-claims.process.test.ts),

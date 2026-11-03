@@ -29,6 +29,8 @@ import { chatTurnSubmissionDigest } from './turn-submission-digest.js';
 const MAX_CLAIMS = 1024;
 const MAX_LEDGER_BYTES = 4 * 1024 * 1024;
 const MAX_RECEIPT_BYTES = 3 * 1024;
+// Starting, completion and retention fields must fit after invocation.
+const RECEIPT_BOOKKEEPING_BYTES = 256;
 const RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 const MISSING = Symbol('missing-create-claims');
 type CreateHandle = DelegatedTaskHandle | ForegroundMessageHandle;
@@ -370,7 +372,7 @@ export class CreateRequestClaims {
             Object.values(ledger.claims).filter(
               (r) => !r.result && r.tombstoneAt === undefined,
             ).length *
-              (MAX_RECEIPT_BYTES + 128);
+              (MAX_RECEIPT_BYTES + RECEIPT_BOOKKEEPING_BYTES);
           return reservedBytes > MAX_LEDGER_BYTES ? 'bytes' : undefined;
         };
         let limit = capacity();
