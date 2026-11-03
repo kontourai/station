@@ -337,10 +337,7 @@ describe('configureRuntimeRoutes: station-control dispatch stays in scope (slice
     const result = configureRuntimeRoutes(
       context as unknown as Parameters<typeof configureRuntimeRoutes>[0],
     );
-    closers.push(async () => {
-      await result.projectTaskRoomRuntime?.close();
-      await result.projectRoomRuntime.close();
-    });
+    closers.unshift(() => result.projectRoomRuntime.close());
     await result.kitLifecycleReady;
     // A real loopback listener, so the runtime boundary sees a real peer.
     let resolvePort!: (port: number) => void;
