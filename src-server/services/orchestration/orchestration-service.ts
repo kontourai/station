@@ -7676,6 +7676,9 @@ export class OrchestrationService {
             this.sessionAuthz.bindTenantContext(session.threadId, tenant);
             session.tenantExecutionContext = tenant;
           }
+          const startOwner = startInput.metadata?.userId;
+          if (typeof startOwner === 'string' && startOwner)
+            this.sessionAuthz.bindStartOwner(session.threadId, startOwner);
           this.options.eventStore?.upsertSession(session);
         },
       },

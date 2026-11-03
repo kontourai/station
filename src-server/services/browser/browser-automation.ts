@@ -602,6 +602,17 @@ export interface BrowserAutomationDeps {
   >;
   surfaces: Pick<LiveSurfaceRegistry, 'get'>;
   surfaceIdFor(browserSessionId: string): string | undefined;
+  networkFor?(
+    browserSessionId: string,
+    after?: number,
+    limit?: number,
+  ): Promise<
+    | (ReturnType<
+        import('./browser-network-log.js').BrowserNetworkLog['read']
+      > & { generation: number })
+    | undefined
+  >;
+  networkPreviewEnabled?: () => boolean;
   agentActionsEnabled?: () => boolean;
   /**
    * Whether the session's page holds a dialog for a PERSON to answer. While
@@ -1819,6 +1830,63 @@ export class BrowserAutomation {
         },
       ),
     );
+  }
+
+  async network(
+    authority: BrowserAgentAuthority,
+    browserSessionId: unknown,
+    after = 0,
+    limit = 100,
+  ) {
+    if (!this.deps.networkPreviewEnabled?.())
+      return {
+        ok: false as const,
+        code: 'feature_preview_disabled' as const,
+        message: 'Enable Browser artifacts in Feature previews.',
+        previewId: 'browser-artifacts',
+        settingsPath:
+          '/settings?view=feature-previews&highlight=feature-previews',
+      };
+    if (!this.deps.settings.evaluateAllowed(authority.projectId)) {
+      const owned = this.select(authority, browserSessionId);
+      return 'ok' in owned
+        ? owned
+        : refuse('not-permitted', EVALUATE_NOT_PERMITTED, {
+            setting: 'browserEvaluate',
+          });
+    }
+    if (
+      !Number.isSafeInteger(after) ||
+      after < 0 ||
+      !Number.isSafeInteger(limit) ||
+      limit < 1 ||
+      limit > 100
+    )
+      return refuse('invalid-request', 'Network page bounds are invalid.');
+    return this.withLive(authority, browserSessionId, async (selected) => {
+      const result = await this.deps.networkFor?.(
+        selected.record.browserSessionId,
+        after,
+        limit,
+      );
+      if (!browserAgentGrantCurrent(authority.grant))
+        return refuse(
+          'not-authorized',
+          'The calling Session is no longer authorized.',
+        );
+      if (!this.deps.networkPreviewEnabled?.())
+        return refuse(
+          'not-permitted',
+          'Browser artifacts preview is disabled.',
+        );
+      if (!this.deps.settings.evaluateAllowed(authority.projectId))
+        return refuse('not-permitted', EVALUATE_NOT_PERMITTED, {
+          setting: 'browserEvaluate',
+        });
+      if (!result || result.generation !== selected.live.generation)
+        return refuse('not-live', 'Network diagnostics are unavailable.');
+      return { ok: true as const, ...PAGE, ...result };
+    });
   }
 
   /** A bounded accessibility snapshot with element refs, and a screenshot. */

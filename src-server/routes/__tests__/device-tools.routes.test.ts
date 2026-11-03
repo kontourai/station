@@ -5,8 +5,10 @@ import type {
   MobileDeviceSummary,
 } from '@kontourai/station-contracts/mobile-device';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { ZipFile } from 'yazl';
 import { readJson } from '../../__test-utils__/read-json.js';
 import type { DeviceAccess } from '../../services/devices/device-access.js';
+import { DeviceArtifactStaging } from '../../services/devices/device-app-artifacts.js';
 import { DeviceToolError } from '../../services/devices/device-host-tools.js';
 import type { DeviceSocket } from '../../services/devices/device-live-surface-producer.js';
 import { DeviceSessionService } from '../../services/devices/device-session-service.js';
@@ -92,6 +94,7 @@ afterEach(async () => {
 function setup(
   deviceLoopEnabled = () => true,
   runnerOverride?: DeviceToolRunner,
+  appInstall?: Parameters<typeof createDeviceToolsRoutes>[0]['appInstall'],
 ) {
   const calls: { tool: DeviceTool; args: string[] }[] = [];
   const runner = {
@@ -145,6 +148,33 @@ function setup(
   });
   const app = createDeviceToolsRoutes({
     deviceLoopEnabled,
+    ...(appInstall ? { appInstall } : {}),
+    actionHistory: {
+      read: (target) => {
+        const session = sessions.forDevice(target.platform, target.deviceId);
+        const entries = session
+          ? sessions.actionHistory(session.sessionId)
+          : undefined;
+        return session && entries
+          ? { sessionId: session.sessionId, entries }
+          : undefined;
+      },
+      installed: (target) => {
+        const session = sessions.forDevice(target.platform, target.deviceId);
+        return session
+          ? sessions.latestInstallation(session.sessionId)
+          : undefined;
+      },
+      installation: (target, value) => {
+        const session = sessions.forDevice(target.platform, target.deviceId);
+        if (session) sessions.noteInstallation(session.sessionId, value);
+      },
+      note: (target, action, outcome) => {
+        const session = sessions.forDevice(target.platform, target.deviceId);
+        if (session)
+          sessions.noteAction(session.sessionId, action, 'person', outcome);
+      },
+    },
     isRequestPrincipalCurrent: () => true,
     access: fakeAccess,
     tools,
@@ -193,6 +223,44 @@ const actionPath = (id = IOS) => `${toolsPath(id)}/actions`;
 const DARK = { type: 'set-appearance', appearance: 'dark' };
 
 describe('who may read and act (D12: view vs drive)', () => {
+  test('typed app action checks drive authority and reports the observed postcondition', async () => {
+    const runner: DeviceToolRunner = {
+      async run(_tool, args, options) {
+        await options.beforeRun?.();
+        if (args.includes('terminate')) return '';
+        if (args.includes('launchctl')) return 'PID Status Label\n- 0 other\n';
+        throw new DeviceToolError('tool-failed', 'unexpected');
+      },
+    };
+    const { call } = setup(() => true, runner);
+    const path = `${toolsPath()}/app-actions`;
+    expect(
+      (
+        await call('POST', path, 'contributor', {
+          type: 'terminate',
+          appId: 'com.example.app',
+        })
+      ).status,
+    ).toBe(403);
+    expect(
+      (
+        await call('POST', path, 'operator', {
+          type: 'terminate',
+          appId: 'com.example.app',
+          extra: true,
+        })
+      ).status,
+    ).toBe(400);
+    const response = await call('POST', path, 'operator', {
+      type: 'terminate',
+      appId: 'com.example.app',
+    });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      success: true,
+      data: { action: 'terminate', observed: 'not-running', hostId: 'local' },
+    });
+  });
   test('disconnect aborts the in-flight log runner', async () => {
     let started!: () => void;
     const running = new Promise<void>((resolve) => {
@@ -1334,4 +1402,203 @@ describe('a device on an SSH device host, served by that host (#2442)', () => {
       DEVICE_AX_RESPONSE_MAX_BYTES,
     );
   });
+});
+
+test('install requires current Project and device authority before invoking the selected host', async () => {
+  const staging = new DeviceArtifactStaging();
+  const archive = new ZipFile();
+  const chunks: Buffer[] = [];
+  const bytes = new Promise<Buffer>((resolve, reject) => {
+    archive.outputStream.on('data', (chunk: Buffer) => chunks.push(chunk));
+    archive.outputStream.on('end', () => resolve(Buffer.concat(chunks)));
+    archive.outputStream.on('error', reject);
+  });
+  archive.addBuffer(Buffer.from('manifest'), 'AndroidManifest.xml');
+  archive.end();
+  const receipt = await staging.stageUpload(
+    'project',
+    await bytes,
+    'android',
+    async () => true,
+  );
+  let allowed = true;
+  const run = vi.fn(
+    async (input: {
+      digest: string;
+      beforeInstall: () => Promise<boolean>;
+    }) => {
+      if (!(await input.beforeInstall()))
+        return {
+          ok: false as const,
+          code: 'interrupted',
+          effect: 'none' as const,
+        };
+      return {
+        ok: true as const,
+        digest: input.digest,
+        metadata: {
+          platform: 'android' as const,
+          abi: 'universal',
+          appId: 'com.example.app',
+          version: '1',
+          build: '1',
+          revision: null,
+          urlSchemes: [],
+        },
+      };
+    },
+  );
+  const { call } = setup(() => true, undefined, {
+    staging,
+    projectId: (slug) => (slug === 'demo' ? 'project' : undefined),
+    authorize: async () => allowed,
+    run,
+  });
+  const path =
+    '/hosts/local/devices/android/emulator-5554/tools/install?projectSlug=demo';
+  const body = { artifactHandle: receipt.handle };
+  const missing = await call('POST', path, 'operator', {
+    artifactHandle: '00000000-0000-4000-8000-000000000000',
+  });
+  expect(await missing.json()).toMatchObject({
+    code: 'artifact-unavailable',
+    effect: 'none',
+  });
+  expect((await call('POST', path, 'contributor', body)).status).toBe(403);
+  allowed = false;
+  expect((await call('POST', path, 'operator', body)).status).toBe(409);
+  expect(run).not.toHaveBeenCalled();
+  allowed = true;
+  const response = await call('POST', path, 'operator', body);
+  expect(response.status).toBe(200);
+  expect(await response.json()).toMatchObject({
+    success: true,
+    data: { digest: receipt.digest, metadata: { appId: 'com.example.app' } },
+  });
+  expect(run).toHaveBeenCalledWith(
+    expect.objectContaining({
+      hostId: 'local',
+      deviceId: 'emulator-5554',
+      digest: receipt.digest,
+    }),
+  );
+  await staging.dispose();
+});
+
+test('session history records human actions without their payload and requires device view access', async () => {
+  const env = setup();
+  const session = await env.sessions.open({
+    hostId: 'local',
+    platform: 'ios',
+    deviceId: IOS,
+  });
+  const response = await env.call('POST', actionPath(), 'operator', DARK);
+  expect(response.status).toBe(200);
+  expect(
+    (await env.call('GET', `${toolsPath()}/history`, 'contributor')).status,
+  ).toBe(403);
+  const history = await (
+    await env.call('GET', `${toolsPath()}/history`, 'operator')
+  ).json();
+  expect(history).toMatchObject({
+    success: true,
+    data: {
+      sessionId: session.sessionId,
+      entries: [{ action: 'tool-action', actor: 'person', outcome: 'success' }],
+    },
+  });
+  expect(JSON.stringify(history)).not.toContain('dark');
+});
+
+test('history marks pre-execution busy and invalid app actions as failed', async () => {
+  const env = setup(() => true, {
+    run: async () => {
+      throw new DeviceHostBusyError();
+    },
+  });
+  const session = await env.sessions.open({
+    hostId: 'local',
+    platform: 'ios',
+    deviceId: IOS,
+  });
+  await env.call('POST', actionPath(), 'operator', DARK);
+  await env.call('POST', `${toolsPath()}/app-actions`, 'operator', {
+    type: 'open-url',
+    appId: 'com.example.app',
+    url: 'unregistered://item',
+  });
+  expect(env.sessions.actionHistory(session.sessionId)).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({ action: 'tool-action', outcome: 'failed' }),
+      expect.objectContaining({ action: 'open-url', outcome: 'failed' }),
+    ]),
+  );
+});
+
+test('iOS URL schemes are bound to the installed app identity', async () => {
+  const env = setup();
+  const session = await env.sessions.open({
+    hostId: 'local',
+    platform: 'ios',
+    deviceId: IOS,
+  });
+  env.sessions.noteInstallation(session.sessionId, {
+    ok: true,
+    digest: 'sha256:fixture',
+    source: 'upload',
+    metadata: {
+      platform: 'ios',
+      abi: 'arm64',
+      appId: 'com.example.owner',
+      version: '1',
+      build: '1',
+      revision: null,
+      urlSchemes: ['example'],
+    },
+  });
+  const path = `${toolsPath()}/app-actions`;
+  const action = {
+    type: 'open-url',
+    appId: 'com.example.other',
+    url: 'example://item',
+  };
+  const rejected = await env.call('POST', path, 'operator', action);
+  expect(await rejected.json()).toMatchObject({ code: 'invalid-request' });
+  expect(env.calls).toHaveLength(0);
+  await env.call('POST', path, 'operator', {
+    ...action,
+    appId: 'com.example.owner',
+  });
+  expect(env.calls.some((call) => call.args.includes('openurl'))).toBe(true);
+});
+
+test('history records unknown when control changes after the app command dispatches', async () => {
+  let checks = 0;
+  const note = vi.fn();
+  const runner: DeviceToolRunner = {
+    async run(_tool, _args, options) {
+      await options.beforeRun?.();
+      return '';
+    },
+  };
+  const tools = new DeviceToolsService({
+    runner,
+    hub: { connect: async () => ({ ok: false, failure: 'hub-unavailable' }) },
+  });
+  const app = createDeviceToolsRoutes({
+    deviceLoopEnabled: () => true,
+    isRequestPrincipalCurrent: () => true,
+    access: fakeAccess,
+    tools,
+    resolveHumanCaller: () => ({ principal: 'user:ada', device: 'd' }),
+    controlConflict: () => (++checks <= 2 ? 'none' : 'other'),
+    actionHistory: { read: () => undefined, installation: () => {}, note },
+  });
+  const response = await app.request(`${toolsPath()}/app-actions`, {
+    method: 'POST',
+    headers: { 'x-test-actor': 'operator', 'content-type': 'application/json' },
+    body: JSON.stringify({ type: 'launch', appId: 'com.example.app' }),
+  });
+  expect(response.status).toBe(409);
+  expect(note).toHaveBeenCalledWith(expect.anything(), 'launch', 'unknown');
 });

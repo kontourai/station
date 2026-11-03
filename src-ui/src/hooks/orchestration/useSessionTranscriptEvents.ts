@@ -41,6 +41,7 @@ export function useSessionTranscriptEvents(
   apiBase: string,
   session: Pick<OrchestrationSessionSummary, 'threadId' | 'conversationId'>,
   isStreaming: boolean,
+  observation?: { live: false; revision: number },
 ) {
   // The live half of this transcript is the app-wide stream. The chat dock
   // and the Agents pane start it, but the detail must not depend on either
@@ -50,7 +51,7 @@ export function useSessionTranscriptEvents(
   const bootstrap = useClientBootstrapReadiness();
   const streamAuthorityKey = bootstrap.authorityKey;
   useEffect(() => {
-    if (bootstrap.status !== 'settled') return;
+    if (bootstrap.status !== 'settled' || observation?.live === false) return;
     return ensureOrchestrationEventStream(
       apiBase,
       queryClient,
@@ -64,6 +65,7 @@ export function useSessionTranscriptEvents(
     streamAuthorityKey,
     bootstrap.status,
     bootstrap.sharedRealtime,
+    observation?.live,
   ]);
 
   const [revision, setRevision] = useState(0);
@@ -76,7 +78,7 @@ export function useSessionTranscriptEvents(
   const window = useSessionEventWindow(
     apiBase,
     session.conversationId ?? session.threadId,
-    revision,
+    observation?.revision ?? revision,
     session.threadId,
   );
   const subscribeLive = useCallback(

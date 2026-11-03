@@ -564,6 +564,7 @@ export function HomeStartComposer({
           setMenu({ kind: 'agents', trigger });
         }}
         project={projectChip}
+        onClearProject={() => bindProject(GLOBAL_CONTEXT)}
         onOpenProject={(trigger) => setMenu({ kind: 'project', trigger })}
         overflowActions={
           visualSkillsEnabled

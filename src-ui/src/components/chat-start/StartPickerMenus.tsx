@@ -1,3 +1,4 @@
+import type { ComponentProps } from 'react';
 import type { AgentData } from '../../contexts/AgentsContext';
 import { useConfig } from '../../contexts/ConfigContext';
 import {
@@ -41,6 +42,7 @@ export function StartPickerMenus({
   enablePending,
   interactionDisabled,
   onChooseProject,
+  projectOverride,
   icons,
   accents,
 }: {
@@ -58,6 +60,15 @@ export function StartPickerMenus({
   enablePending: boolean;
   interactionDisabled?: boolean;
   onChooseProject: (context: string) => void;
+  projectOverride?: {
+    options: ComponentProps<typeof StartProjectMenu>['options'];
+    context: string;
+    workspaceHint: ComponentProps<typeof StartProjectMenu>['workspaceHint'];
+    folderlessHint?: ComponentProps<typeof StartProjectMenu>['folderlessHint'];
+    icons?: ReadonlyMap<string, string>;
+    accents?: ReadonlyMap<string, string>;
+    onChoose: (context: string) => void;
+  };
   icons: ReadonlyMap<string, string>;
   accents: ReadonlyMap<string, string>;
 }) {
@@ -132,18 +143,21 @@ export function StartPickerMenus({
       <StartProjectMenu
         anchor={menu.trigger}
         layer={layer}
-        options={viewModel.contextOptions}
-        selectedContext={context}
-        workspaceHint={workspaceHint}
-        folderlessHint={resolveNewChatWorkspaceHint({
-          agent: start.agent,
-          project: undefined,
-          acpConnections,
-        })}
-        icons={icons}
-        accents={accents}
+        options={projectOverride?.options ?? viewModel.contextOptions}
+        selectedContext={projectOverride?.context ?? context}
+        workspaceHint={projectOverride?.workspaceHint ?? workspaceHint}
+        folderlessHint={
+          projectOverride?.folderlessHint ??
+          resolveNewChatWorkspaceHint({
+            agent: start.agent,
+            project: undefined,
+            acpConnections,
+          })
+        }
+        icons={projectOverride?.icons ?? icons}
+        accents={projectOverride?.accents ?? accents}
         onChoose={(value) => {
-          onChooseProject(value);
+          (projectOverride?.onChoose ?? onChooseProject)(value);
           close();
         }}
         onClose={close}

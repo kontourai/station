@@ -5356,6 +5356,15 @@ generation (agent-capable requests read it only under `browserEvaluate`), and
 the registry's `captureScreenshot` serves the pane's screenshot, one capture
 in flight per session.
 
+The default-off Browser artifacts preview also binds `browser-network-log.ts`,
+which retains bounded, redacted request metadata in memory per generation.
+`browser-pick.ts` inspects a viewport point in an isolated world and captures
+an optional target PNG crop after checking page identity. The Browser pane's
+annotation overlay maps pointer positions to the target viewport; its file
+intake passes the image and JSON description to the selected conversation's
+existing attachment staging owner. A person can capture a bounded WebM through
+`browser-human-recording.ts`, save it locally, or stage four sampled frames with untrusted provenance in chat. A Task-bound person recording pins the workspace at start and can publish through the Task clip store after rechecks. Human and Task Browser capture share a runtime recording limiter. The separate Task recorder described below accepts a bound Agent call.
+
 **Evidence and limits.** Synthetic tests include `chromium-acquisition.test.ts`,
 `browser-session-registry.test.ts`, `egress-policy.test.ts`,
 `browser-live-surfaces.test.ts`, `browser-agent-authority.store.test.ts`,
@@ -6245,6 +6254,13 @@ The same registrar exposes `device_record_to_task` and `device_logs`. Device
 automation claims the input lease for each operation, refuses a human-held
 lease, and rechecks authority before publication. Recordings use the bounded
 Task clip store; logs run on the selected host through fixed tool vectors.
+The same Device registrar exposes typed app install, launch, terminate and URL
+operations. Project-scoped staging validates bounded workspace snapshots or
+uploads; the fixed host program inspects compatibility, waits for a fresh lease
+and Project admission, installs, and checks the resulting app identity. Session
+history retains bounded action metadata, and a person can publish a diagnostic
+JSON attachment to the Task room after current Task and device checks. Windows
+workspace snapshots currently refuse and authenticated SSH remains unverified.
 
 Evidence owners are
 [Timeline component tests](../../src-ui/src/views/task-workspace/__tests__/TaskOverviewTimeline.test.tsx)
