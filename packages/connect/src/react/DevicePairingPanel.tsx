@@ -12,6 +12,11 @@ import {
 } from '@kontourai/station-contracts';
 import { pairingStateCopy } from '@kontourai/station-contracts/pairing-copy';
 import {
+  parseStationRoutesResponse,
+  STATION_ROUTES_PATH,
+  type StationRoute,
+} from '@kontourai/station-contracts/station-routes';
+import {
   type ReactNode,
   useCallback,
   useEffect,
@@ -52,6 +57,12 @@ import {
   rememberPairingEndpoint,
   suggestPairingEndpoint,
 } from '../core/pairingEndpointSuggestion';
+import {
+  isPairableEndpoint,
+  type PairingRoute,
+  pairingRoutesFrom,
+  preferredPairingRoute,
+} from '../core/pairingRoutes';
 import { completePendingPairing } from '../core/pendingPairingCompletionLoader';
 import { PairedDeviceList } from './connection-manager-modal/PairedDeviceList';
 import {
@@ -1238,6 +1249,46 @@ function requestExpiryLabel(expiresAt: number, now: number): string {
     : `Expires in ${seconds}s`;
 }
 
+/** "Pair phone": the ways a phone can reach this Station, one tap each. */
+function PairingRouteChooser({
+  routes,
+  selected,
+  disabled,
+  onSelect,
+}: {
+  routes: readonly PairingRoute[];
+  selected: string | undefined;
+  disabled: boolean;
+  onSelect: (route: PairingRoute) => void;
+}) {
+  return (
+    <fieldset className="pairing-routes">
+      <legend>Your phone reaches this Station through</legend>
+      {routes.map((route) => (
+        <label
+          key={route.url}
+          className="pairing-route"
+          data-selected={selected === route.url ? 'true' : undefined}
+        >
+          <input
+            type="radio"
+            name="pairing-route"
+            value={route.url}
+            checked={selected === route.url}
+            disabled={disabled}
+            onChange={() => onSelect(route)}
+          />
+          <span className="pairing-route__text">
+            <span className="pairing-route__label">{route.label}</span>
+            <span className="pairing-route__hint">{route.hint}</span>
+            <code className="pairing-route__url">{route.url}</code>
+          </span>
+        </label>
+      ))}
+    </fieldset>
+  );
+}
+
 export function HostDevicePairingPanel({
   apiBase,
   publicEndpoint,
@@ -1247,7 +1298,14 @@ export function HostDevicePairingPanel({
   initialClientChannel = 'stable',
   onReconnect,
   renderPairingEndpointSuggestions,
+  quickPair = false,
 }: {
+  /**
+   * "Pair phone": open straight to a pairing code on the best route this
+   * Station reports, with every other reachable route one tap away. The
+   * access and address form stays available under "Other options".
+   */
+  quickPair?: boolean;
   renderPairingEndpointSuggestions?: (input: {
     apiBase: string;
     request: typeof fetch;
@@ -1346,6 +1404,7 @@ export function HostDevicePairingPanel({
     [apiBase],
   );
   const [reconnecting, setReconnecting] = useState(false);
+  const [creating, setCreating] = useState(false);
   // #2228 slice 3: a remembered reachable address (the tailnet or LAN URL the
   // operator last created an offer with for this Station) outranks the active
   // connection's own URL, which is loopback on a desktop host and points the
@@ -1888,23 +1947,27 @@ export function HostDevicePairingPanel({
     }
   };
 
-  const createOffer = async () => {
+  const creatingOffer = useRef(false);
+  /** Resolves whether a pairing code now exists for `target`. */
+  const createOffer = async (target: string = endpoint): Promise<boolean> => {
+    if (creatingOffer.current) return false;
     pollingPaused.current = false;
     setError(null);
     setAuthBlocked(false);
     setOperatorHandoff(false);
+    creatingOffer.current = true;
+    setCreating(true);
     try {
-      const address = new URL(endpoint);
-      if (
-        address.protocol !== 'https:' ||
-        address.username ||
-        address.password ||
-        isLoopbackUrl(address.href)
-      ) {
+      const address = new URL(target);
+      // A pairing code carries a secret, so the phone's decoder accepts only
+      // HTTPS; a loopback address would point the phone at itself.
+      if (!isPairableEndpoint(address.href)) {
         setError(
-          'Use a reachable HTTPS address for a pairing code. For a local HTTP address, choose Nearby Stations or enter the address on the phone and request access.',
+          isLoopbackUrl(address.href)
+            ? 'This address only works on this computer. Use an HTTPS address your phone can reach, such as Tailscale HTTPS.'
+            : 'Use a reachable HTTPS address for a pairing code. For a local HTTP address, choose Nearby Stations or enter the address on the phone and request access.',
         );
-        return;
+        return false;
       }
       const response = await authenticatedFetch('/api/pairing/offers', {
         method: 'POST',
@@ -1923,17 +1986,83 @@ export function HostDevicePairingPanel({
         setError(outcome.message);
         setAuthBlocked(outcome.auth);
         setOperatorHandoff(outcome.operatorHandoff ?? false);
-        return;
+        return false;
       }
       const value: unknown = await response.json();
       if (!isDevicePairingOffer(value)) throw new Error('Invalid offer');
-      rememberPairingEndpoint(apiBase, endpoint);
+      rememberPairingEndpoint(apiBase, address.origin);
       setOffer(value);
+      return true;
     } catch {
       setError(
         'Could not create a pairing code. Check the connection and try again.',
       );
+      return false;
+    } finally {
+      creatingOffer.current = false;
+      setCreating(false);
     }
+  };
+  const createOfferRef = useRef(createOffer);
+  createOfferRef.current = createOffer;
+
+  // "Pair phone": learn every reachable route, then open on the best one.
+  const [routes, setRoutes] = useState<PairingRoute[] | null>(null);
+  const [showOtherOptions, setShowOtherOptions] = useState(!quickPair);
+  const autoOfferAttempted = useRef(false);
+  useEffect(() => {
+    if (!quickPair) return;
+    let cancelled = false;
+    void (async () => {
+      let reported: StationRoute[] = [];
+      try {
+        const response = await authenticatedFetch(STATION_ROUTES_PATH);
+        if (response.ok)
+          reported =
+            parseStationRoutesResponse(await response.json())?.routes ?? [];
+      } catch {
+        // Routes are a convenience: the address this panel uses still counts.
+      }
+      if (!cancelled) setRoutes(pairingRoutesFrom(reported, publicEndpoint));
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [quickPair, authenticatedFetch, publicEndpoint]);
+  useEffect(() => {
+    if (!quickPair || routes === null || autoOfferAttempted.current) return;
+    autoOfferAttempted.current = true;
+    const preferred = preferredPairingRoute(
+      routes,
+      suggestPairingEndpoint(apiBase),
+    );
+    if (!preferred) {
+      setError(
+        'Pairing by code needs an HTTPS address your phone can reach, such as Tailscale HTTPS. On a local network, choose Nearby Stations on the phone, or enter this address there and request access.',
+      );
+      setShowOtherOptions(true);
+      return;
+    }
+    setEndpoint(preferred.url);
+    void createOfferRef.current(preferred.url).then((created) => {
+      // A refusal or failure keeps its message and reveals the address and
+      // access form, so there is always a next step.
+      if (!created) setShowOtherOptions(true);
+    });
+  }, [quickPair, routes, apiBase, setError]);
+  const selectRoute = async (route: PairingRoute) => {
+    if (creatingOffer.current || offer?.endpoint === route.url) return;
+    setEndpoint(route.url);
+    const previous = offer;
+    if (previous) {
+      setOffer(null);
+      // The replaced code must stop working; a failed cancel still expires.
+      void authenticatedFetch(
+        `/api/pairing/offers/${encodeURIComponent(previous.offerId)}`,
+        { method: 'DELETE' },
+      ).catch(() => undefined);
+    }
+    await createOffer(route.url);
   };
 
   const reconnect = async () => {
@@ -2437,7 +2566,32 @@ export function HostDevicePairingPanel({
           )}
         </section>
       )}
-      {!offer ? (
+      {quickPair && routes !== null && routes.length > 0 && (
+        <PairingRouteChooser
+          routes={routes}
+          selected={offer?.endpoint ?? (creating ? endpoint : undefined)}
+          disabled={creating}
+          onSelect={(route) => void selectRoute(route)}
+        />
+      )}
+      {!offer && quickPair && !showOtherOptions ? (
+        <div className="pairing-quick-status">
+          <p role="status">
+            {routes === null
+              ? 'Finding the addresses your phone can use…'
+              : creating
+                ? 'Creating a pairing code…'
+                : 'Choose how your phone reaches this Station.'}
+          </p>
+          <button
+            type="button"
+            className="pairing-link-btn"
+            onClick={() => setShowOtherOptions(true)}
+          >
+            Other options
+          </button>
+        </div>
+      ) : !offer ? (
         <>
           <p style={{ margin: 0, color: 'var(--text-secondary, #999)' }}>
             Create a single-use invitation with the access selected below.
@@ -2516,7 +2670,12 @@ export function HostDevicePairingPanel({
               authenticatedFetch(String(input), init),
             onSuggest: acceptEndpointSuggestion,
           })}
-          <button type="button" onClick={createOffer} style={primaryBtnStyle}>
+          <button
+            type="button"
+            onClick={() => void createOffer()}
+            disabled={creating}
+            style={primaryBtnStyle}
+          >
             Create pairing code
           </button>
         </>
@@ -2576,9 +2735,48 @@ export function HostDevicePairingPanel({
           <small style={{ color: 'var(--text-secondary, #999)' }}>
             Access: {describeDeviceScope(offer.scope)}
           </small>
-          <small>
-            Expires {new Date(offer.expiresAt).toLocaleTimeString()}
-          </small>
+          {quickPair ? (
+            <div className="pairing-quick-expiry">
+              <small aria-live="polite">
+                {offer.expiresAt > now
+                  ? requestExpiryLabel(offer.expiresAt, now)
+                  : 'This code expired.'}
+              </small>
+              {offer.expiresAt <= now && (
+                <button
+                  type="button"
+                  style={secondaryBtnStyle}
+                  disabled={creating}
+                  onClick={() => {
+                    const target = offer.endpoint;
+                    setOffer(null);
+                    void createOffer(target);
+                  }}
+                >
+                  New code
+                </button>
+              )}
+              <button
+                type="button"
+                className="pairing-link-btn"
+                onClick={() => {
+                  const previous = offer;
+                  setOffer(null);
+                  setShowOtherOptions(true);
+                  void authenticatedFetch(
+                    `/api/pairing/offers/${encodeURIComponent(previous.offerId)}`,
+                    { method: 'DELETE' },
+                  ).catch(() => undefined);
+                }}
+              >
+                Change access or address
+              </button>
+            </div>
+          ) : (
+            <small>
+              Expires {new Date(offer.expiresAt).toLocaleTimeString()}
+            </small>
+          )}
           <label style={{ display: 'grid', gap: 6, width: '100%' }}>
             Station app on your phone
             <select

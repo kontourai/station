@@ -13,7 +13,7 @@ import type { RelayManagementActorCurrency } from './relay-management-actor.js';
 import {
   getRuntimeAuthenticatedRequestPrincipal,
   getRuntimeNativeDeviceProofPrincipal,
-  isBoundRuntimeLocalOperator,
+  isBoundRuntimeOwner,
   isRuntimeNativeDeviceProofCurrent,
   isRuntimeRequestPrincipalCurrent,
 } from './runtime-request-security.js';
@@ -40,7 +40,7 @@ export function hasRelayManagementAuthority(
   if (!principal || !isRuntimeRequestPrincipalCurrent(request, security))
     return false;
   if (
-    isBoundRuntimeLocalOperator(request) ||
+    isBoundRuntimeOwner(request) ||
     (principal.authority === 'operator-credential' &&
       security.verifyOperatorCredential(principal.credential))
   )
@@ -99,7 +99,7 @@ export function captureRelayManagementApproval(
   const principal = getRuntimeAuthenticatedRequestPrincipal(request);
   const owner =
     principal?.authority === 'operator-credential' ||
-    isBoundRuntimeLocalOperator(request);
+    isBoundRuntimeOwner(request);
   if (!currency && !owner) throw new Error('relay_management_actor_required');
   if (!owner && actor.id === LOCAL_OPERATOR_PRINCIPAL_ID)
     throw new Error('relay_management_actor_required');

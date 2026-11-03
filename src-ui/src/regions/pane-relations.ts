@@ -64,6 +64,13 @@ export type PaneRelationTarget =
       readonly modeId: string;
       /** The plugin's own bounded, opaque target key. */
       readonly key: string;
+    }
+  | {
+      readonly kind: 'terminal';
+      readonly projectId: string;
+      /** The session's `bindingKey`: `project` or `thread:<id>`. */
+      readonly binding: string;
+      readonly terminalId: string;
     };
 
 /**
@@ -250,6 +257,20 @@ function parseTarget(value: unknown): PaneRelationTarget | null {
       descriptorId: value.descriptorId,
       modeId: value.modeId,
       key: value.key,
+    };
+  }
+  if (value.kind === 'terminal') {
+    if (
+      !boundedText(value.projectId, 256) ||
+      !boundedText(value.binding, 512) ||
+      !boundedText(value.terminalId, 64)
+    )
+      return null;
+    return {
+      kind: 'terminal',
+      projectId: value.projectId,
+      binding: value.binding,
+      terminalId: value.terminalId,
     };
   }
   return null;
@@ -540,6 +561,14 @@ function paneTargetKey(stationId: string, target: PaneRelationTarget): string {
         target.descriptorId,
         target.modeId,
         target.key,
+      ]);
+    case 'terminal':
+      return JSON.stringify([
+        'terminal',
+        stationId,
+        target.projectId,
+        target.binding,
+        target.terminalId,
       ]);
   }
 }

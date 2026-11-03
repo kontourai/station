@@ -1,0 +1,65 @@
+{
+  "revision": "54f1ed2db53dcdab8fe6d40aa2b0535d6b85b8dc",
+
+  "notes": [
+    {"path":"docs/architecture.md","note":"TerminalPanel gained an optional readOnly view for a plugin-opened terminal; the contracts package added the workspace-terminal-pane export; the SDK root re-exports two types. The terminal socket/listener prose is unchanged and still accurate. No prose change.","inputs":["docs/architecture.md","packages/contracts/package.json#/exports","packages/sdk/package.json#/exports","packages/sdk/src/index.ts","src-ui/src/components/coding-layout/TerminalPanel.tsx"]},
+
+    {"path":"docs/contexts/workspace-surfaces/CONTEXT.md","note":"region-model and region-surface-panes gained the terminal-pane: instance family, which fits the existing definitions of a Workspace Pane instance and related occurrence; the registry gained one entry. No term changes.","inputs":["docs/contexts/workspace-surfaces/CONTEXT.md","src-ui/src/regions/region-model.ts","src-ui/src/regions/region-surface-panes.ts","src-ui/src/workspace-panes/builtinWorkspacePaneRegistry.tsx"]},
+
+    {"path":"docs/design/knowledge-recall-ui.md","note":"packages/sdk/src/index.ts only gained two type re-exports (RelatedPaneOpenTarget, RelatedTerminalOpenRequest); no claim this document makes about the SDK root changed. No prose change.","inputs":["docs/design/knowledge-recall-ui.md","packages/sdk/src/index.ts"]},
+
+    {"path":"docs/design/pane-host-contract.md","note":"Updated the related-panes row: the terminal target is now routed by the shared host for both transports (framePaneHost forwards RelatedPaneOpenTarget unchanged; relatedPanesHost decodes it), checking binding against the captured Project and the viewer's terminal grant. Checked against relatedPanesHost.ts and its frame-transport test.","inputs":["docs/design/pane-host-contract.md","packages/contracts/src/workspace-pane-host-contract.ts","packages/sdk/src/index.ts","src-ui/src/components/plugins/framePaneHost.tsx"]},
+
+    {"path":"docs/design/pane-relationships.md","note":"pane-relations gained a closed `terminal` relation target; relatedPanesHost/openRelatedOccurrence open it through the same pipeline (guards, lock, fence, rollback). The SDK and plugins section's statement that built-in terminal requests need a separately closed, permission-gated target remains accurate and is now realized. No prose change.","inputs":["docs/design/pane-relationships.md","src-ui/src/contexts/openRelatedOccurrence.ts","src-ui/src/regions/pane-relations.ts","src-ui/src/regions/region-model.ts","src-ui/src/workspace-panes/__tests__/relatedPanesHost.test.tsx","src-ui/src/workspace-panes/relatedPanesHost.ts"]},
+
+    {"path":"docs/design/placement.md","note":"Added terminal-pane: to the INSTANCE_SURFACE_PREFIXES row and the default-region paragraph (bottom), matching region-model.ts and the region-model.test.ts default-region pin.","inputs":["docs/design/placement.md","src-ui/src/__tests__/region-model.test.ts","src-ui/src/index.css","src-ui/src/regions/region-model.ts","src-ui/src/regions/region-surface-panes.ts"]},
+
+    {"path":"docs/design/task-room-agent-requests.md","note":"packages/contracts/package.json exports only gained ./workspace-terminal-pane; the task-room-work export this document cites is unchanged. No prose change.","inputs":["docs/design/task-room-agent-requests.md","packages/contracts/package.json#/exports"]},
+
+    {"path":"docs/design/terminal.md","note":"Rewrote Plugins to describe the implemented target (viewer grant decides since plugin principals are refused; shell profile only; thread/session in captured Project else context-mismatch; terminal-pane: occurrence; sample plugin), and updated the status line and Delivery item 4. TerminalPanel's new readOnly option is described as watch-only. Checked against relatedPanesHost.ts, relatedTerminalSessions.ts, TerminalSessionPane.tsx and their tests.","inputs":["docs/design/terminal.md","src-ui/src/components/coding-layout/TerminalPanel.tsx","packages/contracts/src/terminal-transport.ts"]},
+
+    {"path":"docs/glossary.md","note":"docs/reference/contracts.md only gained the workspace-terminal-pane row; no glossary term changed. No prose change.","inputs":["docs/glossary.md","docs/architecture/module-map.md","docs/reference/contracts.md"]},
+
+    {"path":"docs/guides/delegation-attempt-claims.md","note":"builtinWorkspacePaneRegistry.tsx only gained the lazy `workspace-terminal` entry (TerminalSessionPane behind the canonical-instance check); no claim this document cites from it changed. No prose change.","inputs":["docs/guides/delegation-attempt-claims.md","src-ui/src/workspace-panes/builtinWorkspacePaneRegistry.tsx"]},
+
+    {"path":"docs/guides/home-transfer-controller.md","note":"builtinWorkspacePaneRegistry.tsx only gained the lazy `workspace-terminal` entry (TerminalSessionPane behind the canonical-instance check); no claim this document cites from it changed. No prose change.","inputs":["docs/guides/home-transfer-controller.md","src-ui/src/workspace-panes/builtinWorkspacePaneRegistry.tsx"]},
+
+    {"path":"docs/guides/integrating-station.md","note":"contracts.md gained a workspace-terminal-pane row and sdk.md an Opening a terminal subsection; this guide's routing to those references is unchanged and accurate. No prose change.","inputs":["docs/guides/integrating-station.md","docs/reference/contracts.md","docs/reference/sdk.md"]},
+
+    {"path":"docs/guides/private-runner-partition.md","note":"builtinWorkspacePaneRegistry.tsx only gained the lazy `workspace-terminal` entry (TerminalSessionPane behind the canonical-instance check); no claim this document cites from it changed. No prose change.","inputs":["docs/guides/private-runner-partition.md","src-ui/src/workspace-panes/builtinWorkspacePaneRegistry.tsx"]},
+
+    {"path":"docs/guides/product-law-authoring.md","note":"builtinWorkspacePaneRegistry.tsx only gained the lazy `workspace-terminal` entry (TerminalSessionPane behind the canonical-instance check); no claim this document cites from it changed. No prose change.","inputs":["docs/guides/product-law-authoring.md","src-ui/src/workspace-panes/builtinWorkspacePaneRegistry.tsx"]},
+
+    {"path":"docs/guides/repository-layout.md","note":"builtinWorkspacePaneRegistry.tsx only gained the lazy `workspace-terminal` entry (TerminalSessionPane behind the canonical-instance check); no claim this document cites from it changed. No prose change. examples/related-terminal follows the existing examples/ convention.","inputs":["docs/guides/repository-layout.md","src-ui/src/workspace-panes/builtinWorkspacePaneRegistry.tsx"]},
+
+    {"path":"docs/guides/responsive-ui.md","note":"packages/sdk/src/index.ts only gained two type re-exports (RelatedPaneOpenTarget, RelatedTerminalOpenRequest); no claim this document makes about the SDK root changed. No prose change.","inputs":["docs/guides/responsive-ui.md","docs/ui/responsive-action-surfaces.txt","packages/sdk/src/index.ts","pnpm-lock.yaml#/packages","pnpm-lock.yaml#/snapshots","src-ui/src/index.css"]},
+
+    {"path":"docs/guides/theming.md","note":"packages/sdk/src/index.ts only gained two type re-exports (RelatedPaneOpenTarget, RelatedTerminalOpenRequest); no claim this document makes about the SDK root changed. No prose change.","inputs":["docs/guides/theming.md","docs/ui/responsive-action-surfaces.txt","packages/sdk/src/index.ts","pnpm-lock.yaml#/packages","pnpm-lock.yaml#/snapshots","src-ui/src/index.css","src-ui/src/lib/root-theme.ts"]},
+
+    {"path":"docs/guides/work-board-security.md","note":"builtinWorkspacePaneRegistry.tsx only gained the lazy `workspace-terminal` entry (TerminalSessionPane behind the canonical-instance check); no claim this document cites from it changed. No prose change.","inputs":["docs/guides/work-board-security.md","src-ui/src/workspace-panes/builtinWorkspacePaneRegistry.tsx"]},
+
+    {"path":"docs/guides/workspace-packages.md","note":"builtinWorkspacePaneRegistry.tsx only gained the lazy `workspace-terminal` entry (TerminalSessionPane behind the canonical-instance check); no claim this document cites from it changed. No prose change.","inputs":["docs/guides/workspace-packages.md","src-ui/src/workspace-panes/builtinWorkspacePaneRegistry.tsx"]},
+
+    {"path":"docs/guides/workspace-pane-authoring.md","note":"Added a paragraph under Open related panes routing to the terminal target and the Related Terminal example; workspace-pane.ts only gained two type re-exports.","inputs":["docs/guides/workspace-pane-authoring.md","packages/sdk/src/workspace-pane.ts"]},
+
+    {"path":"docs/patterns/backend.md","note":"packages/sdk/src/index.ts only gained two type re-exports (RelatedPaneOpenTarget, RelatedTerminalOpenRequest); no claim this document makes about the SDK root changed. No prose change.","inputs":["docs/patterns/backend.md","docs/ui/responsive-action-surfaces.txt","packages/sdk/src/index.ts","pnpm-lock.yaml#/packages","pnpm-lock.yaml#/snapshots","src-ui/src/index.css"]},
+
+    {"path":"docs/patterns/frontend.md","note":"packages/sdk/src/index.ts only gained two type re-exports (RelatedPaneOpenTarget, RelatedTerminalOpenRequest); no claim this document makes about the SDK root changed. No prose change.","inputs":["docs/patterns/frontend.md","docs/ui/responsive-action-surfaces.txt","packages/sdk/src/index.ts","pnpm-lock.yaml#/packages","pnpm-lock.yaml#/snapshots","src-ui/src/index.css"]},
+
+    {"path":"docs/reference/contracts.md","note":"Added the workspace-terminal-pane subpath row (descriptor, terminal-pane: identity, instance helpers; grants nothing), matching packages/contracts/src/workspace-terminal-pane.ts and the package exports.","inputs":["docs/reference/contracts.md","packages/contracts/package.json","packages/contracts/package.json#/exports","packages/contracts/src/index.ts","packages/contracts/src/terminal-transport.ts"]},
+
+    {"path":"docs/reference/sdk.md","note":"Added Opening a terminal under Related panes: request shape, bounds, context-mismatch rules, viewer-grant authorization, read-only, tool presentation. Checked each claim against relatedPanesHost.ts and the terminal tests in relatedPanesHost.test.tsx and TerminalSessionPane.test.tsx.","inputs":["docs/reference/sdk.md","packages/sdk/package.json","packages/sdk/package.json#/exports","packages/sdk/src/index.ts","pnpm-lock.yaml#/packages","pnpm-lock.yaml#/snapshots","src-ui/src/contexts/openRelatedOccurrence.ts","src-ui/src/regions/pane-relations.ts","src-ui/src/workspace-panes/relatedPanesHost.ts"]},
+
+    {"path":"examples/README.md","note":"Added the Related Terminal row pointing at the new example.","inputs":["examples/README.md","package.json#/scripts/typecheck:examples"]},
+
+    {"path":"examples/meeting-transcription/README.md","note":"packages/sdk/src/index.ts only gained two type re-exports (RelatedPaneOpenTarget, RelatedTerminalOpenRequest); no claim this document makes about the SDK root changed. No prose change.","inputs":["examples/meeting-transcription/README.md","packages/sdk/src/index.ts"]},
+
+    {"path":"packages/contracts/AGENTS.md","note":"The new workspace-terminal-pane module holds only its own descriptor and pure instance helpers, consistent with the routed rules. No change.","inputs":["packages/contracts/AGENTS.md","docs/reference/contracts.md","packages/contracts/package.json#/exports"]},
+
+    {"path":"packages/contracts/README.md","note":"Exports gained ./workspace-terminal-pane; the README's import-the-owning-subpath guidance applies unchanged. No prose change.","inputs":["packages/contracts/README.md","packages/contracts/package.json#/exports","packages/contracts/src/index.ts"]},
+
+    {"path":"packages/sdk/AGENTS.md","note":"sdk.md gained the terminal subsection; the routed rule (plugins use stable SDK exports only) is enforced for the new sample by the import-boundary test. No change.","inputs":["packages/sdk/AGENTS.md","docs/reference/sdk.md","packages/sdk/package.json#/exports"]},
+
+    {"path":"packages/sdk/README.md","note":"index.ts and workspace-pane.ts only gained two type re-exports; README claims unchanged. No prose change.","inputs":["packages/sdk/README.md","packages/sdk/package.json#/exports","packages/sdk/src/index.ts","packages/sdk/src/workspace-pane.ts"]}
+  ]
+}

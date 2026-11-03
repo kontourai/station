@@ -79,8 +79,10 @@ disclosure revision across reloads. It does not create a server receipt or
 authorize Full; a changed revision or a saved Full choice prompts again.
 Setting-save failures show the server's refusal message.
 
-A standard paired device may lower or keep tiers. Only the operator or
-a device with `access:manage` may raise tiers. Agent-originated requests cannot
+A standard paired device may lower or keep tiers. Only the operator (including
+one of the owner's own devices with
+[owner-device standing](../security/remote-access-threat-model.md#owner-device-standing-2026-11-02))
+or a device with `access:manage` may raise tiers. Agent-originated requests cannot
 change telemetry choices or acknowledge the
 disclosure, even with `access:manage`.
 `GET /api/usage-telemetry/disclosure` (and the acknowledgement response) reports

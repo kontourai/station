@@ -2226,8 +2226,9 @@ a service not yet constructed returns 503 `telemetry_not_ready`.
 
 Save a choice with `PUT /config/app`, for example
 `{"telemetryTier":{"operator":"off"}}`. The other publisher's choice is
-preserved. Raising a tier requires the operator or `access:manage`; a standard
-paired device may lower or keep it. Agent-originated requests cannot change
+preserved. Raising a tier requires the operator (including one of the owner's
+own devices with [owner-device standing](../security/remote-access-threat-model.md#owner-device-standing-2026-11-02)) or `access:manage`; another
+standard paired device may lower or keep it. Agent-originated requests cannot change
 telemetry choices. `telemetryTier` must be an object
 with `kontour`, `operator` or valid `publisher:<id>` keys and `off`/`lite`/`full` values; malformed maps
 return a validation error with 400 before mutation. A previously saved Full
@@ -2855,8 +2856,9 @@ as totals for the selected window.
 `GET /api/analytics/station-usage` returns
 `{success: true, data: stats, scope: {kind: "station", stationId}}` with the
 local instance's retained-source statistics, including `byPrincipal`.
-Authorization uses the runtime-bound home-possession local-operator predicate;
-request flags, an ordinary paired credential, or a person attribution do not
+Authorization uses the runtime-bound owner predicate (home-possession, or one of
+the owner's own devices with [owner-device standing](../security/remote-access-threat-model.md#owner-device-standing-2026-11-02));
+request flags, another paired credential, or a person attribution do not
 grant it. Hosted deployments and tenant workers are refused. Missing operator
 authority returns 403 before a source read; responses use `Cache-Control: no-store`.
 Peer Stations are excluded. This is an instance overview, not a person billing
@@ -5595,7 +5597,11 @@ accounts, agents and plugins cannot use it. The Coding UI uses the
 [terminal socket](#terminal-socket-operator-transport) instead.
 
 - `POST` creates a session with `{cols, rows, bindingKey?, subdirectory?,
-  legacyTerminalId?}`. `bindingKey` defaults to `project`; `thread:<id>` resolves
+  legacyTerminalId?, adopt?}`. With `adopt: true` it answers with the binding's
+  running shell, marked `adopted: true`, when it has one. Opens are serialized,
+  so concurrent `adopt` requests on an empty binding share one new shell; an
+  older host answers 400. Each shell record carries `ordinal`, its stable
+  "Shell N" within the binding. `bindingKey` defaults to `project`; `thread:<id>` resolves
   through the request-authorized session workspace. Absolute directories,
   traversal and symlink escapes are refused. There is no caller-selected cwd,
   executable or environment. `legacyTerminalId` imports the route Project's
@@ -5615,6 +5621,12 @@ accounts, agents and plugins cannot use it. The Coding UI uses the
   `POST /:terminalId/resize` takes `{cols, rows, bindingKey?}`. Dimensions must be
   integers from 1 through 1,000. `DELETE /:terminalId?bindingKey=project` ends
   the shell and retains its record/journal. Ended sessions never auto-restart.
+- `POST /:terminalId/restart` takes `{bindingKey?, subdirectory?}` and is the
+  explicit restart the socket's `restart` command performs: same id, a new
+  journal segment, a directory confined to the binding. It returns the record
+  with `restart: {count, afterSeq, at}` and the journal's `lastSeq`. Agent
+  command sessions (`kind: "command"`) and server-owned launches are refused
+  (403).
 
 Ingress explicitly requires `terminal:observe` for GET/HEAD list and journal
 reads, and `terminal:operate` for POST/DELETE operations. Operate also satisfies
@@ -5631,17 +5643,27 @@ it cannot preserve the shell across a server restart. Under a process supervisor
 that grants `workloads` (protocol 1.3), the shell and its journal live in the
 supervisor's workload host instead. A session recorded as running is reattached,
 with the same pid and its whole journal, by the next core generation after a
-restart or handoff (see [Shell host](../design/terminal.md#shell-host)). Journal persistence and
-line/byte retention are configured at service construction. Settings and age-based
-retention remain pending. See the
-[implementation boundary](../design/terminal.md#first-implementation-boundary-3994-part-a).
+restart or handoff (see [Shell host](../design/terminal.md#shell-host)). A shell
+that ended because its host restarted reopens on start under the same id, in its
+directory, after a "restored after restart" divider, without re-running anything
+(`restoredAt` is set). History persistence, location, maximum age and the
+per-terminal and total sizes are the `terminalHistory*`
+[settings](config.md); see [Journal](../design/terminal.md#journal).
 
-Core session retention also has whole-store constructor budgets: 1 GiB disk,
-64 MiB of raw tail payload and 32 retained records by default, reserving each
-record's configured per-journal limits. Ended/failed sessions eligible for the
-caller's operate authority expire when a new slot is needed; active sessions
-are pinned. Startup enforces the fixed retention policy on restored metadata.
-Expired session ids are refused. This does not add Settings or clear-history UI.
+Core session retention reserves each record's per-terminal history against the
+total, with 64 MiB of raw tail payload and 32 retained records as constructor
+budgets. Agent command sessions (`kind: 'command'`) have a separate pool of 16
+records and only expire one another. Ended/failed sessions eligible for the caller's operate authority
+expire when a new slot is needed or once older than the maximum age; active
+sessions are pinned. Expired session ids are refused.
+
+`GET /api/terminal/history` (`terminal:observe`, operator only) returns
+`{enabled, directory, projects: [{projectId, terminals, running, bytes}],
+terminals, bytes}` for the sessions the caller may observe.
+`DELETE /api/terminal/history[?projectId=]` (`terminal:operate`) deletes the
+history of ended sessions in that Project, or everywhere, and returns
+`{cleared, running}`; running sessions keep theirs. Both are absent (404) on
+hosted Stations.
 The scoped service's POSIX node-pty close terminates discovered owned process groups; it does
 not merely send HUP to the shell pid. See the
 [retention and custody limits](../design/terminal.md#whole-store-retention-and-process-custody).
@@ -5707,7 +5729,15 @@ Project/binding authority through TerminalSessions.
   `records`. `resize` takes `{type, requestId, channel, cols, rows}`; `close`
   and `detach` take `{type, requestId, channel}`. They return `done`; an adjacent
   queued resize replaced by a newer resize returns `superseded`. Close ends
-  the shell; detach and socket loss leave it running. Restart is not admitted.
+  the shell; detach and socket loss leave it running.
+- `restart`: `{type, requestId, channel, subdirectory?}` requires operate
+  authority. It ends the attached session's program and starts it again under
+  the same `terminalId`; the journal continues in a new segment and earlier
+  output stays readable on the same channel. `subdirectory` (relative, at most
+  4,096 characters) moves it within the binding's root, refused like `open`'s;
+  without it the current directory is kept if it is still inside that root.
+  It returns `done` with `restartedAfterSeq`, the last sequence before the new
+  run. Server-owned launches and command sessions are refused.
 - `cwd`: `{type, requestId, channel}` returns `{type: "cwd", requestId,
   channel, cwd}` with the shell's current directory, or `null` when the host
   cannot tell. It requires operate authority.
@@ -5756,7 +5786,8 @@ before publication. Invalid frames return `invalid-frame`, authority/session
 refusals return generic `terminal-refused`, without exception details.
 
 `@kontourai/station-contracts/terminal-transport` exports the binary codec, the
-ticket and subprotocol constants, launch profiles and the scope predicate.
+ticket and subprotocol constants, launch profiles, the `restart` request shape
+and the scope predicate.
 `terminal:observe` is explicitly promotable and read-only; existing
 scopes/defaults/presets are unchanged. The SDK's `TerminalSessionStore` is the
 client for this protocol. A browser broker (DataChannel) route has no socket
@@ -6163,8 +6194,10 @@ sealing, activation, cancellation, recovery and evidence limits.
 
 ## Administer paired-device access
 
-The operator credential or a current ordinary Device explicitly granted
-`access:devices` can use these exact method/path pairs:
+The operator credential, a current ordinary Device explicitly granted
+`access:devices`, the host browser session, or one of the owner's own devices
+with [owner-device standing](../security/remote-access-threat-model.md#owner-device-standing-2026-11-02) (with the host browser's limits) can use these
+exact method/path pairs:
 
 - `GET /api/pairing/devices`
 - `POST /api/pairing/devices/:deviceId/scope` with `{ scope: string[], expectedScope?: string, resetFullAccess?: boolean }`
@@ -6278,8 +6311,8 @@ for precedence, rollback and what turning it off keeps.
 | `PUT` | `{ "enabled": false }` or `{ "enabled": true, "publicOrigin": "<offered origin>" }`, at most 4 KiB | `{ "changed": false }`, or HTTP 202 with `{ "changed": true, "confirmation": { "id": "<id>", "reviewUrl": "<url>", "expiresAt": 0 } }` (`expiresAt` is an epoch timestamp in milliseconds). |
 
 Both require the same operator authority as `/api/operator/accounts` (an
-operator credential or a home-possession Device; a device-bound operator
-session is not accepted) and the `access:manage` pairing scope. The transaction's
+operator credential, a home-possession Device or a Device with owner-device
+standing; a device-bound operator session is not accepted) and the `access:manage` pairing scope. The transaction's
 distinct-origin review binds the exact choice and revalidates authority and
 state before staging and requesting a handoff. Responses are
 `Cache-Control: no-store`. Refusals use the `success: false` envelope with a
@@ -6310,8 +6343,11 @@ canonical HTTPS origins, or an empty list when no mapping can be established.
 The daemon resolver checks this node's own Serve configuration against the
 Station API/UI-proxy port. This is configuration evidence, not phone reachability
 or approval; it does not enumerate other tailnet nodes, use allowed origins as
-mapping evidence or change Tailscale settings. The host UI applies an address
-only after an explicit Use action and requires reachable HTTPS for QR creation.
+mapping evidence or change Tailscale settings. The **Pair phone** panel lists the
+HTTPS routes below and these Serve origins, and opens a pre-approved code on the
+first one. A pairing code carries a secret and the phone's decoder accepts only
+HTTPS, so cleartext LAN or Tailscale IP routes and loopback are never offered,
+although the offer service itself accepts private-network HTTP.
 
 `GET /api/system/routes` is a read-tier leaf any paired device may call. It
 answers `{ "environmentId": string, "routes": [{ "kind": "lan" | "tailscale" |
@@ -6343,7 +6379,9 @@ Invitations do not grant the creator's private host-possession provenance.
 
 A host-issued browser session may create/cancel invitations, decide pending
 requests and manage already-paired Devices while retaining its effective
-`access:manage`. Its server-recorded `home-possession` locality and `ui-bootstrap`
+`access:manage`. On a personal Station, one of the owner's own devices that
+already holds a host shell has the same standing and limits
+([owner-device standing](../security/remote-access-threat-model.md#owner-device-standing-2026-11-02)). Its server-recorded `home-possession` locality and `ui-bootstrap`
 mint kind distinguish it from an ordinary Device with the same wire scope.
 This does not grant operator identity, people/account administration, passkey
 administration, or the native consent broker's `local-grant` authority.
@@ -6356,7 +6394,8 @@ administrators keep their separate authority.
 
 A current operator, qualifying local-grant credential, host-issued browser
 session with its private `ui-bootstrap` provenance and effective `access:manage`,
-or Device explicitly promoted with `access:approve` can use these exact routes:
+a Device with owner-device standing, or a Device explicitly promoted with
+`access:approve` can use these exact routes:
 
 - `GET /api/pairing/requests`
 - `POST /api/pairing/requests/:requestId/confirm`
@@ -6384,7 +6423,8 @@ a non-empty subset of the request's scope, for an ordinary device request only
 (not a delegation, relay or account binding). Omitted, it keeps everything
 requested. Keeping `coding:exec` or `approval:full-access` needs the operator
 credential, a qualifying local-grant credential, that host-issued browser
-session, or an operator passkey session followed by per-action review; an `access:approve` Device or
+session, a Device with owner-device standing, or an operator passkey session
+followed by per-action review; an `access:approve` Device or
 an unauthenticated approval is refused with 403
 `{ "error": "approval_requires_operator", "operatorCli": "…" }` and may approve
 the rest with them left out. Every such 403 carries `operatorCli`. A device

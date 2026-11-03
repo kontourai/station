@@ -222,10 +222,15 @@ async function createHarness(
   /** Mint a paired device over the real routes (operator-approved). */
   const pairDevice = async (
     name: string,
+    /** Omitted: the default grant, which carries a host shell (owner standing). */
+    scope?: string,
   ): Promise<{ device: PairedDevice; credential: string }> => {
     const offerResponse = await request(
       '/api/pairing/offers',
-      json({ endpoint: ORIGIN }, operatorCredential),
+      json(
+        { endpoint: ORIGIN, ...(scope !== undefined ? { scope } : {}) },
+        operatorCredential,
+      ),
     );
     expect(offerResponse.status).toBe(201);
     const offer = (await offerResponse.json()) as DevicePairingOffer;
@@ -379,7 +384,11 @@ afterEach(() => {
 describe('pairing approve/deny auth tier over the real boundary (#765 D5)', () => {
   test('a paired browser session is refused as insufficient scope, and its attention read says viewerCanDecide: false up front', async () => {
     const harness = await createHarness();
-    const paired = await harness.pairDevice('Paired browser');
+    // No host shell, so no owner standing (2026-11-02): an ordinary device.
+    const paired = await harness.pairDevice(
+      'Paired browser',
+      'orchestration:read orchestration:operate',
+    );
     // The session cookie carries the paired-device credential verbatim; the
     // cookie parser only admits this exact shape.
     expect(paired.credential).toMatch(/^[A-Za-z0-9_-]{43}$/);
@@ -463,10 +472,10 @@ describe('pairing approve/deny auth tier over the real boundary (#765 D5)', () =
       `/api/pairing/devices/${paired.device.id}/scope`,
       harness.json(
         {
+          // No host shell: access:approve alone, not owner standing.
           scope: [
             'orchestration:read',
             'orchestration:operate',
-            'terminal:operate',
             'access:approve',
           ],
           expectedScope: paired.device.scope,
@@ -700,7 +709,7 @@ describe('a request that asks for an elevated grant', () => {
   });
 });
 
-test('the desktop home-proven local grant can invite and approve a phone without elevating that phone', async () => {
+test("the desktop home-proven local grant can invite and approve a phone, which becomes one of the owner's own devices", async () => {
   const h = await createHarness();
   const mint = await h.request(
     '/.well-known/station/v1/pairing/local-grant',
@@ -764,6 +773,10 @@ test('the desktop home-proven local grant can invite and approve a phone without
     credential: string;
     device: PairedDevice;
   };
+  // Owner-device standing (2026-11-02): the phone's default grant carries a
+  // host shell, so it is one of the owner's own devices and may pair the
+  // next one, with the host browser's limits (no delegation, no protected
+  // scope) and without its stored grant changing.
   expect(
     (
       await h.request(
@@ -771,9 +784,20 @@ test('the desktop home-proven local grant can invite and approve a phone without
         h.json({ endpoint: ORIGIN }, phone.credential),
       )
     ).status,
+  ).toBe(201);
+  expect(
+    (
+      await h.request(
+        '/api/pairing/offers',
+        h.json({ endpoint: ORIGIN, kind: 'delegation' }, phone.credential),
+      )
+    ).status,
   ).toBe(403);
   expect(h.security.credentialMayDecidePairingRequests(phone.credential)).toBe(
-    false,
+    true,
+  );
+  expect(h.security.devicePairing.identifyDevice(phone.credential)?.scope).toBe(
+    phone.device.scope,
   );
   // The host-issued browser session can invite devices without acquiring
   // the native desktop grant used by the consent broker.
@@ -1211,11 +1235,25 @@ test('an operator-created invitation grants its assigned access once without a s
   expect(
     h.security.devicePairing.credentialLocality(device.credential),
   ).toBeUndefined();
+  // The invitation carried a host shell, so the device is one of the
+  // owner's own (owner-device standing, 2026-11-02): it may invite the next
+  // device, but never mint a protected promotion.
   expect(
     (
       await h.request(
         '/api/pairing/offers',
         h.json({ endpoint: ORIGIN }, device.credential),
+      )
+    ).status,
+  ).toBe(201);
+  expect(
+    (
+      await h.request(
+        '/api/pairing/offers',
+        h.json(
+          { endpoint: ORIGIN, scope: 'orchestration:read access:approve' },
+          device.credential,
+        ),
       )
     ).status,
   ).toBe(403);

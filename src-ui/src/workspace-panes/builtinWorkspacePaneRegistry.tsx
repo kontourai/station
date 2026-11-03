@@ -60,6 +60,10 @@ import {
   WORKSPACE_TASK_ROOM_EDITOR_RENDERER_NAME,
 } from '@kontourai/station-contracts/workspace-task-room';
 import {
+  isCanonicalWorkspaceTerminalPaneInstance,
+  WORKSPACE_TERMINAL_PANE_RENDERER_NAME,
+} from '@kontourai/station-contracts/workspace-terminal-pane';
+import {
   useFlowDefinitionsQuery,
   useProjectLayoutQuery,
   useTaskGraphQuery,
@@ -1106,6 +1110,27 @@ function ActivityReviewWorkspacePaneEntry({
   );
 }
 
+const LazyTerminalSessionPane = lazy(() =>
+  import('./TerminalSessionPane').then((m) => ({
+    default: m.TerminalSessionPane,
+  })),
+);
+function TerminalSessionWorkspacePaneEntry({
+  instance,
+}: BuiltinWorkspacePaneProps) {
+  if (!isCanonicalWorkspaceTerminalPaneInstance(instance))
+    return (
+      <WorkspacePaneBindingUnavailable
+        identity={{ state: 'pane-instance-invalid' }}
+      />
+    );
+  return (
+    <Suspense fallback={<SkeletonBlock count={3} label="Loading terminal" />}>
+      <LazyTerminalSessionPane instance={instance} />
+    </Suspense>
+  );
+}
+
 const builtinWorkspacePaneRegistry: Record<
   BuiltinWorkspacePaneRendererName,
   BuiltinWorkspacePaneComponent
@@ -1131,6 +1156,7 @@ const builtinWorkspacePaneRegistry: Record<
   [WORKSPACE_ACTIVITY_PANE_RENDERER_NAME]: ActivityWorkspacePaneEntry,
   [WORKSPACE_AGENTS_PANE_RENDERER_NAME]: AgentsWorkspacePaneEntry,
   [WORKSPACE_DEVICE_PANE_RENDERER_NAME]: DeviceWorkspacePaneEntry,
+  [WORKSPACE_TERMINAL_PANE_RENDERER_NAME]: TerminalSessionWorkspacePaneEntry,
   [WORKSPACE_SPATIAL_BOARD_PANE_RENDERER_NAME]: SpatialBoardWorkspacePaneEntry,
   [WORKSPACE_BOARD_PANE_RENDERER_NAME]: BoardWorkspacePaneEntry,
   [WORKSPACE_BASIS_PANE_RENDERER_NAME]: BasisWorkspacePaneEntry,
