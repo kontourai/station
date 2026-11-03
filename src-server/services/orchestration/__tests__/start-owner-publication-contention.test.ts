@@ -133,9 +133,6 @@ class EchoingAdapter extends GateTestAdapter {
       reason: 'The engine exited.',
     });
   }
-  override async stopSession(threadId?: string) {
-    if (threadId) this.sessions.delete(threadId);
-  }
   override async sendTurn(input: ProviderSendTurnInput) {
     this.turns.push(input);
     return { threadId: input.threadId, turnId: `turn-${this.turns.length}` };
@@ -226,10 +223,16 @@ function fixture(
   });
   const contend = options.contend ?? 'first';
   let attempts = 0;
+  let released = false;
+  const release = () => {
+    released = true;
+  };
+  const retryReached = vi.fn();
   const attempt = store.withImmediateWriteAttempt.bind(store);
   vi.spyOn(store, 'withImmediateWriteAttempt').mockImplementation((publish) => {
     attempts += 1;
-    if (contend === 'none' || (contend === 'first' && attempts > 1))
+    if (attempts > 1) retryReached(thread);
+    if (contend === 'none' || (contend === 'first' && released && attempts > 1))
       return attempt(publish);
     const peer = new DatabaseSync(path, { timeout: 0 });
     try {
@@ -240,19 +243,6 @@ function fixture(
       peer.close();
     }
   });
-  let release!: () => void;
-  const held = new Promise<void>((resolve) => {
-    release = resolve;
-  });
-  const retryReached = vi.fn();
-  const waitForWrite = store.waitForPublicationWrite.bind(store);
-  vi.spyOn(store, 'waitForPublicationWrite').mockImplementation(
-    async (thread, signal) => {
-      retryReached(thread);
-      if (contend === 'first') await held;
-      return waitForWrite(thread, signal);
-    },
-  );
   const start = (
     ownerStamp: string,
     context: {
@@ -479,7 +469,7 @@ test('a session.started publish that gives up leaves no interim owner', async ()
   const f = fixture({ contend: 'all' });
   try {
     await f.start('owner', { userId: 'owner' });
-    // Three contended attempts, then the publish is abandoned.
+    // Contention exhausts the asynchronous publication budget.
     await vi.waitFor(() => expect(f.attempts()).toBeGreaterThanOrEqual(3));
     await vi.waitFor(() => expect(f.admits('owner')).toBe(false), {
       timeout: 7500,
