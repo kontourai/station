@@ -151,7 +151,7 @@ export function terminalViewShortcuts(
     },
     {
       id: 'terminal.leave',
-      description: 'Leave the terminal (Shift+Tab: backwards)',
+      description: 'Leave the terminal',
       chords: [
         { key: 'Escape', modifiers: [] },
         { key: 'Tab', modifiers: [] },
