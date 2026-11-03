@@ -1,15 +1,8 @@
-import {
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  readdirSync,
-  rmSync,
-  symlinkSync,
-} from 'node:fs';
-import { tmpdir } from 'node:os';
+import { existsSync, mkdirSync, readdirSync, symlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import { TroubleshootReportBoundsError } from '@kontourai/station-contracts/troubleshoot';
-import { afterEach, describe, expect, test } from 'vitest';
+import { describe, expect, test } from 'vitest';
+import { trackTempDirs } from '../../../../src-server/__test-utils__/temp-dirs.js';
 import {
   admitTroubleshootSeed,
   boundedTriageLogTail,
@@ -31,15 +24,9 @@ import {
   validateTroubleshootContext,
 } from '../triage-context.js';
 
-const roots: string[] = [];
-afterEach(() => {
-  for (const root of roots.splice(0))
-    rmSync(root, { recursive: true, force: true });
-});
+const makeTempDir = trackTempDirs();
 function tempRoot(): string {
-  const root = mkdtempSync(join(tmpdir(), 'station-triage-context-'));
-  roots.push(root);
-  return root;
+  return makeTempDir('station-triage-context-');
 }
 
 const GITHUB_TOKEN = `ghp_${'a'.repeat(36)}`;
