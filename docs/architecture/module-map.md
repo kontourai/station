@@ -3167,6 +3167,13 @@ New managed paths use Project IDs so a replacement slug cannot reuse its
 predecessor's default storage. Legacy upload/migration stays in Project knowledge;
 Sources owns registration and attachment.
 
+An internally registered author-private root carries its owner in the registry
+and root identity. In personal mode, root and record reads admit that owner or
+an approved personal-account device; delegation peers and unknown callers are
+refused. Search rechecks the root and request authority at response delivery.
+Hosted access and the local source-observation path refuse this classification.
+Existing roots without the policy retain their prior access rules.
+
 The separate [Neo4j graph routes](../../src-server/routes/knowledge/neo4j-graph-routes.ts)
 require current access to the exact registered root. Graph and shortest-path
 reads require view access. Sync requires edit access for writable roots;
