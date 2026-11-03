@@ -46,9 +46,24 @@ parent/isolation helper passed in an earlier run. After fixing an existing
 first finalization, body/store-return exclusion and restart controls, then times
 out at its unchanged 60-second limit. Teardown cancels the following helper's Git
 initialization, so that run has two failures and no green-suite claim. An adjacent
-execution selection was interrupted explicitly and remains incomplete. No mutation
-has run for this repair. Timing diagnosis, adverse cleanup/currentness controls,
-mutation proof and independent review remain required before enabling serving.
+execution selection was interrupted explicitly and remains incomplete. A later diagnostic at `dcabcfce69c` and the ordinary suite at `3ce2ee5e4fc`
+both pass two tests with the original 60-second limit. The diagnostic's passive
+CPU preload emitted no profile, so it provides no performance attribution and
+does not explain the earlier timeout. The original full-caller failures remain.
+
+Independent source review at `dcabcfce69c` establishes no P0/P1 production defect.
+It identifies failure-unsafe phase gates and incomplete adverse caller proof.
+At `3ce2ee5e4fc`, phase waits observe early finalizer rejection and both gates are
+released in `finally` while owned work and shutdown settle. Server-test types
+pass. Baseline and byte-exact restoration each pass two cases; injecting a custody
+assertion before the callback signal reports that exact assertion with one failed
+case and one passing helper, without a timeout. Removing the production finalizer's
+transaction owner also fails, but at an earlier retained-winner assertion; that
+separate mutant does not prove phase-error reporting. No ready claim follows.
+
+In-flight abort/revocation, preparation-currentness through durable return,
+body-plus-physical-cleanup uncertainty and remaining mutation controls still need
+stronger caller proof before enabling serving.
 #4457 and #4467 were open at this checkpoint; the initialized accepted-start
 visibility case remains blocked on #4467's owner fix. Supported groups remain an
 open requirement.
