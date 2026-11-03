@@ -784,6 +784,14 @@ Task). `GET /api/orchestration/station-control/task-brief` takes an optional
 `include=all_records|summary_history`. `GET /api/tasks` adds
 `openQuestionCount` to a Task with open questions.
 
+Task-list rows can also include `workChatConversationIds`, an optional array
+of canonical Conversation IDs for Inbox presentation. It combines the Task's
+primary Session, dispatched independent Task-room requests, and explicit
+work-chat links. Each association is rechecked against the current Task and
+Project incarnation and the caller's Conversation read authority before
+delivery. It grants no access and does not modify the Task's lead assignment.
+Older servers may omit the field.
+
 ### Lessons from a done Task
 
 When a Task is done, its active, standing decisions and dead ends are

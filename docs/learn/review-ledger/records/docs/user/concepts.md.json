@@ -56,7 +56,13 @@
 
     "src-ui/src/hooks/useConversationInbox.ts",
 
-    "src-ui/src/components/chat/ConversationInboxMessages.tsx"
+    "src-ui/src/components/chat/ConversationInboxMessages.tsx",
+
+    "src-ui/src/lib/outboundQueue.ts",
+
+    "src-ui/src/hooks/outboundQueueProjection.ts",
+
+    "src-ui/src/__tests__/useOutboundQueueFlush.test.ts"
   ],
 
   "checks": [

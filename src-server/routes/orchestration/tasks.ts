@@ -36,6 +36,7 @@ import {
   type StationBasisProjection,
   type StationTaskBasisCollection,
 } from '@kontourai/station-contracts/task-basis';
+import type { TaskWorkChatPresentation } from '@kontourai/station-contracts/task-graph';
 import {
   readTaskProposal,
   taskProposalBrief,
@@ -433,6 +434,10 @@ export function createTaskRoutes(
     openQuestionCounts?: (
       tasks: readonly TaskRecord[],
     ) => ReadonlyMap<string, number>;
+    workChatConversations?: (
+      request: Request,
+      tasks: readonly TaskRecord[],
+    ) => Promise<ReadonlyMap<string, readonly string[]>>;
     proposalBriefAvailable?: () => boolean;
     seedProposalBrief?: (input: {
       taskId: string;
@@ -737,7 +742,7 @@ export function createTaskRoutes(
     return c.json({ success: false, error: 'Answer support unavailable' }, 404);
   };
 
-  app.get('/', (c) => {
+  app.get('/', async (c) => {
     // TaskGraphService is one global, unbound store. Do not partially filter
     // it: there is no per-record tenant authority to prove an emitted task or
     // relation safe. A later tenant-bound task store can replace this narrow
@@ -745,20 +750,41 @@ export function createTaskRoutes(
     const service = serviceForRequest(c.req.raw);
     if (!service) return c.json({ success: true, data: [] });
     const tasks = service.listTasks(c.req.query('projectId'));
+    const workChats = await options.workChatConversations?.(c.req.raw, tasks);
+    if (options.isRequestPrincipalCurrent?.(c.req.raw) === false)
+      return hostedNotFound(c);
+    const incarnations = new Map(
+      tasks.map((task) => [task.id, task.createdAt]),
+    );
+    const currentTasks = workChats
+      ? service
+          .listTasks(c.req.query('projectId'))
+          .filter((task) => incarnations.get(task.id) === task.createdAt)
+      : tasks;
     let counts: ReadonlyMap<string, number> | undefined;
     try {
-      counts = options.openQuestionCounts?.(tasks);
+      counts = options.openQuestionCounts?.(currentTasks);
     } catch {
       // The count is an attention hint; the Tasks list never fails on it.
       counts = undefined;
     }
-    const data: Array<TaskRecord & Partial<TaskMemoryAttention>> = counts
-      ? tasks.map((task) => {
+    const data: Array<
+      TaskRecord & Partial<TaskMemoryAttention> & TaskWorkChatPresentation
+    > = counts
+      ? currentTasks.map((task) => {
           const openQuestionCount = counts.get(task.id) ?? 0;
           return openQuestionCount > 0 ? { ...task, openQuestionCount } : task;
         })
-      : tasks;
-    return c.json({ success: true, data });
+      : currentTasks;
+    return c.json({
+      success: true,
+      data: workChats
+        ? data.map((task) => ({
+            ...task,
+            workChatConversationIds: workChats.get(task.id) ?? [],
+          }))
+        : data,
+    });
   });
 
   app.post('/', validate(taskCreateSchema), async (c) => {

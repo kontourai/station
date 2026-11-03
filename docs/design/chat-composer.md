@@ -1197,7 +1197,8 @@ surfaces. Imported conversations retain their origin. Phone Coding leaves the co
 title in the chat header and uses its breadcrumb for Inbox and pane navigation.
 Working chats are the first rows of the dock's
 keyboard-operable More menu; their count rides the inbox toggle, and is the
-number of inbox rows that say Running. On mobile, the title is one line with assistant context beneath it. The
+number of distinct running conversations, including folded work chats and
+excluding Task rows. On mobile, the title is one line with assistant context beneath it. The
 Project control is available before a conversation starts. The active
 conversation header leaves Project selection to the start composer.
 

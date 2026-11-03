@@ -17,6 +17,7 @@ import type {
   TaskUserInputReferenceProjection,
   TaskWorkspaceBinding,
 } from '@kontourai/station-contracts';
+import type { TaskWorkChatPresentation } from '@kontourai/station-contracts/task-graph';
 import type { TaskMemoryAttention } from '@kontourai/station-contracts/task-memory';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
@@ -152,7 +153,9 @@ export async function fetchTasks(
  * A Tasks-list row: the Task, and (#4003) its open Task-memory question
  * count when it has any, which Home and the inbox read for "Needs you".
  */
-export type TaskListRecord = TaskRecord & Partial<TaskMemoryAttention>;
+export type TaskListRecord = TaskRecord &
+  Partial<TaskMemoryAttention> &
+  TaskWorkChatPresentation;
 
 export async function fetchTask(
   taskId: string,

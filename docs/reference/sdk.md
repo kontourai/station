@@ -637,7 +637,8 @@ current revision, including a previous unlink tombstone, for an explicit relink.
 Conversation through the chat inbox's existing open resolver; linking does not
 start an Agent or create a subtask. Reparent invalidates the child and both old
 and new parent relationship queries, plus affected Task detail/graph and Task
-lists. Work-chat changes invalidate that Task's scoped work-chat list. Runtime
+lists. Work-chat changes invalidate that Task's scoped work-chat list and Task
+lists; independent room-request mutations also invalidate Task lists. Runtime
 must mount the dedicated relationship factory with current authority adapters
 before these APIs are available.
 
@@ -4466,7 +4467,10 @@ content, while retaining the observed HTTP status (usually 200).
   destination picker. `TaskDestinationRequestError` identifies a rejected
   destination read; both are exported from the SDK root and query barrel.
   It returns `TaskListRecord[]`: a `TaskRecord` plus `openQuestionCount`
-  when the Task has open Task-memory questions (#4003).
+  when the Task has open Task-memory questions (#4003), and optional
+  `workChatConversationIds` for authorized Inbox grouping. These canonical
+  Conversation IDs are a presentation projection, not a lead assignment or
+  permission grant. Servers predating that projection may omit it.
 
 ### Tracker-backed Tasks and Task memory (#4003)
 
