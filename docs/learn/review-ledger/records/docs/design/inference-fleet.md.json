@@ -52,7 +52,11 @@
 
     "package.json#/dependencies/@kontourai~1relay",
 
-    "package.json#/dependencies/@kontourai~1bearing"
+    "package.json#/dependencies/@kontourai~1bearing",
+
+    "packages/agent-runtime/src/turn-effects.ts",
+
+    "packages/agent-runtime/src/turn-journal.ts"
   ],
 
   "checks": [
