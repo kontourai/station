@@ -2502,6 +2502,8 @@ export class OrchestrationService {
         this.isRetryablePublishFailure(event, error),
     },
   );
+  private immediateObservedWrite = false;
+
   /**
    * #3560: how many observed-event retries are asleep or running per thread
    * (overlapping retries happen when an adapter is replaced while the old
@@ -2509,7 +2511,6 @@ export class OrchestrationService {
    * until the LAST retry finishes, so a window timer cannot drop it on the
    * warn path while any retry still sleeps.
    */
-  private immediateObservedWrite = false;
   private readonly observedRetryThreads = new Map<string, number>();
   /** Threads whose missing configuration has already been logged for monitoring. */
   private readonly monitoringUnconfiguredThreads = new Set<string>();
