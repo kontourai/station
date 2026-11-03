@@ -265,6 +265,9 @@ async function migrateNamespace(
   const { dataDir, store, indexProvider, embedder } = deps;
   const { projectSlug, namespace } = ref;
 
+  if (store.withRootRevision && !indexProvider.supportsRootRevision)
+    throw new Error('Knowledge index cannot pin a root revision.');
+
   const storageDir = defaultKnowledgeStorageDir(
     dataDir,
     projectSlug,
@@ -310,8 +313,6 @@ async function migrateNamespace(
     namespace,
     vectorNamespace,
   );
-  if (store.withRootRevision && !indexProvider.supportsRootRevision)
-    throw new Error('Knowledge index cannot pin a root revision.');
   const migrateIntoRoot = async (
     adapter: Awaited<ReturnType<KnowledgeStoreProvider['adapterFor']>>,
   ) => {

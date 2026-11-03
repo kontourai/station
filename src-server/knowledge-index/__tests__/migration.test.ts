@@ -382,12 +382,9 @@ describe('migratePreIndexKnowledge', () => {
       },
       { projectSlug: fixture.projectSlug },
     );
-    const root = (await actualStore.listRoots())[0];
     expect(result.namespaceResults[0]?.status).toBe('error');
     expect(embed).not.toHaveBeenCalled();
-    expect(
-      await (await actualStore.adapterFor(root.id)).listByType('raw'),
-    ).toHaveLength(0);
+    expect(await actualStore.listRoots()).toEqual([]);
   });
 
   test.each([
@@ -436,6 +433,33 @@ describe('migratePreIndexKnowledge', () => {
       expect(
         await (await actualStore.adapterFor(root.id)).listByType('raw'),
       ).toHaveLength(expectedRecords);
+    },
+  );
+
+  test.skipIf(process.platform === 'win32')(
+    'migration refuses when a registered root path cannot be resolved',
+    async () => {
+      const fixture = seedPreIndexFixture(homeDir, { vectorDim: 4 });
+      const actualStore = new KnowledgeStoreProvider(
+        new FileStorageAdapter(homeDir),
+      );
+      const loop = join(homeDir, 'unresolvable-root');
+      symlinkSync(loop, loop, 'dir');
+      await actualStore.createRoot({
+        scope: { kind: 'personal' },
+        adapterId: 'kit-default-store',
+        storeRoot: loop,
+        displayName: 'Unavailable',
+      });
+      const embedder = new StubEmbedder(4);
+      const embed = vi.spyOn(embedder, 'embed');
+      const result = await migratePreIndexKnowledge(
+        { dataDir: homeDir, store: actualStore, indexProvider, embedder },
+        { projectSlug: fixture.projectSlug },
+      );
+      expect(result.namespaceResults[0]?.status).toBe('error');
+      expect(embed).not.toHaveBeenCalled();
+      expect(await actualStore.listRoots()).toHaveLength(1);
     },
   );
 

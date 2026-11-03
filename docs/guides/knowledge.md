@@ -265,7 +265,9 @@ pending operation and clean up its journal. Thus source snapshot acquisition
 is not a zero-write inspection. The migration's own writes target the new
 store and derived index; healthy source files are retained.
 
-Migration refuses a destination that overlaps an author-private root. It also
+Migration requires revision support from the index provider when the store offers
+revision leases; an older provider is refused before the source snapshot or root
+registration. Migration refuses a destination that overlaps an author-private root. It also
 refuses when any registered root path cannot be resolved, because Station cannot
 rule out an overlap; repair or remove the unavailable registration before retrying.
 
