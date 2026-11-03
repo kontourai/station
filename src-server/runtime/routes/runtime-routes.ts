@@ -570,7 +570,10 @@ import {
   createProjectRoutes,
   type ProjectResolutionRouteDeps,
 } from '../../routes/projects/projects.js';
-import { createTerminalSessionRoutes } from '../../routes/projects/terminal-session-routes.js';
+import {
+  createTerminalHistoryRoutes,
+  createTerminalSessionRoutes,
+} from '../../routes/projects/terminal-session-routes.js';
 import { createUICommandRoutes } from '../../routes/projects/ui-commands.js';
 import { createConversationPullRequestLinkRoutes } from '../../routes/pull-requests/conversation-pull-request-links.js';
 import { createPullRequestRoutes } from '../../routes/pull-requests/pull-request-routes.js';
@@ -927,6 +930,7 @@ import {
   registerTerminalGateway,
   TerminalGateway,
 } from '../../services/terminal/terminal-gateway.js';
+import { resolveTerminalRetention } from '../../services/terminal/terminal-retention.js';
 import {
   TerminalSessionRefusal,
   TerminalSessions,
@@ -9619,6 +9623,12 @@ export function configureRuntimeRoutes(
             env: { PATH: await resolveAugmentedPath() },
           };
         },
+        // A shell that ended because its host restarted reopens only while
+        // its Project still exists; the session re-checks its directory.
+        restorable: async (scope) =>
+          context.storageAdapter
+            .listProjects()
+            .some((item) => item.id === scope.projectId),
         resolveRoot: async (request, scope) => {
           const project = context.storageAdapter
             .listProjects()
@@ -9641,6 +9651,13 @@ export function configureRuntimeRoutes(
           return root;
         },
       },
+      {},
+      {},
+      async () =>
+        resolveTerminalRetention(
+          await context.configLoader.loadAppConfig(),
+          context.configLoader.getProjectHomeDir(),
+        ),
     );
     scopedTerminals.sessions = terminalSessions;
     context.app.get(TERMINAL_SOCKET_PATH, (c) =>
@@ -9691,6 +9708,10 @@ export function configureRuntimeRoutes(
         // owner-device standing does not reach these slots.
         reserved: (request) => isOperatorAtHostNotAgent(request),
       }),
+    );
+    context.app.route(
+      '/api/terminal/history',
+      createTerminalHistoryRoutes(terminalSessions, authorizeTerminalRequest),
     );
     context.app.route(
       '/api/projects',

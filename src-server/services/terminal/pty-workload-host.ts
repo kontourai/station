@@ -10,7 +10,7 @@
  * exit the journal is flushed and closed before the exit is reported; the core
  * then reads it from disk.
  */
-import { type ChildProcess, spawn, spawnSync } from 'node:child_process';
+import { spawnSync } from 'node:child_process';
 import type {
   WorkloadErrorCode,
   WorkloadEventMessage,
@@ -20,6 +20,7 @@ import type {
   WorkloadSpawnRequest,
 } from '@kontourai/station-supervisor/protocol';
 import type { IPtyAdapter, IPtyProcess } from '../../domain/pty-adapter.js';
+import { CommandSpawnError, spawnCommandProcess } from './command-process.js';
 import { spawnFirstShell } from './shell-host.js';
 import { TerminalJournal } from './terminal-journal.js';
 
@@ -29,7 +30,6 @@ const EXITED_KEPT = 64;
 const KILL_GRACE_MS = 3_000;
 /** Termination fails when a workload has not exited this long after SIGKILL. */
 const KILL_DEADLINE_MS = 6_000;
-const DEFAULT_OUTPUT_CAP_BYTES = 16 * 1024 * 1024;
 
 export class WorkloadFailure extends Error {
   constructor(
@@ -45,60 +45,6 @@ interface Workload {
   process: IPtyProcess;
   journal: TerminalJournal;
   exited: Promise<void>;
-}
-
-/**
- * A `command` workload: no PTY, stdout and stderr journaled together. On
- * POSIX it leads its own process group so ending it reaches its children.
- */
-class CommandProcess implements IPtyProcess {
-  constructor(private readonly child: ChildProcess) {
-    child.stdout?.setEncoding('utf8');
-    child.stderr?.setEncoding('utf8');
-  }
-
-  get pid(): number {
-    return this.child.pid ?? -1;
-  }
-
-  pause(): void {
-    this.child.stdout?.pause();
-    this.child.stderr?.pause();
-  }
-
-  resume(): void {
-    this.child.stdout?.resume();
-    this.child.stderr?.resume();
-  }
-
-  write(data: string): void {
-    this.child.stdin?.write(data);
-  }
-
-  resize(): void {}
-
-  kill(signal?: string): void {
-    this.child.kill((signal as NodeJS.Signals | undefined) ?? 'SIGTERM');
-  }
-
-  onData(cb: (data: string) => void): () => void {
-    this.child.stdout?.on('data', cb);
-    this.child.stderr?.on('data', cb);
-    return () => {
-      this.child.stdout?.off('data', cb);
-      this.child.stderr?.off('data', cb);
-    };
-  }
-
-  onExit(
-    cb: (event: { exitCode: number; signal: number | null }) => void,
-  ): () => void {
-    // `close`, not `exit`: every byte of its output has been read by then.
-    const listener = (code: number | null) =>
-      cb({ exitCode: code ?? -1, signal: null });
-    this.child.once('close', listener);
-    return () => this.child.off('close', listener);
-  }
 }
 
 export interface PtyWorkloadHostOptions {
@@ -159,7 +105,9 @@ export class PtyWorkloadHost {
   }
 
   private async spawn(request: WorkloadSpawnRequest): Promise<WorkloadInfo> {
-    if (this.workloads.has(request.workloadId))
+    // An exited workload's id may run again: a restarted session keeps its
+    // id and continues its journal in a new segment.
+    if (this.workloads.get(request.workloadId)?.info.state === 'running')
       throw new WorkloadFailure('exists', 'that workload already exists');
     const journal = new TerminalJournal(
       request.journal.directory,
@@ -177,7 +125,7 @@ export class PtyWorkloadHost {
             })),
             { cwd: request.cwd, cols: request.cols, rows: request.rows, env },
           )
-        : this.spawnCommand(request, env);
+        : await this.spawnCommand(request, env);
     let markExited!: () => void;
     const workload: Workload = {
       info: {
@@ -195,22 +143,13 @@ export class PtyWorkloadHost {
         markExited = resolve;
       }),
     };
+    this.workloads.delete(request.workloadId);
     this.workloads.set(request.workloadId, workload);
     this.trim();
-    const cap =
-      request.kind === 'command'
-        ? (request.outputCapBytes ?? DEFAULT_OUTPUT_CAP_BYTES)
-        : Number.POSITIVE_INFINITY;
-    let received = 0;
+    // A command's output cap is enforced by its process (command-process.ts).
     let journalFailed = false;
     let paused = false;
     const unsubscribeData = proc.onData((data) => {
-      received += Buffer.byteLength(data);
-      if (received > cap) {
-        unsubscribeData();
-        void this.terminate(workload);
-        return;
-      }
       const write = journal.append(data);
       if (!paused && journal.backpressured && proc.pause && proc.resume) {
         paused = true;
@@ -254,6 +193,7 @@ export class PtyWorkloadHost {
               signal: event.signal,
               outputIncomplete: event.outputIncomplete === true,
               journalFailed,
+              ...(event.outputCapped && { outputCapped: true }),
             };
             workload.info.lastSeq = journal.lastSeq;
             workload.info.state = 'exited';
@@ -272,27 +212,30 @@ export class PtyWorkloadHost {
     return { ...workload.info };
   }
 
-  private spawnCommand(
+  private async spawnCommand(
     request: WorkloadSpawnRequest,
     env: NodeJS.ProcessEnv,
-  ): IPtyProcess {
+  ): Promise<IPtyProcess> {
     const candidate = request.candidates[0];
     if (!candidate)
       throw new WorkloadFailure('bad-request', 'a command needs a candidate');
-    const child = spawn(candidate.command, candidate.args, {
-      cwd: request.cwd,
-      env,
-      stdio: ['pipe', 'pipe', 'pipe'],
-      windowsHide: true,
-      detached: process.platform !== 'win32',
-    });
-    if (child.pid === undefined) {
+    try {
+      return await spawnCommandProcess({
+        command: candidate.command,
+        args: candidate.args,
+        cwd: request.cwd,
+        env,
+        outputCapBytes: request.outputCapBytes,
+      });
+    } catch (error) {
+      // The message keeps the errno (`spawn x ENOENT`) for the core to report.
       throw new WorkloadFailure(
         'failed',
-        `could not start ${candidate.command}`,
+        error instanceof CommandSpawnError
+          ? error.message
+          : `could not start ${candidate.command}`,
       );
     }
-    return new CommandProcess(child);
   }
 
   /**
