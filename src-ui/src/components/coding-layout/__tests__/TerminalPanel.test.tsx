@@ -21,6 +21,9 @@ import {
 import { deviceSettingsStore } from '../../../lib/device-settings-store';
 import { TerminalPanel } from '../TerminalPanel';
 
+const restartFetch = vi.hoisted(() =>
+  vi.fn(async (..._args: unknown[]) => new Response('{"success":true}')),
+);
 const { executeCodingCommand, store, FakeSession } = vi.hoisted(() => {
   type Listener = {
     output?(data: Uint8Array, sequence: number): void;
@@ -40,9 +43,6 @@ const { executeCodingCommand, store, FakeSession } = vi.hoisted(() => {
     resize = vi.fn();
     cwd = vi.fn(async () => '/workspace/live');
     close = vi.fn(async () => undefined);
-    restart = vi.fn(async () => {
-      this.emit({ status: 'running' });
-    });
     detach = vi.fn(() => {
       this.state = 'detached';
     });
@@ -81,7 +81,10 @@ const { executeCodingCommand, store, FakeSession } = vi.hoisted(() => {
   return { executeCodingCommand: vi.fn(), store, FakeSession };
 });
 
-vi.mock('@kontourai/station-sdk', () => ({ executeCodingCommand }));
+vi.mock('@kontourai/station-sdk', () => ({
+  executeCodingCommand,
+  authenticatedFetch: (...args: unknown[]) => restartFetch(...args),
+}));
 vi.mock('../terminalSessionStore', () => ({
   useTerminalSessionStore: () => store,
 }));
@@ -512,7 +515,14 @@ test('an exited shell offers Restart shell, which restarts the same session', as
     screen.queryByRole('button', { name: 'Reconnect terminal' }),
   ).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: 'Restart shell' }));
-  await waitFor(() => expect(session.restart).toHaveBeenCalledTimes(1));
+  await waitFor(() => expect(restartFetch).toHaveBeenCalledTimes(1));
+  const [url, init] = restartFetch.mock.calls[0] as [string, RequestInit];
+  expect(url).toBe(
+    `http://localhost/api/projects/project-a/terminal-sessions/${terminalId}/restart`,
+  );
+  expect(init.method).toBe('POST');
+  expect(JSON.parse(String(init.body))).toEqual({ bindingKey: 'project' });
+  act(() => session.emit({ status: 'running' }));
   await waitFor(() => expect(screen.queryByRole('alert')).toBeNull());
   // The same session restarted: nothing reattached or opened.
   expect(store.attach).toHaveBeenCalledTimes(1);

@@ -319,7 +319,19 @@ export function TerminalPanel({
   const restart = async () => {
     setRestarting(true);
     try {
-      await sessionRef.current?.restart();
+      const session = sessionRef.current;
+      if (!session?.terminalId) throw new Error('The shell could not restart.');
+      // The session route restarts it under the same id; this view keeps its
+      // channel and the new run's output follows on it.
+      const response = await authenticatedFetch(
+        `${apiBase}/api/projects/${encodeURIComponent(projectSlug)}/terminal-sessions/${encodeURIComponent(session.terminalId)}/restart`,
+        {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ bindingKey: session.target.bindingKey }),
+        },
+      );
+      if (!response.ok) throw new Error('The shell could not restart.');
       setHandoffError(null);
     } catch (error) {
       setHandoffError(
