@@ -8312,21 +8312,17 @@ export class OrchestrationService {
             input.resumeCursor === undefined ? 'start' : 'resume',
             this.modelLaunch.modelLaunchRequestedOverrideFromInput(input),
           );
-          // #484 phase A follow-up: the SERVICE durably stamps the
-          // server-minted portable consent marker as its own
-          // `session.configured` event — not via the adapter — so the
-          // persisted binding carries the exact consent identity even
-          // when the adapter drops or reconstructs `input.metadata` in
-          // its own `session.started` publish. Spreads the prepared
-          // start metadata (already reserved-stripped and consent
-          // re-stamped in `prepareStart`, so no public caller can forge
-          // or clear it) so binding keys and project identity ride
-          // along. Only for portable starts; legacy starts publish
-          // nothing new here.
           const consent = portableConsentOfStartedMetadata(input.metadata);
           if (consent) {
             this.portableConsentByThread.set(input.threadId, consent);
-            this.projectAndPublishEvent({
+          } else {
+            this.portableConsentByThread.delete(input.threadId);
+          }
+          // The first turn is authorized from durable ownership. An adapter's
+          // queued start event may arrive after this command returns accepted.
+          // Persist prepared metadata here, including server-minted consent.
+          if (consent || typeof input.metadata?.userId === 'string') {
+            const recorded = this.projectAndPublishEvent({
               eventId: crypto.randomUUID(),
               provider: adapter.provider,
               threadId: input.threadId,
@@ -8336,13 +8332,10 @@ export class OrchestrationService {
               ...(input.cwd ? { cwd: input.cwd } : {}),
               metadata: { ...input.metadata },
             });
-          } else {
-            // A fresh non-portable start supersedes any cached verdict for
-            // this thread id: the prepared metadata just survived the
-            // reserved-key strip with no consent re-stamp, so no portable
-            // execution begins here, and a recreated id must not inherit a
-            // dead session's positive.
-            this.portableConsentByThread.delete(input.threadId);
+            if (!recorded)
+              throw new Error(
+                `Session start metadata could not be recorded: ${input.threadId}`,
+              );
           }
         },
         ensureStartedSessionCurrent: async (adapter, _session, signal) => {
