@@ -7,10 +7,37 @@ normally before publication. Open one PR when the combined work is ready.
 
 ## Current delivery state
 
-**NOT_READY.** At source `2acac1b303d`, the branch has no push or PR. Main is
-integrated through `b34f357f1e8` by normal merge `13178ca95e2`. Master consolidation
-#3991 remains separately owned. Group advertisement and continuation-finalizer
-qualification guards remain false; supported groups remain an open requirement.
+**NOT_READY.** At source `af49c628613`, the branch has no push or PR. Main is
+integrated through `c14e930bdf1` by normal merge `2439b1b6f35`, including #4420
+and #4422. Master consolidation #3991 remains separately owned. The historical
+report reader now uses EventStore's Monument kernel with the Station turn-dedup
+bindings and `withinHostTransaction: true` inside its existing snapshot.
+
+The merged selection passes 89 scope and historical-reader cases and 39 HTTP
+integration cases, including two authenticated principals creating separate Tasks
+with the same client key and replaying their own results. One observation assertion
+was corrected to check the endpoint's Task and Session summary identities; that
+endpoint does not return prompt text. These controlled tests establish neither
+live-provider nor initialized-runtime acceptance.
+
+The original unprofiled report-input callers both fail at this source with the
+unchanged 120-second product deadline. The HTTP create fails after two starts
+and one input invocation; the direct journey receives HTTP 503 during sync.
+The retained log is `/tmp/child-work-af49-full-callers.log`. Host CPU pressure was
+reported at 91%; that context does not excuse the failures or isolate their cause.
+No deadline, assertion or durability guard was weakened.
+
+Veritas run `veritas-1793666530321` passes governance, lint and hygiene but fails
+documentation truth: stale review inputs, a removed dedup-owner link and a public
+page's internal-only link. The two link defects are repaired in this follow-up;
+semantic review and final readiness remain open. The first readiness attempt was
+invalidated by an edit during the run and is not evidence.
+
+Group advertisement and continuation-finalizer qualification guards remain false.
+The finalizer still needs exact-parent Home custody and transaction-owner proof.
+#4457 and #4467 were open at this checkpoint; the initialized accepted-start
+visibility case remains blocked on #4467's owner fix. Supported groups remain an
+open requirement.
 
 The current backend refuses fresh sealed Steer and Queue work before Inbox
 admission, preserves accepted retries, and gives legacy queued work a visible

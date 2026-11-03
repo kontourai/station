@@ -2587,9 +2587,10 @@ The private historical-accounting draft initially reads its terminal tuple throu
 owns one SQLite snapshot of the personal Session, canonical owner, conversation
 lineage, resolved client/provider turn pair and unique completion. Non-null raw
 tenant storage refuses, including malformed metadata. The existing
-[turn-dedup persistence owner](../../src-server/services/orchestration/sqlite-turn-dedup-persistence.ts)
-joins that same active connection through Monument's workspace module contract;
-it neither claims a turn nor runs retention. The result contains detached
+[Station turn-dedup bindings](../../src-server/services/orchestration/station-turn-dedup-bindings.ts)
+identify the claim read through EventStore's Monument kernel with
+`withinHostTransaction: true`. The read joins the existing snapshot; it neither
+claims a turn nor runs retention. The result contains detached
 identities, not transcript text or a grant.
 
 [Terminal witnesses](../../src-server/services/orchestration/station-report-terminal-witness.ts)

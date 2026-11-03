@@ -110,7 +110,7 @@ Display-only notes appear immediately without sending anything to an engine.
 Report-member Sessions with a sealed-source policy require their bounded report
 controls for another turn. Generic Steer or Queue is refused; a saved message or
 an interrupted turn is not permission to repeat a paid attempt. See the
-[Session input restrictions](../reference/session-api.md#submit-steer-follow-up-or-display-input).
+[Session input restrictions](https://github.com/kontourai/station/blob/main/docs/reference/session-api.md#submit-steer-follow-up-or-display-input).
 
 ## Delegated work and session groups
 
