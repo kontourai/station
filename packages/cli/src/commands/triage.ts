@@ -8,28 +8,30 @@
 
 import { spawn, spawnSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import {
-  chmodSync,
-  closeSync,
-  existsSync,
-  fchmodSync,
-  constants as fsConstants,
-  fstatSync,
-  ftruncateSync,
-  lstatSync,
-  mkdirSync,
-  openSync,
-  realpathSync,
-  writeFileSync,
-} from 'node:fs';
 import { join } from 'node:path';
 import { createInterface } from 'node:readline/promises';
 import { authenticatedFetch } from '@kontourai/station-sdk/client';
+import { sanitizeFreeText } from '@kontourai/station-shared/redaction';
 import {
-  redactDeep,
-  sanitizeFreeText,
-} from '@kontourai/station-shared/redaction';
-import { resolveStationRoot } from '@kontourai/station-shared/runtime-path-resolver';
+  type TriageAgentAvailability as AgentAvailability,
+  allowlistedTriageBuild,
+  boundedTriageLogTail,
+  boundedTriageText,
+  createTriageRunDirectory,
+  MAX_TRIAGE_CONTEXT_BYTES,
+  MAX_TRIAGE_DOCTOR_CHECKS,
+  MAX_TRIAGE_TEXT_LENGTH,
+  readBoundedTriageJson,
+  rewriteTriageOwnerFile,
+  serializeTriageContext,
+  summarizeTriageDoctor,
+  TRIAGE_CONTEXT_SCHEMA_VERSION,
+  type TriageAgent,
+  type TriageContext,
+  type TriageDoctorReport,
+  validateTriageContext,
+  writeTriageOwnerFile,
+} from '@kontourai/station-shared/triage-context';
 import { bundleInfo, isBundledDistribution } from '../distribution.js';
 import {
   configureApiCredential,
@@ -39,102 +41,25 @@ import {
 import { getProfileCredentialStore } from './profile-credentials.js';
 import { findProfile } from './profile-store.js';
 import { readCliVersion } from './version.js';
-import {
-  assertWindowsPathsTrusted,
-  ensureWindowsDirectoriesTrusted,
-  runWindowsTrustCommand as windowsTrustRun,
-} from './windows-path-trust.js';
 
-export const TRIAGE_CONTEXT_SCHEMA_VERSION = 1;
+// The context builder, its bounds and its validator live in the shared
+// module so the server's in-app troubleshoot route uses the same rules.
+export {
+  createTriageRunDirectory,
+  MAX_TRIAGE_CONTEXT_BYTES,
+  MAX_TRIAGE_DOCTOR_CHECKS,
+  MAX_TRIAGE_LOG_TAIL_LENGTH,
+  MAX_TRIAGE_REMOTE_RESPONSE_BYTES,
+  MAX_TRIAGE_TEXT_LENGTH,
+  readBoundedTriageJson as readBoundedJson,
+  TRIAGE_CONTEXT_SCHEMA_VERSION,
+  validateTriageContext,
+} from '@kontourai/station-shared/triage-context';
+
 export const TRIAGE_PLAYBOOK_VERSION = 1;
-export const MAX_TRIAGE_CONTEXT_BYTES = 96 * 1024;
-export const MAX_TRIAGE_DOCTOR_CHECKS = 32;
-export const MAX_TRIAGE_TEXT_LENGTH = 1_024;
-export const MAX_TRIAGE_LOG_TAIL_LENGTH = 4_096;
-export const MAX_TRIAGE_REMOTE_RESPONSE_BYTES = 512 * 1024;
 export const MAX_TRIAGE_AGENT_OUTPUT_BYTES = 64 * 1024;
 export const MAX_TRIAGE_PROBLEM_LENGTH = 512;
 export const MAX_TRIAGE_ISSUE_RESULTS = 10;
-
-type TriageAgent = 'codex' | 'claude';
-type AgentAvailability = 'available' | 'unavailable' | 'not-probed';
-
-interface TriageDoctorReport {
-  checks?: Array<{ label?: unknown; status?: unknown; detail?: unknown }>;
-  recommendation?: unknown;
-  chatReady?: unknown;
-  runtimeReady?: unknown;
-}
-
-interface TriageContext {
-  schemaVersion: 1;
-  generatedAt: string;
-  runId: string;
-  cli: {
-    distribution: 'source' | 'packaged';
-    version: string;
-    channel: string;
-    sourceRevision: string;
-    artifactBuiltAt: string | null;
-  };
-  target: {
-    station: string | null;
-    resolutionSource: string;
-    endpoint: string;
-    environmentId: string | null;
-    access: 'not-configured' | 'available' | 'missing' | 'unavailable';
-    hasLocalServiceBinding: boolean;
-  };
-  capabilities: {
-    localHostFilesystem: 'available' | 'unavailable';
-    sourceDoctor: 'available' | 'unavailable';
-    remoteReadFacts: 'available' | 'unavailable';
-    recentLogs: 'available' | 'unavailable';
-  };
-  doctor:
-    | { status: 'available'; report: TriageDoctorSummary }
-    | { status: 'unavailable'; reason: string };
-  agents: Record<TriageAgent, AgentAvailability>;
-  remote:
-    | {
-        status: 'available';
-        app: {
-          version: string;
-          nodeVersion: string;
-          platform: string;
-          build: Record<string, string> | null;
-        };
-        doctor: TriageDoctorSummary;
-        logs:
-          | { status: 'available'; tail: string }
-          | { status: 'unavailable'; reason: string };
-      }
-    | { status: 'unavailable'; reason: string };
-  launch: {
-    requested: TriageAgent | null;
-    selected: TriageAgent | null;
-    status:
-      | 'context-only'
-      | 'not-installed'
-      | 'ambiguous'
-      | 'pending'
-      | 'completed'
-      | 'failed';
-    exitCode: number | null;
-  };
-  limits: {
-    contextBytes: number;
-    doctorChecks: number;
-    textLength: number;
-  };
-}
-
-interface TriageDoctorSummary {
-  checks: Array<{ label: string; status: string; detail: string }>;
-  recommendation: string;
-  chatReady: boolean | null;
-  runtimeReady: boolean | null;
-}
 
 export interface TriageDependencies {
   /** Source-only callback; the packaged bundle deliberately has no adapter. */
@@ -176,124 +101,6 @@ interface TriageIssueSearch {
   status: 'available' | 'unavailable' | 'not-requested';
   issues: TriageIssueResult[];
   reason?: string;
-}
-
-function assertOwnerDirectory(path: string, ownerOnly: boolean): void {
-  const info = lstatSync(path);
-  if (!info.isDirectory() || info.isSymbolicLink()) {
-    throw new Error(`Triage storage must be a real directory: ${path}`);
-  }
-  if (typeof process.getuid === 'function' && info.uid !== process.getuid()) {
-    throw new Error(`Triage storage is not owned by this user: ${path}`);
-  }
-  if (typeof process.getuid === 'function' && (info.mode & 0o022) !== 0) {
-    throw new Error(`Triage storage is writable by group or others: ${path}`);
-  }
-  if (ownerOnly) chmodSync(path, 0o700);
-  assertWindowsPathsTrusted(windowsTrustRun, [{ kind: 'directory', path }]);
-}
-
-function admitStationRoot(path: string): string {
-  // The shared root contract allows an explicit whole-root alias. Create a
-  // missing nested root, then canonicalize it before inspecting cache leaves.
-  mkdirSync(path, { recursive: true, mode: 0o700 });
-  ensureWindowsDirectoriesTrusted(windowsTrustRun, [path]);
-  const root = realpathSync(path);
-  assertOwnerDirectory(root, false);
-  return root;
-}
-
-function createExactDirectory(path: string, ownerOnly: boolean): void {
-  try {
-    mkdirSync(path, { mode: ownerOnly ? 0o700 : 0o755 });
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
-  }
-  ensureWindowsDirectoriesTrusted(windowsTrustRun, [path]);
-  // Cache/triage must be exact leaves: never allow a symlink to redirect a
-  // run after the whole-root alias has been admitted above.
-  assertOwnerDirectory(path, ownerOnly);
-}
-
-/** Creates an opaque owner-only run below the one app-owned Station root. */
-export function createTriageRunDirectory(runId: string = randomUUID()): string {
-  if (
-    !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
-      runId,
-    )
-  ) {
-    throw new Error('Triage run ids must be UUIDs.');
-  }
-  const stationRoot = admitStationRoot(resolveStationRoot());
-  // Verify every existing boundary separately: recursive mkdir can otherwise
-  // follow a pre-existing cache symlink outside Station ownership.
-  const cacheRoot = join(stationRoot, 'cache');
-  createExactDirectory(cacheRoot, false);
-  const triageRoot = join(cacheRoot, 'triage');
-  createExactDirectory(triageRoot, true);
-  const runDir = join(triageRoot, runId);
-  if (existsSync(runDir))
-    throw new Error('Refusing to reuse an existing triage run.');
-  mkdirSync(runDir, { mode: 0o700 });
-  assertOwnerDirectory(runDir, true);
-  return runDir;
-}
-
-function writeOwnerFile(path: string, contents: string): void {
-  writeFileSync(path, contents, { encoding: 'utf8', flag: 'wx', mode: 0o600 });
-  chmodSync(path, 0o600);
-}
-
-function rewriteOwnerFile(path: string, contents: string): void {
-  const initial = lstatSync(path);
-  if (
-    !initial.isFile() ||
-    initial.isSymbolicLink() ||
-    (typeof process.getuid === 'function' && initial.uid !== process.getuid())
-  ) {
-    throw new Error(
-      `Triage artifact is not an owner-controlled regular file: ${path}`,
-    );
-  }
-  let fd: number | undefined;
-  try {
-    fd = openSync(path, fsConstants.O_WRONLY | (fsConstants.O_NOFOLLOW ?? 0));
-    const opened = fstatSync(fd);
-    if (
-      !opened.isFile() ||
-      opened.dev !== initial.dev ||
-      opened.ino !== initial.ino ||
-      (typeof process.getuid === 'function' && opened.uid !== process.getuid())
-    ) {
-      throw new Error(`Triage artifact changed before rewrite: ${path}`);
-    }
-    fchmodSync(fd, 0o600);
-    ftruncateSync(fd, 0);
-    writeFileSync(fd, contents, 'utf8');
-  } finally {
-    if (fd !== undefined) closeSync(fd);
-  }
-}
-
-function boundedText(value: unknown): string {
-  return sanitizeFreeText(String(value ?? ''), MAX_TRIAGE_TEXT_LENGTH);
-}
-
-function summarizeDoctor(report: TriageDoctorReport): TriageDoctorSummary {
-  const redacted = redactDeep(report);
-  const checks = Array.isArray(redacted.checks) ? redacted.checks : [];
-  return {
-    checks: checks.slice(0, MAX_TRIAGE_DOCTOR_CHECKS).map((check) => ({
-      label: boundedText(check?.label),
-      status: boundedText(check?.status),
-      detail: boundedText(check?.detail),
-    })),
-    recommendation: boundedText(redacted.recommendation),
-    chatReady:
-      typeof redacted.chatReady === 'boolean' ? redacted.chatReady : null,
-    runtimeReady:
-      typeof redacted.runtimeReady === 'boolean' ? redacted.runtimeReady : null,
-  };
 }
 
 function defaultProbeAgent(agent: TriageAgent): AgentAvailability {
@@ -611,35 +418,15 @@ function targetFacts(args: string[]): TriageContext['target'] {
     ? getProfileCredentialStore().status(station.credentialRef)
     : 'not-configured';
   return {
-    station: station ? boundedText(station.name) : null,
+    station: station ? boundedTriageText(station.name) : null,
     resolutionSource: resolved.source,
-    endpoint: boundedText(resolved.apiBase),
+    endpoint: boundedTriageText(resolved.apiBase),
     environmentId: station?.environmentId
-      ? boundedText(station.environmentId)
+      ? boundedTriageText(station.environmentId)
       : null,
     access,
     hasLocalServiceBinding: Boolean(station?.localService),
   };
-}
-
-function remoteText(value: unknown): string {
-  const raw = String(value ?? '');
-  const sanitized = sanitizeFreeText(raw, Math.max(raw.length + 1, 1));
-  if (sanitized.length <= MAX_TRIAGE_LOG_TAIL_LENGTH) return sanitized;
-  const marker = '…[TRUNCATED]\n';
-  // Leave headroom for the final context-wide redaction pass.
-  const persistedLimit = MAX_TRIAGE_LOG_TAIL_LENGTH - 32;
-  return `${marker}${sanitized.slice(-(persistedLimit - marker.length))}`;
-}
-
-function allowlistedBuild(value: unknown): Record<string, string> | null {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
-  const input = redactDeep(value as Record<string, unknown>);
-  const result: Record<string, string> = {};
-  for (const key of ['version', 'channel', 'sourceSha', 'builtAt']) {
-    if (typeof input[key] === 'string') result[key] = boundedText(input[key]);
-  }
-  return Object.keys(result).length > 0 ? result : null;
 }
 
 function mayUseAuthenticatedRemoteRead(
@@ -654,33 +441,6 @@ function mayUseAuthenticatedRemoteRead(
   );
 }
 
-export async function readBoundedJson(response: Response): Promise<unknown> {
-  const length = Number(response.headers.get('content-length'));
-  if (Number.isFinite(length) && length > MAX_TRIAGE_REMOTE_RESPONSE_BYTES) {
-    await response.body?.cancel();
-    throw new Error('Diagnostics response exceeded its byte limit.');
-  }
-  const reader = response.body?.getReader();
-  if (!reader) throw new Error('Diagnostics response had no body.');
-  const chunks: Uint8Array[] = [];
-  let total = 0;
-  try {
-    for (;;) {
-      const next = await reader.read();
-      if (next.done) break;
-      total += next.value.byteLength;
-      if (total > MAX_TRIAGE_REMOTE_RESPONSE_BYTES) {
-        await reader.cancel();
-        throw new Error('Diagnostics response exceeded its byte limit.');
-      }
-      chunks.push(next.value);
-    }
-  } finally {
-    reader.releaseLock();
-  }
-  return JSON.parse(new TextDecoder().decode(Buffer.concat(chunks)));
-}
-
 async function readDiagnosticsBundle(apiBase: string): Promise<unknown> {
   const response = await authenticatedFetch(
     `${apiBase}/api/diagnostics/bundle`,
@@ -690,7 +450,7 @@ async function readDiagnosticsBundle(apiBase: string): Promise<unknown> {
     },
   );
   if (!response.ok) throw new Error(`HTTP ${response.status}`);
-  return readBoundedJson(response);
+  return readBoundedTriageJson(response);
 }
 
 async function remoteFacts(
@@ -733,10 +493,13 @@ async function remoteFacts(
     const appFacts = app as Record<string, unknown>;
     const logs =
       typeof bundle.logs === 'string'
-        ? { status: 'available' as const, tail: remoteText(bundle.logs) }
+        ? {
+            status: 'available' as const,
+            tail: boundedTriageLogTail(bundle.logs),
+          }
         : {
             status: 'unavailable' as const,
-            reason: boundedText(
+            reason: boundedTriageText(
               bundle.logsUnavailableReason ??
                 'Remote log tail was unavailable.',
             ),
@@ -744,172 +507,23 @@ async function remoteFacts(
     return {
       status: 'available',
       app: {
-        version: boundedText(appFacts.version),
-        nodeVersion: boundedText(appFacts.nodeVersion),
-        platform: boundedText(appFacts.platform),
-        build: allowlistedBuild(appFacts.build),
+        version: boundedTriageText(appFacts.version),
+        nodeVersion: boundedTriageText(appFacts.nodeVersion),
+        platform: boundedTriageText(appFacts.platform),
+        build: allowlistedTriageBuild(appFacts.build),
       },
-      doctor: summarizeDoctor(doctor as TriageDoctorReport),
+      doctor: summarizeTriageDoctor(doctor as TriageDoctorReport),
       logs,
     };
   } catch (error) {
     return {
       status: 'unavailable',
-      reason: boundedText(
+      reason: boundedTriageText(
         error instanceof Error
           ? error.message
           : 'Authenticated diagnostics unavailable.',
       ),
     };
-  }
-}
-
-export function validateTriageContext(value: TriageContext): void {
-  const hasExactKeys = (record: object, keys: readonly string[]): boolean => {
-    const actual = Object.keys(record).sort();
-    return (
-      actual.length === keys.length &&
-      actual.every((key, index) => key === [...keys].sort()[index])
-    );
-  };
-  const validDoctorSummary = (summary: TriageDoctorSummary): boolean =>
-    hasExactKeys(summary, [
-      'checks',
-      'recommendation',
-      'chatReady',
-      'runtimeReady',
-    ]) &&
-    summary.checks.length <= MAX_TRIAGE_DOCTOR_CHECKS &&
-    summary.checks.every((check) =>
-      hasExactKeys(check, ['label', 'status', 'detail']),
-    );
-  const allowed = new Set([
-    'schemaVersion',
-    'generatedAt',
-    'runId',
-    'cli',
-    'target',
-    'capabilities',
-    'doctor',
-    'agents',
-    'remote',
-    'launch',
-    'limits',
-  ]);
-  if (
-    value.schemaVersion !== TRIAGE_CONTEXT_SCHEMA_VERSION ||
-    !hasExactKeys(value, [...allowed]) ||
-    !/^\d{4}-\d{2}-\d{2}T/.test(value.generatedAt) ||
-    !/^[0-9a-f-]{36}$/i.test(value.runId)
-  ) {
-    throw new Error('Triage context did not satisfy schema v1.');
-  }
-  if (!['source', 'packaged'].includes(value.cli.distribution)) {
-    throw new Error('Triage context has an invalid distribution identity.');
-  }
-  if (
-    !hasExactKeys(value.cli, [
-      'distribution',
-      'version',
-      'channel',
-      'sourceRevision',
-      'artifactBuiltAt',
-    ]) ||
-    !hasExactKeys(value.target, [
-      'station',
-      'resolutionSource',
-      'endpoint',
-      'environmentId',
-      'access',
-      'hasLocalServiceBinding',
-    ]) ||
-    !hasExactKeys(value.capabilities, [
-      'localHostFilesystem',
-      'sourceDoctor',
-      'remoteReadFacts',
-      'recentLogs',
-    ]) ||
-    !hasExactKeys(value.agents, ['codex', 'claude']) ||
-    (value.remote.status === 'available' &&
-      (!hasExactKeys(value.remote, ['status', 'app', 'doctor', 'logs']) ||
-        !hasExactKeys(value.remote.app, [
-          'version',
-          'nodeVersion',
-          'platform',
-          'build',
-        ]) ||
-        !validDoctorSummary(value.remote.doctor) ||
-        (value.remote.logs.status === 'available' &&
-          !hasExactKeys(value.remote.logs, ['status', 'tail'])) ||
-        (value.remote.logs.status === 'unavailable' &&
-          !hasExactKeys(value.remote.logs, ['status', 'reason'])))) ||
-    (value.remote.status === 'unavailable' &&
-      !hasExactKeys(value.remote, ['status', 'reason'])) ||
-    !hasExactKeys(value.launch, [
-      'requested',
-      'selected',
-      'status',
-      'exitCode',
-    ]) ||
-    !hasExactKeys(value.limits, ['contextBytes', 'doctorChecks', 'textLength'])
-  ) {
-    throw new Error('Triage context contains fields outside schema v1.');
-  }
-  if (
-    !['available', 'unavailable'].includes(
-      value.capabilities.localHostFilesystem,
-    )
-  ) {
-    throw new Error('Triage context has invalid capability facts.');
-  }
-  if (
-    !['available', 'unavailable'].includes(value.capabilities.sourceDoctor) ||
-    !['available', 'unavailable'].includes(value.doctor.status) ||
-    !['available', 'unavailable'].includes(value.remote.status) ||
-    !['available', 'unavailable'].includes(
-      value.capabilities.remoteReadFacts,
-    ) ||
-    !['available', 'unavailable'].includes(value.capabilities.recentLogs) ||
-    !['available', 'unavailable', 'not-probed'].includes(value.agents.codex) ||
-    !['available', 'unavailable', 'not-probed'].includes(value.agents.claude) ||
-    ![
-      'context-only',
-      'not-installed',
-      'ambiguous',
-      'pending',
-      'completed',
-      'failed',
-    ].includes(value.launch.status) ||
-    value.limits.contextBytes !== MAX_TRIAGE_CONTEXT_BYTES ||
-    value.limits.doctorChecks !== MAX_TRIAGE_DOCTOR_CHECKS ||
-    value.limits.textLength !== MAX_TRIAGE_TEXT_LENGTH
-  ) {
-    throw new Error('Triage context has invalid bounded values.');
-  }
-  if (
-    value.remote.status === 'available' &&
-    (!['available', 'unavailable'].includes(value.remote.logs.status) ||
-      (value.remote.app.build !== null &&
-        Object.keys(value.remote.app.build).some(
-          (key) =>
-            !['version', 'channel', 'sourceSha', 'builtAt'].includes(key),
-        )))
-  ) {
-    throw new Error('Triage context has invalid remote diagnostics.');
-  }
-  if (
-    value.doctor.status === 'available' &&
-    (!hasExactKeys(value.doctor, ['status', 'report']) ||
-      !validDoctorSummary(value.doctor.report))
-  ) {
-    throw new Error('Triage context exceeded its doctor check limit.');
-  }
-  if (
-    value.doctor.status === 'unavailable' &&
-    (!hasExactKeys(value.doctor, ['status', 'reason']) ||
-      typeof value.doctor.reason !== 'string')
-  ) {
-    throw new Error('Triage context has an invalid doctor result.');
   }
 }
 
@@ -953,7 +567,7 @@ function renderIssueSearch(search: TriageIssueSearch): string {
       schemaVersion: 1,
       status: search.status,
       issues: search.issues,
-      ...(search.reason ? { reason: boundedText(search.reason) } : {}),
+      ...(search.reason ? { reason: boundedTriageText(search.reason) } : {}),
     },
     null,
     2,
@@ -962,7 +576,7 @@ function renderIssueSearch(search: TriageIssueSearch): string {
 
 function observedModel(diagnosis: string): string {
   const match = diagnosis.match(/(?:^|\n)\s*(?:[-*]\s*)?Model:\s*([^\n]+)/i);
-  return match ? boundedText(match[1]) : 'not reported by agent';
+  return match ? boundedTriageText(match[1]) : 'not reported by agent';
 }
 
 function renderIssueDraft(input: {
@@ -978,7 +592,7 @@ function renderIssueDraft(input: {
     : input.search.status === 'available'
       ? '- No matching issue was returned by the consented search.'
       : input.search.status === 'unavailable'
-        ? `- Search unavailable: ${boundedText(input.search.reason)}`
+        ? `- Search unavailable: ${boundedTriageText(input.search.reason)}`
         : '- Issue search was not requested.';
   return `# Station issue draft
 
@@ -1110,11 +724,11 @@ export async function runTriageCommand(
       ? await dependencies.collectSourceDoctorReport().then(
           (report) => ({
             status: 'available' as const,
-            report: summarizeDoctor(report as TriageDoctorReport),
+            report: summarizeTriageDoctor(report as TriageDoctorReport),
           }),
           (error: unknown) => ({
             status: 'unavailable' as const,
-            reason: boundedText(
+            reason: boundedTriageText(
               error instanceof Error ? error.message : 'doctor report failed',
             ),
           }),
@@ -1159,20 +773,15 @@ export async function runTriageCommand(
     },
   };
   validateTriageContext(context);
-  const serialized = `${JSON.stringify(redactDeep(context), null, 2)}\n`;
-  if (Buffer.byteLength(serialized, 'utf8') > MAX_TRIAGE_CONTEXT_BYTES) {
-    throw new Error(
-      'Triage context exceeded its byte limit. No context was persisted.',
-    );
-  }
-  writeOwnerFile(join(runDir, 'playbook.md'), PLAYBOOK);
-  writeOwnerFile(join(runDir, 'context.json'), serialized);
-  writeOwnerFile(join(runDir, 'summary.md'), renderMarkdown(context));
-  writeOwnerFile(
+  const serialized = serializeTriageContext(context);
+  writeTriageOwnerFile(join(runDir, 'playbook.md'), PLAYBOOK);
+  writeTriageOwnerFile(join(runDir, 'context.json'), serialized);
+  writeTriageOwnerFile(join(runDir, 'summary.md'), renderMarkdown(context));
+  writeTriageOwnerFile(
     join(runDir, 'problem.md'),
     `${problem ?? 'No problem description was supplied.'}\n`,
   );
-  writeOwnerFile(
+  writeTriageOwnerFile(
     join(runDir, 'related-issues.json'),
     renderIssueSearch(issueSearch),
   );
@@ -1201,12 +810,12 @@ export async function runTriageCommand(
     context.launch.status = completed ? 'completed' : 'failed';
     context.launch.exitCode = outcome.exitCode;
     validateTriageContext(context);
-    const updated = `${JSON.stringify(redactDeep(context), null, 2)}\n`;
-    rewriteOwnerFile(join(runDir, 'context.json'), updated);
-    rewriteOwnerFile(join(runDir, 'summary.md'), renderMarkdown(context));
+    const updated = serializeTriageContext(context);
+    rewriteTriageOwnerFile(join(runDir, 'context.json'), updated);
+    rewriteTriageOwnerFile(join(runDir, 'summary.md'), renderMarkdown(context));
     if (diagnosis) {
-      writeOwnerFile(join(runDir, 'diagnosis.md'), `${diagnosis}\n`);
-      writeOwnerFile(
+      writeTriageOwnerFile(join(runDir, 'diagnosis.md'), `${diagnosis}\n`);
+      writeTriageOwnerFile(
         join(runDir, 'issue-draft.md'),
         renderIssueDraft({ context, diagnosis, problem, search: issueSearch }),
       );

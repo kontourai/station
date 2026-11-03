@@ -839,6 +839,40 @@ describe('CommandPalette', () => {
     }
   });
 
+  // #4470: the troubleshoot palette action dispatches the open event that
+  // TroubleshootHost (deferred overlays) runs the start flow on.
+  test('registers Troubleshoot an issue under its keywords and dispatches its open event', async () => {
+    const { OPEN_TROUBLESHOOT_EVENT } = await import(
+      '../lib/troubleshootEvents'
+    );
+    const listener = vi.fn();
+    window.addEventListener(OPEN_TROUBLESHOOT_EVENT, listener);
+    try {
+      await renderCommandPalette();
+      for (const keyword of ['triage', 'not working', 'crash', 'debug']) {
+        open();
+        fireEvent.change(screen.getByRole('combobox'), {
+          target: { value: keyword },
+        });
+        expect(
+          screen.getByRole('option', { name: /Troubleshoot an issue/ }),
+        ).toBeTruthy();
+        fireEvent.keyDown(screen.getByRole('combobox'), { key: 'Escape' });
+      }
+      open();
+      fireEvent.change(screen.getByRole('combobox'), {
+        target: { value: 'troubleshoot' },
+      });
+      fireEvent.click(
+        screen.getByRole('option', { name: /Troubleshoot an issue/ }),
+      );
+      expect(listener).toHaveBeenCalledTimes(1);
+      expect(screen.queryByRole('dialog')).toBeNull();
+    } finally {
+      window.removeEventListener(OPEN_TROUBLESHOOT_EVENT, listener);
+    }
+  });
+
   /**
    * #2062 review MED-6: the Boards section is hidden when the viewer owns
    * none, and its `+` lives inside it, so this row is the ONLY way to make a

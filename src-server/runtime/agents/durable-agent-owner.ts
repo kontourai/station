@@ -10,6 +10,7 @@ import {
   type DurableApproval,
   openSqliteAgentJournal,
   type RunKey,
+  RuntimeError,
 } from '@kontourai/agent-runtime';
 import {
   agentWire,
@@ -472,9 +473,24 @@ function createStationOwner(home: string) {
       let transportAttached = false;
       let finished = false;
       let allowSettlement!: () => void;
-      const settlementBarrier = new Promise<void>((resolve) => {
+      let rejectSettlement!: (error: unknown) => void;
+      const settlementBarrier = new Promise<void>((resolve, reject) => {
         allowSettlement = resolve;
+        rejectSettlement = reject;
       });
+      void settlementBarrier.catch(() => {});
+      const project = async <T>(write: () => Promise<T>): Promise<T> => {
+        try {
+          return await write();
+        } catch (error) {
+          if (
+            error instanceof RuntimeError &&
+            error.code === 'DURABLE_AGENT_FRAME_CAPACITY'
+          )
+            rejectSettlement(error);
+          throw error;
+        }
+      };
       const channel = new DurableForegroundChannel<IStreamChunk>();
       let resolve!: (result: IStreamResult) => void;
       let reject!: (error: unknown) => void;
@@ -512,8 +528,10 @@ function createStationOwner(home: string) {
           transportAttached = true;
         },
         allowSettlement,
-        frame: async (frameId, wire) => (await leaseReady).frame(frameId, wire),
-        frameBatch: async (frames) => (await leaseReady).frameBatch(frames),
+        frame: (frameId, wire) =>
+          project(async () => (await leaseReady).frame(frameId, wire)),
+        frameBatch: (frames) =>
+          project(async () => (await leaseReady).frameBatch(frames)),
         onDetach: async () => {
           await leaseReady;
           const frames = withJournal(({ database }) =>

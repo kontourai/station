@@ -182,8 +182,15 @@ afterEach(() => {
  * tool-side check refuses them first, so they are errors there.
  */
 const NOT_AN_ERROR_BY_DESIGN: Record<'none' | 'bound', readonly string[]> = {
-  none: [],
-  bound: ['get_basis', 'get_session_inventory', 'get_task_basis'],
+  // `get_troubleshoot_playbook` returns the bundled playbook, public text in
+  // this repository; it reads no route, so there is no refusal for it to report.
+  none: ['get_troubleshoot_playbook'],
+  bound: [
+    'get_basis',
+    'get_session_inventory',
+    'get_task_basis',
+    'get_troubleshoot_playbook',
+  ],
 };
 
 /**

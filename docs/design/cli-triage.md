@@ -2,8 +2,11 @@
 
 > **Reading status: current diagnostic-command contract.** The
 > [CLI registration](../../packages/cli/src/cli.ts),
-> [triage command](../../packages/cli/src/commands/triage.ts), and
+> [triage command](../../packages/cli/src/commands/triage.ts),
+> [shared triage context rules](../../packages/shared/src/triage-context.ts), and
 > [shared redactor](../../packages/shared/src/redaction.ts) own this path.
+> The in-app flow that uses the same context rules is
+> [troubleshoot with an agent](troubleshoot-in-app.md).
 > The configured launch flags and local artifact tests do not establish how
 > every installed agent version enforces its sandbox, or guarantee that
 > arbitrary sensitive prose can be detected.
@@ -17,7 +20,9 @@ requires separate consent; there is no GitHub mutation operation. Launching an
 agent also gives that agent and its configured model service access to the run
 files. `--context-only` collects the artifacts without launching an agent.
 
-The context is allowlisted and validated before it is persisted. Its provenance
+The run directory, artifact writes, summaries, bounds and the context
+validator live in `@kontourai/station-shared/triage-context`, which the
+server's in-app troubleshoot route also uses. The context is allowlisted and validated before it is persisted. Its provenance
 comes from the existing distribution seam; packaged builds retain their stamped
 version/channel/source SHA while a checkout is always identified as development
 source. Target facts come from the existing saved-Station resolver and opaque

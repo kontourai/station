@@ -146,3 +146,43 @@ for (const change of ['format', 'state'] as const) {
     }
   });
 }
+
+it('frame batches validate durable rows after participant callbacks and roll back missing frames', async () => {
+  const f = await turnFixture();
+  cleanup.push(() => f.close());
+  const journal = openSqliteAgentJournal({
+    database: f.database,
+    participants: [
+      {
+        name: 'frame-receipt-control',
+        commit({ command }, database) {
+          if (command.type === 'projectFrameBatch')
+            database.exec('DELETE FROM agent_steps_frame_blocks');
+        },
+      },
+    ],
+  });
+  cleanup.push(() => journal.close());
+  const runtime = createAgentRuntime({
+    journal,
+    owner,
+    liveness: f.liveness,
+    implementation: 'callback/1',
+  });
+  const lease = await runtime.start({
+    key: { ...f.key, conversationId: 'frame-callback' },
+    input: 'input',
+    implementation: 'callback/1',
+  });
+  await expect(
+    lease.frameBatch([
+      { id: 'answer:0', wire: 'data: first\n\n' },
+      { id: 'answer:1', wire: 'data: second\n\n' },
+    ]),
+  ).rejects.toThrow('PARTICIPANT_CHANGED_STATE');
+  expect(
+    f.database
+      .prepare('SELECT count(*) AS n FROM agent_steps_frame_blocks')
+      .get()?.n,
+  ).toBe(0);
+});

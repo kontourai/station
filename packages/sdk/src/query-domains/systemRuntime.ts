@@ -16,6 +16,7 @@ import type {
   SystemRuntimeIdentity,
   UpdateProvenanceIssue,
 } from '@kontourai/station-contracts/system-status';
+import type { TroubleshootPrepareRequest } from '@kontourai/station-contracts/troubleshoot';
 import {
   type QueryClient,
   useMutation,
@@ -23,7 +24,9 @@ import {
   useQueryClient,
 } from '@tanstack/react-query';
 import { useCallback } from 'react';
+import { _getApiBase } from '../api';
 import { StationHttpError } from '../client/http';
+import { prepareTroubleshoot } from '../client/troubleshoot';
 import {
   type MutationOptions,
   PERSISTED_QUERY_GC_TIME_MS,
@@ -891,4 +894,12 @@ export function applyServerUpdateStateEvent(
     return;
   }
   queryClient.setQueryData(serverUpdateStateQueryKey(apiBase), state);
+}
+
+/** #4470: prepare a troubleshooting run on the active Station. */
+export function usePrepareTroubleshootMutation() {
+  return useMutation({
+    mutationFn: async (request: TroubleshootPrepareRequest = {}) =>
+      prepareTroubleshoot(await _getApiBase(), request),
+  });
 }

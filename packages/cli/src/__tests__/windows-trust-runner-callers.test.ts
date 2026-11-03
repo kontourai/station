@@ -35,6 +35,29 @@ vi.mock('../commands/windows-path-trust.js', async (importOriginal) => {
   };
 });
 
+// Triage run storage lives in the shared triage-context module, which imports
+// the shared trust module directly rather than the CLI's re-export above.
+vi.mock(
+  '@kontourai/station-shared/windows-path-trust',
+  async (importOriginal) => {
+    const actual =
+      await importOriginal<
+        typeof import('@kontourai/station-shared/windows-path-trust')
+      >();
+    const record = (run: unknown) => {
+      recorded.runners.push(run);
+      throw new Stop('recorded');
+    };
+    return {
+      ...actual,
+      runWindowsTrustCommand: recorded.shared,
+      assertWindowsPathsTrusted: record,
+      ensureWindowsDirectoriesTrusted: record,
+      hardenWindowsPathsTrusted: record,
+    };
+  },
+);
+
 import {
   DESKTOP_COMPANION_TRUST_TIMEOUT_MS,
   readDesktopCompanion,

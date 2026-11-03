@@ -743,6 +743,7 @@ import { FleetServeReceiptLog } from '../../services/inference/fleet-serve-recei
 import { DiagnosticsService } from '../../services/infra/diagnostics-service.js';
 import { OperatingStateService } from '../../services/infra/operating-state-service.js';
 import { createServerLogReader } from '../../services/infra/server-log-reader.js';
+import { TroubleshootService } from '../../services/infra/troubleshoot-service.js';
 import {
   createIntegrationStatusProbes,
   createIntegrationStatusReader,
@@ -4115,6 +4116,17 @@ export function configureRuntimeRoutes(
             JSON.stringify({ kind: 'diagnostics-session', sessionId }),
             'station-control:read_logs',
           ),
+        // #4470: in-app troubleshooting writes its run under this Station's
+        // home with the same owner-only rules as `station triage`.
+        troubleshoot: new TroubleshootService(
+          context.configLoader.getProjectHomeDir(),
+          {
+            buildProvenanceSnapshot: context.buildProvenanceSnapshot,
+            environmentId: async () =>
+              (await context.environmentSecurityService.getPublicHandshake())
+                .environmentId ?? null,
+          },
+        ),
       },
     ),
   );

@@ -390,6 +390,13 @@
       "route": "/settings?view=diagnostics&highlight=diagnostics-bundle"
     },
     {
+      "id": "diagnostics-troubleshoot",
+      "label": "Troubleshoot with an agent",
+      "scope": "informational",
+      "section": "diagnostics",
+      "route": "/settings?view=diagnostics&highlight=diagnostics-troubleshoot"
+    },
+    {
       "id": "approval-guardian",
       "label": "Approval guardian",
       "help": "A second model screens tool calls that would pause for your approval and clears the safe ones so they run uninterrupted.",

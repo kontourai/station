@@ -682,29 +682,34 @@ describe('probeSshReachability', () => {
     expect(evidence.action).toContain('confirm the fingerprint');
   });
 
-  const EVIDENCE_SECRET = ['sk', 'abc123def456ghi789jkl012mno345'].join('-');
-
-  test('the evidence a caller receives carries no raw stderr — detail and the unclassified action are both redacted', async () => {
-    const evidence = await probeSshReachability({
-      hostAlias: 'media-server',
-      runner: runner(),
-      attempt: attempt({
-        stderr: `debug1: nothing classified here token=${EVIDENCE_SECRET} in ${homedir()}/.ssh/config`,
-        exitCode: 255,
-      }),
-    });
-    expect(evidence.failure?.code).toBe('unknown');
-    for (const text of [
-      evidence.failure?.detail ?? '',
-      evidence.action ?? '',
-    ]) {
-      expect(text).not.toContain(EVIDENCE_SECRET);
-      expect(text).not.toContain(homedir());
-    }
-    // The `unknown` action quotes stderr back at the user, so it is the one
-    // that would have leaked twice.
-    expect(evidence.action).toContain('~/.ssh/config');
-  });
+  test.each([false, true])(
+    'the evidence a caller receives redacts stderr with a quoted token: %s',
+    async (quoted) => {
+      const secret = 'evidence-secret';
+      const token = quoted ? `"${secret}"` : secret;
+      const evidence = await probeSshReachability({
+        hostAlias: 'media-server',
+        runner: runner(),
+        attempt: attempt({
+          stderr: `debug1: nothing classified here token=${token} in ${homedir()}/.ssh/config`,
+          exitCode: 255,
+        }),
+      });
+      expect(evidence.failure?.code).toBe('unknown');
+      for (const text of [
+        evidence.failure?.detail ?? '',
+        evidence.action ?? '',
+      ]) {
+        expect(text).not.toContain(secret);
+        expect(text).not.toContain(homedir());
+      }
+      expect(evidence.action).toContain('token=');
+      expect(evidence.action).toContain('[REDACTED]');
+      // An unquoted secret may contain spaces, so its trailing path is redacted too.
+      if (quoted) expect(evidence.action).toContain('~/.ssh/config');
+      else expect(evidence.action).not.toContain('.ssh/config');
+    },
+  );
 
   test('an unusable ssh -G resolution still produces named evidence rather than throwing', async () => {
     const evidence = await probeSshReachability({
