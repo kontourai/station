@@ -337,6 +337,10 @@ describe('configureRuntimeRoutes: station-control dispatch stays in scope (slice
     const result = configureRuntimeRoutes(
       context as unknown as Parameters<typeof configureRuntimeRoutes>[0],
     );
+    closers.push(async () => {
+      await result.projectTaskRoomRuntime?.close();
+      await result.projectRoomRuntime.close();
+    });
     await result.kitLifecycleReady;
     // A real loopback listener, so the runtime boundary sees a real peer.
     let resolvePort!: (port: number) => void;
@@ -1914,6 +1918,10 @@ describe('configureRuntimeRoutes: station-control dispatch stays in scope (slice
         `${path}.autoMode (with effort)`,
         place({ effort: 'high', autoMode: false }),
       ],
+      [
+        `${path}.approvalMode (with speed)`,
+        place({ serviceTier: 'ultrafast', approvalMode: 'auto' }),
+      ],
     ]);
   const pickVariants = {
     'setApprovalMode (ask)': {
@@ -2045,6 +2053,24 @@ describe('configureRuntimeRoutes: station-control dispatch stays in scope (slice
         expect([field, label, actual]).toEqual([field, label, expected]);
     },
   );
+
+  test('a foreground speed choice reaches dispatch without an approval override', async () => {
+    const { base } = await setup();
+    expect(
+      await outcome(
+        base,
+        '/api/orchestration/chat',
+        as('bearer-exposed', 'op-caller-a')(),
+        {
+          message: 'go',
+          target: {
+            ...NEW_IN_P,
+            model: { options: { serviceTier: 'ultrafast' } },
+          },
+        },
+      ),
+    ).toBe('reached');
+  });
 
   /**
    * Fields of the dispatch bodies whose names speak of approvals or modes,
@@ -2189,6 +2215,8 @@ describe('configureRuntimeRoutes: station-control dispatch stays in scope (slice
       'reasoningEffort',
       'thinking',
       'fastMode',
+      // Codex service routing/billing, applied by mapServiceTier, grants no tool permissions.
+      'serviceTier',
     ]);
     const posture = new Set<string>(POSTURE_OPTION_KEYS);
     const optionKeys = new Set(
