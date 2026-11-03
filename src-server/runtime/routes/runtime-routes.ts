@@ -12866,11 +12866,13 @@ export function configureDevicePairingPublicRoutes(
       : null;
     // A fresh launcher can upgrade an ordinary session only on the host.
     // Off-host redemption cannot add that authority, so preserve its identity.
+    // An owner device's session is still upgraded: owner standing is not the
+    // host browser's home possession.
     if (
       existingDevice &&
       (!matchedPurpose ||
         !isSameMachineBrowserCaller(c) ||
-        pairing.credentialMayManagePairing(existingCredential!) ||
+        pairing.isHostBrowserSessionCredential(existingCredential!) ||
         pairing.isLocalGrantMintedCredential(existingCredential!))
     ) {
       if (matchedPurpose) uiBootstrapTokens.delete(matchedPurpose);

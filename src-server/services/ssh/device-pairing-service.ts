@@ -3553,12 +3553,23 @@ export class DevicePairingService {
    */
   credentialMayManagePairing(candidate: string): boolean {
     return (
-      (this.credentialMintKind(candidate) === 'ui-bootstrap' &&
-        pairingScopeIncludes(
-          this.effectiveScope(candidate) ?? '',
-          PAIRING_SCOPE_ACCESS_MANAGE,
-        )) ||
+      this.isHostBrowserSessionCredential(candidate) ||
       this.credentialHasOwnerStanding(candidate)
+    );
+  }
+
+  /**
+   * Exactly the host-issued launcher browser session (`ui-bootstrap` mint,
+   * holding `access:manage`), and never an owner device: the one session a
+   * fresh launcher link has no reason to upgrade.
+   */
+  isHostBrowserSessionCredential(candidate: string): boolean {
+    return (
+      this.credentialMintKind(candidate) === 'ui-bootstrap' &&
+      pairingScopeIncludes(
+        this.effectiveScope(candidate) ?? '',
+        PAIRING_SCOPE_ACCESS_MANAGE,
+      )
     );
   }
 

@@ -1027,9 +1027,11 @@ describe('EnvironmentSecurityService', () => {
       ).toBe(false);
     }
 
-    // And a NON-promoted device still gets nothing, even on the leaves.
+    // And a NON-promoted device without a host shell (so no owner standing)
+    // still gets nothing, even on the leaves.
     const second = service.devicePairing.createOffer({
       endpoint: 'https://station.example.test',
+      scope: 'orchestration:read orchestration:operate',
     });
     const secondRequest = service.devicePairing.requestPairing({
       offerId: second.offerId,

@@ -746,7 +746,13 @@ describe('reportOperatorCredentialUse, the production sink (#2894 S1)', () => {
 describe('explicit remote device administration', () => {
   test('a promoted device administers another device, and withdrawal takes effect on the next request', async () => {
     const h = await createHarness();
-    const admin = await h.pairDevice('Admin laptop');
+    // No host shell: an inherited access:manage alone is not owner standing
+    // (2026-11-02), so only the explicit promotion below grants
+    // administration.
+    const admin = await h.pairDevice(
+      'Admin laptop',
+      'orchestration:read orchestration:operate access:manage',
+    );
     const target = await h.pairDevice('Phone');
     const json = (credential: string, scope: string[]) => ({
       method: 'POST',
