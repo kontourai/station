@@ -202,12 +202,15 @@ export function BrowserSessionList({
   projectSlug,
   currentSessionId,
   onOpen,
+  hideWhenEmpty = false,
 }: {
   apiBase: string;
   api: BrowserPaneApi;
   projectSlug: string;
   currentSessionId?: string;
   onOpen: (browserSessionId: string) => void;
+  /** Render nothing, rather than an empty list, when no session exists. */
+  hideWhenEmpty?: boolean;
 }) {
   const [expanded, setExpanded] = useState<string | null>(null);
   const sessions = useQuery({
@@ -215,12 +218,13 @@ export function BrowserSessionList({
     queryFn: ({ signal }) => api.sessions(projectSlug, signal),
     refetchInterval: 5_000,
   });
+  if (hideWhenEmpty && sessions.data?.length === 0) return null;
   return (
     <section
       className="browser-pane__panel"
       aria-labelledby="browser-sessions-heading"
     >
-      <h3 id="browser-sessions-heading">Browser sessions in this Project</h3>
+      <h3 id="browser-sessions-heading">Sessions</h3>
       {sessions.isPending ? (
         <SkeletonList count={2} label="Loading browser sessions" />
       ) : sessions.isError ? (
@@ -231,8 +235,8 @@ export function BrowserSessionList({
       ) : sessions.data.length === 0 ? (
         <Empty
           variant="compact"
-          label="Nothing open yet"
-          description="Every browser session in this Project appears here, including ones an agent opened."
+          label="No sessions yet"
+          description="Sessions you or an agent open appear here."
         />
       ) : (
         <ul className="browser-pane__list" aria-label="Browser sessions">

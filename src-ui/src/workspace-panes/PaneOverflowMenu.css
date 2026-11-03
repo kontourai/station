@@ -1,0 +1,52 @@
+/* The ⋯ menu: the shared .menu-surface look, bounded with its own scroll. */
+.pane-menu {
+  min-width: 14rem;
+  overflow-y: auto;
+  z-index: var(--layer-popover, var(--k-z-popover));
+}
+
+.pane-menu__backdrop,
+.pane-menu__backdrop:hover,
+.pane-menu__backdrop:focus,
+.pane-menu__backdrop:focus-visible {
+  appearance: none;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  inset: 0;
+  padding: 0;
+  position: fixed;
+  z-index: calc(var(--layer-popover, var(--k-z-popover)) - 1);
+}
+
+.pane-menu__group + .pane-menu__group {
+  border-top: 1px solid var(--border-primary, var(--k-line));
+  margin-top: var(--k-space-1);
+  padding-top: var(--k-space-1);
+}
+
+.pane-menu__heading {
+  color: var(--text-secondary, var(--k-text-muted));
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: var(--k-space-1) var(--k-space-3) 0;
+}
+
+.pane-menu__label {
+  flex: 1 1 auto;
+}
+
+.pane-menu__hint {
+  color: var(--text-secondary, var(--k-text-muted));
+  font-family: var(--k-font-mono);
+  font-size: 0.75rem;
+  margin-left: var(--k-space-3);
+}
+
+.pane-menu__row--danger,
+.pane-menu__row--danger:hover,
+.pane-menu__row--danger:focus-visible {
+  color: var(--k-negative);
+}
+
+/* The 44px touch floor for `.menu-row` is the shared one (chat.css). */

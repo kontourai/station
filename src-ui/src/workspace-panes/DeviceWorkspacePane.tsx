@@ -34,7 +34,13 @@ import {
   useState,
 } from 'react';
 import { Button } from '../components/Button';
-import { CameraGlyph, CloseGlyph, HomeGlyph } from '../components/icons/Glyph';
+import {
+  CameraGlyph,
+  CloseGlyph,
+  HomeGlyph,
+  MoreGlyph,
+  RecordGlyph,
+} from '../components/icons/Glyph';
 import { LazyBoundary } from '../components/LazyBoundary';
 import {
   describeReadFailure,
@@ -56,6 +62,8 @@ import {
   type LiveSurfaceHeaderApi,
 } from '../live-surface/LiveSurfaceCanvas';
 import { DeviceSetupSlot } from './DeviceSetupSlot';
+import type { DeviceToolsView } from './device/DeviceToolsDrawer';
+import { type PaneMenuItem, PaneOverflowMenu } from './PaneOverflowMenu';
 import {
   type DevicePaneSelection,
   onDevicePaneSelection,
@@ -850,7 +858,7 @@ function DeviceLoading({ pending }: { pending: Pending }) {
   const line =
     phase === 'starting'
       ? `Starting ${device.name}… This can take a minute.`
-      : 'Step 1 of 2: open device';
+      : 'Opening device…';
   return (
     <div className="device-pane__loading">
       <p className="device-pane__loading-line" role="status">
@@ -896,16 +904,16 @@ function DeviceStage({
   const platform = session.platform;
   const workspaceRef = useRef<HTMLDivElement>(null);
   const layout = deviceToolsLayout(useElementWidth(workspaceRef));
-  const [toolsOpen, setToolsOpen] = useState(false);
-  const toolsButtonRef = useRef<HTMLButtonElement>(null);
+  const [toolsView, setToolsView] = useState<DeviceToolsView | null>(null);
+  const menuButtonRef = useRef<HTMLButtonElement>(null);
   const toolsDrawerId = useId();
-  // Closing the drawer (its Close, Escape, or the Tools toggle) returns
-  // focus to the Tools button, so a keyboard user is not dropped on <body>.
+  // Closing the drawer (its Close or Escape) returns focus to the ⋯ button,
+  // so a keyboard user is not dropped on <body>.
   const wasOpen = useRef(false);
   useEffect(() => {
-    if (wasOpen.current && !toolsOpen) toolsButtonRef.current?.focus();
-    wasOpen.current = toolsOpen;
-  }, [toolsOpen]);
+    if (wasOpen.current && !toolsView) menuButtonRef.current?.focus();
+    wasOpen.current = toolsView !== null;
+  }, [toolsView]);
   const [axOverlay, setAxOverlay] = useState(false);
   const [streamLive, setStreamLive] = useState(false);
   const [captureError, setCaptureError] = useState(false);
@@ -921,7 +929,6 @@ function DeviceStage({
       (preview) => preview.id === 'walkthroughs' && preview.enabled,
     ) === true;
   const [pickingTask, setPickingTask] = useState(false);
-  const recordButtonRef = useRef<HTMLButtonElement>(null);
   const [recording, setRecording] = useState<{
     taskId: string;
     jobId: string;
@@ -1086,7 +1093,7 @@ function DeviceStage({
             stopRecording.isPending ||
             recordingStatus.data?.state === 'stopping'
           }
-          recordButtonRef={recordButtonRef}
+          deviceLoopEnabled={deviceLoopEnabled}
           onRecord={() => {
             setRecording(null);
             setPickingTask(true);
@@ -1096,10 +1103,10 @@ function DeviceStage({
               void stopRecording.mutateAsync(recording).catch(() => {});
           }}
           onStreamLive={setStreamLive}
-          onToggleTools={() => setToolsOpen((open) => !open)}
-          toolsButtonRef={toolsButtonRef}
+          onOpenTools={setToolsView}
+          menuButtonRef={menuButtonRef}
           toolsDrawerId={toolsDrawerId}
-          toolsOpen={toolsOpen}
+          toolsView={toolsView}
           onClose={() => {
             if (deviceLoopEnabled) {
               requestFloat({
@@ -1152,16 +1159,32 @@ function DeviceStage({
       <div className="device-pane__stage" ref={stageRef}>
         {canvas}
         {recordingActive ? (
-          <p role="status">
-            {stopRecording.isPending ||
-            recordingStatus.data?.state === 'stopping'
-              ? 'Stopping recording…'
-              : recordingStatus.isError
-                ? 'Recording status unavailable.'
-                : recordingStatus.data?.state === 'recording'
-                  ? 'Recording to Task…'
-                  : 'Starting recording…'}
-          </p>
+          <div className="device-pane__recording">
+            <p role="status">
+              {stopRecording.isPending ||
+              recordingStatus.data?.state === 'stopping'
+                ? 'Stopping recording…'
+                : recordingStatus.isError
+                  ? 'Recording status unavailable.'
+                  : recordingStatus.data?.state === 'recording'
+                    ? 'Recording to Task…'
+                    : 'Starting recording…'}
+            </p>
+            <Button
+              size="sm"
+              variant="primary"
+              pending={
+                stopRecording.isPending ||
+                recordingStatus.data?.state === 'stopping'
+              }
+              onClick={() => {
+                if (recording)
+                  void stopRecording.mutateAsync(recording).catch(() => {});
+              }}
+            >
+              Stop recording
+            </Button>
+          </div>
         ) : null}
         {recordingStatus.data?.state === 'completed' ? (
           <p role="status">Recording saved to Task.</p>
@@ -1173,8 +1196,8 @@ function DeviceStage({
         recordingStatus.isError ||
         stopRecording.isError ? (
           <p role="alert">
-            Recording failed or could not be checked. Open the Task or update
-            Station and try again.
+            Recording failed or could not be checked. Open the Task and try
+            again.
           </p>
         ) : null}
         {pickingTask && projectSlug ? (
@@ -1184,7 +1207,7 @@ function DeviceStage({
               scope: requestScope,
               projectSlug,
               sourceSessionId: `${session.hostId}:${session.sessionId}`,
-              returnFocusTarget: recordButtonRef.current,
+              returnFocusTarget: menuButtonRef.current,
               onClose: () => setPickingTask(false),
               onStarted: (
                 taskId: string,
@@ -1217,15 +1240,16 @@ function DeviceStage({
           <ErrorState variant="compact" title="Screenshot could not be saved" />
         ) : null}
       </div>
-      {toolsOpen ? (
+      {toolsView ? (
         <LazyBoundary
           componentProps={{
+            view: toolsView,
             axOverlay,
             deviceName: session.name,
             id: toolsDrawerId,
             layout,
             onAxOverlayChange: setAxOverlay,
-            onClose: () => setToolsOpen(false),
+            onClose: () => setToolsView(null),
             projectSlug,
             sourceSessionId: `${session.hostId}:${session.sessionId}`,
             requestScope,
@@ -1234,6 +1258,7 @@ function DeviceStage({
           }}
           load={loadDeviceToolsDrawer}
           pending={<SkeletonBlock count={1} label="Loading device tools" />}
+          key={toolsView}
         />
       ) : null}
     </div>
@@ -1275,10 +1300,11 @@ function DeviceToolbar({
   ending,
   poweringOff,
   reconnecting,
-  toolsOpen,
-  toolsButtonRef,
+  toolsView,
+  menuButtonRef,
   toolsDrawerId,
-  onToggleTools,
+  onOpenTools,
+  deviceLoopEnabled,
   floatAvailable,
   onFloat,
   onScreenshot,
@@ -1286,7 +1312,6 @@ function DeviceToolbar({
   canRecord,
   recordingActive,
   recordingPending,
-  recordButtonRef,
   onRecord,
   onStopRecording,
   onStreamLive,
@@ -1302,10 +1327,11 @@ function DeviceToolbar({
   ending: boolean;
   poweringOff: boolean;
   reconnecting: boolean;
-  toolsOpen: boolean;
-  toolsButtonRef: RefObject<HTMLButtonElement | null>;
+  toolsView: DeviceToolsView | null;
+  menuButtonRef: RefObject<HTMLButtonElement | null>;
   toolsDrawerId: string;
-  onToggleTools: () => void;
+  onOpenTools: (view: DeviceToolsView) => void;
+  deviceLoopEnabled: boolean;
   /** A chat's floater is mounted (a chat with a Project is open). */
   floatAvailable: boolean;
   onFloat: () => void;
@@ -1314,7 +1340,6 @@ function DeviceToolbar({
   canRecord: boolean;
   recordingActive: boolean;
   recordingPending: boolean;
-  recordButtonRef: RefObject<HTMLButtonElement | null>;
   onRecord: () => void;
   onStopRecording: () => void;
   /** Whether the stream is live (the accessibility overlay polls only then). */
@@ -1330,39 +1355,26 @@ function DeviceToolbar({
   const press = (button: LiveSurfaceDeviceButton) =>
     sendInput([{ kind: 'device-button', button }]);
   const orientation = surface.producerStatus.orientation ?? 'portrait';
-  // Roving tabindex: exactly the first button is in the tab order.
-  // The one tab stop is the first ENABLED button: Home is disabled while
-  // input is down, and must not take Close out of keyboard reach.
+  // Roving tabindex: the one tab stop is the first ENABLED button, so Home,
+  // disabled while input is down, never takes ⋯ out of keyboard reach.
   let tabStopTaken = false;
   const iconButton = (
     label: string,
     glyph: ReactNode,
     onClick: () => void,
-    options: {
-      disabled?: boolean;
-      /** Replaces the label as the tooltip (and accessible description). */
-      title?: string;
-      pending?: boolean;
-      expanded?: boolean;
-      controls?: string;
-      ref?: RefObject<HTMLButtonElement | null>;
-    } = {},
+    disabled: boolean,
   ) => {
-    const tabIndex = tabStopTaken || options.disabled ? -1 : 0;
-    if (!options.disabled) tabStopTaken = true;
+    const tabIndex = tabStopTaken || disabled ? -1 : 0;
+    if (!disabled) tabStopTaken = true;
     return (
       <Button
-        aria-controls={options.controls}
-        aria-expanded={options.expanded}
         aria-label={label}
         className="device-pane__icon-button"
-        disabled={options.disabled}
+        disabled={disabled}
         onClick={onClick}
-        pending={options.pending}
-        ref={options.ref}
         size="sm"
         tabIndex={tabIndex}
-        title={options.title ?? label}
+        title={label}
         variant="ghost"
       >
         {glyph}
@@ -1370,6 +1382,91 @@ function DeviceToolbar({
     );
   };
   const ended = surface.status === 'unavailable' || surface.status === 'denied';
+  const tools = (view: DeviceToolsView, label: string): PaneMenuItem => ({
+    kind: 'action',
+    id: view,
+    label,
+    glyph: <ToolsGlyph />,
+    hint: toolsView === view ? 'Open' : undefined,
+    onSelect: () => onOpenTools(view),
+  });
+  const menuItems: PaneMenuItem[] = [
+    { kind: 'heading', id: 'capture', label: 'Capture' },
+    {
+      kind: 'action',
+      id: 'screenshot',
+      label: 'Save screenshot',
+      glyph: <CameraGlyph />,
+      disabled: screenshotPending || ended,
+      onSelect: onScreenshot,
+    },
+    ...(canRecord || recordingActive
+      ? [
+          {
+            kind: 'action' as const,
+            id: 'record',
+            label: recordingActive ? 'Stop recording' : 'Record to Task',
+            glyph: recordingActive ? <StopGlyph /> : <RecordGlyph />,
+            disabled: recordingPending || (ended && !recordingActive),
+            onSelect: recordingActive ? onStopRecording : onRecord,
+          },
+        ]
+      : []),
+    { kind: 'heading', id: 'tools', label: 'Tools' },
+    ...(deviceLoopEnabled ? [tools('logs', 'Logs')] : []),
+    tools('apps', 'Apps'),
+    tools('settings', 'Device settings'),
+    { kind: 'heading', id: 'session', label: 'Session' },
+    ...(session.platform === 'android'
+      ? [
+          {
+            kind: 'action' as const,
+            id: 'recents',
+            label: 'Recents',
+            glyph: <RecentsGlyph />,
+            disabled: !inputReady,
+            onSelect: () => press('recents'),
+          },
+        ]
+      : []),
+    {
+      kind: 'action',
+      id: 'float',
+      label: floatAvailable
+        ? 'Float over chat'
+        : 'Float over chat (open a chat first)',
+      glyph: <FloatGlyph />,
+      disabled: !floatAvailable,
+      onSelect: onFloat,
+    },
+    {
+      kind: 'action',
+      id: 'close',
+      label: 'Close',
+      glyph: <CloseGlyph />,
+      onSelect: onClose,
+    },
+    ...(canManage
+      ? [
+          {
+            kind: 'action' as const,
+            id: 'power-off',
+            label: poweringOff ? 'Powering off…' : 'Power off',
+            glyph: <PowerGlyph />,
+            disabled: ending || poweringOff,
+            onSelect: onPowerOff,
+          },
+          {
+            kind: 'danger' as const,
+            id: 'end',
+            label: ending ? 'Ending…' : 'End for everyone',
+            glyph: <StopGlyph />,
+            disabled: poweringOff || ending,
+            onSelect: onEndForEveryone,
+          },
+        ]
+      : []),
+  ];
   return (
     <>
       <div className="device-pane__toolbar">
@@ -1385,77 +1482,37 @@ function DeviceToolbar({
           onKeyDown={onToolbarKeyDown}
           role="toolbar"
         >
-          {iconButton('Home', <HomeGlyph />, () => press('home'), {
-            disabled: !inputReady,
-          })}
-          {session.platform === 'android' ? (
-            <>
-              {iconButton('Back', <BackGlyph />, () => press('back'), {
-                disabled: !inputReady,
-              })}
-              {iconButton('Recents', <RecentsGlyph />, () => press('recents'), {
-                disabled: !inputReady,
-              })}
-            </>
-          ) : (
-            iconButton(
-              'Rotate',
-              <RotateGlyph />,
-              () =>
-                sendInput([
-                  {
-                    kind: 'rotate',
-                    orientation: NEXT_ORIENTATION[orientation],
-                  },
-                ]),
-              { disabled: !inputReady },
-            )
-          )}
-          {iconButton('Tools', <ToolsGlyph />, onToggleTools, {
-            controls: toolsDrawerId,
-            expanded: toolsOpen,
-            ref: toolsButtonRef,
-          })}
-          {iconButton('Save screenshot', <CameraGlyph />, onScreenshot, {
-            pending: screenshotPending,
-            disabled: screenshotPending || ended,
-          })}
-          {canRecord || recordingActive
+          {iconButton('Home', <HomeGlyph />, () => press('home'), !inputReady)}
+          {session.platform === 'android'
             ? iconButton(
-                recordingActive ? 'Stop recording' : 'Record to Task',
-                recordingActive ? (
-                  <StopGlyph />
-                ) : (
-                  <span aria-hidden="true">●</span>
-                ),
-                recordingActive ? onStopRecording : onRecord,
-                {
-                  pending: recordingPending,
-                  disabled: recordingPending || (ended && !recordingActive),
-                  ref: recordButtonRef,
-                },
+                'Back',
+                <BackGlyph />,
+                () => press('back'),
+                !inputReady,
               )
-            : null}
-          {iconButton('Float over chat', <FloatGlyph />, onFloat, {
-            disabled: !floatAvailable,
-            // Disabled says why: only an open chat (in a Project) can float it.
-            ...(floatAvailable
-              ? {}
-              : { title: 'Open a chat in a Project to float this device' }),
-          })}
-          {canManage
-            ? iconButton('Power off', <PowerGlyph />, onPowerOff, {
-                pending: poweringOff,
-                disabled: ending,
-              })
-            : null}
-          {canManage
-            ? iconButton('End for everyone', <StopGlyph />, onEndForEveryone, {
-                pending: ending,
-                disabled: poweringOff,
-              })
-            : null}
-          {iconButton('Close', <CloseGlyph />, onClose)}
+            : iconButton(
+                'Rotate',
+                <RotateGlyph />,
+                () =>
+                  sendInput([
+                    {
+                      kind: 'rotate',
+                      orientation: NEXT_ORIENTATION[orientation],
+                    },
+                  ]),
+                !inputReady,
+              )}
+          <PaneOverflowMenu
+            label={`More ${session.name} actions`}
+            items={menuItems}
+            triggerRef={menuButtonRef}
+            triggerProps={{
+              'aria-controls': toolsView ? toolsDrawerId : undefined,
+              tabIndex: tabStopTaken ? -1 : 0,
+            }}
+          >
+            <MoreGlyph />
+          </PaneOverflowMenu>
         </div>
       </div>
       {ended ? (
@@ -1463,13 +1520,13 @@ function DeviceToolbar({
           variant="compact"
           title={
             surface.status === 'denied'
-              ? 'You cannot watch this device'
-              : 'This device session has ended'
+              ? "You can't watch this device"
+              : 'This device session ended'
           }
           description={
             surface.status === 'denied'
-              ? 'Only the Station operator, or an admin of a Project this device is shared with, can watch and control it.'
-              : 'It was ended, the device stopped, or the device helper went away. Reconnect to open it again.'
+              ? 'Ask the Station operator to share it with your Project.'
+              : 'Reconnect to open it again.'
           }
           action={
             surface.status === 'unavailable' ? (
@@ -1486,7 +1543,7 @@ function DeviceToolbar({
         />
       ) : surface.lastFrameAt === null ? (
         <p className="device-pane__loading-line" role="status">
-          Step 2 of 2: connect video
+          Connecting video…
         </p>
       ) : null}
     </>

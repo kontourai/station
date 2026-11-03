@@ -458,11 +458,11 @@ describe('opening a device', () => {
     renderInQueryClient(<DeviceWorkspacePane />);
     await openFirst('Open iPhone 17 Pro');
     expect(
-      screen.getAllByText('Step 1 of 2: open device').length,
+      screen.getAllByText('Opening device…').length,
     ).toBeGreaterThan(0);
     const session = sessionFor(IOS_DEVICE);
     await act(async () => answer.resolve(session));
-    expect(await screen.findByText('Step 2 of 2: connect video')).toBeTruthy();
+    expect(await screen.findByText('Connecting video…')).toBeTruthy();
     await waitFor(() => expect(log.streams).toHaveLength(1));
     expect(log.streams[0]!.url).toContain(
       encodeURIComponent(session.surfaceId),
@@ -472,7 +472,7 @@ describe('opening a device', () => {
     );
     await log.streams[0]!.push(frameRecord(session.surfaceId));
     await waitFor(() =>
-      expect(screen.queryByText('Step 2 of 2: connect video')).toBeNull(),
+      expect(screen.queryByText('Connecting video…')).toBeNull(),
     );
   });
 
@@ -1172,7 +1172,7 @@ describe('the device toolbar', () => {
     renderInQueryClient(<DeviceWorkspacePane />);
     await openFirst('Open iPhone 17 Pro');
     expect(
-      await screen.findByText('This device session has ended'),
+      await screen.findByText('This device session ended'),
     ).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Reconnect' })).toBeTruthy();
   });

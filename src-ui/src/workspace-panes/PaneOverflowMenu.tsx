@@ -1,6 +1,7 @@
 import {
   type CSSProperties,
   type ReactNode,
+  type RefObject,
   useEffect,
   useId,
   useLayoutEffect,
@@ -8,25 +9,23 @@ import {
   useState,
 } from 'react';
 import { createPortal } from 'react-dom';
-import { IconButton } from '../../components/IconButton';
-import { ArrowLeftGlyph } from '../../components/icons/Glyph';
-import { useMenuFocus } from '../../hooks/useMenuFocus';
+import { IconButton } from '../components/IconButton';
+import { ArrowLeftGlyph } from '../components/icons/Glyph';
+import { useMenuFocus } from '../hooks/useMenuFocus';
+import './PaneOverflowMenu.css';
 
 /**
- * The Browser pane's `⋯` menu (#90): what a browser keeps out of its toolbar.
- * A row may carry a hint at its right end (a shortcut, or a current value),
- * and a row may open a sub-list in place (Viewport's presets), with a row to
- * go back.
+ * The `⋯` menu the Browser and Device panes keep their secondary actions in
+ * (#90). Rows are grouped under `heading` items; a row may carry a hint at its
+ * right end (a shortcut, or a current value), and a `list` row opens its
+ * choices in place, with a row to go back.
  *
- * Built on the app's shared menu pieces: `useMenuFocus` (focus entry, arrow
- * roving for a `role="menu"`, focusout dismissal, focus return) and the
- * `.menu-surface` / `.menu-row` look every Station menu shares. Portalled
- * and fixed to the trigger's rect so a toolbar that clips cannot clip the
- * menu; it opens below the trigger, or above it when there is no room, and
- * is bounded to the viewport above the chat dock, with its own scroll.
+ * Portalled and fixed to the trigger's rect so a toolbar that clips cannot
+ * clip the menu; it opens below the trigger, or above it when there is no
+ * room, and is bounded to the viewport above the chat dock.
  */
 
-export interface BrowserMenuRadio {
+export interface PaneMenuRadio {
   id: string;
   label: string;
   checked: boolean;
@@ -34,7 +33,7 @@ export interface BrowserMenuRadio {
   onSelect: () => void;
 }
 
-export type BrowserMenuItem =
+export type PaneMenuItem =
   | {
       kind: 'action';
       id: string;
@@ -55,9 +54,9 @@ export type BrowserMenuItem =
       /** The current choice, shown at the row's right end. */
       hint?: string;
       disabled?: boolean;
-      choices: BrowserMenuRadio[];
+      choices: PaneMenuRadio[];
     }
-  | { kind: 'separator'; id: string }
+  | { kind: 'heading'; id: string; label: string }
   | {
       kind: 'danger';
       id: string;
@@ -66,6 +65,22 @@ export type BrowserMenuItem =
       disabled?: boolean;
       onSelect: () => void;
     };
+
+type MenuRow = Exclude<PaneMenuItem, { kind: 'heading' }>;
+
+/** Rows split at each heading; rows before the first heading form a group with no label. */
+function groupsOf(items: PaneMenuItem[]) {
+  const groups: { id: string; label: string; rows: MenuRow[] }[] = [];
+  for (const item of items) {
+    if (item.kind === 'heading')
+      groups.push({ id: item.id, label: item.label, rows: [] });
+    else {
+      if (groups.length === 0) groups.push({ id: 'top', label: '', rows: [] });
+      groups.at(-1)!.rows.push(item);
+    }
+  }
+  return groups.filter((group) => group.rows.length > 0);
+}
 
 const GAP_PX = 4;
 const EDGE_PX = 8;
@@ -84,9 +99,9 @@ function Row({
       <span className="menu-row__glyph" aria-hidden="true">
         {glyph ?? null}
       </span>
-      <span className="browser-pane__menu-label">{label}</span>
+      <span className="pane-menu__label">{label}</span>
       {hint ? (
-        <span className="browser-pane__menu-hint" aria-hidden="true">
+        <span className="pane-menu__hint" aria-hidden="true">
           {hint}
         </span>
       ) : null}
@@ -94,22 +109,29 @@ function Row({
   );
 }
 
-export function BrowserOverflowMenu({
+export function PaneOverflowMenu({
   label,
   items,
   children,
+  triggerRef: givenTriggerRef,
+  triggerProps,
 }: {
   /** The trigger's accessible name and tooltip, e.g. "More browser actions". */
   label: string;
-  items: BrowserMenuItem[];
+  items: PaneMenuItem[];
   /** The trigger's glyph. */
   children: ReactNode;
+  /** The trigger, for a host that returns focus to it. */
+  triggerRef?: RefObject<HTMLButtonElement | null>;
+  /** Extra trigger attributes, e.g. a toolbar's roving `tabIndex`. */
+  triggerProps?: { 'aria-controls'?: string; tabIndex?: number };
 }) {
   const [open, setOpen] = useState(false);
   /** A `list` row's id while its choices are shown in place. */
   const [listId, setListId] = useState<string | null>(null);
   const [style, setStyle] = useState<CSSProperties>({ visibility: 'hidden' });
-  const triggerRef = useRef<HTMLButtonElement>(null);
+  const ownTriggerRef = useRef<HTMLButtonElement>(null);
+  const triggerRef = givenTriggerRef ?? ownTriggerRef;
   const close = () => {
     setOpen(false);
     setListId(null);
@@ -217,7 +239,7 @@ export function BrowserOverflowMenu({
   }, [open, style.visibility, menuRef]);
 
   const list = items.find(
-    (item): item is Extract<BrowserMenuItem, { kind: 'list' }> =>
+    (item): item is Extract<PaneMenuItem, { kind: 'list' }> =>
       item.kind === 'list' && item.id === listId,
   );
   /**
@@ -242,7 +264,8 @@ export function BrowserOverflowMenu({
         title={label}
         aria-haspopup="menu"
         aria-expanded={open}
-        aria-controls={open ? menuId : undefined}
+        tabIndex={triggerProps?.tabIndex}
+        aria-controls={open ? menuId : triggerProps?.['aria-controls']}
         onClick={() => (open ? close() : setOpen(true))}
       >
         {children}
@@ -254,7 +277,7 @@ export function BrowserOverflowMenu({
               <button
                 type="button"
                 tabIndex={-1}
-                className="browser-pane__menu-backdrop"
+                className="pane-menu__backdrop"
                 aria-label="Close menu"
                 onPointerDown={(event) => event.preventDefault()}
                 onPointerUp={close}
@@ -266,7 +289,7 @@ export function BrowserOverflowMenu({
                 role="menu"
                 aria-label={list ? list.label : label}
                 tabIndex={-1}
-                className="menu-surface browser-pane__menu"
+                className="menu-surface pane-menu"
                 style={style}
               >
                 {list ? (
@@ -275,7 +298,7 @@ export function BrowserOverflowMenu({
                       type="button"
                       role="menuitem"
                       aria-label={`Back from ${list.label}`}
-                      className="menu-row browser-pane__menu-row"
+                      className="menu-row pane-menu__row"
                       onClick={() => showList(null)}
                     >
                       <Row glyph={<ArrowLeftGlyph />} label={list.label} />
@@ -287,7 +310,7 @@ export function BrowserOverflowMenu({
                         role="menuitemradio"
                         aria-checked={choice.checked}
                         disabled={choice.disabled}
-                        className="menu-row browser-pane__menu-row"
+                        className="menu-row pane-menu__row"
                         onClick={() => choose(choice.onSelect)}
                       >
                         <Row
@@ -298,52 +321,65 @@ export function BrowserOverflowMenu({
                     ))}
                   </>
                 ) : (
-                  items.map((item) =>
-                    item.kind === 'separator' ? (
-                      <hr
-                        key={item.id}
-                        className="browser-pane__menu-separator"
-                      />
-                    ) : item.kind === 'list' ? (
-                      <button
-                        key={item.id}
-                        type="button"
-                        role="menuitem"
-                        aria-haspopup="menu"
-                        aria-label={
-                          item.hint ? `${item.label}: ${item.hint}` : item.label
-                        }
-                        disabled={item.disabled}
-                        className="menu-row browser-pane__menu-row"
-                        onClick={() => showList(item.id)}
-                      >
-                        <Row
-                          glyph={item.glyph}
-                          label={item.label}
-                          hint={item.hint}
-                        />
-                      </button>
-                    ) : (
-                      <button
-                        key={item.id}
-                        type="button"
-                        role="menuitem"
-                        aria-label={item.label}
-                        aria-keyshortcuts={
-                          item.kind === 'action' ? item.hintKeys : undefined
-                        }
-                        disabled={item.disabled}
-                        className={`menu-row browser-pane__menu-row${item.kind === 'danger' ? ' browser-pane__menu-row--danger' : ''}`}
-                        onClick={() => choose(item.onSelect)}
-                      >
-                        <Row
-                          glyph={item.glyph}
-                          label={item.label}
-                          hint={item.kind === 'action' ? item.hint : undefined}
-                        />
-                      </button>
-                    ),
-                  )
+                  groupsOf(items).map((group) => (
+                    <div
+                      key={group.id}
+                      role="group"
+                      aria-label={group.label || undefined}
+                      className="pane-menu__group"
+                    >
+                      {group.label ? (
+                        <div className="pane-menu__heading" aria-hidden="true">
+                          {group.label}
+                        </div>
+                      ) : null}
+                      {group.rows.map((item) =>
+                        item.kind === 'list' ? (
+                          <button
+                            key={item.id}
+                            type="button"
+                            role="menuitem"
+                            aria-haspopup="menu"
+                            aria-label={
+                              item.hint
+                                ? `${item.label}: ${item.hint}`
+                                : item.label
+                            }
+                            disabled={item.disabled}
+                            className="menu-row pane-menu__row"
+                            onClick={() => showList(item.id)}
+                          >
+                            <Row
+                              glyph={item.glyph}
+                              label={item.label}
+                              hint={item.hint}
+                            />
+                          </button>
+                        ) : (
+                          <button
+                            key={item.id}
+                            type="button"
+                            role="menuitem"
+                            aria-label={item.label}
+                            aria-keyshortcuts={
+                              item.kind === 'action' ? item.hintKeys : undefined
+                            }
+                            disabled={item.disabled}
+                            className={`menu-row pane-menu__row${item.kind === 'danger' ? ' pane-menu__row--danger' : ''}`}
+                            onClick={() => choose(item.onSelect)}
+                          >
+                            <Row
+                              glyph={item.glyph}
+                              label={item.label}
+                              hint={
+                                item.kind === 'action' ? item.hint : undefined
+                              }
+                            />
+                          </button>
+                        ),
+                      )}
+                    </div>
+                  ))
                 )}
               </div>
             </>,

@@ -38,7 +38,6 @@ afterEach(() => {
 });
 
 import {
-  BrowserRecordingButton,
   BrowserRecordingStatus,
   useBrowserRecording,
 } from '../BrowserRecording';
@@ -55,10 +54,16 @@ function View({
   const recording = useBrowserRecording(api, 'bs_test', value, true);
   return (
     <>
-      <BrowserRecordingButton
-        recording={recording}
-        live={value !== undefined}
-      />
+      {/* The pane starts a recording from its ⋯ menu; the status bar stops it. */}
+      {recording.active ? null : (
+        <button
+          type="button"
+          disabled={recording.busy}
+          onClick={recording.toggle}
+        >
+          Record
+        </button>
+      )}
       <BrowserRecordingStatus recording={recording} />
     </>
   );
@@ -189,11 +194,9 @@ it('does not start recording without a session generation', () => {
       <View api={api} generation={null} />
     </QueryClientProvider>,
   );
-  expect(
-    (screen.getByRole('button', { name: 'Record' }) as HTMLButtonElement)
-      .disabled,
-  ).toBe(true);
+  fireEvent.click(screen.getByRole('button', { name: 'Record' }));
   expect(api.startRecording).not.toHaveBeenCalled();
+  expect(screen.queryByText('Starting recording…')).toBeNull();
 });
 
 it('resizes large sampled frames before sending a bounded contact set', async () => {

@@ -14,15 +14,19 @@ const loadWizard = () => import('./DeviceSetupWizard');
  */
 export function DeviceSetupEntry({
   requestScope,
+  label = 'Set up devices',
+  variant = 'primary',
 }: {
   requestScope: ApiRequestScope;
+  label?: string;
+  variant?: 'primary' | 'secondary';
 }) {
   const [open, setOpen] = useState(false);
   const queryClient = useQueryClient();
   return (
     <>
-      <Button variant="primary" onClick={() => setOpen(true)}>
-        Set up devices
+      <Button variant={variant} onClick={() => setOpen(true)}>
+        {label}
       </Button>
       {open ? (
         <LazyBoundary
