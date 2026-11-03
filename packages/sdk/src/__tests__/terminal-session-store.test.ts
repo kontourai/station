@@ -344,4 +344,3 @@ test('a session’s events reach only its own listeners', async () => {
   expect(seen.quiet).toEqual([]);
   expect(quiet.status).toBe('running');
 });
-
