@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { rm, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
+import { inspect } from 'node:util';
 import { humanPrincipal } from '@kontourai/station-contracts/principal';
 import { parseProjectTaskRoomBrowserHistory } from '@kontourai/station-contracts/project-task-room-browser';
 import type { ProviderSession } from '@kontourai/station-contracts/provider';
@@ -633,7 +634,7 @@ test('a terminal runtime error publishes the failed room line without another re
       ]);
     });
     expect(await f.agentCount()).toBe(0);
-    expect(f.failures).toEqual([]);
+    expect(f.failures, inspect(f.failures)).toEqual([]);
   } finally {
     await f.close();
   }
@@ -661,7 +662,7 @@ test('room requests start the Task and publish canonical answers and continued t
     if (body.data.kind !== 'recorded')
       throw new Error('Request was not recorded');
     const sessionId = body.data.record.sessionId;
-    expect(f.failures).toEqual([]);
+    expect(f.failures, inspect(f.failures)).toEqual([]);
     expect(body.data.record.state, JSON.stringify(body)).toBe('dispatched');
     expect(f.adapter.turns[0].input).toContain('# Task brief: Make the room');
     expect(f.adapter.turns[0].input).toContain('Brief shortened to fit');
@@ -842,7 +843,7 @@ test('room requests start the Task and publish canonical answers and continued t
     });
     expect(forbidden.status).toBe(403);
     expect(f.adapter.turns).toHaveLength(3);
-    expect(f.failures).toEqual([]);
+    expect(f.failures, inspect(f.failures)).toEqual([]);
   } finally {
     await f.close();
   }
@@ -898,7 +899,7 @@ async function requestAgent(f: Awaited<ReturnType<typeof fixture>>) {
   expect(response.status, await response.clone().text()).toBe(200);
   const body = await readJson<{ data: TaskRoomWorkOutcome }>(response);
   if (body.data.kind !== 'recorded') throw new Error('Missing request record');
-  expect(body.data.record.state, JSON.stringify(f.failures)).toBe('dispatched');
+  expect(body.data.record.state, inspect(f.failures)).toBe('dispatched');
   expect(f.adapter.turns).toHaveLength(1);
   await vi.waitFor(() =>
     expect(f.graph.readTaskView(f.task.id)?.status).toBe('in_progress'),
@@ -915,7 +916,7 @@ test('an exact raw Session with a successor refuses a room reply with 403 before
     await f.conversation.reconcile(f.task.id);
     expect(
       (await f.history()).some((record) => record.causationId === 'turn-1'),
-      JSON.stringify(f.failures),
+      inspect(f.failures),
     ).toBe(true);
     const root = f.store.conversationForSession(sessionId)!;
     const started = f.store
@@ -1033,7 +1034,7 @@ test('a continuation failure after admission posts no human reply', async () => 
     await f.conversation.reconcile(f.task.id);
     expect(
       (await f.history()).some((record) => record.causationId === 'turn-1'),
-      JSON.stringify(f.failures),
+      inspect(f.failures),
     ).toBe(true);
     const send = vi
       .spyOn(f.adapter, 'sendTurn')
@@ -1158,7 +1159,7 @@ test.each(['initial', 'reply'] as const)(
           record.body.text === 'Immediate canonical answer',
       );
       expect(prompt).toBeDefined();
-      expect(answer, JSON.stringify(f.failures)).toBeDefined();
+      expect(answer, inspect(f.failures)).toBeDefined();
       expect(prompt!.envelope.seq).toBeLessThan(answer!.envelope.seq);
     } finally {
       vi.restoreAllMocks();
@@ -1209,7 +1210,7 @@ test.each([undefined, 'room-reply:forged-dock-send'])(
       expect(JSON.stringify(history)).not.toContain(
         'Private second-turn answer',
       );
-      expect(f.failures).toEqual([]);
+      expect(f.failures, inspect(f.failures)).toEqual([]);
     } finally {
       await f.close();
     }
@@ -1318,6 +1319,83 @@ test('publication holds expire and an expired release cannot release a newer hol
   }
 });
 
+test('an unavailable completed answer stays blocked while other Sessions recover, then publishes once on retry', async () => {
+  const f = await fixture(false);
+  try {
+    const unavailableSession = await requestAgent(f);
+    await f.complete(unavailableSession, 'turn-1', 'Deferred canonical answer');
+    const response = await f.post('/delegations', {
+      prompt: 'Independent investigation',
+      target: {
+        environment: { kind: 'current' },
+        agent: 'researcher',
+        workspace: { kind: 'project', projectSlug: 'project' },
+      },
+      taskRoomRequest: {
+        taskId: f.task.id,
+        taskCreatedAt: f.task.createdAt,
+        operationId: 'independent-request',
+      },
+    });
+    expect(response.status, await response.clone().text()).toBe(200);
+    const body = await readJson<{ data: TaskRoomWorkOutcome }>(response);
+    if (body.data.kind !== 'recorded')
+      throw new Error('Missing second request');
+    const healthySession = body.data.record.sessionId;
+    expect(healthySession).not.toBe(unavailableSession);
+    await f.complete(healthySession, 'turn-2', 'Independent canonical answer');
+    const read = f.sessions.sessionQueries.readAssistantTurn.bind(
+      f.sessions.sessionQueries,
+    );
+    const projection = vi
+      .spyOn(f.sessions.sessionQueries, 'readAssistantTurn')
+      .mockImplementation((query, authority) =>
+        query.threadId === unavailableSession
+          ? Promise.resolve({ status: 'unavailable' as const })
+          : read(query, authority),
+      );
+
+    await f.room.reconcileAgentLifecycles([f.task.id]);
+    expect(JSON.stringify(await f.history())).toContain(
+      'Independent canonical answer',
+    );
+    expect(JSON.stringify(await f.history())).not.toContain(
+      'Deferred canonical answer',
+    );
+    expect(
+      await f.room.liveActivity({
+        request: new Request('http://station.test'),
+      }),
+    ).toMatchObject({
+      kind: 'available',
+      projection: {
+        participants: [
+          expect.objectContaining({
+            work: expect.objectContaining({
+              sessionId: unavailableSession,
+              workState: 'blocked',
+              workName: "Answer couldn't be posted",
+            }),
+          }),
+        ],
+      },
+    });
+    projection.mockRestore();
+    await f.room.reconcileAgentLifecycles([f.task.id]);
+    await f.room.reconcileAgentLifecycles([f.task.id]);
+    const answers = (await f.history()).filter(
+      (entry) => entry.correlationId === `room-answer:${unavailableSession}`,
+    );
+    expect(answers).toHaveLength(1);
+    expect(JSON.stringify(answers)).toContain('Deferred canonical answer');
+    expect(await f.agentCount()).toBe(0);
+    expect(f.adapter.turns).toHaveLength(2);
+  } finally {
+    vi.restoreAllMocks();
+    await f.close();
+  }
+});
+
 test('canonical initial answers remain readable without a reply journal, while corrupt journals fail closed', async () => {
   const f = await fixture(false);
   try {
@@ -1386,9 +1464,7 @@ test('Task images reach the provider on requests and same-session replies and re
     const result = await readJson<{ data: TaskRoomWorkOutcome }>(response);
     if (result.data.kind !== 'recorded')
       throw new Error('Request not recorded');
-    expect(result.data.record.state, JSON.stringify(f.failures)).toBe(
-      'dispatched',
-    );
+    expect(result.data.record.state, inspect(f.failures)).toBe('dispatched');
     expect(f.adapter.turns).toHaveLength(1);
     const sessionId = result.data.record.sessionId;
     await f.started(sessionId, 'turn-1');

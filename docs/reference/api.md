@@ -784,6 +784,14 @@ Task). `GET /api/orchestration/station-control/task-brief` takes an optional
 `include=all_records|summary_history`. `GET /api/tasks` adds
 `openQuestionCount` to a Task with open questions.
 
+Task-list rows can also include `workChatConversationIds`, an optional array
+of canonical Conversation IDs for Inbox presentation. It combines the Task's
+primary Session, dispatched independent Task-room requests, and explicit
+work-chat links. Each association is rechecked against the current Task and
+Project incarnation and the caller's Conversation read authority before
+delivery. It grants no access and does not modify the Task's lead assignment.
+Older servers may omit the field.
+
 ### Lessons from a done Task
 
 When a Task is done, its active, standing decisions and dead ends are
@@ -6930,11 +6938,13 @@ feature preview and Browser view authority:
   cancels or discards it. `GET .../recordings/:recordingId/video` returns a
   bounded WebM while it is retained. Each operation rechecks person and Browser
   authority, preview state, session generation and recording ownership. There
-  are at most four active Browser recordings per Station and two per owner;
-  finished recordings no longer consume active slots. Capture stops at 30 seconds and
-  finishes at 300 frames or 64 MiB of raw input, retaining earlier frames; encoded output is limited to 16 MiB and a
-  completed result is retained for at most one minute; at most four completed
-  results are retained, so an older one may be discarded sooner. This path offers a local save;
+  are at most four active Browser and Device recordings per Station and two per
+  person; an Agent shares the slots of the person it acts for. Finished
+  recordings no longer consume active slots. Capture stops at 30 seconds and
+  finishes at 300 frames or 64 MiB of raw input, retaining earlier frames;
+  encoded output is limited to 16 MiB. A completed result is retained for at
+  most one minute; at most four completed results are retained, so an older one
+  may be discarded sooner. This path offers a local save;
   `POST .../recordings/:recordingId/task` publishes to the pinned Task after
   authority and workspace rechecks. `GET .../recordings/:recordingId/frames`
   returns four sampled JPEGs and provenance while retained, or `409` when the

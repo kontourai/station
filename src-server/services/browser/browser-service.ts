@@ -18,7 +18,7 @@ import {
 import { BrowserHumanRecording } from './browser-human-recording.js';
 import { BrowserLiveSurfaces } from './browser-live-surfaces.js';
 import { LocalTargetStore } from './browser-local-targets.js';
-import type { BrowserNetworkLog } from './browser-network-log.js';
+import type { BrowserNetworkSnapshot } from './browser-network-log.js';
 import { BrowserProjectSettingsStore } from './browser-project-settings.js';
 import {
   type BrowserProfile,
@@ -106,9 +106,7 @@ export interface BrowserService {
     browserSessionId: string,
     after?: number,
     limit?: number,
-  ): Promise<
-    (ReturnType<BrowserNetworkLog['read']> & { generation: number }) | undefined
-  >;
+  ): Promise<BrowserNetworkSnapshot | undefined>;
   shutdown(): Promise<void>;
 }
 

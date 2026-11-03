@@ -26,6 +26,7 @@ import {
 } from '../../services/projects/task-browser-capture.js';
 import type { TaskDeviceCapture } from '../../services/projects/task-device-capture.js';
 import type { TaskDeviceRecording } from '../../services/projects/task-device-recording.js';
+import { TaskBrowserRecordingError } from '../../services/projects/task-recording-errors.js';
 import type { TaskWalkthroughStore } from '../../services/walkthroughs/task-walkthrough-store.js';
 import { BROWSER_RECORD_MAX_DURATION_MS } from '../../tools/station-browser-policy.js';
 
@@ -84,6 +85,14 @@ export function createTaskReviewCaptureRoutes(deps: {
   app.onError((error, c) => {
     if (error instanceof FeaturePreviewDisabledError)
       return c.json(error.refusal, 404);
+    if (
+      error instanceof TaskBrowserRecordingError &&
+      error.code === 'recording-unavailable'
+    )
+      return c.json(
+        { success: false, code: error.code, error: error.response.error },
+        503,
+      );
     if (
       !(error instanceof TaskBrowserCaptureError) ||
       error.cause !== undefined
