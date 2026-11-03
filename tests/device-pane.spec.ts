@@ -148,7 +148,7 @@ test.describe('Device pane', () => {
     await expect(pane).toBeVisible({ timeout: FIRST_RENDER_TIMEOUT_MS });
 
     await expect(
-      pane.getByText('Set up device inspection', { exact: true }),
+      pane.getByText('Set up devices to start a simulator', { exact: true }),
       'an unconfigured Station must say it is unconfigured',
     ).toBeVisible();
     await expect(

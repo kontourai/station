@@ -322,6 +322,7 @@ export function PaneOverflowMenu({
                   </>
                 ) : (
                   groupsOf(items).map((group) => (
+                    // biome-ignore lint/a11y/useSemanticElements: a fieldset is not a valid child of role="menu"; ARIA menus group with role="group".
                     <div
                       key={group.id}
                       role="group"

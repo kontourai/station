@@ -5,7 +5,7 @@ import {
   type BrowserPaneApi,
   browserPaneKeys,
   describeBrowserFailure,
-} from './browserPaneApi';
+} from '../../workspace-panes/browser-pane/browserPaneApi';
 
 /**
  * Whether agents may run JavaScript in this Project's browser (#90 D4). Off
@@ -35,7 +35,7 @@ export function BrowserAgentSettingsPanel({
 
   return (
     <section
-      className="browser-pane__panel"
+      className="browser-settings__panel"
       aria-labelledby="browser-agent-settings-heading"
     >
       <h3 id="browser-agent-settings-heading">Agent JavaScript</h3>
@@ -47,14 +47,14 @@ export function BrowserAgentSettingsPanel({
           description={describeBrowserFailure(settings.error)}
         />
       ) : (
-        <div className="browser-pane__list-item">
+        <div className="browser-settings__item">
           <span>
             <strong>Let agents run JavaScript in this Project's pages</strong>
-            <span id={descriptionId} className="browser-pane__hint">
+            <span id={descriptionId} className="browser-settings__hint">
               A script acts as the page: it can read its content, cookies and
               storage. Agents can read, click and type without this.
             </span>
-            <details className="browser-pane__details">
+            <details className="browser-settings__details">
               <summary>Details</summary>
               <p>
                 A script can keep running after the agent's call ends. Station

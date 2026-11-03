@@ -320,7 +320,7 @@ export function DeviceToolsDrawer(props: DeviceToolsDrawerProps) {
         ) : null}
 
         {view === 'apps' ? (
-          <Section title="App">
+          <Section>
             <Row label="Foreground app">
               {data ? (
                 data.foregroundApp.state === 'read' ? (
@@ -354,7 +354,7 @@ export function DeviceToolsDrawer(props: DeviceToolsDrawerProps) {
         ) : null}
 
         {view === 'logs' && deviceLoopEnabled ? (
-          <Section title="Logs">
+          <Section>
             <label className="device-tools__field">
               <span className="device-tools__label">App ID</span>
               <input
@@ -751,10 +751,13 @@ function AppActions({
   );
 }
 
-function Section({ title, children }: { title: string; children: ReactNode }) {
+/** A drawer section; untitled when it is the whole of its view (Apps, Logs). */
+function Section({ title, children }: { title?: string; children: ReactNode }) {
   const id = useId();
   const collapsible = useContext(SectionsCollapsed);
   const [expanded, setExpanded] = useState(!collapsible);
+  if (!title)
+    return <section className="device-tools__section">{children}</section>;
   return (
     <section aria-labelledby={id} className="device-tools__section">
       <h4 className="device-tools__section-title">

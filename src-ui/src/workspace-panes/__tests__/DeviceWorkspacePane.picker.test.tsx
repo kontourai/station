@@ -92,17 +92,17 @@ describe('the device picker (#1970)', () => {
     renderInQueryClient(<DeviceWorkspacePane />);
     await screen.findByRole('heading', { name: 'Android Emulators' });
     const android = within(group(/Android Emulators/));
-    expect(android.getByText('No Android emulators found.')).toBeTruthy();
+    expect(android.getByText('No Android emulators')).toBeTruthy();
     expect(android.getByText(/Create an emulator \(an AVD\)/)).toBeTruthy();
-    expect(screen.queryByText(/No iOS simulators found/)).toBeNull();
+    expect(screen.queryByText(/No iOS simulators/)).toBeNull();
   });
 
   test('no devices at all: both platform hints', async () => {
     stubDeviceFetch({ inventory: readyInventory([]) });
     renderInQueryClient(<DeviceWorkspacePane />);
-    expect(await screen.findByText(/No iOS simulators found/)).toBeTruthy();
+    expect(await screen.findByText(/No iOS simulators/)).toBeTruthy();
     expect(screen.getByText(/Install Xcode/)).toBeTruthy();
-    expect(screen.getByText(/No Android emulators found/)).toBeTruthy();
+    expect(screen.getByText(/No Android emulators/)).toBeTruthy();
   });
 
   test('Refresh devices re-reads the list', async () => {
@@ -125,7 +125,9 @@ describe('the device picker (#1970)', () => {
   test('an unconfigured host renders the setup slot, with no retry', async () => {
     stubDeviceFetch({ inventory: unavailableInventory('not-configured') });
     const { container } = renderInQueryClient(<DeviceWorkspacePane />);
-    expect(await screen.findByText(/Set up device inspection/)).toBeTruthy();
+    expect(
+      await screen.findByText(/Set up devices to start a simulator/),
+    ).toBeTruthy();
     expect(
       container.querySelector('[data-slot="device-setup"]'),
     ).not.toBeNull();

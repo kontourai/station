@@ -457,9 +457,7 @@ describe('opening a device', () => {
     });
     renderInQueryClient(<DeviceWorkspacePane />);
     await openFirst('Open iPhone 17 Pro');
-    expect(
-      screen.getAllByText('Opening device…').length,
-    ).toBeGreaterThan(0);
+    expect(screen.getAllByText('Opening device…').length).toBeGreaterThan(0);
     const session = sessionFor(IOS_DEVICE);
     await act(async () => answer.resolve(session));
     expect(await screen.findByText('Connecting video…')).toBeTruthy();
@@ -496,8 +494,7 @@ describe('opening a device', () => {
     renderInQueryClient(<DeviceWorkspacePane />);
     await openFirst('Start station-test');
     expect(
-      screen.getAllByText('Starting station-test… This can take a minute.')
-        .length,
+      screen.getAllByText('Starting station-test…').length,
     ).toBeGreaterThan(0);
     // The row keeps its own spinner while the device boots.
     expect(
@@ -590,8 +587,7 @@ describe('opening a device', () => {
     // The next read shows it booting; then it silently stops booting.
     await waitFor(() =>
       expect(
-        screen.getAllByText('Starting station-test… This can take a minute.')
-          .length,
+        screen.getAllByText('Starting station-test…').length,
       ).toBeGreaterThan(0),
     );
     await new Promise((resolve) => setTimeout(resolve, 50));
@@ -1171,9 +1167,7 @@ describe('the device toolbar', () => {
     });
     renderInQueryClient(<DeviceWorkspacePane />);
     await openFirst('Open iPhone 17 Pro');
-    expect(
-      await screen.findByText('This device session ended'),
-    ).toBeTruthy();
+    expect(await screen.findByText('This device session ended')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Reconnect' })).toBeTruthy();
   });
 });

@@ -1,8 +1,10 @@
-/* The ⋯ menu: the shared .menu-surface look, bounded with its own scroll. */
+/* The ⋯ menu: the shared .menu-surface look, bounded with its own scroll.
+   A pane can sit in the dock, so the menu takes the dock-owned popover
+   layer rather than the page one beneath the dock. */
 .pane-menu {
   min-width: 14rem;
   overflow-y: auto;
-  z-index: var(--layer-popover, var(--k-z-popover));
+  z-index: var(--layer-surface-popover);
 }
 
 .pane-menu__backdrop,
@@ -16,7 +18,7 @@
   inset: 0;
   padding: 0;
   position: fixed;
-  z-index: calc(var(--layer-popover, var(--k-z-popover)) - 1);
+  z-index: calc(var(--layer-surface-popover) - 1);
 }
 
 .pane-menu__group + .pane-menu__group {

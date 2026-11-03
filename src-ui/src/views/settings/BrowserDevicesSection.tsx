@@ -6,13 +6,14 @@ import {
   useHostRequestAuthorityScope,
 } from '../../contexts/ApiBaseContext';
 import { useScopedProjectsQuery } from '../../contexts/ProjectsContext';
-import { BrowserAgentSettingsPanel } from '../../workspace-panes/browser-pane/BrowserAgentSettingsPanel';
-import { BrowserLocalTargetsPanel } from '../../workspace-panes/browser-pane/BrowserLocalTargetsPanel';
 import {
   browserPaneApi,
   browserPaneKeys,
 } from '../../workspace-panes/browser-pane/browserPaneApi';
 import { DeviceSetupEntry } from '../../workspace-panes/device/DeviceSetupEntry';
+import { BrowserAgentSettingsPanel } from './BrowserAgentSettingsPanel';
+import './BrowserDevicesSection.css';
+import { BrowserLocalTargetsPanel } from './BrowserLocalTargetsPanel';
 import { SettingsSection } from './SettingsSection';
 import { settingsRow } from './settings-catalog';
 

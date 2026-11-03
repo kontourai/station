@@ -63,7 +63,6 @@ import {
 } from '../live-surface/LiveSurfaceCanvas';
 import { DeviceSetupSlot } from './DeviceSetupSlot';
 import type { DeviceToolsView } from './device/DeviceToolsDrawer';
-import { type PaneMenuItem, PaneOverflowMenu } from './PaneOverflowMenu';
 import {
   type DevicePaneSelection,
   onDevicePaneSelection,
@@ -93,6 +92,7 @@ import {
   readDevicePaneState,
   writeDevicePaneState,
 } from './devicePaneStateStorage';
+import { type PaneMenuItem, PaneOverflowMenu } from './PaneOverflowMenu';
 import './DeviceWorkspacePane.css';
 
 // The Tools drawer and the accessibility overlay (#1971) load on first use:
@@ -149,7 +149,7 @@ function useElementWidth(ref: RefObject<HTMLElement | null>): number {
  * Journeys:
  * - Pick a device (iOS Simulators and Android Emulators, running first). A
  *   running device offers Open; a stopped one offers Start, which boots it
- *   ("Starting X… This can take a minute") and then opens it.
+ *   ("Starting X…") and then opens it.
  * - Opening is two steps, and the pane says which one it is on: "open
  *   device" (the server session) then "connect video" (the first frame).
  * - The toolbar sends Home, plus Back and Recents on Android or Rotate on
@@ -238,12 +238,12 @@ const EMPTY_GROUP: Record<
   { label: string; hint: string }
 > = {
   ios: {
-    label: 'No iOS simulators found.',
-    hint: 'Install Xcode and an iOS Simulator runtime (Xcode › Settings › Components), then refresh.',
+    label: 'No iOS simulators',
+    hint: 'Add a runtime in Xcode › Settings › Components, then refresh.',
   },
   android: {
-    label: 'No Android emulators found.',
-    hint: "Create an emulator (an AVD) in Android Studio's Device Manager, then refresh.",
+    label: 'No Android emulators',
+    hint: "Create one in Android Studio's Device Manager, then refresh.",
   },
 };
 
@@ -665,7 +665,7 @@ function DeviceWorkspacePaneSurface({
           <Empty
             variant="compact"
             label="Devices are not set up on this host"
-            description="The Station operator enables the device hub on an SSH host in Settings › Device hosts."
+            description="Ask the Station operator to set it up in Settings › Advanced › Device hosts."
           />
         </div>
       );
@@ -712,7 +712,11 @@ function DeviceWorkspacePaneSurface({
       {hostPicker}
       {pending ? <DeviceLoading pending={pending} /> : null}
       <div className="device-pane__picker-header">
-        <h2 className="device-pane__picker-title">Devices</h2>
+        <h2 className="device-pane__picker-title">
+          {devices.some((device) => device.booted)
+            ? 'Devices'
+            : 'Start a simulator'}
+        </h2>
         <div className="device-pane__picker-actions">
           <Button
             size="sm"
@@ -729,7 +733,7 @@ function DeviceWorkspacePaneSurface({
       </div>
       {state === 'partial' ? (
         <p className="device-pane__note">
-          Some device sources did not answer, so this list may be incomplete.
+          Some device sources didn't answer. The list may be incomplete.
         </p>
       ) : null}
       {(['ios', 'android'] as const).map((platform) => (
@@ -856,9 +860,7 @@ function DeviceGroup({
 function DeviceLoading({ pending }: { pending: Pending }) {
   const { device, phase } = pending;
   const line =
-    phase === 'starting'
-      ? `Starting ${device.name}… This can take a minute.`
-      : 'Opening device…';
+    phase === 'starting' ? `Starting ${device.name}…` : 'Opening device…';
   return (
     <div className="device-pane__loading">
       <p className="device-pane__loading-line" role="status">
