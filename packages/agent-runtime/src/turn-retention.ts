@@ -102,10 +102,13 @@ export function retainAgentTurns(
         table === 'effects'
           ? ' AND NOT EXISTS(SELECT 1 FROM agent_steps_approvals a WHERE a.turn_id=agent_steps_effects.turn_id AND a.tool_id=agent_steps_effects.id)'
           : '';
-      agentStatement(
+      const remove = agentStatement(
         database,
-        `DELETE FROM agent_steps_${table} WHERE rowid IN (SELECT rowid FROM agent_steps_${table} WHERE turn_id=?${eligible} LIMIT 16)`,
-      ).run(id);
+        `DELETE FROM agent_steps_${table} WHERE rowid IN (SELECT rowid FROM agent_steps_${table} WHERE turn_id=?${eligible} LIMIT 1)`,
+      );
+      for (let row = 0; row < 16 && performance.now() < deadline; row++) {
+        if (remove.run(id).changes === 0) break;
+      }
     }
     if (
       !['approvals', 'effects', 'changes', 'frame_blocks'].some((table) =>

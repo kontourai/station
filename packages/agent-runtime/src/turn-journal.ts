@@ -1436,7 +1436,7 @@ export function openSqliteAgentJournal(options: {
             const changed = retainAgentTurns(
               database,
               clock(),
-              Math.min(maintenanceDeadline, performance.now() + 4),
+              Math.min(maintenanceDeadline, performance.now() + 20),
             );
             if (
               changed &&
@@ -1446,7 +1446,7 @@ export function openSqliteAgentJournal(options: {
                   ?.freelist_count,
               ) > 0
             )
-              database.exec('PRAGMA incremental_vacuum(4)');
+              database.exec('PRAGMA incremental_vacuum(1)');
             if (changed) invalidateAgentValidation(database);
           }
           return answer;
