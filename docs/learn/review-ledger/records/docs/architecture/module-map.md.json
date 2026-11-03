@@ -1606,30 +1606,6 @@
 
     "src-server/services/orchestration/__tests__/ownership-cascade-gaps.test.ts",
 
-    "packages/monument/src/session-control.ts",
-
-    "src-server/services/orchestration/recovery-ledger-binding.ts",
-
-    "src-server/services/orchestration/sqlite-session-control-request-keys.ts",
-
-    "packages/monument/src/sqlite-recovery.ts",
-
-    "packages/monument/src/memory-recovery.ts",
-
-    "packages/monument/src/decisions/recovery-storage.ts",
-
-    "packages/monument/src/testing/recovery-conformance.ts",
-
-    "packages/monument/src/session-boundary.ts",
-
-    "src-server/services/orchestration/session-turn-boundary-binding.ts",
-
-    "src-server/telemetry/metrics.ts",
-
-    "packages/contracts/src/connection-recovery.ts",
-
-    "src-ui/src/components/chat-dock/UsageLimitBanner.tsx",
-
     "packages/agent-runtime/src/turn-retention.ts",
 
     "packages/agent-runtime/src/turn-body-codec.ts",
