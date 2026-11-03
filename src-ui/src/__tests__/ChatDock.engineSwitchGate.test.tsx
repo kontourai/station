@@ -16,7 +16,7 @@
 
 import type { ConversationOpenResolution } from '@kontourai/station-contracts/orchestration';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { ChatWorkspacePane } from '../components/chat-dock/ChatDock';
 import { DockShell } from '../components/chat-dock/DockShell';
@@ -238,7 +238,7 @@ function session(
   } as unknown as ChatSession;
 }
 
-async function renderPane(active: ChatSession) {
+async function renderPane(active: ChatSession, waitForContent = true) {
   viewSession.current = active;
   contentArea.props = null;
   render(
@@ -258,7 +258,9 @@ async function renderPane(active: ChatSession) {
       </KeyboardShortcutsProvider>
     </QueryClientProvider>,
   );
-  await screen.findByTestId('content-area');
+  await screen.findByTestId(
+    waitForContent ? 'content-area' : 'chat-dock-mobile-header',
+  );
   // Re-read through the holder's declared type: the reset above narrowed the
   // field to `null`, but the mocked area has assigned it since.
   return (contentArea as { props: null | { onExecutionModelSelect?: unknown } })
@@ -274,12 +276,40 @@ beforeEach(() => {
 afterEach(() => {
   viewSession.current = null;
   cleanup();
+  vi.unstubAllGlobals();
   window.localStorage.clear();
   window.history.replaceState({}, '', '/');
   navigationStore.navigate('/', { dock: null, maximize: null });
 });
 
 describe('ChatWorkspacePane engine-switch gate', () => {
+  test('a collapsed phone chat can go straight to full screen and restore to a peek', async () => {
+    vi.stubGlobal(
+      'matchMedia',
+      vi.fn((query: string) => ({
+        matches:
+          query.includes('max-width: 768px') || query === '(pointer: coarse)',
+        media: query,
+        onchange: null,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+        dispatchEvent: vi.fn(),
+      })),
+    );
+    navigationStore.navigate('/', { dock: null, maximize: null });
+    await renderPane(session(), false);
+    fireEvent.click(screen.getByRole('button', { name: 'Full screen chat' }));
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Restore chat size' }),
+    );
+    expect(
+      screen.getByRole('button', { name: 'Full screen chat' }),
+    ).toBeTruthy();
+    expect(screen.getByTestId('content-area')).toBeTruthy();
+  });
+
   test('a conversation this caller may change is offered the engine switch', async () => {
     const props = await renderPane(session());
     expect(typeof props?.onExecutionModelSelect).toBe('function');

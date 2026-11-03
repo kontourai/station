@@ -272,7 +272,19 @@
 
     "src-ui/src/components/chat-start/ChatStart.css",
 
-    "src-ui/src/components/chat-start/StartComposer.css"
+    "src-ui/src/components/chat-start/StartComposer.css",
+
+    "src-ui/src/components/chat-dock/ConversationHandoffDialog.tsx",
+
+    "src-ui/src/components/chat-dock/useChatDockViewModel.ts",
+
+    "src-ui/src/components/chat-start/StartMenus.tsx",
+
+    "src-ui/src/hooks/useNewChatSelectionModel.ts",
+
+    "src-ui/src/__tests__/ConversationHandoffDialog.test.tsx",
+
+    "src-ui/src/components/chat-start/__tests__/StartStationControl.test.tsx"
   ],
 
   "checks": [
