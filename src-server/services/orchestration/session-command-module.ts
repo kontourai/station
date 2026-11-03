@@ -338,7 +338,11 @@ interface SessionCommandDependencies {
       adapter: ProviderAdapterShape,
       tenant: TenantExecutionContext | undefined,
       startInput: OrchestrationStartSessionInput,
-      /** The dispatching principal; undefined for an internal start. */
+      /**
+       * The principal that requested the start: a fork's admitted requester
+       * (its context names the fork owner instead), else the dispatching
+       * principal; undefined for an internal start.
+       */
       startedBy: string | undefined,
     ): void;
   };
@@ -771,7 +775,7 @@ export function createSessionCommandModule(
             adapter,
             context.tenantExecutionContext,
             startInput,
-            context.userId,
+            internal?.forkContextRequester?.userId ?? context.userId,
           );
           deps.launchPolicy.logStarted(adapter, startInput);
           await deps.bindings.bind(startInput, internal);

@@ -2429,9 +2429,9 @@ export class OrchestrationService {
   private readonly sessionConnectionIds = new Map<string, string>();
   private readonly quarantinedThreads = new Set<string>();
   /**
-   * Threads whose adapter `session.started` this process has settled
-   * (appended, declined or abandoned after retries). A start whose event
-   * settled before the start hook ran binds no interim owner (#4480).
+   * Known threads whose adapter `session.started` this process has settled
+   * (see `settleStartEvent`). A start whose event settled before the start
+   * hook ran binds no interim owner (#4480). An exit or teardown forgets it.
    */
   private readonly settledStartEvents = new Set<string>();
   /**
@@ -12904,134 +12904,140 @@ export class OrchestrationService {
           signal: controller.signal,
         }),
       )) {
-        if (!this.isAdapterCurrent(adapter)) continue;
-        if (event.method === ('content.host-images' as string)) {
-          // Station derives this from files it read itself; an engine's
-          // version would map paths to images Station never admitted.
-          this.options.logger.warn('Ignored adapter-provided host images', {
-            provider: adapter.provider,
-            threadId: event.threadId,
-          });
-          continue;
-        }
-        if (event.method === 'session.stop-settled') {
-          // This is an orchestration-owned derivation. Accepting it from an
-          // adapter would let an engine label a forced stop cooperative.
-          this.options.logger.warn(
-            'Ignored adapter-provided cooperative-stop outcome',
-            { provider: adapter.provider, threadId: event.threadId },
-          );
-          continue;
-        }
-        event = await this.captureUsagePricingSnapshot(event);
-        lastThreadId = event.threadId;
-        const adapterEvent = event;
-        // Stamps lifecycle from the state as it stands now. #3561: a retried
-        // publish stamps again, from the adapter's own fields, so an event
-        // other publishers overtook during the retry sleep carries the state
-        // current at its append rather than at its first attempt.
-        const normalizeLifecycle = (
-          candidate: CanonicalRuntimeEvent,
-        ): CanonicalRuntimeEvent => {
-          const previousState = this.readCurrentLifecycleState(
-            adapterEvent.threadId,
-          );
-          // archive#3581 review BLOCK 1: `turnIdentityAnchorForEvents`, NOT
-          // `activeTurnIdForEvents` — this value is stamped onto the
-          // persisted event's `sessionState` (below), which
-          // `deriveLifecycleTransition`'s stamp early-return then honors
-          // ahead of its own `acceptsTurnTerminalEvent` guard. The clearing
-          // fold (`activeTurnIdForEvents`) answers "is a turn currently
-          // open", which is `undefined` after a `runtime.error`/
-          // `session.exited` — the exact permissive default that let a stale
-          // terminal for an EARLIER turn get stamped `sessionState:
-          // 'completed'` on disk after a LATER turn's own failure. The
-          // identity-anchor fold retains the last-started turn's id across
-          // that clear, matching what the read-time folds
-          // (`deriveLifecycleTransition`/`deriveAgentRunStatus`) compute over
-          // the identical bounded projection.
-          const turnIdentityAnchor = turnIdentityAnchorForEvents(
-            this.options.eventStore
-              ?.listSessionProjectionEvents(adapterEvent.threadId)
-              .map((stored) => stored.payload) ?? [],
-          );
-          return normalizeCanonicalRuntimeEventLifecycle(
-            withAdapterLifecycleStamp(candidate, adapterEvent),
-            previousState,
-            turnIdentityAnchor,
-          );
-        };
-        let normalized = normalizeLifecycle(event);
-        // #2540: the exit of an engine this service parked is absorbed — see
-        // `parkingThreads`. The session stays dormant and restarts in place.
-        // A parked engine's exit is absorbed while the park waits for it, and
-        // also if it arrives later but before anything restarted the engine
-        // (`parkedThreads` clears on restart, so a new engine's exits are its
-        // own and are never swallowed).
-        if (
-          normalized.method === 'session.exited' &&
-          (this.parkingThreads.delete(normalized.threadId) ||
-            this.parkedThreads.has(normalized.threadId))
-        ) {
-          this.sessionAdapters.delete(normalized.threadId);
-          this.parkedExitWaiters.get(normalized.threadId)?.();
-          this.parkedExitWaiters.delete(normalized.threadId);
-          continue;
-        }
-        if (!this.quarantinedThreads.has(normalized.threadId)) {
-          this.sessionAdapters.set(normalized.threadId, adapter);
-        }
-        // `projectAndPublishEvent` with a bounded retry of its publish half,
-        // holding this event until it is appended before the next one is
-        // consumed (#3560).
-        let published: boolean;
+        // #4480: whatever happens to a start or exit event from here (a skip,
+        // a store fault while normalizing, a publish that gives up), its
+        // thread's interim start owner is settled.
+        const settling =
+          event.method === 'session.started' ||
+          event.method === 'session.exited'
+            ? { threadId: event.threadId, method: event.method }
+            : undefined;
         try {
-          published = await this.publishObservedEvent(
-            normalized,
-            adapter,
-            controller,
-            (admitted) => {
-              normalized = normalizeLifecycle(normalized);
-              return normalizeLifecycle(admitted);
-            },
-          );
-        } finally {
-          // Appended, declined or abandoned: the store now answers ownership.
-          if (normalized.method === 'session.started') {
-            this.settledStartEvents.add(normalized.threadId);
-            this.sessionAuthz.settleStartOwner(normalized.threadId);
+          if (!this.isAdapterCurrent(adapter)) continue;
+          if (event.method === ('content.host-images' as string)) {
+            // Station derives this from files it read itself; an engine's
+            // version would map paths to images Station never admitted.
+            this.options.logger.warn('Ignored adapter-provided host images', {
+              provider: adapter.provider,
+              threadId: event.threadId,
+            });
+            continue;
           }
-        }
-        if (!published) continue;
-        this.cooperativeStop.applyPendingTurnInterrupt(adapter, normalized);
-        if (normalized.method === 'session.exited') {
-          this.sessionAdapters.delete(normalized.threadId);
-        }
-        this.flowPolicy.applyPostHocToolPolicies(adapter, normalized);
-        this.flowPolicy.spoolCommandEvidence(normalized);
-        if (
-          normalized.previousState &&
-          normalized.sessionState &&
-          normalized.previousState !== normalized.sessionState
-        ) {
-          sessionTransitions.add(1, {
-            from_state: normalized.previousState,
-            to_state: normalized.sessionState,
-            runtime_kind: normalized.provider,
-            source: normalized.transitionSource ?? 'runtime',
-            reason: normalized.transitionReason ?? 'unknown',
-            outcome: 'success',
-          });
-          this.recordStateDuration({
-            previousState: normalized.previousState,
-            nextEventAt: normalized.createdAt,
-            previousEventAt:
-              this.options.eventStore?.latestEventForSessionState(
-                normalized.threadId,
-                normalized.previousState,
-              )?.createdAt,
-            runtimeKind: normalized.provider,
-          });
+          if (event.method === 'session.stop-settled') {
+            // This is an orchestration-owned derivation. Accepting it from an
+            // adapter would let an engine label a forced stop cooperative.
+            this.options.logger.warn(
+              'Ignored adapter-provided cooperative-stop outcome',
+              { provider: adapter.provider, threadId: event.threadId },
+            );
+            continue;
+          }
+          event = await this.captureUsagePricingSnapshot(event);
+          lastThreadId = event.threadId;
+          const adapterEvent = event;
+          // Stamps lifecycle from the state as it stands now. #3561: a retried
+          // publish stamps again, from the adapter's own fields, so an event
+          // other publishers overtook during the retry sleep carries the state
+          // current at its append rather than at its first attempt.
+          const normalizeLifecycle = (
+            candidate: CanonicalRuntimeEvent,
+          ): CanonicalRuntimeEvent => {
+            const previousState = this.readCurrentLifecycleState(
+              adapterEvent.threadId,
+            );
+            // archive#3581 review BLOCK 1: `turnIdentityAnchorForEvents`, NOT
+            // `activeTurnIdForEvents` — this value is stamped onto the
+            // persisted event's `sessionState` (below), which
+            // `deriveLifecycleTransition`'s stamp early-return then honors
+            // ahead of its own `acceptsTurnTerminalEvent` guard. The clearing
+            // fold (`activeTurnIdForEvents`) answers "is a turn currently
+            // open", which is `undefined` after a `runtime.error`/
+            // `session.exited` — the exact permissive default that let a stale
+            // terminal for an EARLIER turn get stamped `sessionState:
+            // 'completed'` on disk after a LATER turn's own failure. The
+            // identity-anchor fold retains the last-started turn's id across
+            // that clear, matching what the read-time folds
+            // (`deriveLifecycleTransition`/`deriveAgentRunStatus`) compute over
+            // the identical bounded projection.
+            const turnIdentityAnchor = turnIdentityAnchorForEvents(
+              this.options.eventStore
+                ?.listSessionProjectionEvents(adapterEvent.threadId)
+                .map((stored) => stored.payload) ?? [],
+            );
+            return normalizeCanonicalRuntimeEventLifecycle(
+              withAdapterLifecycleStamp(candidate, adapterEvent),
+              previousState,
+              turnIdentityAnchor,
+            );
+          };
+          let normalized = normalizeLifecycle(event);
+          // #2540: the exit of an engine this service parked is absorbed — see
+          // `parkingThreads`. The session stays dormant and restarts in place.
+          // A parked engine's exit is absorbed while the park waits for it, and
+          // also if it arrives later but before anything restarted the engine
+          // (`parkedThreads` clears on restart, so a new engine's exits are its
+          // own and are never swallowed).
+          if (
+            normalized.method === 'session.exited' &&
+            (this.parkingThreads.delete(normalized.threadId) ||
+              this.parkedThreads.has(normalized.threadId))
+          ) {
+            this.sessionAdapters.delete(normalized.threadId);
+            this.parkedExitWaiters.get(normalized.threadId)?.();
+            this.parkedExitWaiters.delete(normalized.threadId);
+            continue;
+          }
+          if (!this.quarantinedThreads.has(normalized.threadId)) {
+            this.sessionAdapters.set(normalized.threadId, adapter);
+          }
+          // `projectAndPublishEvent` with a bounded retry of its publish half,
+          // holding this event until it is appended before the next one is
+          // consumed (#3560).
+          if (
+            !(await this.publishObservedEvent(
+              normalized,
+              adapter,
+              controller,
+              (admitted) => {
+                normalized = normalizeLifecycle(normalized);
+                return normalizeLifecycle(admitted);
+              },
+            ))
+          )
+            continue;
+          this.cooperativeStop.applyPendingTurnInterrupt(adapter, normalized);
+          if (normalized.method === 'session.exited') {
+            this.sessionAdapters.delete(normalized.threadId);
+          }
+          this.flowPolicy.applyPostHocToolPolicies(adapter, normalized);
+          this.flowPolicy.spoolCommandEvidence(normalized);
+          if (
+            normalized.previousState &&
+            normalized.sessionState &&
+            normalized.previousState !== normalized.sessionState
+          ) {
+            sessionTransitions.add(1, {
+              from_state: normalized.previousState,
+              to_state: normalized.sessionState,
+              runtime_kind: normalized.provider,
+              source: normalized.transitionSource ?? 'runtime',
+              reason: normalized.transitionReason ?? 'unknown',
+              outcome: 'success',
+            });
+            this.recordStateDuration({
+              previousState: normalized.previousState,
+              nextEventAt: normalized.createdAt,
+              previousEventAt:
+                this.options.eventStore?.latestEventForSessionState(
+                  normalized.threadId,
+                  normalized.previousState,
+                )?.createdAt,
+              runtimeKind: normalized.provider,
+            });
+          }
+        } finally {
+          if (settling)
+            this.settleStartEvent(settling.threadId, settling.method);
         }
       }
     } catch (error) {
@@ -13137,6 +13143,25 @@ export class OrchestrationService {
    * for a retry to repeat. Each retry restamps the event's lifecycle through
    * `renormalize`, from the state current after the sleep.
    */
+  /**
+   * #4480: a start event settled (appended, declined or abandoned) or the
+   * session exited, so the store answers the thread's ownership from here.
+   * A settled start is remembered only while the thread is still known, so a
+   * start hook that runs after it binds no interim owner; an exit forgets it.
+   */
+  private settleStartEvent(
+    threadId: string,
+    method: 'session.started' | 'session.exited',
+  ): void {
+    this.sessionAuthz.settleStartOwner(threadId);
+    if (method === 'session.exited') this.settledStartEvents.delete(threadId);
+    else if (
+      this.startingSessionThreads.has(threadId) ||
+      this.sessionReadModel.has(threadId)
+    )
+      this.settledStartEvents.add(threadId);
+  }
+
   private async publishObservedEvent(
     event: CanonicalRuntimeEvent,
     adapter: ProviderAdapterShape,
@@ -15092,10 +15117,11 @@ export class OrchestrationService {
     ) {
       sessionOwnerCacheOps.add(1, { outcome: 'invalidated' });
     }
-    // #4480: a durable start or owner ends any interim start owner. An exit
-    // needs no clause: a service stop tears the thread down, and an adapter's
-    // exit is consumed after the start's own session.started settled.
-    if (
+    // #4480: a durable start, owner or exit ends any interim start owner,
+    // including an exit appended by a path other than the adapter stream.
+    if (projectedEvent.method === 'session.exited')
+      this.settleStartEvent(projectedEvent.threadId, 'session.exited');
+    else if (
       projectedEvent.method === 'session.started' ||
       (projectedEvent.method === 'session.configured' &&
         typeof projectedEvent.metadata?.userId === 'string')

@@ -92,20 +92,29 @@ export class SessionAuthorization {
    * turn) can reach the command gate first and be refused as "Session not
    * found".
    *
-   * The entry is consulted only when the store has no durable owner, never
-   * enters the positive cache, and never answers a read (SSE, transcript,
-   * `canReadSession`). It is dropped when the start's `session.started`
-   * settles, whether appended, declined or abandoned after retries; when an
-   * owner-bearing `session.configured` is appended; when a failed start is
-   * cleaned up; and on thread teardown, which a stop or discard runs. A start
-   * whose `session.started` already settled never binds one.
+   * Bound only when the stamp is the requesting principal's own (a fork's
+   * admitted requester, whose stamp is what becomes durable) or the start is
+   * internal. Consulted only when the store has no durable owner; never
+   * enters the positive cache and never answers a read (SSE, transcript,
+   * `canReadSession`). Dropped when the adapter stream settles the start's
+   * `session.started` (appended, declined, abandoned after retries, or lost
+   * to a fault before publishing) or delivers a `session.exited`; when an
+   * owner-bearing `session.configured` or any `session.exited` is appended;
+   * when a failed start is cleaned up; and on thread teardown. A start whose
+   * `session.started` already settled never binds one.
+   *
+   * It is the owner for the same policy the durable owner gets: on a
+   * personal (non-hosted) install a `personalConversationAccess` reader of
+   * the stamped owner passes during the window exactly as after the durable
+   * owner lands; hosted installs still require the bound tenant.
    *
    * Every `canReadSessionForCommand` caller sees it: `dispatchWithReceipt`'s
    * pre-dispatch gate and its in-command rechecks (the native `sendTurn`
    * generation check, `steerChildWork`, `respondToRequest`), the start
    * reattach (`sessionState.canRead`), attached-session adoption,
    * `canUserMutateSession`, `retireNeverRanSession`, the discard/delete
-   * member gate, and `authorizeDurableStationTurn`.
+   * member gate, `authorizeDurableStationTurn` and
+   * `recoverDurableNativeOutput`.
    */
   private readonly startOwners = new Map<string, string>();
   private readonly sessionOwnerCacheMaxEntries: number;
