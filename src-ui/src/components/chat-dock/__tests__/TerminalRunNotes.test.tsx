@@ -133,3 +133,30 @@ test('a run that ended says how, with no Stop', async () => {
   );
   expect(screen.queryByRole('button', { name: /Stop/ })).toBeNull();
 });
+
+test('a refused approval says why on its card and keeps both choices', async () => {
+  runs.list = [pending('run-1', 'npm test')];
+  sdk.approve.mockRejectedValue(new Error('Its directory has changed'));
+  renderNotes();
+  const card = await screen.findByRole('region', { name: 'Run npm test?' });
+  fireEvent.click(within(card).getByRole('button', { name: 'Run' }));
+  expect((await within(card).findByRole('alert')).textContent).toBe(
+    'Its directory has changed',
+  );
+  expect(within(card).getByRole('button', { name: 'Decline' })).toBeTruthy();
+});
+
+test('an approved run that never started says so, and why', async () => {
+  runs.list = [
+    {
+      ...pending('run-1', 'npm test'),
+      state: 'failed',
+      failure: 'Its directory has changed',
+    },
+  ];
+  renderNotes();
+  expect(
+    (await screen.findByText('npm test')).closest('span')?.textContent,
+  ).toBe("npm test didn't run: Its directory has changed");
+  expect(screen.getByText('Failed')).toBeTruthy();
+});

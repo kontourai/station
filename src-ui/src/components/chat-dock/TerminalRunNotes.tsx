@@ -170,13 +170,19 @@ export function TerminalRunNotes({
               </div>
             </section>
           ) : (
-            <div
-              className="agent-schedule-notes__note"
-              title={run.failure ?? run.cwd}
-            >
+            <div className="agent-schedule-notes__note" title={run.cwd}>
               <TerminalGlyph className="agent-schedule-notes__glyph" />
               <span className="agent-schedule-notes__text">
-                {endedRun(run) ? 'Ran' : 'Running'} <code>{run.command}</code>
+                {!run.terminalId && run.failure ? (
+                  <>
+                    <code>{run.command}</code> didn't run: {run.failure}
+                  </>
+                ) : (
+                  <>
+                    {endedRun(run) ? 'Ran' : 'Running'}{' '}
+                    <code>{run.command}</code>
+                  </>
+                )}
               </span>
               {endedRun(run) ? (
                 <Badge {...runOutcome(run)} />
