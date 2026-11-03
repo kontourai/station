@@ -134,6 +134,7 @@ it('retention bounds open and settle while draining 60 terminal turns with 80 ef
     }),
   );
   expect(drained).toBe(true);
+  expect(opens.length).toBeLessThanOrEqual(400);
   expect(Math.max(...opens)).toBeLessThan(50);
   expect(Math.max(...settles)).toBeLessThan(50);
   expect(
