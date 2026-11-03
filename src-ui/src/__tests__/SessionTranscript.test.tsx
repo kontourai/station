@@ -1,6 +1,8 @@
 import { engineId } from '@kontourai/station-contracts/agent-identity';
 import type { OrchestrationConversationEventWindow } from '@kontourai/station-contracts/orchestration';
+import { setClientCredentialResolver } from '@kontourai/station-sdk/client';
 import { type ReactNode, useSyncExternalStore } from 'react';
+import { ChatRequestContext } from '../components/chat/ChatRequestContext';
 import { ActivityWorkspacePaneBindingProvider } from '../views/activity/ActivityWorkspacePaneBinding';
 // @vitest-environment jsdom
 
@@ -189,7 +191,10 @@ function renderTranscript(
   };
 }
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  vi.unstubAllGlobals();
+  setClientCredentialResolver(undefined);
+});
 
 beforeEach(() => {
   windowState.realWindow = false;
@@ -211,6 +216,121 @@ beforeEach(() => {
 });
 
 describe('SessionTranscript source', () => {
+  test('the receiver transcript reads bounded history under the captured source authority', async () => {
+    windowState.realWindow = true;
+    const scope = {
+      apiBase: 'http://source.test',
+      authorityKey: 'source',
+      isCurrent: () => true,
+    };
+    const apiBase = `${scope.apiBase}/api/environments/peers/desktop-win/chat-api`;
+    setClientCredentialResolver(async () => ({
+      origin: scope.apiBase,
+      credential: 'source-token',
+      requestAuthority: scope,
+    }));
+    const fetch = vi.fn(
+      async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = new URL(String(input));
+        expect(
+          url.href.startsWith(`${apiBase}/api/orchestration/conversations/`),
+        ).toBe(true);
+        expect(url.pathname.endsWith('/event-window')).toBe(true);
+        expect(new Headers(init?.headers).get('Authorization')).toBe(
+          'Bearer source-token',
+        );
+        return Response.json({
+          success: true,
+          data: {
+            protocolVersion: 1,
+            conversationId: THREAD,
+            currentSessionId: THREAD,
+            session: { threadId: THREAD, provider: 'codex' },
+            events: [
+              {
+                sequence: 1,
+                event: ev({
+                  method: 'turn.started',
+                  turnId: 'remote',
+                  prompt: 'Receiver history',
+                }),
+              },
+            ],
+            watermark: 1,
+            hasMore: false,
+            handoffs: [],
+            contextBoundaries: [],
+          },
+        });
+      },
+    );
+    vi.stubGlobal('fetch', fetch);
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const view = render(
+      <QueryClientProvider client={client}>
+        <PreviewProvider>
+          <ChatRequestContext.Provider value={{ apiBase, requestScope: scope }}>
+            <SessionTranscript
+              apiBase={apiBase}
+              session={{ threadId: THREAD, conversationId: THREAD }}
+              agentLabel="Codex"
+              isStreaming={false}
+              observation={{ live: false, revision: 1 }}
+            />
+          </ChatRequestContext.Provider>
+        </PreviewProvider>
+      </QueryClientProvider>,
+    );
+    expect(await screen.findByText('Receiver history')).toBeTruthy();
+    expect(fetch).toHaveBeenCalledOnce();
+    view.unmount();
+    client.clear();
+  });
+
+  test('a polling observation renders receiver updates without joining the app-wide stream', async () => {
+    const queryClient = new QueryClient();
+    ensureStream.mockClear();
+    const event = ev({
+      method: 'turn.started',
+      turnId: 'remote-one',
+      prompt: 'Question on the receiver',
+    });
+    windowState.events = [{ sequence: 1, event }];
+    const tree = (revision: number) => (
+      <QueryClientProvider client={queryClient}>
+        <PreviewProvider>
+          <SessionTranscript
+            apiBase="http://source.test/api/environments/peers/desktop-win/chat-api"
+            session={{ threadId: THREAD, conversationId: THREAD }}
+            agentLabel="Codex"
+            isStreaming
+            observation={{ live: false, revision }}
+          />
+        </PreviewProvider>
+      </QueryClientProvider>
+    );
+    const view = render(tree(1));
+    expect(await screen.findByText('Question on the receiver')).toBeTruthy();
+    windowState.events = [
+      ...windowState.events,
+      {
+        sequence: 2,
+        event: ev({
+          method: 'content.text-delta',
+          turnId: 'remote-one',
+          itemId: 'answer',
+          delta: 'Answer from desktop-win',
+        }),
+      },
+    ];
+    view.rerender(tree(2));
+    expect(await screen.findByText('Answer from desktop-win')).toBeTruthy();
+    expect(ensureStream).not.toHaveBeenCalled();
+    expect(windowState.revisions.at(-1)).toBe(2);
+  });
+
   test('a live delta only renders the growing message content', () => {
     renderTranscript();
     live([

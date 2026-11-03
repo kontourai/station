@@ -1,4 +1,7 @@
 import { readProviderDurabilityProfile } from '@kontourai/station-contracts/provider';
+import { randomCorrelationId } from '@kontourai/station-shared/random-id';
+import { usePeerChatStart } from '../../hooks/usePeerChatStart';
+import type { PeerChatBinding } from '../../lib/peer-chat';
 import './TaskChatStart.css';
 import {
   ENGINE_CAPABILITY_MATRICES,
@@ -86,7 +89,6 @@ import {
   type StartAgentChip,
   StartComposer,
   type StartProjectChip,
-  startProjectPhrase,
 } from '../chat-start/StartComposer';
 import { StartStationControl } from '../chat-start/StartStationControl';
 import { useAgentEnable } from '../chat-start/useAgentEnable';
@@ -202,6 +204,7 @@ interface NewChatModalProps {
   onLeave?: () => void;
   /** A remote start's task was accepted on `stationName`. */
   onTaskStarted?: (task: DelegatedTaskHandle, stationName: string) => void;
+  onPeerChatStarted?: (agent: AgentData, binding: PeerChatBinding) => void;
   draftContext?: CodingChatContextDraft | null;
   mode?: NewChatModalMode;
   requestAuthority?: NewChatSetupAuthority;
@@ -264,6 +267,7 @@ export function NewChatModal({
   onClose,
   onLeave,
   onTaskStarted,
+  onPeerChatStarted,
   draftContext = null,
   mode,
   requestAuthority,
@@ -293,9 +297,8 @@ export function NewChatModal({
   );
   const automaticMode = startWithDefault && !mode && !showChatOptions;
   // Visual skills are a Feature Preview: off, nothing here offers or fetches them.
-  const visualSkillsEnabled = useSurfaceVisibilityFlags().has(
-    VISUAL_SKILLS_PREVIEW_ID,
-  );
+  const previewFlags = useSurfaceVisibilityFlags();
+  const visualSkillsEnabled = previewFlags.has(VISUAL_SKILLS_PREVIEW_ID);
   const experienceInventory = useSkillExperienceInventoryQuery({
     enabled: visualSkillsEnabled && !mode && !automaticMode,
     refetchOnMount: 'always',
@@ -504,6 +507,17 @@ export function NewChatModal({
   // The composer's chips: the same selection Home's composer derives.
   const start = useStartSelection(selectionModel, selectedContext);
   const draftAgent = start.agent;
+  const startEnvironmentId = draftAgent
+    ? start.modelChoiceFor(draftAgent)?.environmentId
+    : undefined;
+  const peerChat = usePeerChatStart(
+    startEnvironmentId,
+    previewFlags.has('paired-station-chats') &&
+      !!onPeerChatStarted &&
+      stationChoices.stations.find(
+        (station) => station.id === startEnvironmentId,
+      )?.kind !== 'ssh',
+  );
   const bindProject = useBindStartProject();
   // #3350: the dock names a project the list has not loaded yet. Until it
   // has, nothing can say which context (and so which Agent and Model) a
@@ -871,7 +885,7 @@ export function NewChatModal({
     if (choice?.environmentId && choice.environmentId !== 'current') {
       if (startFiles.length > 0) {
         setSelectFeedback(
-          'A task on another Station takes text only. Remove the files, or choose an engine on this Station to send them.',
+          'This remote start takes text only. Remove the files, or choose an engine on this Station.',
         );
         setShowChatOptions(true);
         return;
@@ -883,9 +897,47 @@ export function NewChatModal({
         choice.expectedDefinitionFingerprint !== agent.definitionFingerprint
       ) {
         setSelectFeedback(
-          'Choose a verified engine on that Station before starting a task. Visual skills stay in the foreground chat.',
+          experience
+            ? 'Visual skills aren’t available for this remote start.'
+            : 'Choose a verified engine on that Station before starting.',
         );
         setShowChatOptions(true);
+        return;
+      }
+      if (peerChat.active && onPeerChatStarted) {
+        if (!peerChat.ready) {
+          setShowChatOptions(true);
+          setSelectFeedback(
+            'Choose a project on that Station, or start without a project.',
+          );
+          return;
+        }
+        try {
+          startedRef.current = true;
+          onPeerChatStarted(agent, {
+            environmentId: choice.environmentId,
+            stationName:
+              stationChoices.nameFor(choice.environmentId) ??
+              'Selected Station',
+            conversationId: `chat:${randomCorrelationId()}`,
+            agentId: agent.slug,
+            executionAgentId: choice.executionAgentId,
+            expectedDefinitionFingerprint: choice.expectedDefinitionFingerprint,
+            projectSlug: peerChat.project?.slug,
+            projectName: peerChat.project?.name,
+            model: choice.modelId,
+            providerOptions: choice.providerOptions,
+            pending: {
+              id: randomCorrelationId(),
+              text: initialMessage ?? '',
+              dispatched: false,
+            },
+          });
+        } catch (error) {
+          startedRef.current = false;
+          setSelectFeedback(userFacingErrorMessage(error));
+          setShowChatOptions(true);
+        }
         return;
       }
       setRemoteLaunch({ profile: agent, choice, prompt: initialMessage ?? '' });
@@ -1383,20 +1435,35 @@ export function NewChatModal({
           approvalPick,
           onApprovalPick: setApprovalPick,
         };
-  const projectChip: StartProjectChip = contextPending
-    ? { status: 'loading' }
-    : {
-        status: 'ready',
-        // A project the list no longer has keeps its own name (its slug),
-        // never a No project the start would not use.
-        label:
-          currentContextOption?.label ??
-          (isGlobal ? NO_PROJECT_LABEL : selectedContext),
-        isGlobal,
-        accent: isGlobal ? undefined : accents.get(selectedContext),
-        icon: isGlobal ? undefined : projectIconBySlug.get(selectedContext),
-        folder: workspaceHintText(workspaceHint),
-      };
+  const projectChip: StartProjectChip = peerChat.active
+    ? peerChat.projects.isPending
+      ? { status: 'loading' }
+      : {
+          status: 'ready',
+          label:
+            peerChat.project?.name ??
+            (peerChat.context === GLOBAL_CONTEXT
+              ? NO_PROJECT_LABEL
+              : 'Choose a project on this Station'),
+          isGlobal: !peerChat.project,
+          folder: peerChat.project?.workingDirectory
+            ? `Project folder: ${peerChat.project.workingDirectory}`
+            : undefined,
+        }
+    : contextPending
+      ? { status: 'loading' }
+      : {
+          status: 'ready',
+          // A project the list no longer has keeps its own name (its slug),
+          // never a No project the start would not use.
+          label:
+            currentContextOption?.label ??
+            (isGlobal ? NO_PROJECT_LABEL : selectedContext),
+          isGlobal,
+          accent: isGlobal ? undefined : accents.get(selectedContext),
+          icon: isGlobal ? undefined : projectIconBySlug.get(selectedContext),
+          folder: workspaceHintText(workspaceHint),
+        };
   const contextSelected = Boolean(
     draftContext?.items.some((item) =>
       selectedDraftContextIds.includes(item.id),
@@ -1415,7 +1482,8 @@ export function NewChatModal({
     !setupFetching &&
     !runtimeFetching &&
     !modelsFetching &&
-    projectCatalogResolved;
+    projectCatalogResolved &&
+    (!peerChat.active || peerChat.ready);
   const chooseContext = (value: string) => {
     contextSelectionTouchedRef.current = true;
     setContextChosen(true);
@@ -1571,20 +1639,6 @@ export function NewChatModal({
     );
   }
 
-  // "Start a chat in <Project> on <Station>": the project chip's own words
-  // and the Station the Agent chip will run on. Each part shows only once it
-  // is known; nothing is guessed while either is still being read.
-  const draftStation =
-    agentChip.status === 'ready'
-      ? stationChoices.knownNameFor(agentChip.environmentId ?? 'current')
-      : undefined;
-  const draftDestination = [
-    projectChip.status === 'ready' ? startProjectPhrase(projectChip) : null,
-    draftStation ? `on ${draftStation}` : null,
-  ]
-    .filter(Boolean)
-    .map((part) => ` ${part}`)
-    .join('');
   return (
     <NewChatDraftSurface
       ariaLabel={
@@ -1870,15 +1924,6 @@ export function NewChatModal({
         <>
           <div className="chat-start__body new-chat-draft__body">
             <div className="new-chat-draft__lead">
-              {/* An empty draft's hint, like an empty chat's; once the draft
-                  holds something, the chips say where it goes and a short
-                  dock keeps its room for the composer. */}
-              {!prompt.trim() && startFiles.length === 0 && (
-                <p>
-                  {shaping ? 'Shape a Task' : 'Start a chat'}
-                  {draftDestination}
-                </p>
-              )}
               {shaping && (
                 <Button
                   className="task-chat-start__chip"
@@ -1890,6 +1935,32 @@ export function NewChatModal({
                 </Button>
               )}
             </div>
+            {peerChat.active &&
+              !peerChat.ready &&
+              !peerChat.projects.isError && (
+                <p>
+                  Choose a project on the selected Station, or{' '}
+                  <Button
+                    variant="link"
+                    onClick={() => peerChat.choose(GLOBAL_CONTEXT)}
+                  >
+                    start without a project
+                  </Button>
+                  .
+                </p>
+              )}
+            {peerChat.active && peerChat.projects.isError && (
+              <ErrorState
+                variant="compact"
+                title="Couldn’t load projects on that Station"
+                description={describeReadFailure(peerChat.projects.error)}
+                action={
+                  <Button onClick={() => void peerChat.projects.refetch()}>
+                    Retry
+                  </Button>
+                }
+              />
+            )}
             {selectionInvalid && (
               <p role="alert">
                 The choices sent with this chat could not be read. Choose an
@@ -1979,6 +2050,7 @@ export function NewChatModal({
           </div>
           <StartComposer
             layout="draft"
+            heading={shaping ? 'Shape a Task' : undefined}
             compact={taskShaping}
             placeholder={shaping ? 'Describe the idea…' : undefined}
             prompt={prompt}
@@ -2024,6 +2096,11 @@ export function NewChatModal({
               setChipMenu({ kind: 'agents', trigger });
             }}
             project={projectChip}
+            onClearProject={() =>
+              peerChat.active
+                ? peerChat.choose(GLOBAL_CONTEXT)
+                : chooseContext(GLOBAL_CONTEXT)
+            }
             onOpenProject={(trigger) =>
               setChipMenu({ kind: 'project', trigger })
             }
@@ -2272,6 +2349,36 @@ export function NewChatModal({
             enablePending={enableInFlight}
             interactionDisabled={checkingSetup || setupReturn.pending}
             onChooseProject={chooseContext}
+            projectOverride={
+              peerChat.active
+                ? {
+                    options: peerChat.options,
+                    context: peerChat.context ?? '',
+                    workspaceHint: peerChat.project?.workingDirectory
+                      ? {
+                          kind: 'unverified',
+                          path: peerChat.project.workingDirectory,
+                        }
+                      : {
+                          kind: 'unchecked',
+                          reason:
+                            'The selected Station chooses the folder when the chat starts.',
+                        },
+                    folderlessHint: {
+                      kind: 'unchecked',
+                      reason:
+                        'The selected Station chooses the folder when the chat starts.',
+                    },
+                    icons: new Map(
+                      (peerChat.projects.data ?? []).flatMap((project) =>
+                        project.icon ? [[project.slug, project.icon]] : [],
+                      ),
+                    ),
+                    accents: NO_PROJECT_ACCENTS,
+                    onChoose: peerChat.choose,
+                  }
+                : undefined
+            }
             icons={projectIconBySlug}
             accents={accents}
           />
