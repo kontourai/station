@@ -141,6 +141,8 @@ export const COORDINATOR_EXCLUSIVE_VITEST_FILES = Object.freeze([
 // has measured — and the branch that reds is then whichever one happened to
 // add the next spawn, not the design that made the deadline fragile.
 export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
+  // Full 4,800-effect WAL/FULL retention backlog; the small case stays ordinary.
+  'packages/agent-runtime/src/__tests__/turn-retention.process.test.ts',
   // Creates a private FIFO and reads it in a bounded child so a blocking regression cannot hang Vitest.
   'src-server/services/identity/__tests__/account-sharing-setting.test.ts',
   // Isolated repair caller owns real Git children, private journals, and an actual Task graph.
@@ -210,6 +212,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'src-server/services/projects/__tests__/repository-acquisition-service.test.ts',
   'src-server/routes/projects/__tests__/project-working-directory-authority.test.ts',
   'packages/agent-runtime/src/__tests__/body-process.test.ts',
+  // Four bounded SIGKILL owner probes; private SQLite per child, no speed assertion.
+  'packages/agent-runtime/src/__tests__/turn-prefix-process.test.ts',
   // Immutable Git extraction and one private SQLite runner; no shared output or timing assertion.
   'packages/agent-runtime/src/__tests__/sqlite-compatibility.test.ts',
   'src-server/runtime/mcp/__tests__/mcp-ui-network.process.test.ts',
