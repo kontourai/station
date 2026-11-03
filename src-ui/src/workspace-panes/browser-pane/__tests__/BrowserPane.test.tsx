@@ -1235,6 +1235,68 @@ describe('BrowserPane Chromium acquisition (D3)', () => {
   });
 });
 
+describe('Browser commands in the command palette', () => {
+  test('console, sessions, rotate, stop loading, float and Browser settings each run from the palette', async () => {
+    const release = registerFloatHost();
+    const navigate = vi
+      .spyOn(navigationStore, 'navigate')
+      .mockImplementation(() => {});
+    try {
+      const { calls } = renderPane({
+        'GET /api/browser/projects/alpha/access': OPERATOR_ACCESS,
+        [`GET /api/browser/sessions/${SESSION}?view=summary`]: ok(
+          sessionView(),
+        ),
+        'GET /api/browser/sessions?projectSlug=alpha': ok([sessionView()]),
+        [`GET /api/browser/sessions/${SESSION}/console`]: ok({
+          entries: [],
+          dropped: 0,
+          latestSeq: 0,
+          generation: 1,
+          capturing: true,
+        }),
+        [`POST /api/browser/sessions/${SESSION}/viewport`]: ok(sessionView()),
+        [`POST /api/browser/sessions/${SESSION}/history`]: ok(sessionView()),
+      });
+      await screen.findByTestId('live-canvas');
+      await runPaletteCommand('browser.console');
+      expect(
+        await screen.findByRole('region', { name: 'Console' }),
+      ).toBeTruthy();
+      await runPaletteCommand('browser.sessions');
+      expect(
+        await screen.findByRole('heading', { name: 'Sessions' }),
+      ).toBeTruthy();
+      await runPaletteCommand('browser.rotate');
+      await waitFor(() =>
+        expect(calls.some((c) => c.path.endsWith('/viewport'))).toBe(true),
+      );
+      await runPaletteCommand('browser.stop');
+      await waitFor(() =>
+        expect(
+          calls.some(
+            (c) =>
+              c.path.endsWith('/history') &&
+              (c.body as { action: string }).action === 'stop',
+          ),
+        ).toBe(true),
+      );
+      await runPaletteCommand('browser.float');
+      expect(takeFloatRequest()?.source).toMatchObject({
+        kind: 'browser',
+        browserSessionId: SESSION,
+      });
+      await runPaletteCommand('browser.settings');
+      expect(navigate).toHaveBeenCalledWith(
+        '/settings',
+        expect.objectContaining({ view: 'advanced', project: 'alpha' }),
+      );
+    } finally {
+      release();
+    }
+  });
+});
+
 describe('BrowserPane settings link (D4, D7)', () => {
   test('Browser settings… opens Settings › Advanced › Browser & devices on this Project', async () => {
     const navigate = vi
