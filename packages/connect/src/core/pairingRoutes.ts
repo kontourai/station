@@ -3,12 +3,11 @@ import { isLoopbackUrl } from './connectionProfile';
 
 /**
  * The ways a phone can reach this Station, for "Pair phone" to offer as
- * routes. Each one becomes the endpoint embedded in a pairing code, so only
- * an address the server will accept for an offer is listed: `https:` on any
- * non-loopback host, or `http:` on a private one (RFC1918, link-local,
- * tailnet CGNAT, `.local`), the same split `DevicePairingService.createOffer`
- * enforces. A loopback address is never listed: a phone that scans it dials
- * itself.
+ * routes. Each one becomes the endpoint embedded in a pairing code, and a
+ * pairing code carries a secret, so only an `https:` origin on a
+ * non-loopback host is listed: the phone's QR decoder accepts nothing else
+ * (a local `http:` address uses the separate direct access flow instead).
+ * A loopback address is never listed: a phone that scans it dials itself.
  */
 export type PairingRouteKind =
   | StationRoute['kind']
@@ -50,25 +49,10 @@ const ROUTE_ORDER: readonly PairingRouteKind[] = [
   'current',
 ];
 
-function isPrivateHost(hostname: string): boolean {
-  const host = hostname.replace(/^\[|\]$/g, '');
-  if (host.endsWith('.local')) return true;
-  const v4 = host.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.\d{1,3}$/);
-  if (!v4) return false;
-  const a = Number(v4[1]);
-  const b = Number(v4[2]);
-  return (
-    a === 10 ||
-    (a === 192 && b === 168) ||
-    (a === 172 && b >= 16 && b <= 31) ||
-    (a === 169 && b === 254) ||
-    (a === 100 && b >= 64 && b <= 127)
-  );
-}
-
 /**
  * Whether an address can be embedded in a pairing code a phone will use:
- * reachable from another device, and accepted by the server for an offer.
+ * HTTPS (the QR decoder's rule for a secret-bearing code) and reachable from
+ * another device.
  */
 export function isPairableEndpoint(value: string): boolean {
   let url: URL;
@@ -79,8 +63,7 @@ export function isPairableEndpoint(value: string): boolean {
   }
   if (url.username || url.password) return false;
   if (isLoopbackUrl(url.origin)) return false;
-  if (url.protocol === 'https:') return true;
-  return url.protocol === 'http:' && isPrivateHost(url.hostname);
+  return url.protocol === 'https:';
 }
 
 /**

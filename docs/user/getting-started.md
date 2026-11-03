@@ -119,15 +119,17 @@ replies, continue chats, and review work. Start on your computer:
 
 1. Install and launch Station there using the options below.
 2. Open the Station name at the top of the computer’s window and choose
-   **Pair phone**. Check the address before creating the invitation.
-   **Settings → Pairing → Pair device** opens the same screen.
+   **Pair phone**. Station opens straight to a pairing code on a reachable
+   HTTPS address, and lists any other HTTPS addresses to switch to.
+   **Settings → Pairing → Pair device** opens the same screen. Any of your own
+   paired devices with full access can do this, not only the computer.
 3. On a new phone, open Station and choose **Scan pairing QR code**. Scan the
    invitation from the computer. **Enter a pairing code** is available if the
    camera cannot be used. Keep the computer running.
 
-Pairing codes require a reachable HTTPS address. The computer can suggest its
-own configured Tailscale Serve address; choose **Use this address** after checking
-it. Both devices still need access to that address.
+Scanning a pairing code on the phone needs a reachable HTTPS address, such as
+the computer's Tailscale HTTPS address, which Station lists first when it is
+configured. Both devices still need access to that address.
 
 For local network access, enable **Settings → Pairing → Discover this Station
 nearby** on the computer, then choose **Find nearby Stations** on the native phone

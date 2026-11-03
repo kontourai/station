@@ -86,6 +86,16 @@ export function isOperatorInPersonNotAgent(request: Request): boolean {
   return isOperatorInPerson(request) && !actsForAnAgent(request);
 }
 
+/**
+ * The operator at the host itself (operator credential or home-possession),
+ * never an owner device and never an agent. For capacity the host must keep
+ * for itself, such as the terminal gateway's reserved slots (#3994): the
+ * owner's other devices must not be able to crowd out the host.
+ */
+export function isOperatorAtHostNotAgent(request: Request): boolean {
+  return isOperatorAtHost(request) && !actsForAnAgent(request);
+}
+
 /** The paired-device facts {@link isOperatorsOwnDevice} re-reads per call. */
 export interface OperatorDeviceRecord {
   readonly id: string;

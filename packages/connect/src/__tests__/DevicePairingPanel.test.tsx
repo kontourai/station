@@ -3711,45 +3711,44 @@ describe('explicit verified-person pairing consent', () => {
   });
 });
 
-test('refuses loopback and public cleartext addresses before posting, and posts a private-network HTTP route the server accepts', async () => {
+test('refuses an HTTP LAN pairing code before posting an offer and preserves explicit HTTPS entry', async () => {
   const request = vi.fn(
     async (_input: RequestInfo | URL, init?: RequestInit) =>
       init?.method === 'POST'
         ? response({ error: 'unavailable' }, 503)
         : response({ requests: [], devices: [] }),
   );
-  const posts = () =>
-    request.mock.calls.filter(([, init]) => init?.method === 'POST');
   render(
     <HostDevicePairingPanel
-      apiBase="http://127.0.0.1:19441"
-      publicEndpoint="http://127.0.0.1:19441"
+      apiBase="http://192.168.1.2:19441"
+      publicEndpoint="http://192.168.1.2:19441"
       getCredential={() => undefined}
       request={request}
       onCancel={vi.fn()}
     />,
   );
-  // Loopback points the phone at itself.
-  fireEvent.click(screen.getByRole('button', { name: 'Create pairing code' }));
-  expect((await screen.findByRole('alert')).textContent).toContain(
-    'only works on this computer',
-  );
-  // Cleartext to a public name is refused by the server too.
-  fireEvent.change(screen.getByLabelText('Pairing endpoint'), {
-    target: { value: 'http://computer.example.test' },
-  });
   fireEvent.click(screen.getByRole('button', { name: 'Create pairing code' }));
   expect((await screen.findByRole('alert')).textContent).toContain('HTTPS');
-  expect(posts()).toHaveLength(0);
-  // A private-network HTTP route is what the server accepts for an offer.
+  expect(
+    request.mock.calls.filter(([, init]) => init?.method === 'POST'),
+  ).toHaveLength(0);
   fireEvent.change(screen.getByLabelText('Pairing endpoint'), {
-    target: { value: 'http://192.168.1.2:19441/path' },
+    target: { value: 'https://computer.example.test/path' },
   });
   fireEvent.click(screen.getByRole('button', { name: 'Create pairing code' }));
-  await waitFor(() => expect(posts()).toHaveLength(1));
-  expect(JSON.parse(String(posts()[0]?.[1]?.body)).endpoint).toBe(
-    'http://192.168.1.2:19441',
+  await waitFor(() =>
+    expect(
+      request.mock.calls.filter(([, init]) => init?.method === 'POST'),
+    ).toHaveLength(1),
   );
+  expect(
+    JSON.parse(
+      String(
+        request.mock.calls.find(([, init]) => init?.method === 'POST')?.[1]
+          ?.body,
+      ),
+    ).endpoint,
+  ).toBe('https://computer.example.test');
 });
 
 describe('Pair phone quick flow (owner-device standing, 2026-11-02)', () => {
@@ -3757,8 +3756,10 @@ describe('Pair phone quick flow (owner-device standing, 2026-11-02)', () => {
     routes: unknown = {
       environmentId: 'env-1',
       routes: [
+        // Cleartext is never offered for a secret-bearing code.
         { kind: 'lan', url: 'http://192.168.50.16:3774' },
         { kind: 'tailscale-https', url: 'https://kontour.example.ts.net' },
+        { kind: 'tailscale-https', url: 'https://kontour.example.ts.net:8443' },
       ],
     },
   ) {
@@ -3821,7 +3822,7 @@ describe('Pair phone quick flow (owner-device standing, 2026-11-02)', () => {
       />,
     );
     expect(await screen.findByTestId('pairing-qr')).toBeTruthy();
-    // Tailscale HTTPS outranks the LAN; loopback is never offered.
+    // The first HTTPS route opens; cleartext LAN and loopback are not offered.
     expect(created).toEqual([
       { endpoint: 'https://kontour.example.ts.net', approval: 'on-create' },
     ]);
@@ -3834,6 +3835,7 @@ describe('Pair phone quick flow (owner-device standing, 2026-11-02)', () => {
       ).checked,
     ).toBe(true);
     expect(screen.queryByRole('radio', { name: /127\.0\.0\.1/ })).toBeNull();
+    expect(screen.queryByRole('radio', { name: /Local network/ })).toBeNull();
   });
 
   test('switching route replaces the code and cancels the old one', async () => {
@@ -3849,11 +3851,11 @@ describe('Pair phone quick flow (owner-device standing, 2026-11-02)', () => {
       />,
     );
     await screen.findByText('CODE1');
-    fireEvent.click(screen.getByRole('radio', { name: /Local network/ }));
+    fireEvent.click(screen.getByRole('radio', { name: /:8443/ }));
     expect(await screen.findByText('CODE2')).toBeTruthy();
     expect(created.map((offer) => offer.endpoint)).toEqual([
       'https://kontour.example.ts.net',
-      'http://192.168.50.16:3774',
+      'https://kontour.example.ts.net:8443',
     ]);
     await waitFor(() => expect(deleted).toEqual(['offer-1']));
   });

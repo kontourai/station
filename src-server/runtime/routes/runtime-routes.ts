@@ -77,6 +77,7 @@ import { createTranscriptionRoutes } from '../../routes/transcription.js';
 import { createWalkthroughRoutes } from '../../routes/walkthroughs.js';
 import { readBoundedRequestBody } from '../../security/bounded-request-body.js';
 import {
+  isOperatorAtHostNotAgent,
   isOperatorInPersonNotAgent,
   isOperatorsOwnDevice,
   isTerminalOperator,
@@ -9497,9 +9498,10 @@ export function configureRuntimeRoutes(
       new TerminalGateway({
         sessions: terminalSessions,
         tickets: terminalTickets,
-        // The operator in person keeps reserved slots even when their own
-        // devices, or a flood of them, fill the shared capacity.
-        reserved: (request) => isOperatorInPersonNotAgent(request),
+        // The operator at the host keeps reserved slots even when their own
+        // devices, or a flood of them, fill the shared capacity. Host-only:
+        // owner-device standing does not reach these slots.
+        reserved: (request) => isOperatorAtHostNotAgent(request),
       }),
     );
     context.app.route(

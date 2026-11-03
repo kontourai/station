@@ -2226,8 +2226,9 @@ a service not yet constructed returns 503 `telemetry_not_ready`.
 
 Save a choice with `PUT /config/app`, for example
 `{"telemetryTier":{"operator":"off"}}`. The other publisher's choice is
-preserved. Raising a tier requires the operator or `access:manage`; a standard
-paired device may lower or keep it. Agent-originated requests cannot change
+preserved. Raising a tier requires the operator (including one of the owner's
+own devices with [owner-device standing](../security/remote-access-threat-model.md#owner-device-standing-2026-11-02)) or `access:manage`; another
+standard paired device may lower or keep it. Agent-originated requests cannot change
 telemetry choices. `telemetryTier` must be an object
 with `kontour`, `operator` or valid `publisher:<id>` keys and `off`/`lite`/`full` values; malformed maps
 return a validation error with 400 before mutation. A previously saved Full
@@ -2855,8 +2856,9 @@ as totals for the selected window.
 `GET /api/analytics/station-usage` returns
 `{success: true, data: stats, scope: {kind: "station", stationId}}` with the
 local instance's retained-source statistics, including `byPrincipal`.
-Authorization uses the runtime-bound home-possession local-operator predicate;
-request flags, an ordinary paired credential, or a person attribution do not
+Authorization uses the runtime-bound owner predicate (home-possession, or one of
+the owner's own devices with [owner-device standing](../security/remote-access-threat-model.md#owner-device-standing-2026-11-02));
+request flags, another paired credential, or a person attribution do not
 grant it. Hosted deployments and tenant workers are refused. Missing operator
 authority returns 403 before a source read; responses use `Cache-Control: no-store`.
 Peer Stations are excluded. This is an instance overview, not a person billing
@@ -6163,8 +6165,10 @@ sealing, activation, cancellation, recovery and evidence limits.
 
 ## Administer paired-device access
 
-The operator credential or a current ordinary Device explicitly granted
-`access:devices` can use these exact method/path pairs:
+The operator credential, a current ordinary Device explicitly granted
+`access:devices`, the host browser session, or one of the owner's own devices
+with [owner-device standing](../security/remote-access-threat-model.md#owner-device-standing-2026-11-02) (with the host browser's limits) can use these
+exact method/path pairs:
 
 - `GET /api/pairing/devices`
 - `POST /api/pairing/devices/:deviceId/scope` with `{ scope: string[], expectedScope?: string, resetFullAccess?: boolean }`
@@ -6278,8 +6282,8 @@ for precedence, rollback and what turning it off keeps.
 | `PUT` | `{ "enabled": false }` or `{ "enabled": true, "publicOrigin": "<offered origin>" }`, at most 4 KiB | `{ "changed": false }`, or HTTP 202 with `{ "changed": true, "confirmation": { "id": "<id>", "reviewUrl": "<url>", "expiresAt": 0 } }` (`expiresAt` is an epoch timestamp in milliseconds). |
 
 Both require the same operator authority as `/api/operator/accounts` (an
-operator credential or a home-possession Device; a device-bound operator
-session is not accepted) and the `access:manage` pairing scope. The transaction's
+operator credential, a home-possession Device or a Device with owner-device
+standing; a device-bound operator session is not accepted) and the `access:manage` pairing scope. The transaction's
 distinct-origin review binds the exact choice and revalidates authority and
 state before staging and requesting a handoff. Responses are
 `Cache-Control: no-store`. Refusals use the `success: false` envelope with a
@@ -6310,8 +6314,11 @@ canonical HTTPS origins, or an empty list when no mapping can be established.
 The daemon resolver checks this node's own Serve configuration against the
 Station API/UI-proxy port. This is configuration evidence, not phone reachability
 or approval; it does not enumerate other tailnet nodes, use allowed origins as
-mapping evidence or change Tailscale settings. The host UI applies an address
-only after an explicit Use action and requires reachable HTTPS for QR creation.
+mapping evidence or change Tailscale settings. The **Pair phone** panel lists the
+HTTPS routes below and these Serve origins, and opens a pre-approved code on the
+first one. A pairing code carries a secret and the phone's decoder accepts only
+HTTPS, so cleartext LAN or Tailscale IP routes and loopback are never offered,
+although the offer service itself accepts private-network HTTP.
 
 `GET /api/system/routes` is a read-tier leaf any paired device may call. It
 answers `{ "environmentId": string, "routes": [{ "kind": "lan" | "tailscale" |
@@ -6343,7 +6350,9 @@ Invitations do not grant the creator's private host-possession provenance.
 
 A host-issued browser session may create/cancel invitations, decide pending
 requests and manage already-paired Devices while retaining its effective
-`access:manage`. Its server-recorded `home-possession` locality and `ui-bootstrap`
+`access:manage`. On a personal Station, one of the owner's own devices that
+already holds a host shell has the same standing and limits
+([owner-device standing](../security/remote-access-threat-model.md#owner-device-standing-2026-11-02)). Its server-recorded `home-possession` locality and `ui-bootstrap`
 mint kind distinguish it from an ordinary Device with the same wire scope.
 This does not grant operator identity, people/account administration, passkey
 administration, or the native consent broker's `local-grant` authority.
@@ -6356,7 +6365,8 @@ administrators keep their separate authority.
 
 A current operator, qualifying local-grant credential, host-issued browser
 session with its private `ui-bootstrap` provenance and effective `access:manage`,
-or Device explicitly promoted with `access:approve` can use these exact routes:
+a Device with owner-device standing, or a Device explicitly promoted with
+`access:approve` can use these exact routes:
 
 - `GET /api/pairing/requests`
 - `POST /api/pairing/requests/:requestId/confirm`
@@ -6384,7 +6394,8 @@ a non-empty subset of the request's scope, for an ordinary device request only
 (not a delegation, relay or account binding). Omitted, it keeps everything
 requested. Keeping `coding:exec` or `approval:full-access` needs the operator
 credential, a qualifying local-grant credential, that host-issued browser
-session, or an operator passkey session followed by per-action review; an `access:approve` Device or
+session, a Device with owner-device standing, or an operator passkey session
+followed by per-action review; an `access:approve` Device or
 an unauthenticated approval is refused with 403
 `{ "error": "approval_requires_operator", "operatorCli": "…" }` and may approve
 the rest with them left out. Every such 403 carries `operatorCli`. A device

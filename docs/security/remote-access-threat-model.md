@@ -178,7 +178,8 @@ in the initiating commit response, never in the transaction record or later read
 
 Turning on Project sharing (#4306) uses the same S4 transaction.
 `POST /api/projects/:slug/access/enable` still commits directly only for the
-operator credential or a `home-possession` grant. A paired Device that ordinary
+operator credential, a `home-possession` grant or a Device with
+[owner-device standing](#owner-device-standing-2026-11-02). A paired Device that ordinary
 admission lets post that leaf, and that presents an operator session bound to
 the same Device, receives `202` and a `project-sharing-enable` transaction
 instead. Its fingerprint pins the slug, the local Project id and the owner, the
@@ -871,7 +872,9 @@ also labels producer rows as external, unverified data. Paired credentials with
 The pairing UI offers two presets when creating an offer: **Read-only**
 (`orchestration:read` alone) and **Standard** (`orchestration:read
 orchestration:operate terminal:operate`), the default *radio selection* in
-that UI. Neither preset grants pairing management. Ordinary paired credentials
+that UI. Neither preset carries pairing management as a scope. A Standard
+Device the owner paired for themself reaches it through
+[owner-device standing](#owner-device-standing-2026-11-02); other paired credentials
 are refused on the pairing family even if they carry inherited `access:manage`.
 There are explicit exceptions in
 [`EnvironmentSecurityService.authorizeCredential`](../../src-server/services/ssh/environment-security-service.ts):
@@ -899,8 +902,8 @@ a host session must not convey `relay:manage`, `access:approve` or
 `consent:decide` authority to invitees. It can narrow a pending grant or remove
 an existing permission; retaining an existing protected permission is not a new
 promotion. Raw operator request-time approval and explicitly promoted
-`access:devices` administrators retain their existing authority. Ordinary
-Devices with inherited `access:manage` remain refused. This deliberately trusts
+`access:devices` administrators retain their existing authority. Devices
+without owner-device standing that carry inherited `access:manage` remain refused. This deliberately trusts
 the host-issued browser session, including code on its origin, with Device
 administration. The operator native-consent path still requires `local-grant`;
 the separate personal-analytics requester path uses only its transaction-bound,
@@ -1207,8 +1210,8 @@ Engines run as commands (the `/acp/connections/:id/sign-in*` and
 have no profiles: their sign-in acts on the engine's own login on the host.
 Starting, reading or cancelling one, and storing or removing an engine key, are
 `engine:login` leaves whose exception is the operator in person: the operator
-credential or a home-possession credential (the host browser's sign-in link,
-the desktop app), as the handler and its view's `allowed.signIn` read it. The
+credential, a home-possession credential (the host browser's sign-in link,
+the desktop app) or a Device with [owner-device standing](#owner-device-standing-2026-11-02), as the handler and its view's `allowed.signIn` read it. The
 profile leaves above keep the verified-operator exception. A request that may
 be an agent's is refused. A terminal sign-in runs the connection's own program
 with arguments taken only from the engine's live handshake, never from the
@@ -1297,8 +1300,9 @@ sufficient, so the handlers narrow further (owner decision, 2026-09-23):
   operator or explicitly granted device administrator), and revokes it by turning the switch off; the grant is
   stored on the device's record in the pairing registry, like every other
   promoted token. The operator in person never needs it: the operator
-  credential, and credentials minted by proving possession of this Station's
-  home (the desktop app's local grant or the host browser's bootstrap), provided
+  credential, credentials minted by proving possession of this Station's
+  home (the desktop app's local grant or the host browser's bootstrap), and
+  Devices with [owner-device standing](#owner-device-standing-2026-11-02), provided
   the request is not acting for an Agent. The
   [coding authority check](../../src-server/security/coding-authority.ts)
   rejects internal-token and Agent-originated requests before testing operator
@@ -1525,8 +1529,10 @@ sufficient, so the handlers narrow further (owner decision, 2026-09-23):
   The check fails closed: a request is refused unless it is Station's own
   server code or the operator in person or a device holding `coding:exec`, so
   a kind of caller added later is refused until it is decided. `terminal:operate`
-  is not the authority: a `delegation` device and a `standard` device alike
-  need the grant. A `kind: 'project'` target is already confined to that
+  is not the authority by itself: a `delegation` device, a device tied to a
+  person and any other `standard` device need the grant. The owner's own
+  standard Device counts as the operator in person through
+  [owner-device standing](#owner-device-standing-2026-11-02). A `kind: 'project'` target is already confined to that
   Project's folder and is unchanged, and a station-control tool call is
   confined by `scopeDispatch`. Not a folder choice, so unchanged: the
   Project-confined coding routes and the Task `workspaceBinding` paths (below).
@@ -2223,7 +2229,8 @@ final for that offer and returns only a fixed error code to the requester. An
 issued device credential can use ordinary HTTP, SSE, and WebSocket surfaces up
 to whatever scope its grant carries (see "Scope model" above), except that an
 account-bound device never opens the terminal or voice WebSocket (#3586). Ordinary
-presets do not admit pairing management. An explicit `access:approve` promotion
+presets do not carry pairing management; only
+[owner-device standing](#owner-device-standing-2026-11-02) admits it for the owner's own Devices. An explicit `access:approve` promotion
 opens only pending-request list/confirm/deny, while local-home minted credentials
 have their separate route-scoped exception. Neither exception follows merely
 from carrying inherited `access:manage`. Per-device
@@ -2404,4 +2411,4 @@ residuals; it is not a deployment or end-to-end compatibility qualification.
 
 ## Operator-owned Device Browser viewing
 
-The personal-host Browser and Device agent-reveal reads may opt into distinct operator-device view standing for a current unbound Device paired by the operator, subject to its granted scope. This is not operator authority: Task Review captures, Browser input and mutations, Device drive and administration remain separately authorized. Revocation, rebinding, person binding, delegation and agent-originated credentials do not retain this standing; publication rechecks the current credential and Device record.
+The personal-host Browser and Device agent-reveal reads may opt into distinct operator-device view standing for a current unbound Device paired by the operator, subject to its granted scope. This view standing is not operator authority: Task Review captures, Browser input and mutations, Device drive and administration remain separately authorized. A Device that also holds [owner-device standing](#owner-device-standing-2026-11-02) is the operator for those checks. Revocation, rebinding, person binding, delegation and agent-originated credentials do not retain this standing; publication rechecks the current credential and Device record.

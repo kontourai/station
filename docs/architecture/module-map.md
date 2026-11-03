@@ -239,7 +239,11 @@ references; no virtual response installs a browser cookie.
 Host-issued `ui-bootstrap` browser sessions can create and cancel Device
 invitations, decide pending requests and manage paired Devices while their
 current grant retains `access:manage`. Admission uses the private mint record
-and exact route leaves; ordinary paired Devices do not inherit it. A preapproved
+and exact route leaves. On a personal Station the owner's own paired Devices that
+already hold a host shell get the same standing (owner-device standing,
+`DevicePairingService.credentialHasOwnerStanding`,
+[threat model](../security/remote-access-threat-model.md#owner-device-standing-2026-11-02));
+other paired Devices do not inherit it. A preapproved
 invitation records its access decision privately at creation and permits one
 redemption before expiry or cancellation. The native consent broker still
 requires its distinct `local-grant` mint proof.

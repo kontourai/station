@@ -1959,13 +1959,13 @@ export function HostDevicePairingPanel({
     setCreating(true);
     try {
       const address = new URL(target);
-      // The server accepts https on any host and http on a private one; a
-      // loopback address would point the phone at itself.
+      // A pairing code carries a secret, so the phone's decoder accepts only
+      // HTTPS; a loopback address would point the phone at itself.
       if (!isPairableEndpoint(address.href)) {
         setError(
           isLoopbackUrl(address.href)
-            ? 'This address only works on this computer. Choose an address your phone can reach, such as your local network or Tailscale.'
-            : 'Use an address your phone can reach: HTTPS, or a local-network or Tailscale address.',
+            ? 'This address only works on this computer. Use an HTTPS address your phone can reach, such as Tailscale HTTPS.'
+            : 'Use a reachable HTTPS address for a pairing code. For a local HTTP address, choose Nearby Stations or enter the address on the phone and request access.',
         );
         return false;
       }
@@ -2037,6 +2037,9 @@ export function HostDevicePairingPanel({
       suggestPairingEndpoint(apiBase),
     );
     if (!preferred) {
+      setError(
+        'Pairing by code needs an HTTPS address your phone can reach, such as Tailscale HTTPS. On a local network, choose Nearby Stations on the phone, or enter this address there and request access.',
+      );
       setShowOtherOptions(true);
       return;
     }

@@ -9,11 +9,7 @@ describe('isPairableEndpoint', () => {
   test.each([
     'https://kontour.example.ts.net',
     'https://station.example.com',
-    'http://192.168.50.16:3774',
-    'http://10.0.0.4:3774',
-    'http://172.20.1.2:3774',
-    'http://100.77.142.114:3774',
-    'http://studio.local:3774',
+    'https://192.168.50.16:3774',
   ])('accepts %s', (value) => {
     expect(isPairableEndpoint(value)).toBe(true);
   });
@@ -23,7 +19,11 @@ describe('isPairableEndpoint', () => {
     'http://127.0.0.1:3774',
     'http://localhost:3774',
     'https://localhost:3774',
-    // Cleartext to a public or DNS name is refused by the server.
+    // A pairing code carries a secret: the phone's decoder refuses cleartext,
+    // even on a private network (that uses the direct access flow instead).
+    'http://192.168.50.16:3774',
+    'http://100.77.142.114:3774',
+    'http://studio.local:3774',
     'http://station.example.com',
     'http://kontour.example.ts.net:3774',
     'https://user:pass@station.example.com',
@@ -35,22 +35,21 @@ describe('isPairableEndpoint', () => {
 });
 
 describe('pairingRoutesFrom', () => {
-  test('orders routes best first, drops loopback and duplicates', () => {
+  test('offers HTTPS routes best first, dropping cleartext, loopback and duplicates', () => {
     const routes = pairingRoutesFrom(
       [
         { kind: 'lan', url: 'http://192.168.50.16:3774' },
         { kind: 'tailscale', url: 'http://100.77.142.114:3774' },
-        // MagicDNS over cleartext is refused by the server, so it is not offered.
-        { kind: 'tailscale', url: 'http://kontour.example.ts.net:3774' },
+        { kind: 'tailscale-https', url: 'https://kontour.example.ts.net:8443' },
         { kind: 'tailscale-https', url: 'https://kontour.example.ts.net' },
-        { kind: 'lan', url: 'http://192.168.50.16:3774' },
+        { kind: 'tailscale-https', url: 'https://kontour.example.ts.net' },
       ],
-      'http://127.0.0.1:3774',
+      'https://station.example.com',
     );
     expect(routes.map((route) => [route.kind, route.url])).toEqual([
+      ['tailscale-https', 'https://kontour.example.ts.net:8443'],
       ['tailscale-https', 'https://kontour.example.ts.net'],
-      ['tailscale', 'http://100.77.142.114:3774'],
-      ['lan', 'http://192.168.50.16:3774'],
+      ['current', 'https://station.example.com'],
     ]);
     expect(routes[0]?.label).toBe('Tailscale HTTPS');
   });
@@ -82,17 +81,14 @@ describe('pairingRoutesFrom', () => {
 
 describe('preferredPairingRoute', () => {
   const routes = pairingRoutesFrom(
-    [
-      { kind: 'tailscale-https', url: 'https://kontour.example.ts.net' },
-      { kind: 'lan', url: 'http://192.168.50.16:3774' },
-    ],
-    undefined,
+    [{ kind: 'tailscale-https', url: 'https://kontour.example.ts.net' }],
+    'https://station.example.com',
   );
 
   test('prefers the remembered route when it is still offered', () => {
     expect(
-      preferredPairingRoute(routes, 'http://192.168.50.16:3774')?.kind,
-    ).toBe('lan');
+      preferredPairingRoute(routes, 'https://station.example.com/x')?.kind,
+    ).toBe('current');
   });
 
   test('falls back to the best route', () => {
