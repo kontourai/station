@@ -28,6 +28,7 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 
 | Date (UTC) | Channel | Version | Ship SHA | Gate | Run |
 | --- | --- | --- | --- | --- | --- |
+| 2026-11-03T21:31:15Z | nightly-npm | 0.11.0-nightly.2498.41720227898 | `9870343` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/41720227898) |
 | 2026-11-03T15:42:27Z | nightly-npm | 0.11.0-nightly.2498.41664236882 | `8bfa549` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/41664236882) |
 | 2026-11-03T08:46:45Z | nightly-desktop | 0.1.11-nightly.2498 | `3d83c62` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/41595146823) |
 | 2026-11-03T08:46:41Z | nightly-android | 0.1.11-nightly.2498 | `3d83c62` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/41595146823) |
@@ -408,6 +409,28 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 | 2026-08-28T16:30:48Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-28T16:25:30Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-27T10:54:02Z | nightly-android | 0.1.2-nightly.2430 | `c4229f4` | no test gate existed for this ship: the nightly test gate landed after it (station#4565 merged 2026-08-27T16:04:07Z, this nightly job completed 2026-08-27T10:54:02Z) | [run](https://github.com/kontourai/station-archive/actions/runs/33064078473) |
+
+## 2026-11-03T21:31:15Z · nightly-npm · 0.11.0-nightly.2498.41720227898
+
+- Ship SHA: `98703439f7606e50dabe7ccf91ce052eb5ce1571`
+- Artifact built at: `unknown` (no immutable artifact manifest binding)
+- Artifact: npm:@kontourai/station-cli@0.11.0-nightly.2498.41720227898 (dist-tag nightly; artifactBuiltAt unknown)
+- Note: artifactBuiltAt is null: npm package has no native artifact manifest
+
+### Changelog
+
+Commits since `8bfa549` ([full sha](https://github.com/kontourai/station/commit/8bfa549068e37bb8a241a0ecf2ae241909e54381)):
+
+**Fixes**
+
+- [#4501](https://github.com/kontourai/station/pull/4501) fix(security): redact credentials behind diagnostic prefixes
+- [#4491](https://github.com/kontourai/station/pull/4491) fix(orchestration): await durable announced session starts
+- [#4494](https://github.com/kontourai/station/pull/4494) fix(chat): restore phone UI consistency and stream recovery status
+- [#4495](https://github.com/kontourai/station/pull/4495) fix(ui): polish model picker filters and settings
+
+**Other**
+
+- [#4497](https://github.com/kontourai/station/pull/4497) refactor(pairing): compact Pair phone layout and de-slop owner-device standing
 
 ## 2026-11-03T15:42:27Z · nightly-npm · 0.11.0-nightly.2498.41664236882
 
