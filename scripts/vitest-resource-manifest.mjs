@@ -517,6 +517,7 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'packages/monument/src/__tests__/sqlite-crash.process.test.ts',
   // #3566: SIGKILL a real prepared/begun Station caller and reopen its SQLite file.
   'src-server/services/orchestration/__tests__/prepared-turn-intent-crash.process.test.ts',
+  'src-server/services/orchestration/__tests__/create-request-claims.process.test.ts',
   // #3569: real SQLite admission contenders and peer owners; each child has bounded cleanup.
   'src-server/services/orchestration/__tests__/cancellation-fence-race.process.test.ts',
   'src-server/services/orchestration/__tests__/cascade-stop-delivery.process.test.ts',

@@ -71,7 +71,7 @@ Without these variables, the Station operator can turn the same configuration
 on in **Settings → System → Project sharing with local accounts**
 ([#4305](https://github.com/kontourai/station/issues/4305)). The control is a
 Feature Preview: turn on **Project sharing setting** (`project-sharing-setting`)
-in **Settings → Advanced → Feature previews** first. While the preview is off
+in **Settings → Feature previews** first. While the preview is off
 the route refuses with `feature_preview_disabled`, but a saved choice stays in
 force, so turning the preview off never signs invited people out.
 
@@ -180,7 +180,7 @@ private directory under the Station home backup/recovery procedure.
 Invited people can use passkeys instead of, or as well as, a password
 ([#4303](https://github.com/kontourai/station/issues/4303)). This is the
 **Member passkeys** Station-wide Feature Preview, off by default: turn it on in
-Settings → Advanced → Feature previews. With it on:
+Settings → Feature previews. With it on:
 
 - **Join.** The invitation page offers **Create account with a passkey**. It
   needs only a username; the invitation is checked when the passkey request
@@ -659,6 +659,34 @@ separate work discussed in [#483](https://github.com/kontourai/station/issues/48
 [#488](https://github.com/kontourai/station/issues/488) and
 [#497](https://github.com/kontourai/station/issues/497). Tailnet member integration is discussed in
 #1513 and [#488](https://github.com/kontourai/station/issues/488).
+
+## Invite and manage people from a Project
+
+Open **Project settings → People and access**. The invitation steps explain
+link creation, recipient acceptance and the separate browser approval. The
+**Sharing setup** shortcut opens **Settings → System**, where the operator
+configures account sign-in. If that control is missing, **Feature previews**
+opens its existing preview settings. No setup change is applied by following
+these shortcuts.
+
+The invitation form shows the configured sign-in address. Loopback addresses
+are marked as usable only on the same computer; choose an address the recipient
+can reach before sending a link elsewhere. An address or a generated link is
+not proof of network reachability, TLS setup or public hosting.
+
+Choose the Project role and create the invitation. **Share this invitation**
+shows its actual expiry and **Copy invitation**, with the link available behind
+a disclosure for manual selection. Send it privately. The recipient signs in
+and explicitly accepts, then requests browser access. The Station operator
+uses **Review browser requests** to open Notifications and review the request.
+Account sign-in and Project membership alone do not approve a Device.
+
+Use **Project members** to change roles or revoke membership, and **Invitations**
+to inspect acceptance or cancel a pending link. Account recovery and session
+revocation remain in **Settings → System**. Guest administrators can manage only
+their permitted Project and Device scope; the operator-only setup and browser
+review shortcuts are not mounted in the guest entry. These controls preserve
+the independent account, Device, membership and compute grants.
 
 ## Browser invitation entry
 

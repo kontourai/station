@@ -18,6 +18,7 @@ import {
   learningClientData,
 } from '../build-learning-guide.mjs';
 import { resolveDocumentationFreshness } from '../lib/documentation-freshness.mjs';
+import { scaleLivenessMs } from '../lib/liveness-scale.mjs';
 import { JOB_ENV } from './helpers/freshness-env.js';
 import { writeReviewLedger } from './helpers/review-ledger-fixture.js';
 
@@ -49,6 +50,17 @@ type CaptureVideo = HTMLVideoElement & {
   play(): Promise<void>;
   pause(): void;
 };
+
+// The setup builds the real atlas over every tracked Markdown file and the
+// whole review ledger, so its cost grows with the repository. Measured on an
+// idle M5: scoped freshness ~5 s, ledger read ~8 s, rendering ~5 s, browser
+// launch <1 s (~20 s in Vitest). A CI shard running it beside the other
+// ledger-heavy suites exceeded the earlier 60 s bound twice (#4456). This is
+// a dead-setup guard, not a performance budget: finite, so a hang still
+// fails. scaleLivenessMs follows the repo's liveness helper; vitest.setup.ts
+// clears the host-pressure factor in workers and CI runs at 1, so in practice
+// the base below is the bound.
+const ATLAS_SETUP_LIVENESS_MS = 180_000;
 
 beforeAll(async () => {
   // The real ledger runs in the job's own freshness mode, stated explicitly
@@ -138,7 +150,7 @@ beforeAll(async () => {
   });
   origin = `http://127.0.0.1:${(listener.address() as AddressInfo).port}`;
   browser = await chromium.launch({ headless: true });
-}, 60_000);
+}, scaleLivenessMs(ATLAS_SETUP_LIVENESS_MS));
 
 afterAll(async () => {
   try {

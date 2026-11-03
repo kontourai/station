@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 /**
  * #3158: a delegated child's result reaches its parent conversation once.
  *
@@ -357,6 +358,7 @@ function routes(
         method: 'POST',
         headers,
         body: JSON.stringify({
+          clientTurnId: randomUUID(),
           prompt,
           target: { environment: { kind: 'current' }, agent: 'writer' },
           // A model-written claim naming another conversation: ignored.
