@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from 'node:async_hooks';
 import {
   createHash,
   createHmac,
@@ -555,7 +556,7 @@ export class EnvironmentSecurityService {
     const origin: CanonicalLocalGrantOrigin = Object.freeze({
       [canonicalLocalGrantOriginBrand]: true as const,
     });
-    let currentRegion: object | undefined;
+    const regions = new AsyncLocalStorage<object>();
     const active = new WeakSet<object>();
     const requireOwner = () => {
       if (!this.#initialized || this.#devicePairingService !== pairing)
@@ -563,6 +564,7 @@ export class EnvironmentSecurityService {
     };
     const borrowedRegion = () => {
       requireOwner();
+      const currentRegion = regions.getStore();
       return currentRegion &&
         active.has(currentRegion) &&
         reads.isRegistryScopeActive()
@@ -578,14 +580,11 @@ export class EnvironmentSecurityService {
         requireOwner();
         return reads.withCurrentRegistry(() => {
           const region = Object.freeze({});
-          const prior = currentRegion;
           active.add(region);
-          currentRegion = region;
           try {
-            return check();
+            return regions.run(region, check);
           } finally {
             active.delete(region);
-            currentRegion = prior;
           }
         });
       },

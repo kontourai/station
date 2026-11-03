@@ -29,7 +29,10 @@ import {
   EnvironmentSecurityService,
   readCanonicalLocalGrantOrigin,
 } from '../../../services/ssh/environment-security-service.js';
-import { HomeWriterUnavailableError } from '../../../services/ssh/home-writer-owner.js';
+import {
+  HomeWriterOwner,
+  HomeWriterUnavailableError,
+} from '../../../services/ssh/home-writer-owner.js';
 import { captureEnvironmentLocalGrantObservationOwner } from '../local-grant-observation-owner.js';
 import {
   ProviderCredentialObservationError,
@@ -1147,6 +1150,22 @@ test('borrowed canonical raw reads are confined to the issued synchronous region
     () => raw.readBorrowedUnboundScope(h.paired.credential, expired),
     { reason: 'borrow-unavailable' },
   );
+  let descendant: Promise<string | undefined> | undefined;
+  assert.throws(
+    () =>
+      raw.withObservationScope(() => {
+        const region = raw.borrowedRegion();
+        assert.ok(region);
+        descendant = Promise.resolve().then(() =>
+          raw.readBorrowedUnboundScope(h.paired.credential, region),
+        );
+        void descendant.catch(() => {});
+        return descendant;
+      }),
+    /Home writer spans must be synchronous/,
+  );
+  assert.ok(descendant);
+  await assert.rejects(descendant, { reason: 'borrow-unavailable' });
 });
 
 test('canonical borrowed entry detects missing Home lease before independent policy', async () => {
@@ -1190,4 +1209,63 @@ test('canonical borrowed entry detects missing Home lease before independent pol
     authorize.mock.calls.length > 0,
     'restored custody must reach the real policy port',
   );
+});
+
+test('canonical region cannot borrow a new physical span after its original lease is released', async () => {
+  const h = await setup();
+  const writer = await HomeWriterOwner.forHome(h.home);
+  const raw = readCanonicalLocalGrantOrigin(
+    h.environment,
+    h.environment.canonicalLocalGrantOrigin(),
+  );
+  const lease = await writer.acquire();
+  const outside = AsyncLocalStorage.snapshot();
+  let released: Promise<void> | undefined;
+  let reachedNewSpan = false;
+  let protectedBody = false;
+  let refusal: unknown;
+  let closingFailure: unknown;
+  try {
+    try {
+      writer.runWithLease(lease, () =>
+        raw.withObservationScope(() => {
+          const region = raw.borrowedRegion();
+          assert.ok(region);
+          released = lease.release();
+          outside(() =>
+            writer.runSynchronous(() => {
+              reachedNewSpan = true;
+              try {
+                raw.readBorrowedUnboundScope(h.paired.credential, region);
+                protectedBody = true;
+              } catch (error) {
+                refusal = error;
+              }
+            }),
+          );
+        }),
+      );
+    } catch (error) {
+      closingFailure = error;
+    }
+    assert.equal(
+      reachedNewSpan,
+      true,
+      'the replacement physical span must actually acquire',
+    );
+    assert.equal(
+      protectedBody,
+      false,
+      'old region must refuse before a protected read in the new span',
+    );
+    assert.ok(refusal instanceof HomeWriterUnavailableError);
+    assert.equal(refusal.reason, 'borrow-unavailable');
+    assert.ok(
+      closingFailure instanceof HomeWriterUnavailableError,
+      'the original released lease still fails its closing check',
+    );
+  } finally {
+    await released;
+    await lease.release();
+  }
 });
