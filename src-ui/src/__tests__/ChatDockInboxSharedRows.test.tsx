@@ -1,3 +1,4 @@
+import { useInboxWorkingCount } from '../components/chat-dock/useInboxGroups';
 // @vitest-environment jsdom
 
 /**
@@ -12,7 +13,7 @@
 
 import type {
   OrchestrationSessionSummary,
-  TaskRecord,
+  TaskListRecord,
 } from '@kontourai/station-sdk';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
@@ -55,6 +56,20 @@ function workItem(overrides: Partial<HomeWorkItem> = {}): HomeWorkItem {
     chatSessionId: 'shared',
     ...overrides,
   };
+}
+
+function WorkingChatCount({
+  items,
+  facts,
+}: {
+  items: HomeWorkItem[];
+  facts: ReturnType<typeof buildWorkFacts>;
+}) {
+  return (
+    <output aria-label="Working chats">
+      {useInboxWorkingCount(items, NOW, facts)}
+    </output>
+  );
 }
 
 function historicalItems(): HomeWorkItem[] {
@@ -443,68 +458,91 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
     }
   });
 
-  it('keeps a Task-owned chat reachable under its Task and opens the Task destination', () => {
-    const tasks: TaskRecord[] = [
-      {
-        id: 'task-1',
-        projectId: 'alpha',
-        title: 'Ship release',
-        description: '',
-        createdBy: 'user',
-        priority: 'normal',
-        status: 'in_progress',
-        sessionId: 'linked-chat',
-        createdAt: '2026-08-18T11:00:00Z',
-        updatedAt: '2026-08-18T11:59:00Z',
-      },
-    ];
-    const chat = workItem({
-      id: 'linked-chat',
-      chatSessionId: 'linked-chat',
-      title: 'Release conversation',
-      lifecycleLabel: 'Needs attention',
-    });
-    const items = buildHomeWorkItems({
-      chats: {},
-      sessions: [],
-      agents: [],
-      tasks,
-      chatItems: [chat],
-      retainTaskChildren: true,
-    });
-    const onFocusChat = vi.fn();
-    render(
-      <ChatDockInboxPanel
-        items={items}
-        workFacts={buildWorkFacts({ items, tasks })}
-        activeChatSessionId={null}
-        openChatSessionIds={['linked-chat']}
-        onFocusChat={onFocusChat}
-        onOpenConversation={vi.fn()}
-        onOpenSession={vi.fn()}
-        onCloseChat={vi.fn()}
-        onOpenHistory={vi.fn()}
-        now={NOW}
-      />,
-    );
-    const lane = screen.getByRole('region', { name: /^Needs you/ });
-    expect(within(lane).getByText('Ship release')).toBeTruthy();
-    fireEvent.click(
-      within(lane).getByRole('button', {
-        name: 'Release conversation, Shared project',
-      }),
-    );
-    expect(onFocusChat).toHaveBeenCalledWith('linked-chat');
-    fireEvent.click(
-      within(lane).getByRole('button', { name: 'Ship release, alpha' }),
-    );
-    expect(window.location.pathname).toBe('/tasks/task-1');
-    window.history.replaceState(null, '', '/');
-  });
+  it.each(['primary', 'room-request'] as const)(
+    '%s chat stays under its Task and the Task destination reveals its workspace',
+    (association) => {
+      const tasks: TaskListRecord[] = [
+        {
+          id: 'task-1',
+          projectId: 'alpha',
+          title: 'Ship release',
+          description: '',
+          createdBy: 'user',
+          priority: 'normal',
+          status: 'in_progress',
+          ...(association === 'primary'
+            ? { sessionId: 'linked-chat' }
+            : { workChatConversationIds: ['linked-conversation'] }),
+          createdAt: '2026-08-18T11:00:00Z',
+          updatedAt: '2026-08-18T11:59:00Z',
+        },
+      ];
+      const chat = workItem({
+        id: 'linked-chat',
+        conversationId: 'linked-conversation',
+        chatSessionId: 'linked-chat',
+        title: 'Release conversation',
+        lifecycleLabel: 'Needs attention',
+      });
+      const items = buildHomeWorkItems({
+        chats: {},
+        sessions: [],
+        agents: [],
+        tasks,
+        chatItems: [chat],
+        retainTaskChildren: true,
+      });
+      const onFocusChat = vi.fn();
+      render(
+        <ChatDockInboxPanel
+          items={items}
+          workFacts={buildWorkFacts({ items, tasks })}
+          activeChatSessionId={null}
+          openChatSessionIds={['linked-chat']}
+          onFocusChat={onFocusChat}
+          onOpenConversation={vi.fn()}
+          onOpenSession={vi.fn()}
+          onCloseChat={vi.fn()}
+          onOpenHistory={vi.fn()}
+          now={NOW}
+        />,
+      );
+      const lane = screen.getByRole('region', { name: /^Needs you/ });
+      expect(within(lane).getByText('Ship release')).toBeTruthy();
+      fireEvent.click(
+        within(lane).getByRole('button', {
+          name: 'Release conversation, Shared project',
+        }),
+      );
+      expect(onFocusChat).toHaveBeenCalledWith('linked-chat');
+      window.history.replaceState(
+        null,
+        '',
+        '/tasks/task-1?dock=open&chat=linked-chat&taskView=conversation',
+      );
+      fireEvent.click(
+        within(lane).getByRole('button', { name: 'Ship release, alpha' }),
+      );
+      expect(window.location.pathname).toBe('/tasks/task-1');
+      expect(new URL(window.location.href).searchParams.get('dock')).toBeNull();
+      expect(new URL(window.location.href).searchParams.get('chat')).toBeNull();
+      expect(new URL(window.location.href).searchParams.get('taskView')).toBe(
+        'overview',
+      );
+      window.history.replaceState(null, '', '/');
+    },
+  );
 
-  it.each(['desktop', 'mobile'] as const)(
-    '%s groups delegated work with its root and opens the child needing approval',
-    async (host) => {
+  it.each([
+    ['desktop', 'none'],
+    ['mobile', 'none'],
+    ['desktop', 'child'],
+    ['mobile', 'child'],
+    ['desktop', 'ambiguous'],
+    ['mobile', 'ambiguous'],
+  ] as const)(
+    '%s groups delegated work with %s Task ownership and opens the child needing approval',
+    async (host, association) => {
       const sessions: OrchestrationSessionSummary[] = [
         {
           threadId: 'root',
@@ -534,7 +572,33 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
             }
           : {}),
       }));
-      const items = buildHomeWorkItems({ chats: {}, sessions, agents: [] });
+      const tasks: TaskListRecord[] =
+        association === 'none'
+          ? []
+          : ['task-a', 'task-b'].map((id) => ({
+              id,
+              projectId: 'alpha',
+              title: id === 'task-a' ? 'Parent outcome' : 'Child outcome',
+              description: '',
+              createdBy: 'user',
+              priority: 'normal',
+              status: 'in_progress',
+              createdAt: '2026-08-18T11:00:00Z',
+              updatedAt: '2026-08-18T11:59:00Z',
+              workChatConversationIds:
+                id === 'task-a'
+                  ? association === 'ambiguous'
+                    ? ['root', 'child']
+                    : ['root']
+                  : ['child'],
+            }));
+      const items = buildHomeWorkItems({
+        chats: {},
+        sessions,
+        agents: [],
+        tasks,
+        retainTaskChildren: true,
+      });
       const onOpenSession = vi.fn();
       const common = {
         activeChatSessionId: null,
@@ -544,7 +608,7 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
         onOpenConversation: vi.fn(),
         onOpenSession,
         onCloseChat: vi.fn(),
-        workFacts: buildWorkFacts({ items, sessions }),
+        workFacts: buildWorkFacts({ items, sessions, tasks }),
       };
       if (host === 'desktop') {
         render(
@@ -566,10 +630,21 @@ describe('shared inbox rows render in both hosts (station#3312)', () => {
         );
       }
       const needsYou = screen.getByRole('region', { name: /^Needs you/ });
-      expect(within(needsYou).getByText('Release review')).toBeTruthy();
-      expect(
-        within(needsYou).getByText('1 subtask · 1 needs you'),
-      ).toBeTruthy();
+      if (association === 'none') {
+        expect(within(needsYou).getByText('Release review')).toBeTruthy();
+        expect(
+          within(needsYou).getByText('1 subtask · 1 needs you'),
+        ).toBeTruthy();
+      } else if (association === 'child') {
+        expect(within(needsYou).getByText('Child outcome')).toBeTruthy();
+        expect(within(needsYou).queryByText('Parent outcome')).toBeNull();
+        expect(
+          within(needsYou).getByText('1 work chat · 1 needs you'),
+        ).toBeTruthy();
+      } else {
+        expect(within(needsYou).queryByText('Parent outcome')).toBeNull();
+        expect(within(needsYou).queryByText('Child outcome')).toBeNull();
+      }
       fireEvent.click(
         within(needsYou).getByRole('button', {
           name: 'Security review, No project',
@@ -1188,3 +1263,79 @@ describe('inbox row engine fallback for a resolved agent without engineId (#3355
     ).toBe(agents[0]);
   });
 });
+
+it.each([0, 1, 2])(
+  'an in-progress Task with %i running work chats counts actual chats and keeps one Task entry',
+  (count) => {
+    const task: TaskListRecord = {
+      id: 'outcome',
+      projectId: 'alpha',
+      title: 'One outcome',
+      description: '',
+      status: 'in_progress',
+      priority: 'normal',
+      createdBy: 'user',
+      createdAt: '2026-08-18T11:00:00Z',
+      updatedAt: '2026-08-18T11:59:00Z',
+      workChatConversationIds: Array.from(
+        { length: count },
+        (_, i) => `conversation-${i}`,
+      ),
+    };
+    const chats = Array.from({ length: count }, (_, i) =>
+      workItem({
+        id: `chat-${i}`,
+        chatSessionId: `chat-${i}`,
+        conversationId: `conversation-${i}`,
+        title: `Working chat ${i}`,
+        lifecycleLabel: 'Running',
+      }),
+    );
+    const items = buildHomeWorkItems({
+      chats: {},
+      sessions: [],
+      agents: [],
+      tasks: [task],
+      chatItems: chats,
+      retainTaskChildren: true,
+    });
+    const facts = buildWorkFacts({ items, tasks: [task] });
+    render(
+      <QueryClientProvider
+        client={
+          new QueryClient({ defaultOptions: { queries: { retry: false } } })
+        }
+      >
+        <WorkingChatCount items={items} facts={facts} />
+        <ChatDockInboxPanel
+          items={items}
+          workFacts={facts}
+          activeChatSessionId={null}
+          openChatSessionIds={[]}
+          onFocusChat={vi.fn()}
+          onOpenConversation={vi.fn()}
+          onOpenSession={vi.fn()}
+          onCloseChat={vi.fn()}
+          onOpenHistory={vi.fn()}
+          now={NOW}
+        />
+      </QueryClientProvider>,
+    );
+    expect(
+      screen.getByRole('status', { name: 'Working chats' }).textContent,
+    ).toBe(String(count));
+    const lane = screen.getByRole('region', {
+      name: count ? /^Running/ : /^Idle/,
+    });
+    expect(
+      within(lane).getAllByRole('button', { name: 'One outcome, alpha' }),
+    ).toHaveLength(1);
+    expect(within(lane).getByText('Task · In progress')).toBeTruthy();
+    if (count)
+      expect(
+        within(lane).getByRole('button', {
+          name: `${count} work chat${count === 1 ? '' : 's'}`,
+        }),
+      ).toBeTruthy();
+  },
+);

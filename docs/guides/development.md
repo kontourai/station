@@ -20,6 +20,16 @@ attachment path. Have the host administrator repair the narrow executable
 policy and verify a sandboxed launch. Do not disable the sandbox or global
 AppArmor restrictions to make a readiness check pass.
 
+Station's generated Linux user service uses `PrivateTmp=false` and retains
+`NoNewPrivileges=true`. On Ubuntu, a user service's private temporary mount
+namespace can inherit AppArmor's `unprivileged_userns` confinement, preventing
+Codex's bubblewrap sandbox from creating its own namespaces. Compare
+`codex sandbox -- /bin/true` in the shell with a disposable user service using
+the installed service's settings. A passing shell probe alone is insufficient.
+For an existing affected service, set `PrivateTmp=false` in a service drop-in,
+reload the user manager, and restart Station when its active turns have settled.
+Reloading configuration does not change the running process's confinement.
+
 Claude's explicit HTTP 400 unknown-provider-model response is reported as
 `provider_model_unavailable`. That response alone does not establish whether
 the cause is model configuration, upstream account availability or quota.
