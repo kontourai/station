@@ -154,6 +154,8 @@ describe('ActiveChatsStore', () => {
       conversationOpenPending: true,
       model: 'sonnet',
       projectSlug: 'proj',
+      peerChat: undefined,
+      peerChatInvalid: false,
     });
   });
 
