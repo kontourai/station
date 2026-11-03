@@ -44,8 +44,10 @@ Station has no `port + 1` terminal listener; the SDK no longer exports
 Both return a `TerminalSession`, the narrow interface a renderer consumes:
 `terminalId`, `state` (`connecting`, `replaying`, `ready`, `reconnecting`,
 `failed`, `detached`), `status`, `readOnly`, `error`; `subscribe({output,
-reset, change})`, `write(data)`, `resize(cols, rows)`, `cwd()`, `close()` and
-`detach()`. A new subscriber first receives the retained output (256 KiB per
+reset, change})`, `write(data)`, `resize(cols, rows)`, `cwd()`, `close()`,
+`restart()` and `detach()`. `restart()` starts an exited (or running) program
+again under the same id, its output continuing on the same view; a read-only
+view, an agent command and a server-owned launch are refused. A new subscriber first receives the retained output (256 KiB per
 session by default), then live output; `reset` means earlier output is gone.
 Each session notifies only its own subscribers, so output on one terminal
 never wakes a view of another. Input is coalesced per animation frame and held until replay is acknowledged;
@@ -139,7 +141,7 @@ Optional props:
 | Prop | Purpose |
 | --- | --- |
 | `label` | Accessible name (default `Terminal`) |
-| `fontSize`, `fontFamily` | Font in CSS pixels; the default stack ends in a bundled Nerd Font symbols face |
+| `fontSize`, `fontFamily` | Font in CSS pixels (default 12, or 14 on a phone); the default stack ends in a bundled Nerd Font symbols face |
 | `screenReaderMode` | Keeps a navigable text mirror and polite announcements; off means no mirror is kept |
 | `detectScreenReader` | Host signal used when `screenReaderMode` is unset; browsers expose none themselves |
 | `touchKeys` | Shows the Ctrl+C (`^C`), Esc, Tab, arrow and sticky Ctrl key row: 44px targets that fit a 390px phone; narrower, the row scrolls and fades at the edge with more keys |
@@ -153,7 +155,9 @@ load with the first terminal on a page. Rendering uses WebGL2 and falls back to
 canvas 2D; a hidden terminal releases its GPU context and draws nothing.
 Escape then Tab moves focus out of the terminal (Shift+Tab backwards);
 Shift+F10 opens the context menu (Copy, Paste, Select all, Add to chat, Find,
-Jump to latest, Clear).
+Jump to latest, Clear) at the caret, and a right-click at the pointer; the
+menu flips above or left of that point when it would leave the viewport.
+Copy and paste outcomes show briefly on the terminal and are announced.
 
 A focused view keeps Copy, Paste, Find and Select all: ⌘C, ⌘V, ⌘F and ⌘A on a
 Mac, Ctrl+Shift+C, V, F and A elsewhere, where plain Ctrl+C copies only while

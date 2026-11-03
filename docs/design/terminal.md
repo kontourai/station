@@ -91,7 +91,8 @@ filesystem persistence across service recreation, not power-loss qualification.
 The retention settings, clear-history actions and doctor reporting have since
 shipped (see [Journal](#journal) and [Migration](#migration)). Restart and
 command sessions have their server side (see Session kinds and Sessions below);
-the UI offers neither. `terminal:observe` is
+the UI offers Restart shell for an exited shell, and no command-session UI.
+`terminal:observe` is
 governed by the Admin ceiling; no preset gains it. Its description names future
 remote-watch admission. The complete scope vocabulary uses 253 of the parser's
 256 characters, leaving three characters. Part b1 adds the personal-operator socket
@@ -564,8 +565,10 @@ a new journal segment; earlier segments stay readable.
 
 Deleting a Project ends its running sessions in every binding (#3994); their
 records and history stay until retention expires them, and they are never
-restored. A related terminal pane resolves its Project by id and shows "That
-Project is gone" instead of attaching. The
+restored. In a dock region, a related terminal pane renders only under the
+dock's own Project, so the region already holds a deleted Project's pane
+back; the pane also resolves its Project by id and shows "That Project is
+gone" rather than attaching. The
 [session suite](../../src-server/services/terminal/__tests__/terminal-sessions.process.test.ts),
 the [Project route suite](../../src-server/routes/projects/__tests__/projects.routes.test.ts)
 and the [pane suite](../../src-ui/src/workspace-panes/__tests__/TerminalSessionPane.test.tsx)
@@ -582,7 +585,10 @@ by a supervisor workload starts one too), and the record carries
 `restart: {count, afterSeq, at}`. The new run drops the previous run's end
 time and `hostStopped` marker, so its own exit dates age expiry and decides
 whether it is restored after a host restart. Command sessions and server-owned
-launches are refused: no program is stored for them.
+launches are refused: no program is stored for them. The Coding terminal
+offers Restart shell when its shell has exited
+(`TerminalSession.restart()`); Reconnect stays for a lost connection, and a
+watch-only view offers neither.
 
 ### Journal
 
