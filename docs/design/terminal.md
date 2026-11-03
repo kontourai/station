@@ -362,6 +362,19 @@ command palette, Settings and shortcut list work from a focused terminal; the
 rest go to the program. The shortcuts sheet (`?` or ⌘/) lists the view's keys
 under "In a terminal" from the SDK's `terminalViewShortcuts`.
 
+A view refits on every change to its box through one `ResizeObserver`:
+renderer and emulator at once, the PTY with the latest size at most every
+100 ms. A real browser on an isolated Station (#3994) confirmed `tput cols`
+and `tput lines` match the drawn grid after splitter drags, collapse and
+expand, a reload (the lower panel's height persists), 1440/1024/390 widths, a
+shorter viewport standing in for the phone keyboard, rotation, a
+devicePixelRatio change and moving between the bottom panel and the right
+dock, and that `vi` redraws to fill after a drag. The scrollbar sits in the
+inset; as a flex item it had taken two columns when scrollback first
+appeared. The [controller suite](../../packages/sdk/src/__tests__/terminal-view/controller.test.ts)
+and the [key-row geometry suite](../../src-ui/src/components/coding-layout/__tests__/TerminalKeyRow.geometry.test.tsx)
+fail when the observer, the PTY resize or the inset scrollbar is removed.
+
 ## Why
 
 The terminal is a core surface, not a Coding-layout accessory. The legacy

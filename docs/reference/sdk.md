@@ -122,7 +122,11 @@ receives input, pastes or resizes. Several views may subscribe to one session:
 the view copies output before handing it to its worker, so a session may give
 every listener, and later subscribers, the same array. A view with no box (a
 hidden tab, a dock region put away) keeps its last grid and never resizes the
-session. Handing a mounted view a different session (a reconnect, a fresh
+session. A view refits whenever its box changes (a window resize, a pane
+splitter, moving between dock regions, a phone keyboard or rotation, a
+devicePixelRatio change): the grid and renderer follow at once, and the
+latest size reaches the session at most every 100 ms. The scrollbar sits in
+the inset, so scrollback appearing never takes columns from the grid. Handing a mounted view a different session (a reconnect, a fresh
 attachment of the same terminal) first resets its emulator to a fresh terminal,
 because the new attachment replays its terminal from the oldest retained
 output; the history is drawn once. A session `reset` does the same.
