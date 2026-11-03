@@ -3184,6 +3184,18 @@ mutate the root through the Knowledge routes.
 Project Task learning and automatic Project tool discovery exclude it.
 Existing roots without the policy retain their prior access rules.
 
+The default-off Private memory preview registers a per-owner `corpus-private-memory`
+root through the same registry. Its adapter validates the exact private
+registration on each access and exposes ordinary record reads only; create
+proposals use the explicit memory route. The registry and adapter reject paths
+that alias another author-private root, with authorization and path identity
+rechecked at response delivery. Corpus receives Station's coordination lock and
+home-identity check; ordinary access does not enable purge. Pending proposals
+are not records and do not enter the index. This does not provide review,
+distillation or erasure. [Memory tests](../../src-server/knowledge-store/__tests__/memory-root.test.ts)
+and [route tests](../../src-server/routes/knowledge/__tests__/memory.routes.test.ts)
+exercise local fixtures; they do not qualify a live model provider.
+
 The separate [Neo4j graph routes](../../src-server/routes/knowledge/neo4j-graph-routes.ts)
 require current access to the exact registered root. Graph and shortest-path
 reads require view access. Sync requires edit access for writable roots;
