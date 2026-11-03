@@ -2,7 +2,7 @@ import {
   existsSync,
   mkdirSync,
   readFileSync,
-  rmSync,
+  renameSync,
   symlinkSync,
   writeFileSync,
 } from 'node:fs';
@@ -86,10 +86,9 @@ describe('knowledge source registry lifecycle on real storage', () => {
     async () => {
       const privateDir = join(home, 'private');
       const publicDir = join(home, 'public');
-      const alias = join(home, 'alias');
+      const moved = join(home, 'public-old');
       mkdirSync(privateDir);
       mkdirSync(publicDir);
-      symlinkSync(publicDir, alias, 'dir');
       await store.createRoot({
         scope: { kind: 'personal' },
         readPolicy: { kind: 'author-private', ownerId: 'human:owner' },
@@ -100,11 +99,12 @@ describe('knowledge source registry lifecycle on real storage', () => {
       const shared = await store.createRoot({
         scope: { kind: 'personal' },
         adapterId: 'kit-default-store',
-        storeRoot: alias,
+        storeRoot: publicDir,
         displayName: 'Shared',
       });
-      rmSync(alias);
-      symlinkSync(privateDir, alias, 'dir');
+      await store.adapterFor(shared.id);
+      renameSync(publicDir, moved);
+      symlinkSync(privateDir, publicDir, 'dir');
       await expect(store.adapterFor(shared.id)).rejects.toThrow();
     },
   );
