@@ -50,6 +50,9 @@ class EchoingAdapter extends GateTestAdapter {
     if (!this.deferred) this.publishStarted();
     return session;
   }
+  override async stopSession(threadId?: string) {
+    if (threadId) this.sessions.delete(threadId);
+  }
   override async sendTurn(input: ProviderSendTurnInput) {
     this.turns.push(input);
     return { threadId: input.threadId, turnId: `turn-${this.turns.length}` };
@@ -311,11 +314,7 @@ test('stops a session completed by an adapter replaced during launch', async () 
   const start = vi
     .spyOn(launching, 'startSession')
     .mockReturnValueOnce(started);
-  const stop = vi
-    .spyOn(launching, 'stopSession')
-    .mockImplementation(async (threadId) => {
-      launching.sessions.delete(threadId);
-    });
+  const stop = vi.spyOn(launching, 'stopSession');
   const registry = createGateTestRegistry(launching);
   const sessions = new OrchestrationService({
     adapterRegistry: registry,
