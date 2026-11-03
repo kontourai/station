@@ -96,9 +96,9 @@ export class SessionAuthorization {
    * enters the positive cache, and never answers a read (SSE, transcript,
    * `canReadSession`). It is dropped when the start's `session.started`
    * settles, whether appended, declined or abandoned after retries; when an
-   * owner-bearing `session.configured` or a `session.exited` is appended;
-   * when a failed start is cleaned up; and on thread teardown. A start whose
-   * `session.started` already settled never binds one.
+   * owner-bearing `session.configured` is appended; when a failed start is
+   * cleaned up; and on thread teardown, which a stop or discard runs. A start
+   * whose `session.started` already settled never binds one.
    *
    * Every `canReadSessionForCommand` caller sees it: `dispatchWithReceipt`'s
    * pre-dispatch gate and its in-command rechecks (the native `sendTurn`

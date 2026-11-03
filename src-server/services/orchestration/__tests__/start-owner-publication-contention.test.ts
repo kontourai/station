@@ -345,7 +345,7 @@ test('discarding the draft in the window ends the interim owner', async () => {
   }
 });
 
-test('a start that fails after the start hook leaves no interim owner', async () => {
+test('a start that fails after the start hook leaves no interim owner, even when its cleanup fails', async () => {
   const f = fixture();
   try {
     const policy = (
@@ -356,6 +356,10 @@ test('a start that fails after the start hook leaves no interim owner', async ()
     vi.spyOn(policy, 'bindPolicyHooksToSession').mockImplementation(() => {
       throw new Error('binding failed');
     });
+    // A failed provider stop skips the cleanup's thread teardown.
+    vi.spyOn(f.adapter, 'stopSession').mockRejectedValue(
+      new Error('stop failed'),
+    );
     await expect(f.start('owner', { userId: 'owner' })).rejects.toThrow(
       'binding failed',
     );

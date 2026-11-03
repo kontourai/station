@@ -15092,10 +15092,11 @@ export class OrchestrationService {
     ) {
       sessionOwnerCacheOps.add(1, { outcome: 'invalidated' });
     }
-    // #4480: a durable start, owner or exit ends any interim start owner.
+    // #4480: a durable start or owner ends any interim start owner. An exit
+    // needs no clause: a service stop tears the thread down, and an adapter's
+    // exit is consumed after the start's own session.started settled.
     if (
       projectedEvent.method === 'session.started' ||
-      projectedEvent.method === 'session.exited' ||
       (projectedEvent.method === 'session.configured' &&
         typeof projectedEvent.metadata?.userId === 'string')
     )
