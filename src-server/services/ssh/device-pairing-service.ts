@@ -3654,6 +3654,7 @@ export class DevicePairingService {
     return this.#writer.runSynchronous(() => {
       if (this.#registryOutcomeUnconfirmed)
         throw new HomeWriterUnavailableError('cleanup-required', true);
+      let scope: string | undefined;
       try {
         const registry =
           this.#registrySnapshotActive || this.#registrySpanDepth
@@ -3663,16 +3664,21 @@ export class DevicePairingService {
                 this.#environmentId,
               );
         const match = this.#findActiveCredential(registry, candidate);
-        return match &&
+        scope =
+          match &&
           !match.alias &&
           !match.device.principalBinding &&
           match.device.locality === 'home-possession' &&
           match.device.mintKind === 'local-grant'
-          ? match.device.scope
-          : undefined;
+            ? match.device.scope
+            : undefined;
       } catch {
-        return undefined;
+        scope = undefined;
       }
+      // The configured clock can re-enter a registry writer during lookup.
+      if (this.#registryOutcomeUnconfirmed)
+        throw new HomeWriterUnavailableError('cleanup-required', true);
+      return scope;
     });
   }
 
