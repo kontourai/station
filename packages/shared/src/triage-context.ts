@@ -750,7 +750,11 @@ function redactReportUrls(text: string): string {
 
 // SSH-style Git remotes (`git@github.com:owner/repo.git`) have no scheme, so
 // the URL pattern never sees them. Only Station's own remote is kept.
-const SCP_REMOTE_PATTERN = /\b[A-Za-z0-9._-]+@[A-Za-z0-9.-]+:[^\s<>"'`]+/g;
+// The user part may only start where a run of user characters starts, and
+// both parts are bounded, so a long `a.a.a…` run is scanned once, not once per
+// position. The host may be a bracketed IPv6 literal.
+const SCP_REMOTE_PATTERN =
+  /(?<![A-Za-z0-9._-])[A-Za-z0-9._-]{1,64}@(?:\[[0-9A-Fa-f:.]{2,45}\]|[A-Za-z0-9.-]{1,253}):[^\s<>"'`]+/g;
 const STATION_SCP_REMOTE = /^git@github\.com:kontourai\/station(?:\.git)?$/i;
 
 function redactScpRemotes(text: string): string {

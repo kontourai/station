@@ -176,6 +176,24 @@ describe('redactTroubleshootReportText', () => {
     ).toBe('remote git@github.com:kontourai/station.git');
   });
 
+  test('SSH remotes with IPv6 hosts are redacted', () => {
+    expect(
+      redactTroubleshootReportText(
+        'remote git@[2001:db8::1]:secret-product/repo',
+      ),
+    ).toBe('remote [REDACTED_URL]');
+  });
+
+  test('a long run with no remote is scanned in linear time', () => {
+    // 80k chars: the old per-position retry took ~5.5 s here (quadratic); the
+    // bounded pattern takes ~0 ms. A blocking regex cannot be interrupted by a
+    // test timeout, so the elapsed time is asserted with wide headroom instead.
+    const input = 'a.'.repeat(40_000);
+    const started = performance.now();
+    expect(redactTroubleshootReportText(input)).toBe(input);
+    expect(performance.now() - started).toBeLessThan(1_000);
+  });
+
   test('many adjacent URLs finish without deep recursion', () => {
     const input = 'https://github.com/kontourai/station/)'.repeat(5_000);
     expect(() => redactTroubleshootReportText(input)).not.toThrow();
