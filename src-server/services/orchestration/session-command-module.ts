@@ -338,7 +338,7 @@ interface SessionCommandDependencies {
       adapter: ProviderAdapterShape,
       tenant: TenantExecutionContext | undefined,
       startInput: OrchestrationStartSessionInput,
-    ): void;
+    ): void | Promise<void>;
   };
   launchPolicy: {
     assertStartAllowed(
@@ -759,16 +759,16 @@ export function createSessionCommandModule(
             context,
             internal,
           );
-          await deps.launchPolicy.ensureStartedSessionCurrent(
-            adapter,
-            session,
-            startInput.signal,
-          );
-          deps.sessionState.attachStarted(
+          await deps.sessionState.attachStarted(
             session,
             adapter,
             context.tenantExecutionContext,
             startInput,
+          );
+          await deps.launchPolicy.ensureStartedSessionCurrent(
+            adapter,
+            session,
+            startInput.signal,
           );
           deps.launchPolicy.logStarted(adapter, startInput);
           await deps.bindings.bind(startInput, internal);

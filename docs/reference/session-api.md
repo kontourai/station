@@ -24,6 +24,16 @@ Environment, workspace and current Agent/engine binding. Supported per-turn mode
 overrides remain explicit choices. Two separate read paths show
 what happened: a point-in-time JSON replay and a live SSE feed.
 
+For a new Session that announces `session.started` before its adapter start
+returns, an accepted start awaits that event’s durable commit. A per-thread
+commit signal yields while publication retries; after five seconds without
+confirmation, the command returns `indeterminate`, attempts provider cleanup,
+and retains no in-memory start-owner send authority. Inspect the Session before
+retrying. Adapters that defer their `session.started` announcement until after
+the adapter start returns retain their deferred-start semantics: acceptance
+does not promise that later event is already durable, and the accepted owner
+can still send through the in-memory fallback while it publishes.
+
 Provider handoffs retain the Conversation ID and append linked execution
 Sessions. Returning to a compatible built-in engine can resume its earlier
 native thread with a bounded seed of the intervening conversation, after the
