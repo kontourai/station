@@ -55,8 +55,12 @@ export function compactAgentBodies(database: DatabaseSync, deadline: number) {
 }
 
 /** Retire one terminal identity, then reclaim bounded batches across later commands. */
-export function retainAgentTurns(database: DatabaseSync, now: number) {
-  const deadline = performance.now() + 4;
+export function retainAgentTurns(
+  database: DatabaseSync,
+  now: number,
+  deadline: number,
+) {
+  if (performance.now() >= deadline) return false;
   let pending = agentStatement(
     database,
     'SELECT turn_id FROM agent_steps_retained_cleanup LIMIT 1',

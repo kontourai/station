@@ -1220,6 +1220,7 @@ export function openSqliteAgentJournal(options: {
     ): Promise<AgentJournalResult> {
       if (closed) throw new Error('DURABLE_AGENT_STORAGE_CLOSED');
       const command = commandSchema.parse(raw);
+      const maintenanceDeadline = performance.now() + 24;
       const clock = () => {
         const before = agentStatement(
           database,
@@ -1432,15 +1433,21 @@ export function openSqliteAgentJournal(options: {
             (command.type === 'open' || command.type === 'settle') &&
             answer.kind === 'owned'
           ) {
-            retainAgentTurns(database, clock());
+            const changed = retainAgentTurns(
+              database,
+              clock(),
+              Math.min(maintenanceDeadline, performance.now() + 4),
+            );
             if (
+              changed &&
+              performance.now() < maintenanceDeadline &&
               Number(
                 agentStatement(database, 'PRAGMA freelist_count').get()
                   ?.freelist_count,
               ) > 0
             )
               database.exec('PRAGMA incremental_vacuum(4)');
-            invalidateAgentValidation(database);
+            if (changed) invalidateAgentValidation(database);
           }
           return answer;
         });
