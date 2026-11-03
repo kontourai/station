@@ -810,6 +810,11 @@ function connectOrchestrationEventStream(
         owned.lastParkedRetryAt = monotonicNow();
       },
       onRetry: () => {
+        if (
+          activeSources.get(apiBase) !== owned ||
+          owned.connection.signal.aborted
+        )
+          return;
         sharedOrchestrationStreamRetrying(apiBase);
         // A deferred retry still pending re-checks `parked` before it fires.
         owned.parked = false;
@@ -847,9 +852,11 @@ function connectOrchestrationEventStream(
       owned.ended = true;
       owned.legacyGeneral?.close();
       owned.legacyGeneral = undefined;
-      if (activeSources.get(apiBase) === owned)
-        sharedOrchestrationStreamFailed(apiBase, error);
       clearDeferredParkedRetry(owned);
+      // A retired transport can finish unwinding after its replacement has
+      // caught up. Its late failure must not strand that live feed's status.
+      if (activeSources.get(apiBase) !== owned) return;
+      sharedOrchestrationStreamFailed(apiBase, error);
       // Not silent: the dock must stop claiming a live feed, and whatever
       // threw is a defect worth seeing. The next recovery signal replaces it.
       if (setStreamConnectionState(apiBase, 'interrupted'))

@@ -231,9 +231,11 @@ function StationMenu({
   onChoose: (environmentId: string) => void;
   onClose: () => void;
 }) {
-  const { stations, stationsUnavailable } = useExecutionStations({
-    projectSelected,
-  });
+  const { stations, stationsUnavailable, retryStations } = useExecutionStations(
+    {
+      projectSelected,
+    },
+  );
   return (
     <StartStationMenu
       anchor={anchor}
@@ -241,6 +243,7 @@ function StationMenu({
       stations={stations}
       selectedId={selectedId}
       stationsUnavailable={stationsUnavailable}
+      onRetry={() => void retryStations()}
       onChoose={(station) => {
         // Re-choosing where it already runs changes nothing (and keeps the
         // chosen Model, which a Station change resets).

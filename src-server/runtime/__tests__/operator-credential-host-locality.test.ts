@@ -11,6 +11,7 @@ import {
 import { humanPrincipal } from '@kontourai/station-contracts/principal';
 import { Hono } from 'hono';
 import { describe, expect, test, vi } from 'vitest';
+import { DEVICE_WITHOUT_HOST_SHELL } from '../../__test-utils__/owner-standing.js';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import { reportOperatorCredentialUse } from '../../security/host-operator-credential.js';
 import { isRuntimeRequestPrincipalCurrent } from '../../security/runtime-request-security.js';
@@ -151,9 +152,9 @@ async function createHarness(
 
   /**
    * `scope` omitted pairs the default grant, which carries a host shell,
-   * so the device is one of the owner's own (owner-device standing,
-   * 2026-11-02). Pass a scope without `terminal:operate` for a device that
-   * holds no administration standing.
+   * so the device is one of the owner's own (owner-device standing). Pass
+   * `DEVICE_WITHOUT_HOST_SHELL` for a device that holds no administration
+   * standing.
    */
   async function pairDevice(name: string, scope?: string) {
     const host = { peer: LOOPBACK, headers: { host: LOOPBACK_HOST } };
@@ -611,7 +612,7 @@ describe('device-admin routes observe raw operator-credential position (#2894 S1
       const target = await harness.pairDevice('Phone');
       const other = await harness.pairDevice(
         'Other phone',
-        'orchestration:read orchestration:operate',
+        DEVICE_WITHOUT_HOST_SHELL,
       );
       harness.observed.length = 0;
       const asDevice = harness.bearer(other.credential);
@@ -746,12 +747,11 @@ describe('reportOperatorCredentialUse, the production sink (#2894 S1)', () => {
 describe('explicit remote device administration', () => {
   test('a promoted device administers another device, and withdrawal takes effect on the next request', async () => {
     const h = await createHarness();
-    // No host shell: an inherited access:manage alone is not owner standing
-    // (2026-11-02), so only the explicit promotion below grants
-    // administration.
+    // Inherited access:manage without a host shell is not owner standing, so
+    // only the explicit promotion below grants administration.
     const admin = await h.pairDevice(
       'Admin laptop',
-      'orchestration:read orchestration:operate access:manage',
+      `${DEVICE_WITHOUT_HOST_SHELL} access:manage`,
     );
     const target = await h.pairDevice('Phone');
     const json = (credential: string, scope: string[]) => ({

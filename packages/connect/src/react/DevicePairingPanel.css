@@ -129,7 +129,115 @@
   color: var(--text-primary, #eee);
 }
 
-/* "Pair phone": one tap per route, the QR updates with the choice. */
+/* Pair phone: routes beside the code, everything else under More options. */
+.pairing-quick {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 300px;
+  grid-template-areas:
+    "routes code"
+    "more more";
+  gap: 16px;
+  align-items: start;
+}
+.pairing-quick__routes {
+  grid-area: routes;
+  min-width: 0;
+}
+.pairing-quick__code {
+  grid-area: code;
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--border-primary, #333);
+  border-radius: var(--radius-md, 10px);
+  background: var(--bg-secondary, rgba(255, 255, 255, 0.02));
+}
+.pairing-quick__more,
+.pairing-quick__other {
+  grid-area: more;
+  justify-self: start;
+}
+@media (max-width: 560px) {
+  .pairing-quick {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      "code"
+      "routes"
+      "more";
+  }
+}
+.pairing-quick__hint {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--text-secondary, #999);
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.pairing-quick__routes > .pairing-quick__hint {
+  text-align: start;
+}
+.pairing-quick__placeholder {
+  display: grid;
+  place-items: center;
+  width: 208px;
+  height: 208px;
+  margin: 0;
+  padding: 16px;
+  border: 1px dashed var(--border-primary, #333);
+  border-radius: 8px;
+  font-size: 0.85rem;
+  color: var(--text-secondary, #999);
+  text-align: center;
+}
+.pairing-quick__manual {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--text-secondary, #999);
+}
+.pairing-quick__manual > code {
+  font-family: var(--font-mono, monospace);
+  font-size: 1rem;
+  letter-spacing: 0.08em;
+  color: var(--text-primary, #eee);
+}
+.pairing-quick__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+}
+.pairing-quick__more > summary {
+  cursor: pointer;
+  font-size: 0.85rem;
+  color: var(--text-secondary, #999);
+}
+.pairing-quick__more-body {
+  display: grid;
+  gap: 10px;
+  padding-top: 10px;
+  max-width: 420px;
+}
+.pairing-quick__more-body .pairing-quick__hint,
+.pairing-quick__more-body .pairing-quick__actions {
+  text-align: start;
+  justify-content: start;
+}
+.pairing-quick__field {
+  display: grid;
+  gap: 6px;
+  font-size: 0.85rem;
+}
+.pairing-quick__links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 0;
+  font-size: 0.85rem;
+}
 .pairing-routes {
   display: grid;
   gap: 6px;
@@ -150,13 +258,22 @@
   border: 1px solid var(--border-primary, #333);
   border-radius: 8px;
   cursor: pointer;
+  transition: border-color var(--motion-fast, 120ms) ease;
+}
+.pairing-route:hover {
+  border-color: var(--text-secondary, #999);
 }
 .pairing-route[data-selected="true"] {
   border-color: var(--accent-primary, #8b7cf6);
   background: var(--bg-hover, rgba(255, 255, 255, 0.04));
 }
+.pairing-route:has(input:focus-visible) {
+  outline: 2px solid var(--accent-primary, #8b7cf6);
+  outline-offset: 2px;
+}
 .pairing-route > input {
   margin-top: 3px;
+  accent-color: var(--accent-primary, #8b7cf6);
 }
 .pairing-route__text {
   display: grid;
@@ -172,26 +289,12 @@
   color: var(--text-secondary, #999);
 }
 .pairing-route__url {
+  font-family: var(--font-mono, monospace);
   font-size: 0.75rem;
   color: var(--text-secondary, #999);
-  overflow-wrap: anywhere;
-}
-.pairing-quick-status {
-  display: flex;
-  gap: 12px;
-  align-items: center;
-  justify-content: space-between;
-}
-.pairing-quick-status > p {
-  margin: 0;
-  color: var(--text-secondary, #999);
-}
-.pairing-quick-expiry {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px 12px;
-  align-items: center;
-  justify-content: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .pairing-link-btn {
   padding: 0;
@@ -203,4 +306,17 @@
   text-decoration: underline;
   text-underline-offset: 3px;
   cursor: pointer;
+}
+.pairing-link-btn:hover {
+  color: var(--text-primary, #eee);
+}
+.pairing-quick__notice {
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--border-primary, #333);
+  border-left: 3px solid var(--accent-primary, #8b7cf6);
+  border-radius: 8px;
+  font-size: 0.85rem;
+  line-height: 1.45;
+  color: var(--text-primary, #eee);
 }
