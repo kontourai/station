@@ -825,15 +825,13 @@
   padding: var(--k-space-2);
   flex-shrink: 0;
   border-bottom: var(--k-border-thin) solid var(--k-line);
+  color: var(--k-text);
+  font-size: var(--k-text-sm);
 }
 
-.coding-terminal-connection button {
-  min-height: 44px;
-  min-width: 44px;
-  padding: var(--k-space-2);
-  background: var(--k-panel-raised);
-  color: var(--k-text);
-  border: var(--k-border-thin) solid var(--k-line-strong);
-  border-radius: var(--k-radius-sm);
-  cursor: pointer;
+@media (max-width: 768px) {
+  .coding-terminal-connection .button {
+    min-height: 44px;
+    min-width: 44px;
+  }
 }
