@@ -6,6 +6,7 @@ import {
   symlinkSync,
   writeFileSync,
 } from 'node:fs';
+import { homedir } from 'node:os';
 import { join, win32 } from 'node:path';
 import { describe, expect, test } from 'vitest';
 import { trackTempDirs } from '../../../../src-server/__test-utils__/temp-dirs.js';
@@ -25,7 +26,7 @@ import { collectServicePathCandidates } from '../commands/service-path.js';
 import { renderSystemdUnit } from '../commands/service-systemd.js';
 import { renderWindowsServiceCommand } from '../commands/service-windows.js';
 
-const makeTempDir = trackTempDirs();
+const makeTempDir = trackTempDirs({ base: homedir() });
 
 const lifecycle = {
   baseDir: '/home/u/.station',
@@ -82,7 +83,7 @@ describe('a source checkout service renders what it did before slice C', () => {
         'TimeoutStopSec=165',
         'KillMode=mixed',
         'NoNewPrivileges=true',
-        'PrivateTmp=true',
+        'PrivateTmp=false',
         '',
         '[Install]',
         'WantedBy=default.target',
@@ -251,7 +252,10 @@ test('systemd waits out the supervisor and launcher stops before it kills the un
 function archiveInstall(root: string, version = '1.2.3') {
   const installRoot = join(root, 'installs', 'stable');
   const versionDir = join(installRoot, 'versions', version);
-  mkdirSync(join(versionDir, 'runtime', 'bin'), { recursive: true });
+  mkdirSync(join(versionDir, 'runtime', 'bin'), {
+    recursive: true,
+    mode: 0o755,
+  });
   writeFileSync(
     join(versionDir, '.station-prebuilt-archive'),
     'station-prebuilt-archive-v1\n',

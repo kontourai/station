@@ -35,8 +35,14 @@ import {
 } from '../../../../../tests/helpers/css-cascade-fixture';
 import { MIN_TOUCH_TARGET_PX } from '../../../../../tests/helpers/touch-target';
 import { writeSnooze } from '../../../utils/activity-snooze-store';
-import type { HomeWorkItem } from '../../../views/home/home-view-model';
-import type { WorkFactsById } from '../../../views/home/work-facts';
+import {
+  buildHomeWorkItems,
+  type HomeWorkItem,
+} from '../../../views/home/home-view-model';
+import {
+  buildWorkFacts,
+  type WorkFactsById,
+} from '../../../views/home/work-facts';
 import { SubagentTranscriptCard } from '../../chat/SubagentTranscriptCard';
 import { ChatDockInboxPanel } from '../../chat-dock/ChatDockInboxPanel';
 import { InboxRow } from '../../chat-dock/ChatDockInboxRows';
@@ -131,13 +137,14 @@ function seed() {
 function panelMarkup(
   accents?: ReadonlyMap<string, string>,
   icons?: ReadonlyMap<string, string>,
+  work = { items: ITEMS, facts: FACTS },
 ): string {
   seed();
   const { container, unmount } = render(
     <ChatDockInboxPanel
       projectAccentBySlug={accents}
       projectIconBySlug={icons}
-      items={ITEMS}
+      items={work.items}
       activeChatSessionId={null}
       openChatSessionIds={ITEMS.map((entry) => entry.id)}
       onFocusChat={vi.fn()}
@@ -146,7 +153,7 @@ function panelMarkup(
       onCloseChat={vi.fn()}
       onOpenHistory={vi.fn()}
       now={NOW}
-      workFacts={FACTS}
+      workFacts={work.facts}
     />,
   );
   // Expand the two collapsed sections the way a user does, so the slim
@@ -164,6 +171,7 @@ function panelMarkup(
 function sheetMarkup(
   accents?: ReadonlyMap<string, string>,
   icons?: ReadonlyMap<string, string>,
+  work = { items: ITEMS, facts: FACTS },
 ): string {
   seed();
   const { unmount } = render(
@@ -171,7 +179,7 @@ function sheetMarkup(
       projectAccentBySlug={accents}
       projectIconBySlug={icons}
       open
-      tasks={ITEMS}
+      tasks={work.items}
       activeChatSessionId={null}
       triggerRef={createRef<HTMLButtonElement>()}
       onClose={vi.fn()}
@@ -180,7 +188,7 @@ function sheetMarkup(
       onOpenSession={vi.fn()}
       onCloseChat={vi.fn()}
       now={NOW}
-      workFacts={FACTS}
+      workFacts={work.facts}
     />,
   );
   for (const name of [/^Snoozed/, /^Earlier/]) {
@@ -225,6 +233,75 @@ describe.skipIf(!chromiumAvailable)('inbox row geometry (#3043)', () => {
     await browser?.close();
   });
   afterEach(() => cleanup());
+
+  test('a Task family keeps its work-chat disclosure readable without horizontal overflow', async () => {
+    const tasks = [
+      {
+        id: 'task-release',
+        projectId: 'station',
+        title: 'Release the reviewed update',
+        description: '',
+        createdBy: 'user',
+        priority: 'normal' as const,
+        status: 'in_progress' as const,
+        createdAt: '2026-09-30T10:00:00Z',
+        updatedAt: '2026-09-30T10:01:00Z',
+        workChatConversationIds: ['release-chat'],
+      },
+    ];
+    const items = buildHomeWorkItems({
+      chats: {},
+      sessions: [],
+      agents: [],
+      tasks,
+      chatItems: [
+        item({
+          id: 'release-chat',
+          conversationId: 'release-chat',
+          title: 'Review the release',
+          lifecycleLabel: 'Running',
+        }),
+      ],
+      retainTaskChildren: true,
+    });
+    const work = { items, facts: buildWorkFacts({ items, tasks }) };
+    const artifacts = resolve(REPO_ROOT, '.surface/task-chat-review');
+    await mkdir(artifacts, { recursive: true });
+    for (const width of [390, 1440]) {
+      const markup =
+        width === 390
+          ? sheetMarkup(undefined, undefined, work)
+          : panelMarkup(undefined, undefined, work);
+      for (const theme of ['dark', 'light']) {
+        const pg = await browser.newPage({ viewport: { width, height: 900 } });
+        try {
+          await pg.setContent(
+            page(markup).replace('data-theme="dark"', `data-theme="${theme}"`),
+          );
+          await settle(pg);
+          const disclosure = pg.getByRole('button', { name: /work chat/ });
+          expect(await disclosure.count()).toBe(1);
+          const box = await disclosure.boundingBox();
+          expect(box!.height).toBeGreaterThanOrEqual(MIN_TOUCH_TARGET_PX);
+          expect(
+            await pg
+              .getByText('Release the reviewed update', { exact: true })
+              .count(),
+          ).toBe(1);
+          expect(
+            await pg.evaluate(
+              () => document.documentElement.scrollWidth > innerWidth,
+            ),
+          ).toBe(false);
+          await pg.screenshot({
+            path: resolve(artifacts, `task-family-${width}-${theme}.png`),
+          });
+        } finally {
+          await pg.close();
+        }
+      }
+    }
+  });
 
   test('subagent titles and incomplete results remain readable beside their status and elapsed time', async () => {
     const { container } = render(

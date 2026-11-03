@@ -152,9 +152,12 @@ export function useSetTaskWorkChatMutation(scope: TaskRelationshipScope) {
         requestScope: scope,
       });
       current(scope);
-      await client.invalidateQueries({
-        queryKey: taskRelationshipKey(scope, input.task, 'work-chats'),
-      });
+      await Promise.all([
+        client.invalidateQueries({
+          queryKey: taskRelationshipKey(scope, input.task, 'work-chats'),
+        }),
+        client.invalidateQueries({ queryKey: ['tasks'] }),
+      ]);
       current(scope);
       return result;
     },

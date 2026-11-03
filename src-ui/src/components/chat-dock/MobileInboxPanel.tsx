@@ -306,7 +306,16 @@ export function MobileInboxPanel({
             // and say so when it could not (same contract as the desktop
             // panel — see ChatDockInboxPanel's onActivate).
             if (task.kind === 'task') {
-              navigationStore.navigate(`/tasks/${encodeURIComponent(task.id)}`);
+              navigationStore.navigate(
+                `/tasks/${encodeURIComponent(task.id)}`,
+                {
+                  dock: null,
+                  chat: null,
+                  maximize: null,
+                  surface: null,
+                  taskView: 'overview',
+                },
+              );
               closeAndRestoreFocus();
               return;
             }
