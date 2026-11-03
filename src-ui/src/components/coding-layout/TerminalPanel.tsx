@@ -106,7 +106,7 @@ export function TerminalPanel({
   const bindingKey = target?.bindingKey;
   const key = viewKey ?? terminalId;
   // Larger glyphs on a phone, by the app's one mobile breakpoint (including
-  // its landscape-phone clause). Read once per view, as before.
+  // its landscape-phone clause). Read once per view.
   const [fontSize] = useState(() =>
     typeof window !== 'undefined' &&
     typeof window.matchMedia === 'function' &&

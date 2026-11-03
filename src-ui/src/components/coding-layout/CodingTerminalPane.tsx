@@ -419,7 +419,7 @@ export function CodingTerminalPane({
     if (tabs.length > 0 || readClosedLastTerminal(projectSlug)) return;
     // The server opens it, or answers with the shell another view or device
     // opened at the same moment: one shell, not two. A host without that
-    // answer opens through the terminal socket as before.
+    // answer gets a local tab, which opens its shell through the socket.
     // Not cancelled by a re-render: once asked, the server's shell exists and
     // its tab must appear.
     void openOrAdoptProjectShell(apiBase, projectSlug, { cols: 80, rows: 24 })
