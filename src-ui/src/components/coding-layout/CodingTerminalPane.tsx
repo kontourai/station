@@ -714,7 +714,6 @@ export function CodingTerminalPane({
         closingTabIds={closingTabIds}
         closeErrors={closeErrors}
         onRestartTab={restartTab}
-        restartingTabIds={restartingTabIds}
         restartErrors={restartErrors}
         restarts={restarts}
         notice={scriptError}

@@ -4,7 +4,7 @@ import { createPortal } from 'react-dom';
 import { isComposingKeyEvent } from '../../lib/isComposingKeyEvent';
 import { usePaneHeadSlots } from '../../workspace-panes/PaneHeadSlots';
 import { ACPChatPanel } from '../acp-connections/ACPChatPanel';
-import { AgentGlyph, MessageGlyph } from '../icons/Glyph';
+import { AgentGlyph, MessageGlyph, PlayGlyph } from '../icons/Glyph';
 import { TerminalPanel } from './TerminalPanel';
 import type { TerminalTab } from './types';
 
@@ -49,7 +49,6 @@ export function CodingTerminalPanel({
   closingTabIds = new Set(),
   closeErrors = {},
   onRestartTab,
-  restartingTabIds = new Set(),
   restartErrors = {},
   restarts = {},
   notice,
@@ -85,7 +84,6 @@ export function CodingTerminalPanel({
   closeErrors?: Readonly<Record<string, string>>;
   /** Runs a script tab's program again under the same session. */
   onRestartTab?: (id: string) => void | Promise<void>;
-  restartingTabIds?: ReadonlySet<string>;
   restartErrors?: Readonly<Record<string, string>>;
   /** How many times each tab restarted; a restart starts a new view. */
   restarts?: Readonly<Record<string, number>>;
@@ -195,7 +193,7 @@ export function CodingTerminalPanel({
                     {tab.type === 'agent' ? (
                       <AgentGlyph />
                     ) : tab.type === 'script' ? (
-                      '▷'
+                      <PlayGlyph />
                     ) : (
                       '>'
                     )}
@@ -210,18 +208,6 @@ export function CodingTerminalPanel({
                       tone={status.tone}
                     />
                   )}
-                </button>
-              )}
-              {tab.type === 'script' && onRestartTab && (
-                <button
-                  type="button"
-                  className="coding-layout__terminal-tab-toggle coding-layout__terminal-tab-restart"
-                  aria-label={`Restart ${tab.label}`}
-                  title="Restart"
-                  disabled={restartingTabIds.has(tab.id)}
-                  onClick={() => onRestartTab(tab.id)}
-                >
-                  ↻
                 </button>
               )}
               {tab.type === 'agent' && canTogglePTY(tab) && (

@@ -507,3 +507,22 @@ test('a shell whose directory the host cannot read still adds its output, naming
     'Terminal output:\n```\nmake: *** [all] Error 2\n```',
   );
 });
+
+test('a watch-only terminal adds its selection to chat without asking the session for its directory', async () => {
+  renderTerminal({ readOnly: true, attachOnly: true });
+  const { session } = await connectTerminal();
+  await act(async () => latestView().onAddToChat?.('watch only output'));
+  await waitFor(() =>
+    expect(chatDraftsStore.getQuotes('chat-a')).toEqual([
+      {
+        version: 1,
+        kind: 'terminal',
+        origin: expect.any(String),
+        excerpt: 'watch only output',
+      },
+    ]),
+  );
+  // An observer has no operate authority, so no directory is requested.
+  expect(session.cwd).not.toHaveBeenCalled();
+  expect(screen.queryByRole('alert')).toBeNull();
+});

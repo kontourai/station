@@ -146,12 +146,14 @@ vi.mock('../TerminalPanel', async () => {
       launch,
       onOpened,
       viewKey,
+      ended,
     }: {
       terminalId?: string;
       target?: { projectId: string; bindingKey: string };
       launch?: unknown;
       onOpened?: (terminalId: string) => void;
       viewKey?: string;
+      ended?: { message: string; restart?: () => void };
     }) => {
       const projectId = target?.projectId;
       useEffect(() => {
@@ -171,7 +173,17 @@ vi.mock('../TerminalPanel', async () => {
         };
         // Like the real view: a new view key is a new view of the session.
       }, [projectId, viewKey]);
-      return <div>Terminal renderer without a snapshot</div>;
+      return (
+        <div>
+          Terminal renderer without a snapshot
+          {/* The real view offers this once the program has ended. */}
+          {ended?.restart ? (
+            <button type="button" onClick={ended.restart}>
+              Restart
+            </button>
+          ) : null}
+        </div>
+      );
     },
   };
 });
@@ -755,7 +767,7 @@ test('a package script runs from the "+" picker in its own tab, shows how it end
 
   // Restart runs it again under the same session, in a new view.
   server.attach.mockClear();
-  fireEvent.click(screen.getByRole('button', { name: 'Restart test' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Restart' }));
   await waitFor(() =>
     expect(scripts.restart).toHaveBeenCalledWith(
       'http://station.test',

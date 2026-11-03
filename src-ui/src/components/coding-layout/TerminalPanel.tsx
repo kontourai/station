@@ -230,7 +230,7 @@ export function TerminalPanel({
     }
     if (terminalOutput.length > MAX_TERMINAL_QUOTE_CHARS) {
       setHandoffError(
-        `Select less output: chat takes up to ${MAX_TERMINAL_QUOTE_CHARS.toLocaleString()} characters from a terminal.`,
+        `Select less: Add to chat takes up to ${MAX_TERMINAL_QUOTE_CHARS.toLocaleString()} characters.`,
       );
       return;
     }

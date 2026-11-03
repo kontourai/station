@@ -9752,8 +9752,7 @@ export function configureRuntimeRoutes(
         authorizeTerminalRequest,
       ),
     );
-    const runs = new TerminalRunRequests();
-    terminalRuns = runs;
+    const runs = (terminalRuns = new TerminalRunRequests());
     // Approving starts the command in the agent's thread binding, whose
     // directory is read as the approving person. POST only: the leaf has no
     // other method.

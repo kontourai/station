@@ -5,7 +5,7 @@ import {
   trackRecentAgent,
 } from '../../hooks/useRecentAgents';
 import { isComposingKeyEvent } from '../../lib/isComposingKeyEvent';
-import { AgentGlyph } from '../icons/Glyph';
+import { AgentGlyph, PlayGlyph } from '../icons/Glyph';
 import {
   ResponsiveDialogCloseButton,
   ResponsiveDialogSurface,
@@ -133,7 +133,7 @@ export function NewTerminalModal({
                   {item.type === 'agent' ? (
                     <AgentGlyph />
                   ) : item.type === 'script' ? (
-                    '▷'
+                    <PlayGlyph />
                   ) : (
                     '>_'
                   )}

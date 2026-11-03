@@ -79,7 +79,8 @@ export async function sessionWorkspaceDirectoryFor(
  * The production composition of `sessionWorkspaceDirectoryFor` over the
  * orchestration service. The binding is read with the caller's authority (a
  * request's, or a session owner's for a server-side read), so it refuses a
- * session the caller may not read even past the `canRead` check, and it reads only the session's start binding and row — never its
+ * session the caller may not read even past the `canRead` check, and it
+ * reads only the session's start binding and row — never its
  * event history, which a preview request must not pay for.
  */
 export function orchestrationSessionWorkspaceDirectory<

@@ -423,8 +423,7 @@
     display: none;
   }
 
-  .coding-layout__terminal-tab-close,
-  .coding-layout__terminal-tab-restart {
+  .coding-layout__terminal-tab-close {
     min-width: 44px;
     min-height: 44px;
     display: inline-flex;
