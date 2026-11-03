@@ -664,6 +664,15 @@
       "configKey": "hapticsEnabled"
     },
     {
+      "id": "terminal-screen-reader",
+      "label": "Terminal screen reader mode",
+      "help": "Terminals on this device keep a text copy of the screen for screen readers and announce new output.",
+      "scope": "device",
+      "section": "appearance",
+      "route": "/settings?view=appearance&highlight=terminal-screen-reader",
+      "configKey": "terminalScreenReader"
+    },
+    {
       "id": "accent-color",
       "label": "Accent color",
       "help": "Accent-colored interface elements use this color in your interface instead of the theme’s own.",

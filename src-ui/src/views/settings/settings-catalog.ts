@@ -762,6 +762,13 @@ const SETTINGS_CATALOG_SOURCE = [
     conditional: 'mobile',
   },
   {
+    id: 'terminal-screen-reader',
+    title: 'Terminal screen reader mode',
+    section: 'appearance',
+    configKeys: ['terminalScreenReader'],
+    keywords: ['accessibility', 'a11y', 'voiceover', 'nvda', 'announce'],
+  },
+  {
     id: 'accent-color',
     title: 'Accent color',
     section: 'appearance',

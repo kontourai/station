@@ -17,6 +17,7 @@ import {
   useActiveChatActions,
 } from '../../contexts/ActiveChatsContext';
 import { useApiBase } from '../../contexts/ApiBaseContext';
+import { useDeviceSettings } from '../../contexts/DeviceSettingsContext';
 import { setShortcutContext } from '../../contexts/KeyboardShortcutsContext';
 import { useNavigation } from '../../contexts/NavigationContext';
 import {
@@ -90,6 +91,7 @@ export function TerminalPanel({
   const [connectionAttempt, setConnectionAttempt] = useState(0);
   const [connected, setConnected] = useState(false);
   const isMobile = useIsMobile();
+  const { terminalScreenReader } = useDeviceSettings();
   // #1244: the server's specific degraded-terminal reason (node-pty failed
   // to load). Distinct from wsError so a dead PTY backend reads as "here is
   // why, and what still works", never as a silent pane or a transport blip.
@@ -358,6 +360,7 @@ export function TerminalPanel({
           label="Terminal"
           fontSize={fontSize}
           touchKeys={isMobile}
+          screenReaderMode={terminalScreenReader}
           notices={false}
           onAddToChat={(text) => void sendSelectionToChat(text)}
           onOpenLink={(link) => void openLink(link)}

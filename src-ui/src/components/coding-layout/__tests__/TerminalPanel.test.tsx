@@ -19,6 +19,7 @@ import {
   navigationStore,
 } from '../../../contexts/NavigationContext';
 import { MOBILE_MEDIA_QUERY } from '../../../hooks/useIsMobile';
+import { deviceSettingsStore } from '../../../lib/device-settings-store';
 import { TerminalPanel } from '../TerminalPanel';
 
 const { executeCodingCommand, store, FakeSession } = vi.hoisted(() => {
@@ -100,6 +101,7 @@ type ViewProps = {
   session: ViewSessionLike | null;
   fontSize?: number;
   touchKeys?: boolean;
+  screenReaderMode?: boolean;
   notices?: boolean;
   onAddToChat?(text: string): void;
 };
@@ -229,6 +231,19 @@ test('renders through the public TerminalView and leaves connection notices to t
   // The panel reports connection state with its own Reconnect action.
   expect(props.notices).toBe(false);
   expect(typeof props.onAddToChat).toBe('function');
+});
+
+test('screen reader mode follows this device\'s terminal setting, off by default', async () => {
+  deviceSettingsStore.reset('terminalScreenReader');
+  renderTerminal();
+  await connectTerminal();
+  expect(latestView().screenReaderMode).toBe(false);
+  act(() => deviceSettingsStore.set('terminalScreenReader', true));
+  try {
+    expect(latestView().screenReaderMode).toBe(true);
+  } finally {
+    deviceSettingsStore.reset('terminalScreenReader');
+  }
 });
 
 test('attaches an existing session by id and unmount detaches without closing it', async () => {
