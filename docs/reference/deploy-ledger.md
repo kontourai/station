@@ -28,6 +28,7 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 
 | Date (UTC) | Channel | Version | Ship SHA | Gate | Run |
 | --- | --- | --- | --- | --- | --- |
+| 2026-11-03T22:43:51Z | nightly-android | 0.1.11-nightly.2498.2 | `9870343` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/41720227898) |
 | 2026-11-03T21:31:15Z | nightly-npm | 0.11.0-nightly.2498.41720227898 | `9870343` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/41720227898) |
 | 2026-11-03T15:42:27Z | nightly-npm | 0.11.0-nightly.2498.41664236882 | `8bfa549` | Nightly exact gates success; npm registry gitHead equals source SHA | [run](https://github.com/kontourai/station/actions/runs/41664236882) |
 | 2026-11-03T08:46:45Z | nightly-desktop | 0.1.11-nightly.2498 | `3d83c62` | native cohort final receipt complete | [run](https://github.com/kontourai/station/actions/runs/41595146823) |
@@ -409,6 +410,37 @@ The public raw JSON URL can be read without authentication. Publishing workflows
 | 2026-08-28T16:30:48Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-28T16:25:30Z | stable-npm | 0.7.0 | `b4fe42e` | npm trusted-publisher OIDC preflight success; changeset publish from refs/heads/main (b4fe42e5cc089fc95f8f513d549d78b82f198d96) | [run](https://github.com/kontourai/station/actions/runs/33188020921) |
 | 2026-08-27T10:54:02Z | nightly-android | 0.1.2-nightly.2430 | `c4229f4` | no test gate existed for this ship: the nightly test gate landed after it (station#4565 merged 2026-08-27T16:04:07Z, this nightly job completed 2026-08-27T10:54:02Z) | [run](https://github.com/kontourai/station-archive/actions/runs/33064078473) |
+
+## 2026-11-03T22:43:51Z · nightly-android · 0.1.11-nightly.2498.2
+
+- Ship SHA: `98703439f7606e50dabe7ccf91ce052eb5ce1571`
+- Artifact built at: `2026-11-03T21:32:41.880Z` (not provider upload/record time)
+- Artifact: play-internal-aab:cohort-finalized
+- Note: ios: TestFlight delivery success (run 41720227898)
+
+### Changelog
+
+Commits since `3d83c62` ([full sha](https://github.com/kontourai/station/commit/3d83c6209a3e8be7f65aaebb79bbe48f0c2f699c)):
+
+**Features**
+
+- [#4475](https://github.com/kontourai/station/pull/4475) feat(browser,devices): simpler Browser and Device panes, advanced settings, and deslop
+- [#4472](https://github.com/kontourai/station/pull/4472) feat(feedback): prefill the bug-report form by field id and add a Troubleshoot report form
+- [#4411](https://github.com/kontourai/station/pull/4411) feat(terminal): Ghostty TerminalView, command and agent terminals, retention and plugin target
+- [#4476](https://github.com/kontourai/station/pull/4476) feat(access): owner devices act as the owner by default; Pair phone opens straight to a QR
+
+**Fixes**
+
+- [#4501](https://github.com/kontourai/station/pull/4501) fix(security): redact credentials behind diagnostic prefixes
+- [#4491](https://github.com/kontourai/station/pull/4491) fix(orchestration): await durable announced session starts
+- [#4494](https://github.com/kontourai/station/pull/4494) fix(chat): restore phone UI consistency and stream recovery status
+- [#4495](https://github.com/kontourai/station/pull/4495) fix(ui): polish model picker filters and settings
+- [#4468](https://github.com/kontourai/station/pull/4468) fix: repair restart recovery, Task Inbox grouping, and Codex startup
+
+**Other**
+
+- [#4497](https://github.com/kontourai/station/pull/4497) refactor(pairing): compact Pair phone layout and de-slop owner-device standing
+- [#4488](https://github.com/kontourai/station/pull/4488) test(station-control): show why a dispatch failed and wait for the recorded owner
 
 ## 2026-11-03T21:31:15Z · nightly-npm · 0.11.0-nightly.2498.41720227898
 
