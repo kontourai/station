@@ -1614,7 +1614,11 @@
 
     "src-server/services/orchestration/__tests__/session-start-ownership.test.ts",
 
-    "src-ui/src/views/settings/BrowserAgentSettingsPanel.tsx"
+    "src-ui/src/views/settings/BrowserAgentSettingsPanel.tsx",
+
+    "packages/agent-runtime/src/__tests__/turn-retention-fixture.ts",
+
+    "packages/agent-runtime/src/__tests__/turn-retention.process.test.ts"
   ],
 
   "checks": [
