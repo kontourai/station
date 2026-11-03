@@ -466,7 +466,7 @@ only additions to the host interface. Write, resize, signal and terminate
 stay on the process handle, and reads on its journal. The
 [supervisor design](process-supervisor.md) covers the protocol, kill-tree
 escalation and the evidence. Windows job objects per workload, Settings
-controls for the host, and the UI for command sessions are not implemented.
+controls for the host, and the UI for ACP command sessions are not implemented.
 
 The supervisor survives a core server restart or upgrade, not a machine
 reboot. After a reboot, Station restores instead.
@@ -778,6 +778,36 @@ is the sample plugin.
     marker, subject to the thread's approval posture.
 
   Both are recorded in the thread's activity.
+
+**Implemented (#3994).**
+
+- **Script runner.** The Coding terminal's New terminal list offers the
+  binding directory's `package.json` scripts. Choosing one runs it by name as a
+  command session (`launch: {kind: 'script', name}`, no PTY), through the
+  package manager its `packageManager` field or lockfile names. The script's
+  tab shows Running, Done, Exit N or Failed. Restart resolves the script again
+  by name under the same id, so the earlier run stays above the new one. An
+  ended run keeps its tab until it is closed or the script runs again. The
+  view starts a new line at each bare line feed, since a program without a
+  PTY writes no carriage returns; the journal keeps its bytes. Script runs are
+  retained with shells, not in the agent command pool. Running scripts from
+  chat code blocks and the end-marker busy check remain open.
+- **Agent tools.** `terminal_run` records a request and returns at once; the
+  person sees a card above the composer with the exact command and the
+  absolute directory, and approves (Run) or declines that one run. Owner
+  decision: ask each time, with no remembered approval. An approved run starts
+  as a command session in the agent's `thread:<id>` binding as the approving
+  person, under their terminal authority, and is refused if its directory no
+  longer resolves to the one shown. `terminal_read` follows a run's state and
+  pages its output by sequence. An unanswered request expires after ten
+  minutes, at most three wait per chat, and requests live in memory. Reading a
+  terminal the person shares with the thread is not implemented; an agent
+  reads only its own runs.
+- **Add to chat.** The terminal menu's Add to chat puts the selection in the
+  chat's composer as a terminal chip, after the credential scan. It names the
+  shell's directory when the host can read it; a supervisor workload's cannot
+  be read, so that chip names none. The chip is sent with the next message as
+  a literal fenced block. Line ranges are not recorded.
 
 ## Migration
 

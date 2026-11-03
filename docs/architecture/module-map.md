@@ -6555,7 +6555,13 @@ other terminal service or listener remains. An ACP engine's terminals are
 (pipes and an output cap, from
 [command-process.ts](../../src-server/services/terminal/command-process.ts)),
 on personal hosts only. `restart` keeps a session's id and starts a new
-journal segment.
+journal segment. A person's command sessions run a Project package script by
+name or an agent's approved command
+([command programs](../../src-server/services/terminal/terminal-command-programs.ts));
+a script restarts by name. An agent's `terminal_run` requests wait in
+[TerminalRunRequests](../../src-server/services/terminal/terminal-runs.ts), one
+approval per run, and [their routes](../../src-server/routes/orchestration/terminal-runs.ts)
+start an approved one as the approving person.
 
 The `terminalHistory*` [retention settings](../../src-server/services/terminal/terminal-retention.ts)
 are read before each open and usage read: history on or off, the journal

@@ -70,6 +70,24 @@ and clearing (#3994) are `fetchTerminalHistory`, `clearTerminalHistory(projectId
 `useTerminalHistoryQuery` and `useClearTerminalHistoryMutation`; an older or
 hosted Station throws `TerminalHistoryUnsupportedError`.
 
+A `list` record's `launch` also names a command session's program:
+`{kind: 'script', name}` for a package script or `{kind: 'run', command}` for an
+agent's approved command; such records carry `kind: 'command'` and, once
+ended, `exitCode`. The script runner (#3994) is
+`listProjectTerminalScripts(apiBase, projectSlug)` (`{packageManager,
+scripts: [{name, command}]}`, or null on a host without it),
+`runProjectTerminalScript(apiBase, projectSlug, name)` (`{terminalId}`) and
+`restartProjectTerminalSession(apiBase, projectSlug, terminalId, bindingKey?)`.
+`closeProjectTerminalSession(apiBase, projectSlug, terminalId, bindingKey)`
+ends a session in any binding the caller may operate.
+
+An agent's `terminal_run` requests are read and answered with
+`listConversationTerminalRuns(apiBase, conversationId)` (the runs that wait,
+start or run; empty on a host without them), `approveTerminalRun(apiBase,
+runId)` and `declineTerminalRun(apiBase, runId)`, typed `TerminalRun` and
+`TerminalRunState`. Each approval runs that one command once; see
+[agent terminal runs](api.md#agent-terminal-runs).
+
 ## Terminal output sessions
 
 `TerminalOutputSession` from `@kontourai/station-sdk/client` observes an existing

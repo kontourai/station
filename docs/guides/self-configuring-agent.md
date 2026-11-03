@@ -146,6 +146,11 @@ owns limits, theme variables, Chromium prerequisites and page deletion semantics
 - `schedule_wake_up`, `list_wake_ups`, `cancel_wake_up` and `propose_job`
   for an agent on any engine to check back in its own chat later, or to ask
   the person for a scheduled job ([Wake an agent later](#wake-an-agent-later))
+- `terminal_run` and `terminal_read` to run a shell command in a terminal in
+  the chat's working directory and read its exit and output. The person sees
+  the exact command and directory and approves or declines each run; no
+  approval carries over to the next. Personal hosts only, for a chat in a
+  Project ([agent terminal runs](../reference/api.md#agent-terminal-runs))
 
 The Agent's tool allowlist and the calling Session's authority still apply.
 Exposing a management tool does not grant the operator's identity or bypass
