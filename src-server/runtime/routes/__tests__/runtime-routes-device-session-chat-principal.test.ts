@@ -4068,6 +4068,42 @@ describe('device-session chat principal resolution over the REAL auth path (stat
         );
         expect(response.status).toBe(status);
       }
+      const whoisRoot = await knowledgeProvider!.createRoot({
+        scope: { kind: 'project', projectSlug: 'private' },
+        readPolicy: {
+          kind: 'author-private',
+          ownerId: 'human:tailscale-serve:owner@github',
+        },
+        adapterId: 'kit-default-store',
+        storeRoot: makeTempDir('station-private-whois-'),
+        displayName: 'Person private memory',
+      });
+      const whoisHeaders = (credential: string) => ({
+        Authorization: `Bearer ${credential}`,
+        [INTERNAL_API_TOKEN_HEADER]: getInternalApiToken(),
+        [INTERNAL_INGRESS_IDENTITY_HEADER]: Buffer.from(
+          JSON.stringify({
+            provider: 'tailscale-serve',
+            login: 'owner@github',
+          }),
+        ).toString('base64url'),
+      });
+      for (const [credential, visible] of [
+        [paired.credential, true],
+        [peer.credential, false],
+      ] as const) {
+        const list = await app.request(
+          '/api/knowledge/roots',
+          { headers: whoisHeaders(credential) },
+          LOOPBACK_SERVE_PROXY_ENV,
+        );
+        expect(list.status).toBe(200);
+        expect(
+          ((await list.json()) as { data: Array<{ id: string }> }).data.some(
+            (entry) => entry.id === whoisRoot.id,
+          ),
+        ).toBe(visible);
+      }
       const anonymous = await app.request(
         `/api/knowledge/roots/${root.id}/records/${id}`,
         {},
