@@ -1801,66 +1801,42 @@ test("the dock's draft reports its text as it changes, so a dismissal can return
 // Start runs, and the Project and Station controls in the chip row under the
 // text. Home keeps its start box with the hero above it.
 describe("the dock's New chat is a draft, not a dialog", () => {
-  test('the draft names its Project and Station; Home keeps its hero', async () => {
+  test('Home and New Chat put the Project in the heading and the Station below the composer', async () => {
     deviceSettingsStore.set('chatDockProjectSlug', 'station');
     state.device = { hostName: 'Kontour' };
     const ui = renderBoth();
     const dock = ui.dock();
-    // A region the screen reader can find by name, and no dialog anywhere.
     expect(dock.tagName).toBe('SECTION');
     expect(screen.queryByRole('dialog')).toBeNull();
-    // Derived: the bound Project's name, the device's own Station name.
-    expect(
-      await within(dock).findByText('Start a chat in Station on Kontour'),
-    ).toBeTruthy();
-    expect(
-      within(dock).queryByRole('heading', {
-        name: 'What would you like to do?',
-      }),
-    ).toBeNull();
-    expect(within(dock).queryByText('Continue working')).toBeNull();
+    for (const root of [dock, screen.getByTestId('home')]) {
+      const heading = await within(root).findByRole('heading', {
+        name: /What would you like to do.*Station/,
+      });
+      expect(heading.contains(projectChip(root))).toBe(true);
+      const chips = within(formOf(root)).getByRole('group', {
+        name: 'Chat setup',
+      });
+      expect(
+        within(chips).queryByRole('button', { name: /^Project:/ }),
+      ).toBeNull();
+      expect(within(root).getByText('Runs on Kontour')).toBeTruthy();
+    }
     expect(
       within(dock).queryByRole('button', { name: 'Close new chat' }),
     ).toBeNull();
-    // The Project control sits in the chip row with Agent, not above the box.
-    const chips = within(formOf(dock)).getByRole('group', {
-      name: 'Chat setup',
-    });
-    expect(within(chips).getByRole('button', { name: /^Project:/ })).toBe(
-      projectChip(dock),
-    );
-    // One Station: nothing to choose, so no Station control.
-    expect(
-      within(dock).queryByRole('button', { name: /^Run a task on a Station/ }),
-    ).toBeNull();
-
-    const home = screen.getByTestId('home');
-    expect(
-      within(home).getByRole('heading', { name: 'What would you like to do?' }),
-    ).toBeTruthy();
-    expect(
-      within(formOf(home))
-        .getByRole('group', { name: 'Chat setup' })
-        .contains(projectChip(home)),
-    ).toBe(false);
   });
 
-  // The line is an empty draft's hint: once there is text, the chips say
-  // where it goes and a short dock keeps the room for the composer.
-  test('the draft line steps aside once the draft holds text', async () => {
+  test('the inline Project remains available while drafting', async () => {
     deviceSettingsStore.set('chatDockProjectSlug', 'station');
-    state.device = { hostName: 'Kontour' };
     const dock = renderBoth().dock();
-    const line = 'Start a chat in Station on Kontour';
-    expect(await within(dock).findByText(line)).toBeTruthy();
+    const heading = await within(dock).findByRole('heading', {
+      name: /What would you like to do.*Station/,
+    });
     fireEvent.change(within(formOf(dock)).getByRole('textbox'), {
       target: { value: 'Tidy the sidebar' },
     });
-    expect(within(dock).queryByText(line)).toBeNull();
-    fireEvent.change(within(formOf(dock)).getByRole('textbox'), {
-      target: { value: '' },
-    });
-    expect(within(dock).getByText(line)).toBeTruthy();
+    expect(heading.contains(projectChip(dock))).toBe(true);
+    expect((projectChip(dock) as HTMLButtonElement).disabled).toBe(false);
   });
 
   // Like the dialog it replaced, the draft takes a history entry, so a
@@ -2017,7 +1993,7 @@ describe("the dock's New chat is a draft, not a dialog", () => {
   test('a file dropped on the draft outside the composer joins its files', async () => {
     const ui = renderBoth();
     const dock = ui.dock();
-    const lead = await within(dock).findByText(/^Start a chat/);
+    const lead = await within(dock).findByRole('heading');
     const file = new File(['x'], 'notes.txt', { type: 'text/plain' });
     const dataTransfer = {
       types: ['Files'],
@@ -2083,13 +2059,12 @@ describe("the dock's New chat is a draft, not a dialog", () => {
     const dock = ui.dock();
     // The device has not answered (undefined): no Station claim yet.
     expect(
-      await within(dock).findByText('Start a chat without a project'),
+      await within(dock).findByRole('heading', {
+        name: 'What would you like to do?',
+      }),
     ).toBeTruthy();
-    const chips = within(formOf(dock)).getByRole('group', {
-      name: 'Chat setup',
-    });
     expect(
-      await within(chips).findByRole('button', {
+      await within(dock).findByRole('button', {
         name: 'Runs on This Station. Choose where this work runs',
       }),
     ).toBeTruthy();

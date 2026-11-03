@@ -836,6 +836,20 @@
 
     "packages/sdk/src/client/terminal-session-store.ts",
 
+    "packages/sdk/src/query-domains/runtimeEventContent.ts",
+
+    "src-ui/src/components/chat/ChatRequestContext.ts",
+
+    "src-ui/src/components/chat/LoadFullContent.tsx",
+
+    "src-ui/src/components/chat/useApprovalContent.tsx",
+
+    "src-ui/src/components/chat/ChildWorkInstructionPanel.tsx",
+
+    "src-ui/src/components/chat/PublishedHtmlReply.tsx",
+
+    "src-ui/src/workspace-panes/agents/ChildWorkTranscript.tsx",
+
     "src-server/services/orchestration/create-request-claims.ts"
   ],
 

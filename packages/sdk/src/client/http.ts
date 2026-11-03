@@ -1393,6 +1393,26 @@ export async function mutateJson(
   opts?: ClientRequestOptions,
   body?: unknown,
 ): Promise<Response> {
+  return mutateBody(url, method, opts, body, 'json');
+}
+
+/** Send a binary body with the same captured authority and response guards as JSON mutations. */
+export async function mutateBinary(
+  url: string,
+  method: string,
+  opts: ClientRequestOptions | undefined,
+  body: Blob,
+): Promise<Response> {
+  return mutateBody(url, method, opts, body, 'binary');
+}
+
+async function mutateBody(
+  url: string,
+  method: string,
+  opts: ClientRequestOptions | undefined,
+  body: unknown,
+  kind: 'json' | 'binary',
+): Promise<Response> {
   const requestOptions = snapshotRequestOptions(opts);
   const maximum = requestOptions?.maxResponseBytes;
   if (maximum !== undefined && (!Number.isSafeInteger(maximum) || maximum < 1))
@@ -1401,7 +1421,14 @@ export async function mutateJson(
   const baseHeaders =
     hasBody || requestOptions?.headers
       ? {
-          ...(hasBody ? { 'Content-Type': 'application/json' } : {}),
+          ...(hasBody
+            ? {
+                'Content-Type':
+                  kind === 'json'
+                    ? 'application/json'
+                    : 'application/octet-stream',
+              }
+            : {}),
           ...(requestOptions?.headers || {}),
         }
       : undefined;
@@ -1424,7 +1451,7 @@ export async function mutateJson(
     init.headers = headers;
   }
   if (hasBody) {
-    init.body = JSON.stringify(body);
+    init.body = kind === 'json' ? JSON.stringify(body) : (body as Blob);
   }
   const timeoutMs = resolveTimeoutMs(requestOptions);
   const request =

@@ -336,10 +336,54 @@ internal principal, an Agent-tool marker, a delegation device) reads it only
 where the Project allows **Let agents run JavaScript in this Project's pages**;
 otherwise it is refused `403`. Agents have no console tool.
 
+With the **Browser artifacts** Feature Preview enabled, the **Network**
+drawer shows requests for the current browser generation, starting when the
+drawer or agent tool first reads it. Filter it to failed requests or XHR and
+Fetch requests. Station keeps at most 500 entries
+in memory and discards them when capture stops. It records request method,
+redacted URL, resource type, status, transfer size and duration; it does not
+retain request or response bodies or headers. URL credentials, query values
+and fragments are removed. The read-only `browser_network` agent tool uses
+Browser authority and **Let agents run JavaScript in this Project's pages**
+(`browserEvaluate`), and returns
+bounded pages of the same metadata.
+
+With the same preview enabled, **Annotate** in **⋯** opens Select, Box, Draw
+and Erase tools over the streamed page. S, B, D and E select them; Escape
+cancels and Enter attaches. Select inspects an element on the server. Selecting
+elements inside iframes, including same-origin iframes, is not supported. Box and
+Draw marks use target viewport coordinates at the current zoom; Erase removes a mark under the
+pointer. Changing zoom during capture refuses the annotation. Opening annotation captures a target viewport screenshot before marks
+can be made. Select is refused if the page scrolls away from the captured viewport. Attach sends an image and a JSON description to the active chat's
+composer. A selected element supplies its target PNG crop; marks also include
+the viewport screenshot captured on opening. Marks are described in JSON, not
+burned into the image. The files must be supported by the conversation's engine. The
+description and image can expose page content; attaching is an explicit share.
+The picker redacts URL credentials, queries and fragments in URL-bearing attributes and known secret patterns in `data-*` values. This is a
+bounded heuristic, not a guarantee that an image or excerpt contains no secrets.
+
 **Screenshot** (in **⋯**) captures the page's viewport as PNG (JPEG over
 16 MiB, refused beyond that) with view standing, one capture at a time per
 session (a second request joins the one in flight), and offers **Save image**
-and, where the viewer's clipboard accepts PNGs, **Copy image**.
+and, where the viewer's clipboard accepts PNGs, **Copy image**. With Browser
+artifacts enabled, **Attach to chat** adds it to the active composer.
+
+With **Browser artifacts** enabled, **Record** in the toolbar or **⋯** starts a
+silent Browser clip. The indicator stays visible while capturing; **Stop
+recording** finishes it, and **Save clip** downloads a WebM. Capture also stops
+at 30 seconds, 300 frames or 64 MiB of raw JPEGs and encodes the frames captured so far. A first frame over the byte limit is refused. The encoded
+clip is limited to 16 MiB. Human and Task Browser recording share a limit of four active recordings, with at most two for one owner; completed clips do not occupy those slots. FFmpeg must already be available through Station's
+media-tools resolver. A missing tool refuses the recording; downloading one
+requires the operator's separate consent. The clip may contain sensitive page
+content. **Attach recording frames to chat** stages four time-sampled JPEGs and a provenance JSON file in the active conversation. The files are bounded to 5 MiB combined; if sampled frames cannot be prepared, save the full clip instead. If the active conversation is the lead Session of a Task, the Task is accessible and its workspace is clean at recording start, **Add to Task clips** publishes the clip after rechecking the Task, Browser and workspace. A dirty or inaccessible Task shows a reason instead.
+
+The server rechecks Browser view authority, preview state and session generation
+periodically while capturing, on stop and before returning a clip. Navigation can continue while the Browser generation remains the same. Closing the Browser surface or
+stopping Station cancels in-progress work. The server retains up to four completed results for at most one minute; an
+older result may be discarded sooner. The open viewer owns the downloaded Blob until
+it is dismissed. Generated temporary frame files are removed after encoding or
+cancellation. A process crash can leave its private temporary staging directory;
+automatic crash cleanup is not currently provided.
 
 A workspace Browser pane keeps an ordered set of up to twelve session tabs.
 Select a tab to watch its exact server session; arrow keys select adjacent tabs
@@ -439,4 +483,4 @@ behavior and platform receipts exist.
 
 Enable **Browser experience** in Feature Previews to try per-tab zoom, page appearance, the Float over chat button, Browser shortcuts, and the agent action overlay. Appearance uses the same browser emulation operation as the agent color-scheme tool. The driver chip opens recent session actions. Screenshot to chat is a separate action that attaches to the active chat for the same Project. Mod+Shift+S opens the screenshot view, including with the preview off or focus in the live page. See [keyboard shortcuts](keyboard-shortcuts.md#browser-shortcuts). Find in page is not currently supported on the streamed host.
 
-A current device paired by the operator can view Browser sessions and agent reveals within its granted scope. The Browser access response identifies this standing as `operator-device`, separately from `operator` and `project-admin`. Viewing does not grant drive authority; an operator or Project administrator must have the separate authority and scope needed to control a session. A stale credential or missing Project standing is reported in the pane.
+A current device paired by the operator can view Browser sessions and agent reveals within its granted scope. With Browser artifacts enabled, viewing includes element picking, which reads attributes and selected computed styles; Station redacts the attribute excerpt. It also includes bounded, redacted network metadata without request or response headers or bodies. The Browser access response identifies this standing as `operator-device`, separately from `operator` and `project-admin`. Viewing does not grant drive authority; an operator or Project administrator must have the separate authority and scope needed to control a session. A stale credential or missing Project standing is reported in the pane.

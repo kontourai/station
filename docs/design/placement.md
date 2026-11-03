@@ -1955,7 +1955,10 @@ per conversation.** Below the fold nothing above changes.
   (`hostActions`); a pane with an overflow of its own merges them and says
   so (`takeHostActions`), and the head draws its own ⋯ only for a pane that
   has none; the head's × hides the panel, "Remove pane" takes the pane out of
-  the workspace. Escape acts only from inside the side or lower panel (or on
+  the workspace. With Device developer loop enabled, closing the Device stage
+  or tab or hiding its visible region requests a float when a chat host is
+  available; device access and session checks still apply. Escape acts only
+  from inside the side or lower panel (or on
   its rail item); elsewhere it is consumed and nothing moves. A session
   arriving with a remembered tool keeps its fold through the arrival rather
   than unfolding and folding again. The rail scrolls when a workspace holds

@@ -22,6 +22,7 @@ import {
   subscribeContentRefresh,
 } from '../../hooks/orchestration/answerRequest';
 import { commandOnlyArgs } from '../../hooks/orchestration/pendingRequestRows';
+import { useChatRequestTarget } from './ChatRequestContext';
 import type { ToolCallData } from './ToolCallDisplay';
 
 /**
@@ -117,7 +118,9 @@ function ApprovalContentLoader({
   const shownRefs = collectRuntimeEventContentRefs(toolCall.args).map(
     (ref) => ref.ref,
   );
+  const target = useChatRequestTarget();
   const query = useApprovalContentQuery({
+    ...target,
     threadId,
     requestId: toolCall.approvalId,
     requestEventId,

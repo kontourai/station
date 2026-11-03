@@ -82,6 +82,18 @@ export class SessionAuthorization {
    * access) via `SESSION_OWNER_CACHE_MAX_ENTRIES`.
    */
   private readonly sessionOwnerCache = new Map<string, string>();
+  /**
+   * threadId -> the owner an accepted start stamped (`metadata.userId`),
+   * until the store resolves the thread's durable owner. The
+   * adapter's `session.started` echoes that metadata and becomes the durable
+   * owner, but it reaches the store through the observed-event publish,
+   * which retries asynchronously under SQLite contention (#3560). Without
+   * this, a command sent right after an accepted start (a delegation's
+   * initial turn) can reach the command gate first and be refused as
+   * "Session not found" (#4480). Command gate only, never the positive
+   * cache, and the thread's teardown drops it.
+   */
+  private readonly startOwners = new Map<string, string>();
   private readonly sessionOwnerCacheMaxEntries: number;
   /** Process-local currentness fence, not a second authorization/owner store. */
   private readGeneration = {};
@@ -122,6 +134,12 @@ export class SessionAuthorization {
   forgetTenantContext(threadId: string): void {
     this.readGeneration = {};
     this.tenantContexts.delete(threadId);
+    this.startOwners.delete(threadId);
+  }
+
+  /** C12's start hook: the accepted start's stamped owner, pending its event. */
+  bindStartOwner(threadId: string, ownerUserId: string): void {
+    this.startOwners.set(threadId, ownerUserId);
   }
 
   /**
@@ -427,18 +445,26 @@ export class SessionAuthorization {
       ) {
         return false;
       }
-      const ownerUserId = this.sessionOwnerUserId(threadId);
+      const ownerUserId = this.commandOwnerUserId(threadId);
       return ownerUserId !== undefined && ownerUserId === userId;
     }
     // Internal commands (no caller) keep their existing reach.
     if (userId === undefined) return true;
-    const ownerUserId = this.sessionOwnerUserId(threadId);
+    const ownerUserId = this.commandOwnerUserId(threadId);
     if (ownerUserId === undefined) return false;
     return (
       ownerUserId === userId ||
       this.deps.personalConversationAccess?.canRead(userId, ownerUserId) ===
         true
     );
+  }
+
+  /** The durable owner, else the owner an accepted start stamped. */
+  private commandOwnerUserId(threadId: string): string | undefined {
+    const durable = this.sessionOwnerUserId(threadId);
+    if (durable === undefined) return this.startOwners.get(threadId);
+    this.startOwners.delete(threadId);
+    return durable;
   }
 
   /**

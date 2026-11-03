@@ -318,7 +318,7 @@
 
 .sidebar__project-btn--active {
   background: color-mix(in srgb, var(--k-action) 12%, var(--k-panel));
-  color: var(--k-action);
+  color: var(--k-text);
 }
 
 .sidebar__project-row .sidebar__project-btn--active {

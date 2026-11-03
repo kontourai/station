@@ -38,6 +38,7 @@ import {
 import { createBrowserRoutes } from '../../routes/browser.js';
 import { createBrowserAgentRoutes } from '../../routes/browser-agent.js';
 import { createDeviceAgentRoutes } from '../../routes/device-agent.js';
+import { createDeviceArtifactRoutes } from '../../routes/device-artifacts.js';
 import { createDeviceHostRoutes } from '../../routes/device-hosts.js';
 import { createDeviceToolchainRoutes } from '../../routes/device-toolchain.js';
 import { createDeviceToolsRoutes } from '../../routes/device-tools.js';
@@ -77,6 +78,7 @@ import { createTranscriptionRoutes } from '../../routes/transcription.js';
 import { createWalkthroughRoutes } from '../../routes/walkthroughs.js';
 import { readBoundedRequestBody } from '../../security/bounded-request-body.js';
 import {
+  isOperatorAtHostNotAgent,
   isOperatorInPersonNotAgent,
   isOperatorsOwnDevice,
   isTerminalOperator,
@@ -109,6 +111,7 @@ import {
 import { createBrowserPrincipalAuthorizer } from '../../services/browser/browser-agent-authority.js';
 import { BrowserAutomation } from '../../services/browser/browser-automation.js';
 import { withBrowserHumanControl } from '../../services/browser/browser-human-control.js';
+import { BrowserHumanTaskClip } from '../../services/browser/browser-human-task-clip.js';
 import { loadLocatorEngineInstallExpression } from '../../services/browser/browser-locator-engine.js';
 import {
   isStationInternalRequest,
@@ -135,6 +138,7 @@ import {
   deviceAccessFromShares,
   failClosedDeviceAccess,
 } from '../../services/devices/device-access.js';
+import { DeviceArtifactStaging } from '../../services/devices/device-app-artifacts.js';
 import { DeviceAutomation } from '../../services/devices/device-automation.js';
 import {
   createDeviceHostResolver,
@@ -156,6 +160,10 @@ import {
   deviceControlConflict,
 } from '../../services/devices/device-tools.js';
 import { createFfmpegDecoderProvider } from '../../services/devices/h264-jpeg-decoder.js';
+import {
+  runDeviceAppInstall,
+  spawnLocalDeviceInstall,
+} from '../../services/devices/hosts/device-app-install.js';
 import { DeviceHostRegistry } from '../../services/devices/hosts/device-host-registry.js';
 import { RemoteDeviceHostServices } from '../../services/devices/hosts/device-host-services.js';
 import { DeviceHostStore } from '../../services/devices/hosts/device-host-store.js';
@@ -200,6 +208,7 @@ import {
 } from '../../services/projects/project-room-store.js';
 import { ProjectSharedTaskService } from '../../services/projects/project-shared-task-service.js';
 import type { ProjectSharedTaskStore } from '../../services/projects/project-shared-task-store.js';
+import { RecordingLimiter } from '../../services/projects/recording-limiter.js';
 import { TaskBrowserCapture } from '../../services/projects/task-browser-capture.js';
 import { TaskBrowserRecording } from '../../services/projects/task-browser-recording.js';
 import { createTaskCaptureBlobStoreFactory } from '../../services/projects/task-capture-blob-store-factory.js';
@@ -207,7 +216,10 @@ import { TaskDeviceCapture } from '../../services/projects/task-device-capture.j
 import { TaskDeviceRecording } from '../../services/projects/task-device-recording.js';
 import { TaskRoomAttachments } from '../../services/projects/task-room-attachments.js';
 import { createTaskRoomContext } from '../../services/projects/task-room-context.js';
-import { TaskRoomConversationModule } from '../../services/projects/task-room-conversation-module.js';
+import {
+  TaskRoomAnswerUnavailableError,
+  TaskRoomConversationModule,
+} from '../../services/projects/task-room-conversation-module.js';
 import { PullRequestReviewGuideService } from '../../services/pull-requests/pull-request-review-guide.js';
 import { ReviewGuideError } from '../../services/pull-requests/pull-request-review-guide-errors.js';
 import {
@@ -425,6 +437,7 @@ import { createModelsRoutes } from '../../routes/connections/models.js';
 import { createProviderRoutes } from '../../routes/connections/providers.js';
 import { createConsentNativeRoutes } from '../../routes/consent/consent-native-routes.js';
 import { createHomeAuthorityRoutes } from '../../routes/environments/home-authority-routes.js';
+import { createPeerChatRoutes } from '../../routes/environments/peer-chat-routes.js';
 import { createPeerCredentialRoutes } from '../../routes/environments/peer-credential-routes.js';
 import {
   createDiffCommentRoutes,
@@ -616,10 +629,11 @@ import {
   classifyRuntimePeer,
   getRuntimeAuthenticatedRequestPrincipal,
   getRuntimeNativeDeviceProofPrincipal,
-  isBoundRuntimeLocalOperator,
+  isBoundRuntimeOwner,
   isLoopbackAuthority,
   isRuntimeRequestPrincipalCurrent,
   parseStrictBearer,
+  principalHasOwnerAuthority,
   RUNTIME_CREDENTIAL_AUTHORITY_VAR,
   type RuntimeCallerRequest,
   type RuntimeDeviceActivityClassifierContext,
@@ -1066,6 +1080,21 @@ import {
 } from './workspace-pane-host-actions.js';
 
 type HonoApp = Parameters<NonNullable<HonoServerConfig['configureApp']>>[0];
+
+/**
+ * The display name of the Station owner acting in person, for routes whose
+ * work belongs to the owner (setup imports, pull requests, conversation PR
+ * links, the owner's own agents' unattended grants). The owner in person,
+ * by the operator credential, at the host, or through one of their own
+ * paired devices (owner standing, owner decision 2026-11-02). Never an
+ * agent's request: Station's internal principal is excluded. `undefined`
+ * refuses.
+ */
+function ownerIdentityForRequest(request: Request): string | undefined {
+  return isOperatorInPersonNotAgent(request)
+    ? getCachedUser().alias
+    : undefined;
+}
 
 /** A session worktree is valid only within the project that owns the thread. */
 export function pullRequestThreadForProject<
@@ -1750,6 +1779,10 @@ export function configureRuntimeRoutes(
   let deviceSessions: DeviceSessionService | undefined;
   let localDeviceHost: LocalMobileDeviceHost | undefined;
   let localDeviceTools: DeviceToolsService | undefined;
+  let deviceArtifacts: DeviceArtifactStaging | undefined;
+  let deviceArtifactRoutes:
+    | ReturnType<typeof createDeviceArtifactRoutes>
+    | undefined;
   let deviceLoopEnabled = () => false;
   let deviceHostRegistry: DeviceHostRegistry | undefined;
   let remoteDeviceHosts: RemoteDeviceHostServices | undefined;
@@ -1827,6 +1860,8 @@ export function configureRuntimeRoutes(
       context.environmentSecurityService.credentialLocality(credential),
     resolveCredentialMintKind: (credential: string) =>
       context.environmentSecurityService.credentialMintKind(credential),
+    resolveCredentialOwnerStanding: (credential: string) =>
+      context.environmentSecurityService.credentialHasOwnerStanding(credential),
     classifyPairedDeviceActivity: classifyRuntimePairedDeviceActivity,
     allowedOrigins,
     audit: (record: RuntimeSecurityAuditRecord) =>
@@ -2227,7 +2262,7 @@ export function configureRuntimeRoutes(
       resolveOrchestrationRequestPrincipal(c).id,
       getTenantRequestContext(c.req.raw),
       hostedTenantRegistry,
-      runtimePrincipal?.locality === 'home-possession'
+      principalHasOwnerAuthority(runtimePrincipal)
         ? { localHomePossession: true }
         : undefined,
     );
@@ -3944,7 +3979,7 @@ export function configureRuntimeRoutes(
       (request) =>
         !hostedTenantRegistry &&
         !isHostedTenantExecutionRequired() &&
-        isBoundRuntimeLocalOperator(request),
+        isBoundRuntimeOwner(request),
       async (requestContext, request) => {
         const { captureAuthorityObservation, revalidateAuthorityObservation } =
           await import('../../services/identity/authority-observation.js');
@@ -4017,7 +4052,7 @@ export function configureRuntimeRoutes(
           hostedTenantRegistry ||
           isHostedTenantExecutionRequired() ||
           isStationInternalRequest(request) ||
-          !isBoundRuntimeLocalOperator(request)
+          !isBoundRuntimeOwner(request)
         )
           return undefined;
         const actorId = resolveOrchestrationRequestPrincipal(requestContext).id;
@@ -4027,7 +4062,7 @@ export function configureRuntimeRoutes(
           assertCurrent() {
             if (
               !isRequestPrincipalCurrent(request) ||
-              !isBoundRuntimeLocalOperator(request) ||
+              !isBoundRuntimeOwner(request) ||
               resolveOrchestrationRequestPrincipal(requestContext).id !==
                 actorId
             )
@@ -4421,14 +4456,8 @@ export function configureRuntimeRoutes(
           context.configLoader.getProjectHomeDir(),
         ),
         {
-          operatorIdentityForRequest: (routeContext) => {
-            const authority = (
-              routeContext as unknown as { get: (key: string) => unknown }
-            ).get(RUNTIME_CREDENTIAL_AUTHORITY_VAR);
-            return authority === 'operator-credential'
-              ? getCachedUser().alias
-              : undefined;
-          },
+          operatorIdentityForRequest: (routeContext) =>
+            ownerIdentityForRequest(routeContext.req.raw),
           isHostedExecution: () => hostedTenantRegistry !== undefined,
         },
       ),
@@ -4838,6 +4867,34 @@ export function configureRuntimeRoutes(
           ? localAvd(serial)
           : hostRegistry.resolveAndroidAvd(hostId, serial),
     };
+    const artifacts = new DeviceArtifactStaging();
+    deviceArtifacts = artifacts;
+    const authorizeArtifactProject = createBrowserProjectAuthorizer(
+      deviceMembershipAccess,
+    );
+    const artifactRoutes = createDeviceArtifactRoutes({
+      staging: artifacts,
+      enabled: deviceLoopEnabled,
+      current: isRequestPrincipalCurrent,
+      human: (c) => resolveLiveSurfaceHumanCaller?.(c) != null,
+      project: (slug) => {
+        const project = context.projectService
+          .listProjects()
+          .find((candidate) => candidate.slug === slug);
+        return project
+          ? {
+              id: project.id,
+              root: project.workingDirectory
+                ? resolve(expandTilde(project.workingDirectory))
+                : null,
+            }
+          : undefined;
+      },
+      authorize: async (request, projectId) =>
+        !!(await authorizeArtifactProject(request, projectId, 'drive')),
+    });
+    deviceArtifactRoutes = artifactRoutes;
+    context.app.route('/api/mobile-devices', artifactRoutes);
     // The live Device pane asks one predicate (per device, per purpose);
     // the share store answers it.
     deviceAccessImpl = deviceAccessFromShares(deviceShareAccess);
@@ -4920,6 +4977,23 @@ export function configureRuntimeRoutes(
     let agentDeviceAutomation: DeviceAutomation | undefined;
     if (agentDeviceSessions && agentDeviceSurfaces && deviceShareAccess) {
       agentDeviceAutomation = new DeviceAutomation({
+        artifacts,
+        projectRoot: (projectId) => {
+          const project = context.projectService
+            .listProjects()
+            .find((candidate) => candidate.id === projectId);
+          return project?.workingDirectory
+            ? resolve(expandTilde(project.workingDirectory))
+            : undefined;
+        },
+        installApp: (input) =>
+          input.hostId === LOCAL_DEVICE_HOST_ID
+            ? runDeviceAppInstall({
+                ...input,
+                target: { host: 'localhost' },
+                spawn: spawnLocalDeviceInstall,
+              })
+            : hostRegistry.installApp(input.hostId, input),
         remoteHostIds: () =>
           hostRegistry.summaries().map((host) => host.hostId),
         remoteHost: (hostId) => {
@@ -5037,6 +5111,82 @@ export function configureRuntimeRoutes(
         deviceLoopEnabled,
         isRequestPrincipalCurrent,
         access: deviceAccess,
+        actionHistory: {
+          read: (target) => {
+            const sessions =
+              target.hostId === LOCAL_DEVICE_HOST_ID
+                ? toolSessions
+                : remoteDeviceHosts?.get(target.hostId)?.sessions;
+            const session = sessions?.forDevice(
+              target.platform,
+              target.deviceId,
+            );
+            const entries = session
+              ? sessions?.actionHistory(session.sessionId)
+              : undefined;
+            return session && entries
+              ? { sessionId: session.sessionId, entries }
+              : undefined;
+          },
+          installed: (target) => {
+            const sessions =
+              target.hostId === LOCAL_DEVICE_HOST_ID
+                ? toolSessions
+                : remoteDeviceHosts?.get(target.hostId)?.sessions;
+            const session = sessions?.forDevice(
+              target.platform,
+              target.deviceId,
+            );
+            return session
+              ? sessions?.latestInstallation(session.sessionId)
+              : undefined;
+          },
+          installation: (target, value) => {
+            const sessions =
+              target.hostId === LOCAL_DEVICE_HOST_ID
+                ? toolSessions
+                : remoteDeviceHosts?.get(target.hostId)?.sessions;
+            const session = sessions?.forDevice(
+              target.platform,
+              target.deviceId,
+            );
+            if (session) sessions?.noteInstallation(session.sessionId, value);
+          },
+          note: (target, action, outcome) => {
+            const sessions =
+              target.hostId === LOCAL_DEVICE_HOST_ID
+                ? toolSessions
+                : remoteDeviceHosts?.get(target.hostId)?.sessions;
+            const session = sessions?.forDevice(
+              target.platform,
+              target.deviceId,
+            );
+            if (session)
+              sessions?.noteAction(
+                session.sessionId,
+                action,
+                'person',
+                outcome,
+              );
+          },
+        },
+        appInstall: {
+          staging: artifacts,
+          projectId: (slug) =>
+            context.projectService
+              .listProjects()
+              .find((project) => project.slug === slug)?.id,
+          authorize: async (request, projectId) =>
+            !!(await authorizeArtifactProject(request, projectId, 'drive')),
+          run: (input) =>
+            input.hostId === LOCAL_DEVICE_HOST_ID
+              ? runDeviceAppInstall({
+                  ...input,
+                  target: { host: 'localhost' },
+                  spawn: spawnLocalDeviceInstall,
+                })
+              : hostRegistry.installApp(input.hostId, input),
+        },
         // THIS machine's xcrun/adb and hub serve the local device host; an
         // SSH device host has its own service (#2442), built per host.
         tools: ownDeviceTools,
@@ -6083,7 +6233,21 @@ export function configureRuntimeRoutes(
     })
       .then(() =>
         Promise.all([
-          roomRuntime.reconcileAgentLifecycles(roomTaskIds),
+          (async () => {
+            for (const taskId of roomTaskIds) {
+              try {
+                await roomRuntime.reconcileAgentLifecycles([taskId]);
+              } catch (error) {
+                if (!(error instanceof TaskRoomAnswerUnavailableError))
+                  throw error;
+                // Publication retains blocked presence and the original request.
+                // A later room read can retry without restarting the provider.
+                context.logger.warn('Task room answer recovery deferred', {
+                  taskId,
+                });
+              }
+            }
+          })(),
           roomRuntime.reconcileRevisionPublications(roomTaskIds),
         ]),
       )
@@ -7791,8 +7955,9 @@ export function configureRuntimeRoutes(
         ) ||
         (getRuntimeAuthenticatedRequestPrincipal(request)?.authority !==
           'operator-credential' &&
-          getRuntimeAuthenticatedRequestPrincipal(request)?.locality !==
-            'home-possession')
+          !principalHasOwnerAuthority(
+            getRuntimeAuthenticatedRequestPrincipal(request),
+          ))
       )
         throw new ProjectMembershipRefusal('forbidden');
     },
@@ -8182,12 +8347,27 @@ export function configureRuntimeRoutes(
     const authorizeBrowserProject =
       createBrowserProjectAuthorizer(browserAccess);
     browserProjectAuthorizer = authorizeBrowserProject;
+    const browserArtifactsPreview = context.featurePreviews.bind({
+      id: 'browser-artifacts',
+      label: 'Browser artifacts',
+      description:
+        'Try Browser annotations, recording and network diagnostics.',
+    });
+    const browserArtifactsEnabled = () =>
+      browserArtifactsPreview.select({
+        enabled: () => true,
+        disabled: () => false,
+      });
+    const recordingLimiter = new RecordingLimiter();
     browserService = createBrowserService({
       stationHome: context.configLoader.getProjectHomeDir(),
       experienceEnabled: browserExperienceEnabled,
       serverPort: context.port,
       consentPort: configuredConsentPort(),
       configuredOrigins: allowedOrigins,
+      networkPreviewEnabled: browserArtifactsEnabled,
+      recordingResolver: context.walkthroughImportDependencies.resolver,
+      recordingLimiter,
       // #1970: the managed device hub and its helpers, read live.
       // #1973: every SSH device host's local forward and host hub port too.
       extraListenerPorts: () => [
@@ -8203,6 +8383,7 @@ export function configureRuntimeRoutes(
           }
         : {}),
     });
+    let humanTaskClip: BrowserHumanTaskClip | undefined;
     context.app.use('/api/browser/*', async (c, next) => {
       roomRequestPrincipals.set(
         c.req.raw,
@@ -8251,6 +8432,14 @@ export function configureRuntimeRoutes(
         pendingDialogFor: browserService.pendingDialogFor,
         answerDialog: browserService.answerDialog,
         consoleFor: browserService.consoleFor,
+        networkFor: browserService.networkFor,
+        networkPreviewEnabled: browserArtifactsEnabled,
+        humanRecordings: browserService.humanRecordings,
+        recordingAdmissionKey: (c) =>
+          resolveLiveSurfaceHumanCaller?.(c)?.principal,
+        prepareHumanTaskClip: (request, conversationId, browser) =>
+          humanTaskClip?.prepare(request, conversationId, browser) ??
+          Promise.resolve({ kind: 'none' }),
         authorizeProject: authorizeBrowserProject,
         authorizeOperator: createBrowserOperatorAuthorizer(browserAccess),
         localTargets: browserService.localTargets,
@@ -8312,6 +8501,8 @@ export function configureRuntimeRoutes(
       sessions: browserService.registry,
       surfaces: liveSurfaceRegistry ?? { get: () => undefined },
       surfaceIdFor: browserService.surfaceIdFor,
+      networkFor: browserService.networkFor,
+      networkPreviewEnabled: browserArtifactsEnabled,
       agentActionsEnabled: browserExperienceEnabled,
       dialogWaitingForPerson: (browserSessionId) =>
         browserService?.pendingDialogFor(browserSessionId) !== undefined,
@@ -8348,6 +8539,21 @@ export function configureRuntimeRoutes(
             forbiddenRoots: captureForbiddenRoots,
           })
         : undefined;
+    if (
+      taskCaptures &&
+      taskWalkthroughs &&
+      captureRuntime &&
+      localMediaPreviews
+    ) {
+      humanTaskClip = new BrowserHumanTaskClip({
+        runtime: captureRuntime,
+        captures: taskCaptures,
+        store: taskWalkthroughs,
+        preview: localMediaPreviews.walkthroughsPreview,
+        localProjectIdFor: captureProjectIdFor,
+        isCurrent: isRequestPrincipalCurrent,
+      });
+    }
     taskRecordings =
       taskCaptures &&
       taskWalkthroughs &&
@@ -8361,6 +8567,7 @@ export function configureRuntimeRoutes(
             resolver: context.walkthroughImportDependencies.resolver,
             preview: localMediaPreviews.walkthroughsPreview,
             store: taskWalkthroughs,
+            limiter: recordingLimiter,
           })
         : undefined;
     const deviceRecordings =
@@ -8567,8 +8774,7 @@ export function configureRuntimeRoutes(
       }),
       {
         canManage: (request) =>
-          isBoundRuntimeLocalOperator(request) &&
-          isRequestPrincipalCurrent(request),
+          isBoundRuntimeOwner(request) && isRequestPrincipalCurrent(request),
         canQuery: (request) => {
           return delegationContributionQueryAuthorized(request, {
             current: isRequestPrincipalCurrent,
@@ -8737,11 +8943,6 @@ export function configureRuntimeRoutes(
       '/api/projects',
       createProjectWorkingConfigurationRoutes({
         service: working.service,
-        enabled: () =>
-          working.preview.select({
-            enabled: () => true,
-            disabled: () => false,
-          }),
         authorize: async (request, slug) => {
           if (isStationInternalRequest(request)) return undefined;
           const project = context.projectService
@@ -9485,9 +9686,10 @@ export function configureRuntimeRoutes(
       new TerminalGateway({
         sessions: terminalSessions,
         tickets: terminalTickets,
-        // The operator in person keeps reserved slots even when their own
-        // devices, or a flood of them, fill the shared capacity.
-        reserved: (request) => isOperatorInPersonNotAgent(request),
+        // The operator at the host keeps reserved slots even when their own
+        // devices, or a flood of them, fill the shared capacity. Host-only:
+        // owner-device standing does not reach these slots.
+        reserved: (request) => isOperatorAtHostNotAgent(request),
       }),
     );
     context.app.route(
@@ -9815,12 +10017,7 @@ export function configureRuntimeRoutes(
       () => listProviders('pullRequest').map((entry) => entry.provider),
       {
         current: isRequestPrincipalCurrent,
-        operator: (request) => {
-          const principal = getRuntimeAuthenticatedRequestPrincipal(request);
-          return principal?.authority === 'operator-credential'
-            ? getCachedUser().alias
-            : undefined;
-        },
+        operator: ownerIdentityForRequest,
         canRead: (request, conversationId) =>
           context.orchestrationService.canUserReadConversation(
             conversationId,
@@ -9954,28 +10151,16 @@ export function configureRuntimeRoutes(
             : undefined;
         },
         isRequestPrincipalCurrent,
-        operatorIdentityForRequest: (routeContext) => {
-          const authority = (
-            routeContext as unknown as { get: (key: string) => unknown }
-          ).get(RUNTIME_CREDENTIAL_AUTHORITY_VAR);
-          return authority === 'operator-credential'
-            ? getCachedUser().alias
-            : undefined;
-        },
+        operatorIdentityForRequest: (routeContext) =>
+          ownerIdentityForRequest(routeContext.req.raw),
       },
     ),
   );
   context.app.route(
     '/api/agents/unattended-grants',
     createUnattendedGrantRoutes(unattendedGrantStore, {
-      operatorIdentityForRequest: (routeContext) => {
-        const authority = (
-          routeContext as unknown as { get: (key: string) => unknown }
-        ).get(RUNTIME_CREDENTIAL_AUTHORITY_VAR);
-        return authority === 'operator-credential'
-          ? getCachedUser().alias
-          : undefined;
-      },
+      operatorIdentityForRequest: (routeContext) =>
+        ownerIdentityForRequest(routeContext.req.raw),
       logger: context.logger,
     }),
   );
@@ -10012,6 +10197,22 @@ export function configureRuntimeRoutes(
         context.configLoader.getProjectHomeDir(),
       ),
     ),
+  );
+  context.app.route(
+    '/api/environments/peers',
+    createPeerChatRoutes({
+      peers: peerCredentialStore,
+      remote: remoteStations,
+      current: isRequestPrincipalCurrent,
+      preview: hostedTenantRegistry
+        ? undefined
+        : context.featurePreviews.bind({
+            id: 'paired-station-chats',
+            label: 'Paired Station chats',
+            description:
+              'Start and continue chats on paired Stations. Messages use the selected Station’s providers and credits.',
+          }),
+    }),
   );
   // station#1423: the operator's own answer-share management family. The base
   // is a STRING LITERAL rather than `ANSWER_SHARE_ROUTE_PREFIX`, for the same
@@ -10834,8 +11035,7 @@ export function configureRuntimeRoutes(
       // The reader owns which failures become "absent"; see its docblock.
       createConfigProjectReader(context.storageAdapter),
       (request) =>
-        isBoundRuntimeLocalOperator(request) &&
-        isRequestPrincipalCurrent(request),
+        isBoundRuntimeOwner(request) && isRequestPrincipalCurrent(request),
       (config) => {
         context.getUsageTelemetry?.()?.reconfigure(config, true);
         reconfigureOtelTelemetryDelivery(config);
@@ -11934,10 +12134,11 @@ export function configureRuntimeRoutes(
     deviceSessions,
     browserProjectAuthorizer,
     ...(pluginDraftService ? { pluginDraftService } : {}),
-    ...(remoteDeviceHosts || deviceHostRegistry
+    ...(remoteDeviceHosts || deviceHostRegistry || deviceArtifacts
       ? {
           deviceHosts: {
             dispose: async () => {
+              await deviceArtifactRoutes?.dispose();
               // Sessions first: their producers read the hubs that stop next.
               await remoteDeviceHosts?.dispose();
               await deviceHostRegistry?.shutdown();
@@ -12872,11 +13073,13 @@ export function configureDevicePairingPublicRoutes(
       : null;
     // A fresh launcher can upgrade an ordinary session only on the host.
     // Off-host redemption cannot add that authority, so preserve its identity.
+    // An owner device's session is still upgraded: owner standing is not the
+    // host browser's home possession.
     if (
       existingDevice &&
       (!matchedPurpose ||
         !isSameMachineBrowserCaller(c) ||
-        pairing.credentialMayManagePairing(existingCredential!) ||
+        pairing.isHostBrowserSessionCredential(existingCredential!) ||
         pairing.isLocalGrantMintedCredential(existingCredential!))
     ) {
       if (matchedPurpose) uiBootstrapTokens.delete(matchedPurpose);
@@ -14618,9 +14821,15 @@ export function configureDevicePairingHostRoutes(
               'home-possession' &&
             (pairing.credentialMintKind(actor.credential) === 'local-grant' ||
               pairing.credentialMayManagePairing(actor.credential));
+          // Owner standing (2026-11-02): the owner's own device approves
+          // device-use grants exactly as the host-issued browser does.
+          const ownerDevice =
+            actor?.authority === 'device-credential' &&
+            actor.standing === 'owner-device' &&
+            pairing.credentialHasOwnerStanding(actor.credential);
           // Thrown, not returned, so it is counted and audited as the
           // refusal it is, with the service's own refusals below.
-          if (!operatorCredential && !localGrant)
+          if (!operatorCredential && !localGrant && !ownerDevice)
             throw new DevicePairingError('approval_requires_operator');
         }
       }

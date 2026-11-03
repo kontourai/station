@@ -362,6 +362,14 @@ function mapReasoningEffort(options?: CodexModelOptions): string | null {
   return typeof effort === 'string' && effort.trim() ? effort.trim() : null;
 }
 
+function mapServiceTier(options: CodexModelOptions): string | null {
+  if (options.serviceTier === null) return null;
+  if (typeof options.serviceTier === 'string' && options.serviceTier.trim())
+    return options.serviceTier.trim();
+  if (options.fastMode === true) return 'fast';
+  return null;
+}
+
 function mapCodexModelCatalogEntry(model: any): {
   id: string;
   name: string;
@@ -407,16 +415,61 @@ function mapCodexModelCatalogEntry(model: any): {
       }
     }
   }
-  const supportsFastMode =
-    Array.isArray(model.serviceTiers) &&
-    model.serviceTiers.some(
-      (tier: unknown) =>
-        typeof tier === 'object' &&
-        tier !== null &&
-        (tier as { id?: unknown }).id === 'fast',
-    );
+  const serviceTiers: NonNullable<ModelOptionCapabilities['serviceTiers']> = [];
+  const reportedTiers =
+    Array.isArray(model.serviceTiers) && model.serviceTiers.length
+      ? model.serviceTiers
+      : Array.isArray(model.additionalSpeedTiers)
+        ? model.additionalSpeedTiers.map((id: unknown) => ({
+            id,
+            name:
+              id === 'fast' ? 'Fast' : id === 'ultrafast' ? 'Ultrafast' : id,
+          }))
+        : [];
+  for (const tier of reportedTiers) {
+    if (
+      !tier ||
+      typeof tier !== 'object' ||
+      typeof tier.id !== 'string' ||
+      !tier.id.trim() ||
+      tier.id.length > 128 ||
+      serviceTiers.some((entry) => entry.id === tier.id)
+    )
+      continue;
+    const name =
+      typeof tier.name === 'string' &&
+      tier.name.trim() &&
+      tier.name.length <= 128
+        ? tier.name.trim()
+        : tier.id;
+    const description =
+      typeof tier.description === 'string' &&
+      tier.description.trim() &&
+      tier.description.length <= 512
+        ? tier.description.trim()
+        : tier.id === 'ultrafast'
+          ? 'Lower latency, higher cost.'
+          : undefined;
+    serviceTiers.push({
+      id: tier.id,
+      name,
+      ...(description ? { description } : {}),
+    });
+    if (serviceTiers.length === 16) break;
+  }
+  if (
+    serviceTiers.length &&
+    !serviceTiers.some(
+      (tier) => tier.id === 'default' || tier.id === 'standard',
+    )
+  )
+    // The CLI can list only extra tiers; "default" explicitly selects Standard.
+    serviceTiers.unshift({ id: 'default', name: 'Standard' });
+  const supportsFastMode = serviceTiers.some(
+    (tier) => tier.id === 'fast' || tier.id === 'priority',
+  );
   const capabilities: ModelOptionCapabilities | undefined =
-    supportedEffortLevels.length > 0 || supportsFastMode
+    supportedEffortLevels.length > 0 || serviceTiers.length > 0
       ? {
           ...(supportedEffortLevels.length > 0
             ? {
@@ -429,6 +482,11 @@ function mapCodexModelCatalogEntry(model: any): {
             : {}),
           ...(supportsFastMode
             ? { supportsFastMode: true, fastModeLabel: 'Fast' }
+            : {}),
+          ...(serviceTiers.length ? { serviceTiers } : {}),
+          ...(typeof model.defaultServiceTier === 'string' &&
+          serviceTiers.some((tier) => tier.id === model.defaultServiceTier)
+            ? { defaultServiceTier: model.defaultServiceTier }
             : {}),
         }
       : undefined;
@@ -2290,7 +2348,7 @@ export class CodexAdapter implements ProviderAdapterShape {
         ? await this.forkNativeAdoption(record, adoption, {
             approvalKnobs,
             ...(sandboxWire ? { sandboxRequest: sandboxWire } : {}),
-            serviceTier: modelOptions.fastMode ? 'fast' : null,
+            serviceTier: mapServiceTier(modelOptions),
             ...(authoredMcpConfig ? { config: authoredMcpConfig } : {}),
           })
         : resumeCursor
@@ -2299,7 +2357,7 @@ export class CodexAdapter implements ProviderAdapterShape {
               cwd: input.cwd,
               model: input.modelId,
               ...approvalWire,
-              serviceTier: modelOptions.fastMode ? 'fast' : null,
+              serviceTier: mapServiceTier(modelOptions),
               persistExtendedHistory: false,
               ...(authoredMcpConfig ? { config: authoredMcpConfig } : {}),
             })
@@ -2320,7 +2378,7 @@ export class CodexAdapter implements ProviderAdapterShape {
                 : {}),
               persistExtendedHistory: false,
               ...(authoredMcpConfig ? { config: authoredMcpConfig } : {}),
-              serviceTier: modelOptions.fastMode ? 'fast' : null,
+              serviceTier: mapServiceTier(modelOptions),
             });
       if (record.stdoutIngressLimit?.exceeded) {
         throw new Error(
@@ -2652,7 +2710,7 @@ export class CodexAdapter implements ProviderAdapterShape {
         operation: 'adapter-session-start',
         provider: this.provider,
         model_options:
-          mapReasoningEffort(modelOptions) || modelOptions.fastMode
+          mapReasoningEffort(modelOptions) || mapServiceTier(modelOptions)
             ? 'applied'
             : 'none',
       });
@@ -3062,7 +3120,7 @@ export class CodexAdapter implements ProviderAdapterShape {
     const invocationId = input.invocationId;
     const modelOptions = (input.modelOptions ?? {}) as CodexModelOptions;
     const hasModelOptions = Boolean(
-      mapReasoningEffort(modelOptions) || modelOptions.fastMode,
+      mapReasoningEffort(modelOptions) || mapServiceTier(modelOptions),
     );
     const decodedAttachments = decodeChatAttachments(input.attachments);
     rejectFileAttachments('Codex', decodedAttachments);
@@ -3228,7 +3286,10 @@ export class CodexAdapter implements ProviderAdapterShape {
             ? { approvalPolicy: approvalKnobs.approvalPolicy }
             : {}),
           ...(sandboxPolicy ? { sandboxPolicy } : {}),
-          serviceTier: modelOptions.fastMode ? 'fast' : undefined,
+          serviceTier:
+            modelOptions.serviceTier === null
+              ? null
+              : (mapServiceTier(modelOptions) ?? undefined),
         },
         { mapResult: acceptTurn },
       );

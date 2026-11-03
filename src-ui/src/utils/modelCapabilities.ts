@@ -211,6 +211,22 @@ export function replaceModelControlOptions(
   return { ...next, ...applied };
 }
 
+export function updateModelRuntimeOption(
+  current: Record<string, unknown>,
+  key: string,
+  value: unknown,
+): Record<string, unknown> {
+  const next = { ...current };
+  if (value === undefined) delete next[key];
+  else next[key] = value;
+  // Canonical controls and their legacy aliases cannot compete.
+  if (key === 'serviceTier') delete next.fastMode;
+  if (key === 'fastMode') delete next.serviceTier;
+  if (key === 'effort') delete next.reasoningEffort;
+  if (key === 'reasoningEffort') delete next.effort;
+  return next;
+}
+
 /**
  * A report can acknowledge picker-owned controls only when every meaningful
  * model control agrees. Non-model options (for example approval posture) are
@@ -254,6 +270,12 @@ export function sanitizeRuntimeOptionsForModel(
   const next = replaceModelControlOptions(current);
   const capabilities = model?.capabilities;
   const supportedEffort = capabilities?.supportedEffortLevels ?? [];
+  if (
+    capabilities?.serviceTiers?.some((tier) => tier.id === current.serviceTier)
+  )
+    next.serviceTier = current.serviceTier;
+  else if (current.serviceTier === null && capabilities?.serviceTiers?.length)
+    next.serviceTier = null;
   const currentEffort =
     typeof current.effort === 'string'
       ? current.effort
@@ -269,7 +291,8 @@ export function sanitizeRuntimeOptionsForModel(
   }
   if (
     capabilities?.supportsFastMode === true &&
-    typeof current.fastMode === 'boolean'
+    typeof current.fastMode === 'boolean' &&
+    current.serviceTier === undefined
   ) {
     next.fastMode = current.fastMode;
   }

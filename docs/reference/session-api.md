@@ -302,7 +302,8 @@ against its own filesystem.
 
 A plain-folder workspace (`{ "kind": "directory", "cwd": "..." }`) starts the
 engine in a folder that is not confined to a Project, so a paired device needs
-the operator's `coding:exec` grant to name one; without it the route answers
+the operator's `coding:exec` grant to name one (one of the owner's own devices
+with owner-device standing counts as the operator in person); without it the route answers
 `403` with `code: "working-directory-not-granted"` and starts nothing. This
 applies to `/chat`, `/chat/delegated`, `/chat/background`,
 `/conversations/:conversationId/handoff` and `POST /api/orchestration/delegations`;
@@ -673,10 +674,10 @@ HTTP409 `inbox_stale_head` and `currentHead`, without a write.
   follow-ups resume after that review barrier and the turn's terminal.
   Later model steps retain the steer after its tool-result boundary and before
   the model's response to it, including when earlier history is compacted.
-  Missing adapter durability is treated as no declared steering support. During
-  a running turn this settles the inbox entry `refused`, with reason code
-  `unsupported-engine`, before any handoff; it does not block later follow-ups.
-  Direct steer dispatch also returns the typed `unsupported-engine` outcome.
+  Steering waits only while Session materialization has not registered its
+  adapter. Once the adapter is registered, a missing declaration or a declared
+  placement of `none` settles queued steering `refused` with reason code
+  `unsupported-engine` before any handoff. Direct steer dispatch still refuses missing declarations before effect.
   A missing registered adapter also refuses before effect. A confirmed missing
   Session returns `no-active-turn`; a Session still materializing retains its
   existing unavailable outcome rather than claiming no turn can arrive.

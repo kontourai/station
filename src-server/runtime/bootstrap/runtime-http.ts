@@ -1391,6 +1391,14 @@ function configureRuntimeSecurity(
       const pairingSource = security.resolvePairingSource?.(credential!);
       const locality = security.resolveCredentialLocality?.(credential!);
       const mintKind = security.resolveCredentialMintKind?.(credential!);
+      // Owner standing: only for a device credential that is not already
+      // home-possession (that one is the operator in person).
+      const ownerStanding =
+        authority === 'device-credential' &&
+        deviceId !== undefined &&
+        deviceKind !== 'delegation' &&
+        !locality &&
+        security.resolveCredentialOwnerStanding?.(credential!) === true;
       setRuntimeAuthenticatedRequestPrincipal(c.req.raw, {
         kind: 'credential',
         credential: credential!,
@@ -1404,6 +1412,7 @@ function configureRuntimeSecurity(
         // possession proof behind it; the store never resolves that
         // combination, and this site refuses to construct it either.
         ...(locality && mintKind ? { mintKind } : {}),
+        ...(ownerStanding ? { standing: 'owner-device' as const } : {}),
       });
       bindRuntimeLocalOperator(c.req.raw);
       if (authority !== undefined) {
@@ -1429,7 +1438,7 @@ function configureRuntimeSecurity(
             path: c.req.path,
           },
           authority === 'operator-credential',
-          locality === 'home-possession',
+          locality === 'home-possession' || ownerStanding,
         );
       if (
         permitted &&

@@ -15126,6 +15126,19 @@ export class EventStore {
     return recordCascadeStopIntent(this.db, parentId, childId, terminalId);
   }
 
+  requestCascadeDelivery(parentId: string, terminalId: string): void {
+    const trigger = this.eventById(parentId, terminalId);
+    if (!trigger) throw new Error('Cascade parent terminal is unavailable.');
+    writeTransaction(this.db, 'cascade_delivery', () => {
+      deriveCascadeStopIntents(
+        this.db,
+        trigger.payload,
+        trigger.globalSequence,
+        (childId) => this.isCascadeSessionSettled(childId, true),
+      );
+    });
+  }
+
   /** Edge confirmation and pending obligations share one SQLite snapshot. */
   private readOwnershipSnapshot<T>(read: () => T): T {
     return writeTransaction(this.db, 'ownership_read', read, 'deferred');
@@ -15140,7 +15153,7 @@ export class EventStore {
   ownedStopTargets(parentId: string) {
     return this.readOwnershipSnapshot(() =>
       ownedDescendantsBottomUp(this.db, parentId).filter(
-        (id) => !this.isCascadeSessionSettled(id),
+        (id) => !this.isCascadeSessionSettled(id, true),
       ),
     );
   }
@@ -15157,7 +15170,11 @@ export class EventStore {
     return this.sessionBinding?.(threadId) === true;
   }
 
-  private isCascadeSessionSettled(childId: string): boolean {
+  private isCascadeSessionSettled(
+    childId: string,
+    requireBinding = false,
+  ): boolean {
+    if (requireBinding && !this.sessionBinding) return false;
     return isCascadeStopSettled(
       readCascadeSessionFacts(this.db, [childId]).get(childId)!,
       this.hasSessionBinding(childId),
@@ -15370,6 +15387,28 @@ export class EventStore {
     };
   }
 
+  private readCascadeRecheck(childId: string, terminalId: string) {
+    return (
+      z
+        .object({
+          generation: z.number().int().nonnegative(),
+          requested: z.number(),
+        })
+        .optional()
+        .parse(
+          this.db
+            .prepare(`SELECT COALESCE(json_extract(evidence_json, '$.recheckGeneration'), 0) AS generation,
+        COALESCE(json_extract(evidence_json, '$.needsRecheck'), 0) AS requested
+        FROM orchestration_cascade_stop_custody WHERE child_session_id = ? AND terminal_event_id = ?`)
+            .get(childId, terminalId),
+        ) ?? { generation: 0, requested: 0 }
+    );
+  }
+
+  cascadeStopRecheckGeneration(childId: string, terminalId: string): number {
+    return this.readCascadeRecheck(childId, terminalId).generation;
+  }
+
   recordCascadeStopCustody(
     childId: string,
     terminalId: string,
@@ -15377,8 +15416,15 @@ export class EventStore {
     reason: string,
     nextProbeAt = 0,
     expectedSnapshot?: string,
+    expectedRecheckGeneration?: number,
   ): boolean {
     return writeTransaction(this.db, 'cascade_custody', () => {
+      const recheck = this.readCascadeRecheck(childId, terminalId);
+      if (
+        expectedRecheckGeneration !== undefined &&
+        recheck.generation !== expectedRecheckGeneration
+      )
+        return false;
       const snapshot = JSON.stringify(
         readCascadeSessionFacts(this.db, [childId]).get(childId)!,
       );
@@ -15397,6 +15443,9 @@ export class EventStore {
             nextProbeAt,
             probedAt: Date.now(),
             snapshot,
+            recheckGeneration: recheck.generation,
+            needsRecheck:
+              expectedRecheckGeneration === undefined ? recheck.requested : 0,
           }),
         );
       return true;
@@ -15405,11 +15454,14 @@ export class EventStore {
 
   requestCascadeRecheck(threadId: string): void {
     this.db
-      .prepare(`UPDATE orchestration_cascade_stop_custody
-      SET evidence_json = json_set(evidence_json, '$.nextProbeAt', 0)
-      WHERE (child_session_id, terminal_event_id) IN (
-        SELECT child_session_id, terminal_event_id FROM orchestration_cascade_stop_intents
-        WHERE state = 'pending' AND (parent_session_id = ? OR child_session_id = ?))`)
+      .prepare(`INSERT INTO orchestration_cascade_stop_custody
+      SELECT child_session_id, terminal_event_id, 'unknown',
+        json_object('reason', 'unobserved', 'nextProbeAt', 0, 'needsRecheck', 1, 'recheckGeneration', 1)
+      FROM orchestration_cascade_stop_intents
+      WHERE state = 'pending' AND (parent_session_id = ? OR child_session_id = ?)
+      ON CONFLICT(child_session_id, terminal_event_id) DO UPDATE SET evidence_json =
+        json_set(evidence_json, '$.nextProbeAt', 0, '$.needsRecheck', 1,
+          '$.recheckGeneration', COALESCE(json_extract(evidence_json, '$.recheckGeneration'), 0) + 1)`)
       .run(threadId, threadId);
   }
 
@@ -15417,8 +15469,17 @@ export class EventStore {
     childId: string,
     terminalId: string,
     result?: InterruptTurnResult,
+    expectedRecheckGeneration?: number,
   ): boolean {
-    return completeCascadeStop(this.db, childId, terminalId, result);
+    return writeTransaction(this.db, 'complete_cascade_observation', () => {
+      if (
+        expectedRecheckGeneration !== undefined &&
+        this.cascadeStopRecheckGeneration(childId, terminalId) !==
+          expectedRecheckGeneration
+      )
+        return false;
+      return completeCascadeStop(this.db, childId, terminalId, result);
+    });
   }
 
   readCascadeInterruptResult(childId: string, terminalId: string) {
@@ -16792,7 +16853,14 @@ export class EventStore {
         for (const intent of pending) {
           if (intent.parentId !== threadId || intent.childId === threadId)
             continue;
-          if (intent.reason === 'unobserved')
+          if (
+            intent.reason === 'unobserved' ||
+            !this.db
+              .prepare(
+                "SELECT 1 FROM orchestration_cascade_stop_custody WHERE child_session_id = ? AND terminal_event_id = ? AND COALESCE(json_extract(evidence_json, '$.needsRecheck'), 0) = 0",
+              )
+              .get(intent.childId, intent.terminalId)
+          )
             throw new Error(
               'Station is still checking child cleanup. Try again shortly.',
             );
@@ -16843,7 +16911,7 @@ export class EventStore {
       for (const intent of this.pendingCascadeStops()) {
         if (
           (owned.has(intent.childId) || intent.parentId === threadId) &&
-          this.isCascadeSessionSettled(intent.childId)
+          this.isCascadeSessionSettled(intent.childId, true)
         )
           this.completeCascadeStop(intent.childId, intent.terminalId);
       }
@@ -16859,7 +16927,7 @@ export class EventStore {
         );
       for (const childId of owned) {
         if (childId === threadId || released.has(childId)) continue;
-        if (!this.isCascadeSessionSettled(childId))
+        if (!this.isCascadeSessionSettled(childId, true))
           throw new Error(
             'Cannot delete a Session before owned child cleanup is confirmed.',
           );

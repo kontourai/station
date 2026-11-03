@@ -1,6 +1,9 @@
 import {
+  DEVICE_ARTIFACT_UPLOAD_MAX_BYTES,
   DEVICE_AX_CLIENT_MAX_BYTES,
   type DeviceAccessibilityTree,
+  type DeviceAppAction,
+  type DeviceAppActionResult,
   type DeviceControlHeldBy,
   type DevicePermissionsReadBack,
   type DeviceToolAction,
@@ -10,7 +13,10 @@ import {
 } from '@kontourai/station-contracts/device-tools';
 import type { MobileDevicePlatform } from '@kontourai/station-contracts/mobile-device';
 import { getJson, mutateJson } from '@kontourai/station-sdk';
-import type { ApiRequestScope } from '@kontourai/station-sdk/client';
+import {
+  type ApiRequestScope,
+  mutateBinary,
+} from '@kontourai/station-sdk/client';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect } from 'react';
 
@@ -46,6 +52,7 @@ const KNOWN_FAILURES: readonly DeviceToolsFailure[] = [
   'tool-unavailable',
   'tool-failed',
   'app-not-running',
+  'postcondition-failed',
   'tool-timeout',
   'hub-unavailable',
   'unknown-host',
@@ -371,11 +378,59 @@ export function useDeviceToolAction(
   });
 }
 
+export function useDeviceAppAction(
+  scope: ApiRequestScope,
+  target: DeviceToolsTarget,
+  projectSlug: string | null,
+) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (
+      action: DeviceAppAction,
+    ): Promise<DeviceAppActionResult> => {
+      const value = await data(
+        await mutateJson(
+          `${scope.apiBase}${toolsPath(target, '/app-actions', {}, projectSlug)}`,
+          'POST',
+          { requestScope: scope, maxResponseBytes: 16 * 1024 },
+          action,
+        ),
+      );
+      if (
+        value.hostId !== target.hostId ||
+        value.platform !== target.platform ||
+        value.deviceId !== target.deviceId ||
+        value.appId !== action.appId ||
+        value.action !== action.type ||
+        value.observed !==
+          (action.type === 'terminate' ? 'not-running' : 'foreground') ||
+        typeof value.observedAt !== 'string'
+      )
+        throw new DeviceToolsRequestError(200, undefined);
+      return {
+        ...target,
+        appId: action.appId,
+        action: action.type,
+        observed: action.type === 'terminate' ? 'not-running' : 'foreground',
+        observedAt: value.observedAt,
+      };
+    },
+    onSuccess: () =>
+      queryClient.invalidateQueries({
+        queryKey: deviceToolsKey(scope, target, projectSlug),
+      }),
+  });
+}
+
 /** Plain-language copy for a refused or failed request. */
 export function describeDeviceToolsFailure(error: unknown): string {
   const code =
     error instanceof DeviceToolsRequestError ? error.code : undefined;
   switch (code) {
+    case 'postcondition-failed':
+      return 'The device state could not be confirmed.';
+    case 'app-not-running':
+      return 'The app is not running on this device.';
     case 'device-controlled-by-other':
       return error instanceof DeviceToolsRequestError &&
         error.heldBy === 'same-person-elsewhere'
@@ -411,4 +466,136 @@ export function describeDeviceToolsFailure(error: unknown): string {
     default:
       return 'The device could not do that. Try again.';
   }
+}
+
+export function useDeviceAppInstall(
+  scope: ApiRequestScope,
+  target: DeviceToolsTarget,
+  projectSlug: string | null,
+) {
+  return useMutation({
+    mutationFn: async (
+      source:
+        | { kind: 'workspace'; path: string }
+        | { kind: 'upload'; file: File },
+    ) => {
+      if (!projectSlug || !PROJECT_SLUG.test(projectSlug))
+        throw new Error('Select a Project first.');
+      const root = `${scope.apiBase}/api/mobile-devices/projects/${encodeURIComponent(projectSlug)}/device-artifacts`;
+      const opts = { requestScope: scope, maxResponseBytes: 16 * 1024 };
+      const response =
+        source.kind === 'workspace'
+          ? await mutateJson(`${root}/workspace`, 'POST', opts, {
+              relativePath: source.path,
+              platform: target.platform,
+            })
+          : source.file.size > 0 &&
+              source.file.size <= DEVICE_ARTIFACT_UPLOAD_MAX_BYTES
+            ? await mutateBinary(
+                `${root}/upload?${new URLSearchParams({ platform: target.platform })}`,
+                'POST',
+                opts,
+                source.file,
+              )
+            : (() => {
+                throw new Error('The app file is empty or too large.');
+              })();
+      const staged = await data(response);
+      if (
+        typeof staged.handle !== 'string' ||
+        !/^[0-9a-f-]{36}$/.test(staged.handle) ||
+        typeof staged.digest !== 'string' ||
+        !/^sha256:[0-9a-f]{64}$/.test(staged.digest) ||
+        staged.platform !== target.platform
+      )
+        throw new Error('The app could not be staged.');
+      const installed = await data(
+        await mutateJson(
+          `${scope.apiBase}${toolsPath(target, '/install', {}, projectSlug)}`,
+          'POST',
+          opts,
+          { artifactHandle: staged.handle },
+        ),
+      );
+      const metadata = installed.metadata as
+        | Record<string, unknown>
+        | undefined;
+      if (
+        installed.ok !== true ||
+        installed.digest !== staged.digest ||
+        !metadata ||
+        metadata.platform !== target.platform ||
+        typeof metadata.appId !== 'string' ||
+        typeof metadata.build !== 'string'
+      )
+        throw new Error('The installed app could not be verified.');
+      return {
+        appId: metadata.appId,
+        build: metadata.build,
+        digest: staged.digest,
+      };
+    },
+  });
+}
+
+export function useDeviceActionHistory(
+  scope: ApiRequestScope,
+  target: DeviceToolsTarget,
+  projectSlug: string | null,
+  enabled: boolean,
+) {
+  return useQuery({
+    queryKey: [...deviceToolsKey(scope, target, projectSlug), 'history'],
+    queryFn: async ({ signal }) => {
+      const value = await data(
+        await getJson(
+          `${scope.apiBase}${toolsPath(target, '/history', {}, projectSlug)}`,
+          { signal, requestScope: scope, maxResponseBytes: 32 * 1024 },
+        ),
+      );
+      const actions = [
+        'input',
+        'capture-to-task',
+        'screenshot',
+        'snapshot',
+        'logs',
+        'install-app',
+        'launch',
+        'terminate',
+        'open-url',
+        'record-to-task',
+        'tool-action',
+      ];
+      if (
+        typeof value.sessionId !== 'string' ||
+        !Array.isArray(value.entries) ||
+        value.entries.length > 100 ||
+        !value.entries.every((entry: unknown) => {
+          if (!entry || typeof entry !== 'object') return false;
+          const item = entry as Record<string, unknown>;
+          return (
+            typeof item.at === 'string' &&
+            actions.includes(String(item.action)) &&
+            ['agent', 'person'].includes(String(item.actor)) &&
+            ['success', 'failed', 'unknown'].includes(String(item.outcome))
+          );
+        })
+      )
+        throw new DeviceToolsRequestError(200, undefined);
+      return value.entries as Array<{
+        at: string;
+        action: string;
+        actor: string;
+        outcome: string;
+      }>;
+    },
+    enabled,
+    retry: false,
+  });
+}
+
+export function describeDeviceInstallFailure(error: unknown): string {
+  return error instanceof DeviceToolsRequestError && error.status === 404
+    ? 'This Station may not support app installation. Update Station and try again.'
+    : 'Check the device before retrying; the install outcome may be unknown.';
 }

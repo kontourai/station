@@ -12,6 +12,10 @@ entry point. Exports select TypeScript/TSX source and host components may also
 need CSS, React and a Query Client. See the [package README](../../packages/sdk/README.md)
 for source distribution and a checked authoring example.
 
+The React-free client exports `mutateBinary(url, method, options, blob)` for
+binary requests. Pass a captured `requestScope` to bind dispatch and response
+reads to that Station authority; the helper sends `application/octet-stream`.
+
 ## Terminal sessions
 
 `TerminalSessionStore` (from `@kontourai/station-sdk` and
@@ -56,6 +60,7 @@ server's reason), `connection-lost` and `protocol`. A refused ticket
 (`refused`, `credential-unavailable`) keeps the host's response as `cause`, a
 `StationHttpError` with its status, code and details, and uses its message. See the
 [socket protocol](api.md#terminal-socket-operator-transport).
+
 
 ## Terminal output sessions
 
@@ -1850,7 +1855,9 @@ launcher; the foreground thread-execution path has no portable admission
 in this slice, so a non-portable Project workspace resolved onto a paired
 Station is refused rather than run as an unrelated same-slug Project, and
 the thread-default environment picker preserves — but no longer newly
-offers — paired-Station selections.
+offers — paired-Station selections. The separate `paired-station-chats` preview
+starts a fresh foreground conversation with an explicitly selected receiver
+Project; it does not interpret a source workspace as portable execution authority.
 
 ### `delegateTask(apiBase, input, options?)` with files
 
@@ -2220,6 +2227,18 @@ instead of assuming the request completes when invalidation is scheduled.
 Re-exported from `@tanstack/react-query` for direct cache access.
 
 ---
+
+## Bridged chat requests
+
+For a chat bridged through the current host, the target API base and captured
+request authority remain distinct. `interruptOrchestrationTurn` and
+`resolveOrchestrationRequest` accept `requestScope`;
+`dispatchOrchestrationCommand` accepts it in its fourth options argument.
+The runtime-event-content hooks accept `apiBase` and `requestScope` in their
+input. `useChildWorkTranscriptQuery` also accepts `requestScope` in its input
+and the target API base as its second argument. Explicit target reads partition
+cache entries by that target and authority. These options grant no access and
+expose no outbound peer credential.
 
 ## API Functions
 
@@ -5359,10 +5378,11 @@ it is a metadata mismatch precondition, never an authorization grant or immutabl
 incarnation. Identically restored registrations can share the same key.
 
 The GET endpoint is `/api/knowledge/roots/:rootId/records/:id/source-observation`.
-It requires a currently authorized, middleware-bound home-possession credential,
+It requires a currently authorized, middleware-bound home-possession credential
+or owner-device standing,
 current route scope, single-operator deployment without tenant-scoped execution,
 and the exact registered personal `kit-default-store` root.
-Ordinary operator or paired remote credentials do not confer this capability.
+Ordinary operator or other paired remote credentials do not confer this capability.
 The constructor policy and route recheck authority before publishing the result.
 Other roots and credentials receive an identity-free restricted outcome.
 
@@ -5991,7 +6011,7 @@ The hook polls every 30 seconds while enabled and refreshes stale data on mount/
 HTTP 401/403 stops polling; explicit retry can reauthorize the read. A consumer
 must hide cached data on an error or lost authority, as the Profile operator
 panel does. A query key is not an operator grant. The server requires the bound
-home-possession local operator on a personal host; hosted deployments and tenant
+Station owner (home-possession or owner-device standing) on a personal host; hosted deployments and tenant
 workers are refused. Ordinary usage/rescan responses omit the person breakdown.
 
 The [monitoring guide](../guides/monitoring.md#operator-view-of-this-instance)
@@ -6459,7 +6479,8 @@ owner loads bounded body pages only after a turn is selected.
 `@kontourai/station-sdk/client/project-working-configuration` exposes bounded
 repository discovery and exact-revision apply. Pass the current host request
 scope and immutable Project identity. A 404/501 is unavailable/update guidance;
-a preview refusal does not enable the feature. Apply saves defaults only.
+an older host's preview refusal does not enable the feature. Working configuration
+needs no preview on current personal hosts. Apply saves defaults only.
 
 `@kontourai/station-sdk/client/learning-review` exports
 `fetchProjectLearning`, `fetchProjectLearningDetail`, `proposeProjectLearning`

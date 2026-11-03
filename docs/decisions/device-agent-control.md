@@ -37,7 +37,12 @@ publication also checks its fence after the observation completes. Input uses th
 not arbitrary shell commands. Captures retain the existing 8 MiB PNG bound.
 `device_logs` and `device_record_to_task` also claim this input lease. They
 are refused while a person controls the device and hold the lease until the
-operation finishes.
+operation finishes. `device_install_app`, `device_launch_app`,
+`device_terminate_app` and `device_open_url` use the same lease and host-qualified
+authority. Install takes a Project-relative workspace path or a staged upload
+handle; it reports an unknown effect when installation may have started but
+cannot be confirmed. Foreground observation after opening a URL is not proof
+that the application handled it.
 
 Pointer and key gestures must be complete within one `device_input` batch: send
 down/move/up or key down/up together. Unmatched down or up returns
