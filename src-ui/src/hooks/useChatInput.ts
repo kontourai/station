@@ -55,6 +55,7 @@ import {
 import {
   type SelectableModel,
   sanitizeRuntimeOptionsForModel,
+  updateModelRuntimeOption,
 } from '../utils/modelCapabilities';
 import { sanitizeChatInput } from '../utils/sanitizeChatInput';
 import { clearLastChosenModel } from './lastChosenModel';
@@ -1006,23 +1007,17 @@ export function useChatInput({
   const handleModelRuntimeOptionChange = useCallback(
     (key: string, value: string | number | boolean | undefined) => {
       if (!sessionId) return;
-      const providerOptions = {
-        ...(activeChatState?.requestedProviderOptions ??
-          activeChatState?.providerOptions ??
-          {}),
-      };
-      if (value === undefined) delete providerOptions[key];
-      else providerOptions[key] = value;
+      const current = activeChatsStore.getSnapshot()[sessionId];
+      const providerOptions = updateModelRuntimeOption(
+        current?.requestedProviderOptions ?? current?.providerOptions ?? {},
+        key,
+        value,
+      );
       updateChat(sessionId, {
         requestedProviderOptions: providerOptions,
       });
     },
-    [
-      activeChatState?.providerOptions,
-      activeChatState?.requestedProviderOptions,
-      sessionId,
-      updateChat,
-    ],
+    [sessionId, updateChat],
   );
 
   const handleApprovalModeChange = useCallback(

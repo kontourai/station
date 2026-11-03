@@ -1,5 +1,6 @@
 import type { ModelOption } from '@kontourai/station-contracts/tool';
 import { ModelRuntimeOptionFields } from '../../components/ModelRuntimeOptionFields';
+import { updateModelRuntimeOption } from '../../utils/modelCapabilities';
 import { DefaultModelField } from '../provider-settings/ProviderConnectionForm';
 import type { AgentEditorFormProps } from './types';
 
@@ -37,6 +38,7 @@ function hasKnobs(
       (capabilities.supportedEffortLevels?.length ?? 0) > 0) ||
     capabilities?.supportsAdaptiveThinking === true ||
     capabilities?.supportsFastMode === true ||
+    (capabilities?.serviceTiers?.length ?? 0) > 0 ||
     capabilities?.supportsAutoMode === true
   );
 }
@@ -93,14 +95,11 @@ export function AgentEditorModelOptionsSection({
             ...current,
             execution: {
               ...current.execution,
-              runtimeOptions:
-                value === undefined
-                  ? Object.fromEntries(
-                      Object.entries(current.execution.runtimeOptions).filter(
-                        ([entryKey]) => entryKey !== key,
-                      ),
-                    )
-                  : { ...current.execution.runtimeOptions, [key]: value },
+              runtimeOptions: updateModelRuntimeOption(
+                current.execution.runtimeOptions,
+                key,
+                value,
+              ),
             },
           }))
         }

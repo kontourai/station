@@ -306,12 +306,13 @@ describe('PROVIDER_MODEL_OPTION_SUPPORT', () => {
     ]);
   });
 
-  test('codex supports approvalMode, effort (and its reasoningEffort alias), and fastMode', () => {
+  test('codex supports approvalMode, effort, service tiers and their legacy aliases', () => {
     expect(PROVIDER_MODEL_OPTION_SUPPORT.codex).toEqual([
       'approvalMode',
       'effort',
       'reasoningEffort',
       'fastMode',
+      'serviceTier',
     ]);
   });
 

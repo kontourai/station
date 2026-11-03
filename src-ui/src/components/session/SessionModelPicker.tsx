@@ -6,6 +6,7 @@ import {
   useRef,
   useState,
 } from 'react';
+import { useIsMobile } from '../../hooks/useIsMobile';
 import {
   updateModelPickerPreferences,
   useModelPickerPreferences,
@@ -105,6 +106,8 @@ export function SessionModelPicker({
   const [query, setQuery] = useState('');
   const [providerFilter, setProviderFilter] = useState('all');
   const [capabilityFilters, setCapabilityFilters] = useState<string[]>([]);
+  const isMobile = useIsMobile();
+  const [mobileView, setMobileView] = useState<'models' | 'settings'>('models');
   const preferences = useModelPickerPreferences();
   const favoriteKeys = useMemo(
     () => new Set(preferences.favorites),
@@ -126,6 +129,7 @@ export function SessionModelPicker({
       capabilities.supportedEffortLevels?.length) ||
       capabilities?.supportsAdaptiveThinking ||
       capabilities?.supportsFastMode ||
+      capabilities?.serviceTiers?.length ||
       capabilities?.supportsAutoMode,
   );
   const clearFilters = () => {
@@ -203,7 +207,10 @@ export function SessionModelPicker({
         id: 'fast',
         label: 'Fast',
         matches: (model: SelectableModel) =>
-          model.capabilities?.supportsFastMode === true,
+          model.capabilities?.supportsFastMode === true ||
+          model.capabilities?.serviceTiers?.some((tier) =>
+            ['fast', 'priority', 'ultrafast'].includes(tier.id),
+          ) === true,
       },
     ],
     [],
@@ -420,166 +427,199 @@ export function SessionModelPicker({
             />
           )}
           {models.length > 0 ? (
-            <div className="session-model-picker__workspace">
-              <nav
-                className="session-model-picker__navigation"
-                aria-label="Model collections"
-              >
-                {navigationChoices.map((choice) => (
+            <>
+              {isMobile && hasRuntimeOptions && (
+                <fieldset
+                  className="session-model-picker__view-switch"
+                  aria-label="Model picker view"
+                >
                   <button
                     type="button"
-                    key={choice.id}
-                    aria-pressed={providerFilter === choice.id}
-                    disabled={!choice.available}
-                    title={choice.detail}
-                    onClick={() => {
-                      setProviderFilter(choice.id);
-                      setQuery('');
-                    }}
+                    aria-pressed={mobileView === 'models'}
+                    onClick={() => setMobileView('models')}
                   >
-                    {choice.icon}
-                    <span>{choice.name}</span>{' '}
-                    {!choice.available && (
-                      <small>{choice.detail ?? 'Unavailable'}</small>
-                    )}
+                    Models
                   </button>
-                ))}
-              </nav>
-              <div className="session-model-picker__catalog">
-                <div className="session-model-picker__search-field">
-                  <SearchGlyph />
-                  <input
-                    ref={searchRef}
-                    aria-label="Search models"
-                    className="session-model-picker__search"
-                    type="search"
-                    placeholder="Search models…"
-                    value={query}
-                    onChange={(event) => {
-                      setQuery(event.target.value);
-                      setProviderFilter('all');
-                    }}
-                    onKeyDown={(event) => {
-                      if (event.key === 'ArrowDown') {
-                        const first = event.currentTarget
-                          .closest('[role="dialog"]')
-                          ?.querySelector<HTMLButtonElement>(
-                            '[role="option"]:not(:disabled)',
-                          );
-                        if (first) {
-                          event.preventDefault();
-                          first.focus();
-                        }
-                      }
-                    }}
-                  />
-                </div>
-                {availableFilters.length > 0 && (
-                  <fieldset
-                    className="session-model-picker__filters"
-                    aria-label="Capabilities"
+                  <button
+                    type="button"
+                    aria-pressed={mobileView === 'settings'}
+                    onClick={() => setMobileView('settings')}
                   >
-                    {availableFilters.map((filter) => (
-                      <button
-                        type="button"
-                        key={filter.id}
-                        aria-pressed={capabilityFilters.includes(filter.id)}
-                        onClick={() =>
-                          setCapabilityFilters((current) =>
-                            current.includes(filter.id)
-                              ? current.filter((id) => id !== filter.id)
-                              : [...current, filter.id],
-                          )
-                        }
-                      >
-                        {filter.label}
-                      </button>
-                    ))}
-                  </fieldset>
-                )}
-                <div className="session-model-picker__results-heading">
-                  <span>
-                    {query.trim()
-                      ? 'Search results'
-                      : (navigationChoices.find(
-                          (choice) => choice.id === providerFilter,
-                        )?.name ?? 'Models')}
-                  </span>
-                  <span role="status">
-                    {visibleModels.length}{' '}
-                    {visibleModels.length === 1 ? 'model' : 'models'}
-                  </span>
-                </div>
-                <div
-                  className="session-model-picker__models"
-                  role="listbox"
-                  aria-label="Models"
-                >
-                  {modelSections.map((section) =>
-                    section.kind === 'model' ? (
-                      // A fieldset IS role="group", which is what a listbox
-                      // accepts around its options; the legend names the model
-                      // whose routes these are.
-                      <fieldset
-                        key={`model:${section.canonicalId}`}
-                        className="session-model-picker__model-group"
-                      >
-                        <legend className="session-model-picker__model-group-name">
-                          {section.displayName}
-                        </legend>
-                        {section.routes.map(renderModelRow)}
-                      </fieldset>
-                    ) : (
-                      renderModelRow(section.model)
-                    ),
-                  )}
-                  {visibleModels.length === 0 && (
-                    <FilteredEmpty
-                      query={query}
-                      noun="models"
-                      onClear={clearFilters}
-                      variant="compact"
-                      title={emptyTitle}
-                      description={
-                        emptyFavorites && !query.trim()
-                          ? 'Star a model to keep it here, or clear filters to browse.'
-                          : 'Clear filters to see all models.'
-                      }
-                    />
-                  )}
-                </div>
-              </div>
-              {selectedModel && (
-                <aside
-                  className="session-model-picker__settings"
-                  aria-label="Selected model settings"
-                >
-                  <div className="session-model-picker__selected-heading">
-                    <ModelIcon model={selectedModel} size={28} />
-                    <div>
-                      <small>Current model</small>
-                      <strong>{selectedModel.name}</strong>
-                    </div>
-                  </div>
-                  {hasRuntimeOptions ? (
-                    <ModelRuntimeOptionFields
-                      idPrefix="session-model-picker"
-                      className="session-model-picker__effort"
-                      effortPresentation="choices"
-                      capabilities={capabilities}
-                      runtimeOptions={runtimeOptions}
-                      disabled={selectedModel.available === false}
-                      onRuntimeOptionChange={onRuntimeOptionChange}
-                    />
-                  ) : (
-                    <p className="session-model-picker__settings-empty">
-                      <BrainGlyph />
-                      No adjustable settings reported.
-                    </p>
-                  )}
-                </aside>
+                    Settings
+                  </button>
+                </fieldset>
               )}
-            </div>
+              <div className="session-model-picker__workspace">
+                {(!isMobile ||
+                  mobileView === 'models' ||
+                  !hasRuntimeOptions) && (
+                  <>
+                    <nav
+                      className="session-model-picker__navigation"
+                      aria-label="Model collections"
+                    >
+                      {navigationChoices.map((choice) => (
+                        <button
+                          type="button"
+                          key={choice.id}
+                          aria-pressed={providerFilter === choice.id}
+                          disabled={!choice.available}
+                          title={choice.detail}
+                          onClick={() => {
+                            setProviderFilter(choice.id);
+                            setQuery('');
+                          }}
+                        >
+                          {choice.icon}
+                          <span>{choice.name}</span>{' '}
+                          {!choice.available && (
+                            <small>{choice.detail ?? 'Unavailable'}</small>
+                          )}
+                        </button>
+                      ))}
+                    </nav>
+                    <div className="session-model-picker__catalog">
+                      <div className="session-model-picker__search-field">
+                        <SearchGlyph />
+                        <input
+                          ref={searchRef}
+                          aria-label="Search models"
+                          className="session-model-picker__search"
+                          type="search"
+                          placeholder="Search models…"
+                          value={query}
+                          onChange={(event) => {
+                            setQuery(event.target.value);
+                            setProviderFilter('all');
+                          }}
+                          onKeyDown={(event) => {
+                            if (event.key === 'ArrowDown') {
+                              const first = event.currentTarget
+                                .closest('[role="dialog"]')
+                                ?.querySelector<HTMLButtonElement>(
+                                  '[role="option"]:not(:disabled)',
+                                );
+                              if (first) {
+                                event.preventDefault();
+                                first.focus();
+                              }
+                            }
+                          }}
+                        />
+                      </div>
+                      {availableFilters.length > 0 && (
+                        <fieldset
+                          className="session-model-picker__filters"
+                          aria-label="Capabilities"
+                        >
+                          {availableFilters.map((filter) => (
+                            <button
+                              type="button"
+                              key={filter.id}
+                              aria-pressed={capabilityFilters.includes(
+                                filter.id,
+                              )}
+                              onClick={() =>
+                                setCapabilityFilters((current) =>
+                                  current.includes(filter.id)
+                                    ? current.filter((id) => id !== filter.id)
+                                    : [...current, filter.id],
+                                )
+                              }
+                            >
+                              {filter.label}
+                            </button>
+                          ))}
+                        </fieldset>
+                      )}
+                      <div className="session-model-picker__results-heading">
+                        <span>
+                          {query.trim()
+                            ? 'Search results'
+                            : (navigationChoices.find(
+                                (choice) => choice.id === providerFilter,
+                              )?.name ?? 'Models')}
+                        </span>
+                        <span role="status">
+                          {visibleModels.length}{' '}
+                          {visibleModels.length === 1 ? 'model' : 'models'}
+                        </span>
+                      </div>
+                      <div
+                        className="session-model-picker__models"
+                        role="listbox"
+                        aria-label="Models"
+                      >
+                        {modelSections.map((section) =>
+                          section.kind === 'model' ? (
+                            // A fieldset IS role="group", which is what a listbox
+                            // accepts around its options; the legend names the model
+                            // whose routes these are.
+                            <fieldset
+                              key={`model:${section.canonicalId}`}
+                              className="session-model-picker__model-group"
+                            >
+                              <legend className="session-model-picker__model-group-name">
+                                {section.displayName}
+                              </legend>
+                              {section.routes.map(renderModelRow)}
+                            </fieldset>
+                          ) : (
+                            renderModelRow(section.model)
+                          ),
+                        )}
+                        {visibleModels.length === 0 && (
+                          <FilteredEmpty
+                            query={query}
+                            noun="models"
+                            onClear={clearFilters}
+                            variant="compact"
+                            title={emptyTitle}
+                            description={
+                              emptyFavorites && !query.trim()
+                                ? 'Star a model to keep it here, or clear filters to browse.'
+                                : 'Clear filters to see all models.'
+                            }
+                          />
+                        )}
+                      </div>
+                    </div>
+                  </>
+                )}
+                {selectedModel &&
+                  (!isMobile ||
+                    (mobileView === 'settings' && hasRuntimeOptions)) && (
+                    <aside
+                      className="session-model-picker__settings"
+                      aria-label="Selected model settings"
+                    >
+                      <div className="session-model-picker__selected-heading">
+                        <ModelIcon model={selectedModel} size={28} />
+                        <div>
+                          <small>Current model</small>
+                          <strong>{selectedModel.name}</strong>
+                        </div>
+                      </div>
+                      {hasRuntimeOptions ? (
+                        <ModelRuntimeOptionFields
+                          idPrefix="session-model-picker"
+                          className="session-model-picker__effort"
+                          effortPresentation="choices"
+                          capabilities={capabilities}
+                          runtimeOptions={runtimeOptions}
+                          disabled={selectedModel.available === false}
+                          onRuntimeOptionChange={onRuntimeOptionChange}
+                        />
+                      ) : (
+                        <p className="session-model-picker__settings-empty">
+                          <BrainGlyph />
+                          No adjustable settings reported.
+                        </p>
+                      )}
+                    </aside>
+                  )}
+              </div>
+            </>
           ) : catalogNotice ? null : (
             <ModelCatalogUnavailableState stale={stale} />
           )}

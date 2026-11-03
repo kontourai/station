@@ -175,7 +175,9 @@ model**, and one with neither shows no model control. A row that cannot start
 keeps its Model control, so a choice made before its repair carries through it.
 The Model picker offers search, Favorites, Recent and provider collections.
 Filter by capability and adjust the current model's supported settings beside
-the list; on phones, settings follow the list.
+the list; on phones, **Models** and **Settings** are separate views. Effort and
+speed remain separate controls. Speed uses reported tier ids and names, so a
+runtime can offer Standard, Fast, Ultrafast or another supported tier.
 Reviewed canonical model identities still own grouping across provider routes;
 similar names do not establish equivalence.
 

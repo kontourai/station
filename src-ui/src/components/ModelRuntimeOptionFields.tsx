@@ -52,6 +52,17 @@ export function ModelRuntimeOptionFields({
   ) => void;
 }) {
   const effortGroup = useId();
+  const tierGroup = useId();
+  const serviceTiers = capabilities?.serviceTiers ?? [];
+  const selectedTier =
+    serviceTiers.find((tier) => tier.id === runtimeOptions.serviceTier) ??
+    (runtimeOptions.serviceTier === undefined &&
+    runtimeOptions.fastMode === true
+      ? serviceTiers.find(
+          (tier) => tier.id === 'fast' || tier.id === 'priority',
+        )
+      : undefined);
+  const tierDescription = selectedTier?.description;
   const effortOptions =
     capabilities?.supportsEffort === true
       ? (capabilities.supportedEffortLevels ?? [])
@@ -61,11 +72,15 @@ export function ModelRuntimeOptionFields({
     effortOptions.includes(runtimeOptions.effort)
       ? runtimeOptions.effort
       : '';
+  const effortName = (value: string) => {
+    const label = capabilities?.effortLabels?.[value];
+    return label && label.length <= 48 ? label : effortLabel(value);
+  };
   return (
     <>
       {effortOptions.length > 0 && effortPresentation === 'choices' && (
         <fieldset
-          className={`${className} model-runtime-effort-choices`}
+          className={`${className} model-runtime-choices`}
           disabled={disabled}
         >
           <legend>Thinking effort</legend>
@@ -80,11 +95,8 @@ export function ModelRuntimeOptionFields({
                   onRuntimeOptionChange('effort', option || undefined)
                 }
               />
-              <span>
-                {option
-                  ? (capabilities?.effortLabels?.[option] ??
-                    effortLabel(option))
-                  : 'Use model default'}
+              <span title={capabilities?.effortLabels?.[option]}>
+                {option ? effortName(option) : 'Use model default'}
               </span>
             </label>
           ))}
@@ -104,8 +116,12 @@ export function ModelRuntimeOptionFields({
           >
             <option value="">Use model default</option>
             {effortOptions.map((option) => (
-              <option key={option} value={option}>
-                {capabilities?.effortLabels?.[option] ?? effortLabel(option)}
+              <option
+                key={option}
+                value={option}
+                title={capabilities?.effortLabels?.[option]}
+              >
+                {effortName(option)}
               </option>
             ))}
           </select>
@@ -124,7 +140,65 @@ export function ModelRuntimeOptionFields({
           />
         </div>
       )}
-      {capabilities?.supportsFastMode === true && (
+      {serviceTiers.length > 0 && effortPresentation === 'choices' && (
+        <fieldset
+          className={`${className} model-runtime-choices model-runtime-speed-choices`}
+          disabled={disabled}
+          aria-describedby={
+            tierDescription ? `${tierGroup}-description` : undefined
+          }
+        >
+          <legend>Speed</legend>
+          {[{ id: '', name: 'Model default' }, ...serviceTiers].map((tier) => (
+            <label key={tier.id}>
+              <input
+                type="radio"
+                name={tierGroup}
+                value={tier.id}
+                checked={(selectedTier?.id ?? '') === tier.id}
+                onChange={() =>
+                  onRuntimeOptionChange('serviceTier', tier.id || undefined)
+                }
+              />
+              <span>{tier.name}</span>
+            </label>
+          ))}
+          {tierDescription && (
+            <p
+              id={`${tierGroup}-description`}
+              className="model-runtime-tier-description"
+            >
+              {tierDescription}
+            </p>
+          )}
+        </fieldset>
+      )}
+      {serviceTiers.length > 0 && effortPresentation === 'select' && (
+        <div className={className}>
+          <label htmlFor={`${tierGroup}-select`}>Speed</label>
+          <select
+            id={`${tierGroup}-select`}
+            className="editor-select"
+            disabled={disabled}
+            value={selectedTier?.id ?? ''}
+            title={tierDescription}
+            onChange={(event) =>
+              onRuntimeOptionChange(
+                'serviceTier',
+                event.target.value || undefined,
+              )
+            }
+          >
+            <option value="">Model default</option>
+            {serviceTiers.map((tier) => (
+              <option key={tier.id} value={tier.id}>
+                {tier.name}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+      {serviceTiers.length === 0 && capabilities?.supportsFastMode === true && (
         <div className={className}>
           <label htmlFor={`${idPrefix}-fast-mode`}>
             {capabilities.fastModeLabel ?? 'Fast mode'}

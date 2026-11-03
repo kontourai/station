@@ -1,12 +1,12 @@
 import type { ApprovalMode } from '@kontourai/station-contracts/provider';
 
-type CodexReasoningEffort = 'xhigh' | 'high' | 'medium' | 'low';
-
 export interface CodexModelOptions {
   /** Provider-neutral composer key; reasoningEffort remains a prior alias. */
-  effort?: CodexReasoningEffort;
-  reasoningEffort?: CodexReasoningEffort;
+  effort?: string;
+  reasoningEffort?: string;
   fastMode?: boolean;
+  /** Provider-reported tier id; takes precedence over the legacy Fast flag. */
+  serviceTier?: string;
   /** Session-level approval posture override (archive#727). See ApprovalMode. */
   approvalMode?: ApprovalMode;
 }

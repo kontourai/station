@@ -67,6 +67,7 @@ import {
   type NewChatModelChoice,
   resolveModelChoice,
   sanitizeRuntimeOptionsForModel,
+  updateModelRuntimeOption,
 } from '../../utils/modelCapabilities';
 import {
   type AgentFixRoute,
@@ -2394,10 +2395,11 @@ export function NewChatModal({
                     ? start.setRuntimeOption(modelPickerAgent, key, value)
                     : updateModelChoice(modelPickerAgent, (current) => ({
                         ...current,
-                        providerOptions: {
-                          ...current.providerOptions,
-                          [key]: value,
-                        },
+                        providerOptions: updateModelRuntimeOption(
+                          current.providerOptions,
+                          key,
+                          value,
+                        ),
                       }))
                 }
                 onClose={() => setModelPickerAgent(null)}

@@ -410,6 +410,41 @@ function normalizeModelCapabilities(
     capabilities.fastModeLabel = candidate.fastModeLabel;
     reported = true;
   }
+  if (Array.isArray(candidate.serviceTiers)) {
+    const tiers: NonNullable<ModelOptionCapabilities['serviceTiers']> = [];
+    for (const tier of candidate.serviceTiers) {
+      if (
+        !tier ||
+        typeof tier !== 'object' ||
+        typeof tier.id !== 'string' ||
+        !tier.id.trim() ||
+        tier.id.length > MODEL_OPTION_TEXT_MAX_LENGTH ||
+        typeof tier.name !== 'string' ||
+        !tier.name.trim() ||
+        tier.name.length > MODEL_OPTION_TEXT_MAX_LENGTH ||
+        tiers.some((entry) => entry.id === tier.id)
+      )
+        continue;
+      tiers.push({
+        id: tier.id,
+        name: tier.name,
+        ...(typeof tier.description === 'string' &&
+        tier.description.length <= MODEL_OPTION_TEXT_MAX_LENGTH
+          ? { description: tier.description }
+          : {}),
+      });
+      if (tiers.length === MODEL_OPTION_CAPABILITY_VALUE_MAX_ENTRIES) break;
+    }
+    if (tiers.length) {
+      capabilities.serviceTiers = tiers;
+      if (
+        typeof candidate.defaultServiceTier === 'string' &&
+        tiers.some((tier) => tier.id === candidate.defaultServiceTier)
+      )
+        capabilities.defaultServiceTier = candidate.defaultServiceTier;
+      reported = true;
+    }
+  }
   return reported ? capabilities : undefined;
 }
 

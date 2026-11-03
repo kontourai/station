@@ -276,7 +276,7 @@ describe('NewChatModal engine chips', () => {
     expect(await screen.findByPlaceholderText('Search models…')).toBeTruthy();
     expect(
       screen
-        .getByRole('button', { name: 'All models', exact: true })
+        .getByRole('button', { name: 'All models' })
         .getAttribute('aria-pressed'),
     ).toBe('true');
     expect(
@@ -285,9 +285,7 @@ describe('NewChatModal engine chips', () => {
         .getAttribute('aria-selected'),
     ).toBe('true');
     expect(screen.queryByRole('group', { name: 'Thinking effort' })).toBeNull();
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Provider one', exact: true }),
-    );
+    fireEvent.click(screen.getByRole('button', { name: 'Provider one' }));
     fireEvent.click(
       screen.getByRole('option', { name: /Shared model · Provider one/ }),
     );
@@ -310,9 +308,7 @@ describe('NewChatModal engine chips', () => {
     // An effort change keeps the picker open.
     fireEvent.click(screen.getByRole('radio', { name: 'High' }));
     expect(screen.getByRole('dialog', { name: 'Model' })).toBeTruthy();
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Provider two', exact: true }),
-    );
+    fireEvent.click(screen.getByRole('button', { name: 'Provider two' }));
     fireEvent.click(
       screen.getByRole('option', { name: /Shared model · Provider two/ }),
     );
@@ -351,9 +347,7 @@ describe('NewChatModal engine chips', () => {
       screen.getByRole('button', { name: /^Model: historical-model/ }),
     );
     await screen.findByRole('dialog', { name: 'Model' });
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Provider one', exact: true }),
-    );
+    fireEvent.click(screen.getByRole('button', { name: 'Provider one' }));
     fireEvent.click(
       screen.getByRole('option', { name: /Shared model · Provider one/ }),
     );

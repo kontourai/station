@@ -1380,8 +1380,11 @@ connections without a default are ambiguous; readiness does not silently choose
 one. See [Agent configuration](agent-configuration.md#agent-configuration).
 
 Search models or browse Favorites, Recent and provider collections. Filter by
-capability and adjust the current model's supported settings beside the list,
-or below it on phones. **Use model default** clears the thinking-effort override.
+capability and adjust settings beside the list; on phones, switch between
+**Models** and **Settings**. Thinking effort and **Speed** are independent.
+Codex speed choices follow its catalog, including Ultrafast when reported.
+**Standard** selects standard routing; **Model default** clears the speed
+override, and **Use model default** clears the thinking-effort override.
 Choosing a model closes the picker; runtime changes keep it open. Connections
 needing setup stay visible but cannot be selected.
 

@@ -2,6 +2,12 @@
 
 Canonical cross-package contract ownership for Station.
 
+`ModelOptionCapabilities` in [`tool.ts`](../../packages/contracts/src/tool.ts)
+carries optional `serviceTiers` (exact ids, names and descriptions) and a
+catalog `defaultServiceTier`. Consumers show only reported choices. Codex's
+`serviceTier` option takes precedence over the legacy `fastMode` flag; other
+providers retain their existing controls.
+
 Use `@kontourai/station-contracts/*` when you need stable API/domain shapes shared across `src-server`, `packages/sdk`, `packages/cli`, plugins, or tests. New code should import these modules directly instead of reaching through `@kontourai/station-shared`.
 
 `LayoutPanelsRecord` holds device-local side/lower-panel state by layout host

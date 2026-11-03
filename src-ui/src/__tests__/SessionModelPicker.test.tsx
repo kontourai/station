@@ -208,9 +208,7 @@ describe('SessionModelPicker', () => {
 
   test('recovers from an empty collection and search without losing keyboard access', () => {
     renderPicker();
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Favorites', exact: true }),
-    );
+    fireEvent.click(screen.getByRole('button', { name: 'Favorites' }));
     expect(screen.getByText('No favorite models yet.')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Clear filter' }));
     const search = screen.getByRole('searchbox', { name: 'Search models' });
@@ -298,9 +296,7 @@ describe('SessionModelPicker', () => {
       },
     });
     expect(props.onRuntimeOptionChange).toHaveBeenCalledWith('effort', 'xhigh');
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Recent', exact: true }),
-    );
+    fireEvent.click(screen.getByRole('button', { name: 'Recent' }));
     expect(
       within(screen.getByRole('listbox', { name: 'Models' })).getAllByRole(
         'option',
@@ -325,6 +321,118 @@ describe('SessionModelPicker', () => {
     });
 
     expect(screen.queryByRole('group', { name: 'Thinking effort' })).toBeNull();
+  });
+
+  test('keeps long effort descriptions out of the choice label', () => {
+    renderPicker({
+      models: [
+        {
+          id: 'model',
+          name: 'Model',
+          capabilities: {
+            supportsEffort: true,
+            supportedEffortLevels: ['high'],
+            effortLabels: {
+              high: 'Spend more time reasoning through complex tasks before producing a response.',
+            },
+          },
+        },
+      ],
+      currentModel: 'model',
+    });
+    expect(screen.getByRole('radio', { name: 'High' })).toBeTruthy();
+    expect(
+      screen.queryByText(
+        'Spend more time reasoning through complex tasks before producing a response.',
+      ),
+    ).toBeNull();
+  });
+
+  test('offers reported speed tiers independently of thinking effort and the legacy Fast toggle', () => {
+    const props = renderPicker({
+      models: [
+        {
+          id: 'model',
+          name: 'Model',
+          capabilities: {
+            supportsEffort: true,
+            supportedEffortLevels: ['low', 'high'],
+            supportsFastMode: true,
+            serviceTiers: [
+              { id: 'default', name: 'Standard' },
+              { id: 'priority', name: 'Fast' },
+              {
+                id: 'ultrafast',
+                name: 'Ultrafast',
+                description: 'Higher cost, lower latency.',
+              },
+              { id: 'flex', name: 'Economy' },
+            ],
+          },
+        },
+      ],
+      currentModel: 'model',
+      runtimeOptions: { effort: 'high', fastMode: true },
+    });
+    const speed = within(screen.getByRole('group', { name: 'Speed' }));
+    expect(
+      (speed.getByRole('radio', { name: 'Fast' }) as HTMLInputElement).checked,
+    ).toBe(true);
+    expect(
+      (screen.getByRole('radio', { name: 'High' }) as HTMLInputElement).checked,
+    ).toBe(true);
+    expect(screen.queryByRole('checkbox', { name: /Fast/ })).toBeNull();
+    fireEvent.click(speed.getByRole('radio', { name: 'Ultrafast' }));
+    expect(props.onRuntimeOptionChange).toHaveBeenLastCalledWith(
+      'serviceTier',
+      'ultrafast',
+    );
+    fireEvent.click(speed.getByRole('radio', { name: 'Economy' }));
+    expect(props.onRuntimeOptionChange).toHaveBeenLastCalledWith(
+      'serviceTier',
+      'flex',
+    );
+    fireEvent.click(speed.getByRole('radio', { name: 'Standard' }));
+    expect(props.onRuntimeOptionChange).toHaveBeenLastCalledWith(
+      'serviceTier',
+      'default',
+    );
+    fireEvent.click(speed.getByRole('radio', { name: 'Model default' }));
+    expect(props.onRuntimeOptionChange).toHaveBeenLastCalledWith(
+      'serviceTier',
+      undefined,
+    );
+  });
+
+  test('gives mobile model browsing and settings separate views while preserving search', () => {
+    Object.defineProperty(window, 'matchMedia', {
+      configurable: true,
+      value: vi.fn().mockReturnValue({
+        matches: true,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      }),
+    });
+    const props = renderPicker();
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Search models' }), {
+      target: { value: '5.5' },
+    });
+    expect(screen.queryByRole('group', { name: 'Thinking effort' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
+    expect(screen.queryByRole('searchbox')).toBeNull();
+    expect(screen.getByRole('group', { name: 'Thinking effort' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('radio', { name: 'Highest' }));
+    expect(props.onRuntimeOptionChange).toHaveBeenCalledWith('effort', 'xhigh');
+    expect(props.onClose).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Models' }));
+    expect(
+      (
+        screen.getByRole('searchbox', {
+          name: 'Search models',
+        }) as HTMLInputElement
+      ).value,
+    ).toBe('5.5');
+    expect(screen.getAllByRole('option')).toHaveLength(1);
   });
 
   test('renders one provider-reported Auto mode control', () => {
@@ -519,9 +627,7 @@ describe('SessionModelPicker', () => {
     expect(
       screen.getByRole('button', { name: 'LiteLLM · Local Setup required' }),
     ).toHaveProperty('disabled', true);
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Bedrock · Prod', exact: true }),
-    );
+    fireEvent.click(screen.getByRole('button', { name: 'Bedrock · Prod' }));
     const bedrockModel = screen.getByRole('option', {
       name: /GPT-5.6Bedrock · Prod/,
     });
@@ -556,9 +662,7 @@ describe('SessionModelPicker', () => {
       ],
     });
     expect(screen.getByText(/200k/)).toBeTruthy();
-    expect(
-      screen.getByRole('button', { name: 'Vision', exact: true }),
-    ).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Vision' })).toBeTruthy();
     expect(screen.getByRole('option', { name: /Plain/ })).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Vision' }));
     expect(screen.getByRole('option', { name: /Reasoner/ })).toBeTruthy();
