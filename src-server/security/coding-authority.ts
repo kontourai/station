@@ -15,6 +15,7 @@ import { isAgentOriginatedRequest } from '../runtime/mcp/station-control-caller.
 import {
   getRuntimeAuthenticatedRequestPrincipal,
   isBoundRuntimeLocalOperator,
+  isBoundRuntimeOwner,
 } from './runtime-request-security.js';
 
 /**
@@ -48,17 +49,30 @@ export function requestMayBeAnAgent(request: Request): boolean {
  * operator credential and for a credential minted by proving possession of
  * this Station's home (the desktop app's local grant, the host browser's
  * bootstrap, Station's own internal token), which the auth boundary binds
- * once per request. A paired device, a LAN browser admitted through an
- * access request, and a collaborator's browser are all NOT in person, and
- * neither is a request no auth boundary saw.
+ * once per request. Used where WHO granted something must be recorded
+ * ({@link fullAccessGrantFor}).
  */
-function isOperatorInPerson(request: Request): boolean {
+function isOperatorAtHost(request: Request): boolean {
   const principal = getRuntimeAuthenticatedRequestPrincipal(request);
   if (!principal) return false;
   return (
     principal.authority === 'operator-credential' ||
     isBoundRuntimeLocalOperator(request)
   );
+}
+
+/**
+ * The Station owner acting: the operator in person ({@link isOperatorAtHost})
+ * or, on a personal Station, one of the owner's own paired devices
+ * (owner-device standing, owner decision 2026-11-02; bound once by the auth
+ * boundary as {@link isBoundRuntimeOwner}). A LAN browser admitted through
+ * an access request with a narrower grant, a device tied to another person,
+ * a delegation, and a request no auth boundary saw are all NOT the owner.
+ */
+function isOperatorInPerson(request: Request): boolean {
+  const principal = getRuntimeAuthenticatedRequestPrincipal(request);
+  if (!principal) return false;
+  return isOperatorAtHost(request) || isBoundRuntimeOwner(request);
 }
 
 /**
@@ -70,6 +84,16 @@ function isOperatorInPerson(request: Request): boolean {
  */
 export function isOperatorInPersonNotAgent(request: Request): boolean {
   return isOperatorInPerson(request) && !actsForAnAgent(request);
+}
+
+/**
+ * The operator at the host itself (operator credential or home-possession),
+ * never an owner device and never an agent. For capacity the host must keep
+ * for itself, such as the terminal gateway's reserved slots (#3994): the
+ * owner's other devices must not be able to crowd out the host.
+ */
+export function isOperatorAtHostNotAgent(request: Request): boolean {
+  return isOperatorAtHost(request) && !actsForAnAgent(request);
 }
 
 /** The paired-device facts {@link isOperatorsOwnDevice} re-reads per call. */
@@ -280,8 +304,9 @@ export function fullAccessGrantFor(
   if (!mayGrantFullAccess(request, grantedScope)) return null;
   // #1796: a grant always names its grantor. A caller that may grant full
   // access but is neither the operator in person nor a paired device is
-  // refused rather than granted anonymously: nothing could revoke it.
-  if (isOperatorInPerson(request))
+  // refused rather than granted anonymously: nothing could revoke it. An
+  // owner device names itself, so revoking it still resets what it granted.
+  if (isOperatorAtHost(request))
     return new FullAccessGrantProof({ kind: 'operator' });
   const deviceId = getRuntimeAuthenticatedRequestPrincipal(request)?.deviceId;
   return deviceId

@@ -2,6 +2,15 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { HttpBindings } from '@hono/node-server';
 import { pairingScopePresetString } from '@kontourai/station-contracts';
+
+/**
+ * A paired device that may operate but holds no host shell, so it never has
+ * owner-device standing (2026-11-02): the ungranted paired caller these
+ * tests need. A Standard device the owner paired carries `terminal:operate`
+ * and acts as the owner.
+ */
+const OPERATE_ONLY = 'orchestration:read orchestration:operate';
+
 import { Hono } from 'hono';
 import { afterEach, expect, test, vi } from 'vitest';
 import { withOperatorPrincipal } from '../../../__test-utils__/operator-principal.js';
@@ -42,7 +51,7 @@ test.each([
   { tier: undefined, legacy: 'true', dnt: '' },
   { tier: 'lite', legacy: 'true', dnt: '1' },
 ])(
-  'a real STANDARD paired device repeats legacy Off with nightly service env (tier=$tier legacy=$legacy DNT=$dnt)',
+  'a real ungranted paired device repeats legacy Off with nightly service env (tier=$tier legacy=$legacy DNT=$dnt)',
   async ({ tier, legacy, dnt }) => {
     vi.stubEnv('STATION_CHANNEL', 'nightly');
     vi.stubEnv('STATION_SERVICE_MANAGED', '1');
@@ -79,7 +88,7 @@ test.each([
     const pairing = security.devicePairing;
     const offer = pairing.createOffer({
       endpoint: 'https://station.example.test',
-      scope: pairingScopePresetString('standard'),
+      scope: OPERATE_ONLY,
     });
     const pending = pairing.requestPairing({
       requesterPosition: 'off-box',
@@ -93,7 +102,7 @@ test.each([
       proof: offer.challenge,
       requestId: pending.requestId,
     });
-    expect(paired.device.scope).toBe(pairingScopePresetString('standard'));
+    expect(paired.device.scope).toBe(OPERATE_ONLY);
     const logger = createLogger({
       name: 'paired-telemetry-test',
       level: 'error',
@@ -248,7 +257,8 @@ async function authorAdmissionFixture(capability = true) {
       requestId: pending.requestId,
     });
   };
-  const standard = pair(pairingScopePresetString('standard'));
+  // Ungranted: no host shell, so no owner-device standing.
+  const standard = pair(OPERATE_ONLY);
   const managing = pair(
     `${pairingScopePresetString('standard')} access:manage`,
   );
@@ -474,12 +484,22 @@ test.each([
     },
   },
   {
-    preset: 'standard',
+    preset: 'operate-only',
     expected: {
       acknowledge: false,
       recordNotice: false,
       lower: true,
       raise: false,
+    },
+  },
+  {
+    // The owner's own Standard device holds owner-device standing.
+    preset: 'standard',
+    expected: {
+      acknowledge: true,
+      recordNotice: true,
+      lower: true,
+      raise: true,
     },
   },
   {
@@ -526,7 +546,9 @@ test.each([
     const scope =
       preset === 'standard+access:manage'
         ? `${pairingScopePresetString('standard')} access:manage`
-        : pairingScopePresetString(preset);
+        : preset === 'operate-only'
+          ? OPERATE_ONLY
+          : pairingScopePresetString(preset);
     const offer = security.devicePairing.createOffer({
       endpoint: 'https://station.example.test',
       scope,
@@ -643,7 +665,7 @@ test.each([
  * Under Do Not Track the EFFECTIVE tier is Off, but the config route compares
  * a write against the saved choice or, with none saved, the default with DNT
  * ignored. The disclosure reports that baseline (`capabilities.defaults`), and
- * the route's lower/raise answer for a standard device agrees with it,
+ * the route's lower/raise answer for an ungranted device agrees with it,
  * including when the environment default or the operator's destination
  * policy (`telemetryPublisherPolicy`) makes it something other than Lite.
  */
@@ -707,7 +729,8 @@ test.each([
     await security.initialize();
     const offer = security.devicePairing.createOffer({
       endpoint: 'https://station.example.test',
-      scope: pairingScopePresetString('standard'),
+      // Ungranted: the raise refusal applies to a device without owner standing.
+      scope: OPERATE_ONLY,
     });
     const pending = security.devicePairing.requestPairing({
       requesterPosition: 'off-box',

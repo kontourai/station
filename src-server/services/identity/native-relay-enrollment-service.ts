@@ -18,7 +18,7 @@ import {
 } from '../../security/relay-management-authority.js';
 import {
   getRuntimeAuthenticatedRequestPrincipal,
-  isBoundRuntimeLocalOperator,
+  isBoundRuntimeOwner,
 } from '../../security/runtime-request-security.js';
 import type { NativeSurfaceRegistry } from '../connections/native-surface-registry.js';
 import {
@@ -620,7 +620,7 @@ export class NativeRelayEnrollmentService {
     if (
       !managementDecision &&
       principal?.authority !== 'operator-credential' &&
-      !isBoundRuntimeLocalOperator(request)
+      !isBoundRuntimeOwner(request)
     )
       throw new NativeRelayEnrollmentRefusal('operator_required');
     const decision =

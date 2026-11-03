@@ -5,7 +5,10 @@ import {
   FileStorageNotFoundError,
 } from '../../domain/project-file-transactions.js';
 import { requestMayBeAnAgent } from '../../security/coding-authority.js';
-import { getRuntimeAuthenticatedRequestPrincipal } from '../../security/runtime-request-security.js';
+import {
+  getRuntimeAuthenticatedRequestPrincipal,
+  principalHasOwnerAuthority,
+} from '../../security/runtime-request-security.js';
 import type { ConsentChannelService } from '../../services/consent/consent-channel.js';
 import {
   ConsentCommitRefusedError,
@@ -114,7 +117,7 @@ export function createProjectSharingStepUp(deps: ProjectSharingStepUpDeps) {
       const principal = getRuntimeAuthenticatedRequestPrincipal(request);
       if (
         principal?.authority === 'operator-credential' ||
-        principal?.locality === 'home-possession'
+        principalHasOwnerAuthority(principal)
       )
         return true;
       return channelReady() && !!boundSession(request);
