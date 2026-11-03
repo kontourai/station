@@ -12,8 +12,6 @@ export interface StationDocsTopic {
   readonly sourceAnchor: string;
 }
 
-export const STATION_DOCS_CONTENT_DIGEST =
-  '18031d475bea93f1015461f095633452cf8cf653a89eaff1bda44c1022a1cbb6';
 export const STATION_DOCS_TOPICS: readonly StationDocsTopic[] = [
   {
     id: 'station-overview',
