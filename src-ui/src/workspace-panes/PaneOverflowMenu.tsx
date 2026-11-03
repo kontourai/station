@@ -39,9 +39,9 @@ export type PaneMenuItem =
       id: string;
       label: string;
       glyph?: ReactNode;
-      /** Right-aligned shortcut hint, e.g. "⇧⌘S". */
+      /** Right-aligned hint: a shortcut ("⇧⌘S") or a value ("2 new"). */
       hint?: string;
-      /** The same shortcut for `aria-keyshortcuts`, e.g. "Meta+Shift+S". */
+      /** A shortcut hint's keys for `aria-keyshortcuts`, e.g. "Meta+Shift+S"; a hint without them is part of the row's name. */
       hintKeys?: string;
       disabled?: boolean;
       onSelect: () => void;
@@ -361,7 +361,13 @@ export function PaneOverflowMenu({
                             key={item.id}
                             type="button"
                             role="menuitem"
-                            aria-label={item.label}
+                            aria-label={
+                              item.kind === 'action' &&
+                              item.hint &&
+                              !item.hintKeys
+                                ? `${item.label}: ${item.hint}`
+                                : item.label
+                            }
                             aria-keyshortcuts={
                               item.kind === 'action' ? item.hintKeys : undefined
                             }

@@ -52,15 +52,15 @@ export function BrowserAgentSettingsPanel({
             <strong>Let agents run JavaScript in this Project's pages</strong>
             <span id={descriptionId} className="browser-settings__hint">
               A script acts as the page: it can read its content, cookies and
-              storage. Agents can read, click and type without this.
+              local storage, and keep running after the agent's call ends.
             </span>
             <details className="browser-settings__details">
               <summary>Details</summary>
-              <p>
-                A script can keep running after the agent's call ends. Station
-                checks that nothing covers an element before clicking it, but a
-                page that moves things on a timer can still redirect a click,
-                and a browser step that timed out may still finish later.
+              <p className="browser-settings__hint">
+                Agents can read, click and type without this. Station checks
+                that nothing covers an element before clicking it, but a page
+                that moves things on a timer can still redirect a click, and a
+                browser step that timed out may still finish later.
               </p>
             </details>
           </span>

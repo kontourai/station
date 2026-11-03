@@ -128,7 +128,7 @@ it('starts, shows recording, stops and offers the encoded clip to save', async (
   expect(api.stopRecording).toHaveBeenCalledWith('bs_test', 'r1');
   expect(api.recordingVideo).toHaveBeenCalled();
   fireEvent.click(
-    screen.getByRole('button', { name: 'Attach recording frames to chat' }),
+    screen.getByRole('button', { name: 'Attach frames to chat' }),
   );
   await waitFor(() => expect(intake).toHaveBeenCalledOnce());
   const files = intake.mock.calls[0]![0];
@@ -241,7 +241,7 @@ it('resizes large sampled frames before sending a bounded contact set', async ()
   fireEvent.click(screen.getByRole('button', { name: 'Record' }));
   fireEvent.click(
     await screen.findByRole('button', {
-      name: 'Attach recording frames to chat',
+      name: 'Attach frames to chat',
     }),
   );
   await waitFor(() => expect(intake).toHaveBeenCalledOnce());

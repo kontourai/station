@@ -153,7 +153,9 @@ const IS_MAC =
 const SCREENSHOT_SHORTCUT = IS_MAC
   ? { label: '⇧⌘S', aria: 'Meta+Shift+S' }
   : { label: 'Ctrl+Shift+S', aria: 'Control+Shift+S' };
-const HARD_RELOAD_SHORTCUT = IS_MAC ? '⇧⌘R' : 'Ctrl+Shift+R';
+const HARD_RELOAD_SHORTCUT = IS_MAC
+  ? { label: '⇧⌘R', aria: 'Meta+Shift+R' }
+  : { label: 'Ctrl+Shift+R', aria: 'Control+Shift+R' };
 const BROWSER_ZOOM_STEPS = [
   0.5, 0.67, 0.75, 0.8, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2,
 ];
@@ -1644,7 +1646,8 @@ function BrowserSessionPane({
       id: 'hard-reload',
       label: 'Reload without cache',
       glyph: <RefreshGlyph />,
-      hint: HARD_RELOAD_SHORTCUT,
+      hint: HARD_RELOAD_SHORTCUT.label,
+      hintKeys: HARD_RELOAD_SHORTCUT.aria,
       disabled: !canDriveLive || busy,
       onSelect: () => history.mutate('hard-reload'),
     },
