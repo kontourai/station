@@ -8,8 +8,8 @@ The [glossary](../../glossary.md) owns product vocabulary; the
 
 An Agent is a working identity. Its engine executes it. Station's engine uses
 Model connections; external engines own their agent loop. The reserved Agent
-named Station can use a separately selected capable engine. An engine name,
-Agent name, and transport name are not interchangeable.
+named Station Assistant can use a separately selected capable engine. An engine
+name, Agent name, and transport name are not interchangeable.
 
 Default Agents are persisted by the [Agent registry](../../../src-server/domain/agent-registry.ts).
 Startup can adopt detected native CLIs; a deliberate removal is retained so
