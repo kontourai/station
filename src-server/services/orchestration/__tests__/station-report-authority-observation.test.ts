@@ -207,10 +207,10 @@ test('canonical two-Agent Flow roster reads retain live authority with bounded H
       view.members.map((member) => member.agentId),
       ['reviewer', 'reviewer-two'],
     );
-    assert.equal(opens, 159);
+
     assert.ok(opens > 0, 'the observer must see real Home inspections');
     assert.ok(
-      opens <= 159,
+      opens <= 141,
       `Home inspections: ${opens}; remeasure the unfused owner before changing this bound`,
     );
     h.f.environment.devicePairing.revokeDevice(

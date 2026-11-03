@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { randomBytes } from 'node:crypto';
 import fs, {
   chmodSync,
@@ -1091,11 +1092,30 @@ test('borrowed canonical raw reads are confined to the issued synchronous region
     h.environment.canonicalLocalGrantOrigin(),
   );
   assert.equal(raw.borrowedRegion(), undefined);
+  const outside = AsyncLocalStorage.snapshot();
   let retained: object | undefined;
   raw.withObservationScope(() => {
     const region = raw.borrowedRegion();
     assert.ok(region);
     retained = region;
+    assert.throws(
+      () =>
+        outside(() =>
+          raw.readBorrowedUnboundScope(h.paired.credential, region),
+        ),
+      { reason: 'borrow-unavailable' },
+    );
+    let escapedBody = false;
+    assert.throws(
+      () =>
+        outside(() =>
+          raw.withObservationScope(() => {
+            escapedBody = true;
+          }),
+        ),
+      { reason: 'busy' },
+    );
+    assert.equal(escapedBody, false);
     assert.ok(raw.readBorrowedUnboundScope(h.paired.credential, region));
     assert.throws(() => raw.readBorrowedUnboundScope(h.paired.credential, {}), {
       reason: 'borrow-unavailable',
@@ -1126,5 +1146,48 @@ test('borrowed canonical raw reads are confined to the issued synchronous region
   assert.throws(
     () => raw.readBorrowedUnboundScope(h.paired.credential, expired),
     { reason: 'borrow-unavailable' },
+  );
+});
+
+test('canonical borrowed entry detects missing Home lease before independent policy', async () => {
+  const h = await setup();
+  const authorize = vi.fn(
+    (credential: string, route: { method: string; path: string }) =>
+      h.environment.authorizeCredential(credential, route),
+  );
+  const owner = await captureEnvironmentLocalGrantObservationOwner(
+    h.request,
+    h.environment,
+    {
+      authorizeCredential: authorize,
+      resolveGrantedScope: (credential) =>
+        h.environment.resolveGrantedScope(credential),
+      verifyOperatorCredential: (credential) =>
+        h.environment.verifyOperatorCredential(credential),
+    },
+    undefined,
+    h.environment.canonicalLocalGrantOrigin(),
+  );
+  const lease = owner.requireCurrentLocalGrant(h.request);
+  const path = join(h.home, 'security', '.home-writer.mutation');
+  const moved = `${path}.controlled-missing`;
+  owner.withObservationScope(h.request, () => {
+    authorize.mockClear();
+    renameSync(path, moved);
+    try {
+      denied(lease.assertCurrent);
+      assert.equal(
+        authorize.mock.calls.length,
+        0,
+        'the physical entry fence must refuse before independent policy',
+      );
+    } finally {
+      renameSync(moved, path);
+    }
+  });
+  owner.withObservationScope(h.request, () => lease.assertCurrent());
+  assert.ok(
+    authorize.mock.calls.length > 0,
+    'restored custody must reach the real policy port',
   );
 });

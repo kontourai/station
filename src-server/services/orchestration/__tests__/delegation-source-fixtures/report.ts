@@ -80,6 +80,7 @@ export async function setup(
       storageAdapter: f.storage,
       environmentSecurityService: f.environment,
       requestSecurity: f.environment,
+      canonicalLocalGrantOrigin: f.environment.canonicalLocalGrantOrigin(),
       agentService,
       runtime: {
         getAgentConfigurationRevision: () => 2,

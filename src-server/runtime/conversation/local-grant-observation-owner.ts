@@ -123,25 +123,27 @@ async function captureExistingLocalGrant(
       raw
         ? raw.withCurrentAuthority(check)
         : environment.withCurrentAuthority(check);
-    const requirePrincipal = () =>
-      withAuthority(() => {
-        const scope = raw
-          ? raw.readUnboundScope(credential)
-          : environment.readCurrentUnboundLocalGrantScope(credential);
-        if (
-          getRuntimeAuthenticatedRequestPrincipal(boundRequest) !== principal ||
-          !isBoundLocalGrantMintedOperator(boundRequest) ||
-          principal.locality !== 'home-possession' ||
-          principal.mintKind !== 'local-grant' ||
-          scope === undefined ||
-          !isRuntimeRequestPrincipalCurrent(boundRequest, {
-            authorizeCredential: (candidate) => candidate === credential,
-            resolveGrantedScope: () => scope,
-          }) ||
-          !isRuntimeRequestPrincipalCurrent(boundRequest, security)
-        )
-          refuse();
-      });
+    const checkPrincipal = (region?: object) => {
+      const scope = raw
+        ? region
+          ? raw.readBorrowedUnboundScope(credential, region)
+          : raw.readUnboundScope(credential)
+        : environment.readCurrentUnboundLocalGrantScope(credential);
+      if (
+        getRuntimeAuthenticatedRequestPrincipal(boundRequest) !== principal ||
+        !isBoundLocalGrantMintedOperator(boundRequest) ||
+        principal.locality !== 'home-possession' ||
+        principal.mintKind !== 'local-grant' ||
+        scope === undefined ||
+        !isRuntimeRequestPrincipalCurrent(boundRequest, {
+          authorizeCredential: (candidate) => candidate === credential,
+          resolveGrantedScope: () => scope,
+        }) ||
+        !isRuntimeRequestPrincipalCurrent(boundRequest, security)
+      )
+        refuse();
+    };
+    const requirePrincipal = () => withAuthority(() => checkPrincipal());
     if (admit) await admit(requirePrincipal);
     else requirePrincipal();
     const before = await environment.readExistingRecord();
@@ -162,8 +164,10 @@ async function captureExistingLocalGrant(
     if (after.environmentId !== environmentId) refuse();
     const assertCurrent = () => {
       try {
-        withAuthority(() => {
-          requirePrincipal();
+        const region = raw?.borrowedRegion();
+        const check = () => {
+          if (region) checkPrincipal(region);
+          else requirePrincipal();
           if (
             !sameSignature(
               witness,
@@ -171,8 +175,13 @@ async function captureExistingLocalGrant(
             )
           )
             refuse();
-          requirePrincipal();
-        });
+          if (region) checkPrincipal(region);
+          else requirePrincipal();
+        };
+        // Within the canonical region, the raw reader owns the contiguous
+        // entry fence. Independent policy and signer checkpoints stay live.
+        if (region) check();
+        else withAuthority(check);
       } catch {
         refuse();
       }

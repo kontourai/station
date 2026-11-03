@@ -601,6 +601,18 @@ retirement notifications wait for confirmed release and run outside the writer's
 async context, so scheduled publisher work cannot inherit an expired grant.
 Token routes recheck their caller, person binding and required scope inside the
 held mutation, after any wait; reset or narrowed access refuses publication.
+Personal group composition explicitly selects the environment owner's canonical
+raw-grant facet. Within its synchronous observation region, contiguous wrapper
+entries before each raw read share that read's fresh Home and physical-lease
+entry fence. This changes the number of filesystem observations; it does not
+preserve failure injection at an eliminated redundant open. Both complete
+principal checks, independent request policy, signer reads and outer registry
+closing check remain. The raw reader checks uncertain publication before and
+after lookup. Facets from another environment, copied facets, expired regions
+and reads without an active Home span are refused. Callers without the facet
+retain the existing guarded public-method dispatch. No region or permission
+decision survives an await.
+
 Synchronous local-grant validation shares one home span across its principal,
 scope and host-signature checks. It retains both currentness checks and acquires
 a fresh span for the next validation; that standalone validation holds no lease

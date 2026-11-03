@@ -7872,9 +7872,9 @@ export function configureRuntimeRoutes(
   }
 
   const runtimeContext = context.buildRuntimeContext();
-  const groupRuntimeOwners: ConstructorParameters<
+  const createGroupRuntimeOwners = (): ConstructorParameters<
     typeof StationReportGroupRuntime
-  >[0]['runtime'] = {
+  >[0]['runtime'] => ({
     configLoader: context.configLoader,
     agentService: context.agentService,
     storageAdapter: context.storageAdapter,
@@ -7889,7 +7889,7 @@ export function configureRuntimeRoutes(
           .buildRuntimeContext()
           .commitAgentConfigurationRead(revision, work),
     },
-  };
+  });
   let delegationGroups: DelegationGroupRuntime | null = null;
   if (
     isPersonalHost &&
@@ -7899,7 +7899,7 @@ export function configureRuntimeRoutes(
     try {
       delegationGroups = new DelegationGroupRuntime({
         delegationAttemptClaimStore: context.delegationAttemptClaims,
-        runtime: groupRuntimeOwners,
+        runtime: createGroupRuntimeOwners(),
         orchestration: context.orchestrationService,
         rawFetch: fetch,
         resolveDelegation: createRequestDelegationResolver(
@@ -7926,7 +7926,7 @@ export function configureRuntimeRoutes(
       reportGroups = new StationReportGroupRuntime({
         delegationAttemptClaimStore: context.delegationAttemptClaims,
         publicationParticipant: context.runtimePublicationParticipant,
-        runtime: groupRuntimeOwners,
+        runtime: createGroupRuntimeOwners(),
         orchestration: context.orchestrationService,
         rawFetch: fetch,
       });
