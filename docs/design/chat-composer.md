@@ -129,8 +129,7 @@ of the chat on screen, in any dock region or placement (full screen on a phone):
   short dock its heading, spacing and text box shrink so the Station line stays
   visible. **Runs on <Station>** opens the Station chooser when another
   permitted destination is available; choosing one continues to its Engine &
-  model. Setup, repair and read errors render before the composer and scroll
-  with it when needed.
+  model. Setup, repair and read errors scroll above the composer.
 - **Header.** The dock's title slot (and the phone header) reads **New chat**,
   **New Task** or **Fork from here** (**Regenerate** or **Edit and resend**
   for a fork a message action started), and the header's project controls
@@ -224,9 +223,9 @@ of these routes require separate evidence from the source and controlled tests.
 Home keeps a screen-reader page title while the shared composer owns the
 visible start heading. A confirmed empty Station shows a first-conversation
 heading and two next steps: review available agents (or open engine setup when
-none can run), and optionally open a Project. The same inline composer starts
-the conversation. Empty Recent work is omitted only for this confirmed first
-session; loading and failed reads retain their status and recovery.
+none can run), and optionally open a Project. The same compact inline composer
+starts the conversation. Empty Recent work is omitted only for this confirmed
+first session; loading and failed reads retain their status and recovery.
 
 The **Runs on <Station>** control names where this start runs: the explicit
 Station choice, else the Project's saved default environment, else the

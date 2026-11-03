@@ -48,9 +48,10 @@
 /* Setup feedback precedes the centered New Chat composer. */
 .new-chat-draft__body {
   display: flex;
-  flex: 0 0 auto;
+  flex: 1 1 auto;
   flex-direction: column;
   gap: var(--k-space-3);
+  padding-block: clamp(0px, calc(10cqh - 2rem), var(--k-space-4));
 }
 .new-chat-draft__lead {
   display: flex;
@@ -97,15 +98,6 @@
   border-radius: var(--k-radius-md);
   pointer-events: none;
 }
-/* Setup and the composer scroll together while Start is unavailable. */
-.new-chat-modal:has(.chat-start__setup) > .new-chat-draft__body {
-  flex: 1 0 auto;
-  overflow-y: visible;
-}
-.new-chat-modal:has(.chat-start__setup) > .start-composer {
-  position: static;
-}
-
 .new-chat-draft__body:has(> .new-chat-draft__lead:only-child:empty) {
   display: none;
 }

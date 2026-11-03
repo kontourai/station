@@ -2726,7 +2726,7 @@ const SCREENS: Screen[] = [
     afterGoto: async (page) => {
       await assertNoStrayProjectModal(page);
       await expect(
-        page.getByRole('heading', { name: 'What would you like to do?' }),
+        page.getByRole('heading', { name: 'Start your first conversation' }),
       ).toBeVisible();
       await expect(
         page.getByRole('heading', { name: "What's next?" }),
