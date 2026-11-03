@@ -852,7 +852,7 @@ process on the home. A token may expire (at most a year) and is refused once
 revoked or expired; dead records are dropped, and each person holds at most
 20 active tokens. A token outlives its person's devices, so the people list
 keeps showing its owner for the operator to revoke. An unsafe (not
-owner-only, or a link) or unreadable token file authenticates no one, and
+owner-only, or a symbolic link) or unreadable token file authenticates no one, and
 Station refuses to mint or revoke over it (`503 tokens_unavailable`). The
 20-token limit is decided under the lock, so it holds across participating
 processes. Environment reset clears tokens before changing the environment

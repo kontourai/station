@@ -874,6 +874,9 @@ Steer and Queue carry text only. You can still attach files or dictate during a
 turn: files wait in the draft, which says why, until you send it after the turn
 ends.
 
+Some report-member chats cannot take Queue or Steer messages. Their composer
+says to use the report or group controls to ask for another turn.
+
 The app attempts to save a text message on this device before sending it. If
 the write fails or times out, it sends without that saved row and keeps the
 saved draft. If the app closes or
