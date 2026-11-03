@@ -59,6 +59,7 @@ import {
   INTERNAL_NATIVE_FOREGROUND_HEADER,
 } from '../../runtime/conversation/native-foreground-invocation.js';
 import {
+  admitReservedStationPublication,
   admitReservedStationSessionBinding,
   admitReservedStationSessionOpen,
   assertReservedStationTurnCurrent,
@@ -210,6 +211,9 @@ interface StationAgentSessionRecord {
         eventId: string;
         form: InputRequestForm;
         assertCurrent(): void;
+        admitCurrent?(
+          effect: Parameters<typeof admitReservedStationPublication>[1],
+        ): Promise<void>;
       };
     }
   >;
@@ -1536,6 +1540,8 @@ export class StationAgentAdapter implements ProviderAdapterShape {
               form,
               beforeOpen,
               () => assertReservedStationTurnCurrent(reservedTurn),
+              (publish) =>
+                admitReservedStationPublication(reservedTurn, publish),
               inputSignal,
             ),
           (attempt, check) => {
@@ -1898,74 +1904,93 @@ export class StationAgentAdapter implements ProviderAdapterShape {
     if (!pending) {
       throw new Error(`Unknown Station agent approval request: ${requestId}`);
     }
-    if (pending.canonical) {
-      pending.canonical.assertCurrent();
-      if (context?.expectedRequestEventId !== pending.canonical.eventId)
-        throw new Error('The reserved input request event changed.');
-    }
-    if (
-      this.options.durable?.approval(threadId, pending.turnId, requestId) &&
-      !this.options.approvalRegistry.isPendingForSession?.(requestId, threadId)
-    )
-      throw new Error('The durable approval is not waiting for this Session.');
-    // #3284: a form's answer is the person's own action, carried whole. The
-    // orchestration command already validated accepted content against the
-    // form; the tool wrapper re-checks it before the server sees it.
-    let answer: InputRequestResponse | undefined;
-    if (pending.elicitation) {
-      if (decision === 'acceptForSession')
-        throw new Error(
-          'A tool server form is answered once, not for a session.',
-        );
-      if (decision === 'accept' && !context?.inputContent)
-        throw new Error('Fill in the form before sending it.');
-      answer =
-        decision === 'accept'
-          ? {
-              action: 'accept',
-              content: pending.canonical
-                ? validateInputRequestContent(
-                    pending.canonical.form,
-                    context!.inputContent!,
-                  )
-                : context!.inputContent!,
-            }
-          : { action: decision };
-    } else if (context?.inputContent !== undefined) {
-      throw new Error('Only a tool server form takes form content.');
-    }
-    this.resolutionOverrides.set(
-      requestId,
-      decision === 'accept' || decision === 'acceptForSession'
-        ? 'approved'
-        : decision === 'decline'
-          ? 'denied'
-          : 'cancelled',
-    );
-    // #2344: `approval.resolved` records which device answered.
-    const approved = decision === 'accept' || decision === 'acceptForSession';
-    const resolved = pending.canonical
-      ? pending.canonical.registration.resolve(
-          approved,
-          context?.clientOrigin,
-          structuredClone(answer),
-        )
-      : this.options.approvalRegistry.resolve(
+    const resolve: Parameters<typeof admitReservedStationPublication>[1] = (
+      check,
+    ) => {
+      if (pending.canonical) {
+        const canonical = pending.canonical;
+        check(() => {
+          canonical.assertCurrent();
+          if (record.pendingRequests.get(requestId) !== pending)
+            throw new Error('The reserved input request changed.');
+          if (context?.expectedRequestEventId !== canonical.eventId)
+            throw new Error('The reserved input request event changed.');
+        });
+      }
+      if (
+        this.options.durable?.approval(threadId, pending.turnId, requestId) &&
+        !this.options.approvalRegistry.isPendingForSession?.(
           requestId,
-          approved,
-          context?.clientOrigin,
-          answer,
+          threadId,
+        )
+      )
+        throw new Error(
+          'The durable approval is not waiting for this Session.',
         );
-    if (!resolved) {
-      if (!pending.canonical) record.pendingRequests.delete(requestId);
-      this.resolutionOverrides.delete(requestId);
-      throw new Error(`Stale Station agent approval request: ${requestId}`);
-    }
-    // #2316: the session grant is minted only by a decision that actually
-    // resolved its request. A stale entry refuses above without widening
-    // what this session auto-approves.
-    if (decision === 'acceptForSession' && pending.toolName) {
-      record.approvedTools.add(pending.toolName);
+      // #3284: a form's answer is the person's own action, carried whole. The
+      // orchestration command already validated accepted content against the
+      // form; the tool wrapper re-checks it before the server sees it.
+      let answer: InputRequestResponse | undefined;
+      if (pending.elicitation) {
+        if (decision === 'acceptForSession')
+          throw new Error(
+            'A tool server form is answered once, not for a session.',
+          );
+        if (decision === 'accept' && !context?.inputContent)
+          throw new Error('Fill in the form before sending it.');
+        answer =
+          decision === 'accept'
+            ? {
+                action: 'accept',
+                content: pending.canonical
+                  ? validateInputRequestContent(
+                      pending.canonical.form,
+                      context!.inputContent!,
+                    )
+                  : context!.inputContent!,
+              }
+            : { action: decision };
+      } else if (context?.inputContent !== undefined) {
+        throw new Error('Only a tool server form takes form content.');
+      }
+      this.resolutionOverrides.set(
+        requestId,
+        decision === 'accept' || decision === 'acceptForSession'
+          ? 'approved'
+          : decision === 'decline'
+            ? 'denied'
+            : 'cancelled',
+      );
+      // #2344: `approval.resolved` records which device answered.
+      const approved = decision === 'accept' || decision === 'acceptForSession';
+      const resolved = pending.canonical
+        ? pending.canonical.registration.resolve(
+            approved,
+            context?.clientOrigin,
+            structuredClone(answer),
+          )
+        : this.options.approvalRegistry.resolve(
+            requestId,
+            approved,
+            context?.clientOrigin,
+            answer,
+          );
+      if (!resolved) {
+        if (!pending.canonical) record.pendingRequests.delete(requestId);
+        this.resolutionOverrides.delete(requestId);
+        throw new Error(`Stale Station agent approval request: ${requestId}`);
+      }
+      // #2316: the session grant is minted only by a decision that actually
+      // resolved its request. A stale entry refuses above without widening
+      // what this session auto-approves.
+      if (decision === 'acceptForSession' && pending.toolName) {
+        record.approvedTools.add(pending.toolName);
+      }
+    };
+    if (pending.canonical?.admitCurrent)
+      await pending.canonical.admitCurrent(resolve);
+    else {
+      resolve((work) => work());
     }
   }
 
@@ -2417,6 +2442,9 @@ export class StationAgentAdapter implements ProviderAdapterShape {
     suppliedForm: InputRequestForm,
     beforeOpen: Parameters<ReservedStationInputOpen>[1],
     assertAdmissionCurrent: () => void,
+    admitPublication: (
+      publish: Parameters<typeof admitReservedStationPublication>[1],
+    ) => Promise<void>,
     signal: AbortSignal,
   ): Promise<InputRequestResponse> {
     const assertCurrent = () => {
@@ -2429,7 +2457,15 @@ export class StationAgentAdapter implements ProviderAdapterShape {
       )
         throw new Error('Reserved input turn changed.');
     };
-    assertCurrent();
+    const admitCurrent = (
+      effect: Parameters<typeof admitReservedStationPublication>[1],
+    ) =>
+      admitPublication((check) => {
+        check(assertCurrent);
+        // Effects publish outside the borrowed Home span, in the same synchronous turn.
+        effect(check);
+      });
+    await admitCurrent(() => {});
     const form = readInputRequestForm(structuredClone(suppliedForm));
     if (!form?.source.startsWith('mcp:'))
       throw new Error('Reserved input requires an MCP form.');
@@ -2456,60 +2492,69 @@ export class StationAgentAdapter implements ProviderAdapterShape {
     };
     signal.addEventListener('abort', onAbort, { once: true });
     try {
-      assertCurrent();
+      await admitCurrent(() => {});
       await beforeOpen(structuredClone(event));
-      assertCurrent();
-      registration = this.options.approvalRegistry.registerCanonicalAnswer?.(
-        requestId,
-        {
-          sessionId: record.session.threadId,
-          metadata: {
-            source: 'runtime',
-            title: event.title,
-            conversationId: record.session.threadId,
-            orchestrationThreadId: record.session.threadId,
-            description: form.message,
-            server: form.requester,
+      await admitPublication((check) => {
+        check(assertCurrent);
+        registration = this.options.approvalRegistry.registerCanonicalAnswer?.(
+          requestId,
+          {
+            sessionId: record.session.threadId,
+            metadata: {
+              source: 'runtime',
+              title: event.title,
+              conversationId: record.session.threadId,
+              orchestrationThreadId: record.session.threadId,
+              description: form.message,
+              server: form.requester,
+            },
+            timeoutMs: 10 * 60 * 1000,
           },
-          timeoutMs: 10 * 60 * 1000,
-        },
-      );
-      if (!registration)
-        throw new Error('Reserved input admission unavailable.');
-      assertCurrent();
-      record.pendingRequests.set(requestId, {
-        turnId,
-        origin,
-        elicitation: true,
-        canonical: {
-          registration,
-          eventId: event.eventId,
-          form,
-          assertCurrent,
-        },
+        );
+        if (!registration)
+          throw new Error('Reserved input admission unavailable.');
+        check(assertCurrent);
+        record.pendingRequests.set(requestId, {
+          turnId,
+          origin,
+          elicitation: true,
+          canonical: {
+            registration,
+            eventId: event.eventId,
+            form,
+            assertCurrent,
+            admitCurrent,
+          },
+        });
+        observation = awaitCanonicalRequestCommit(event);
+        void registration.result.then(() => observation?.cancel());
+        if (!registration.publishOpened())
+          throw new Error('Reserved input admission cancelled.');
+        check(assertCurrent);
+        this.publish(event);
       });
-      observation = awaitCanonicalRequestCommit(event);
-      void registration.result.then(() => observation?.cancel());
-      if (!registration.publishOpened())
-        throw new Error('Reserved input admission cancelled.');
-      assertCurrent();
-      this.publish(event);
+      if (!observation || !registration)
+        throw new Error('Reserved input admission unavailable.');
       if (!(await observation.committed))
         throw new Error('Reserved input event was not committed.');
-      assertCurrent();
-      if (!registration.markOpenCommitted())
-        throw new Error('Reserved input admission expired.');
+      const admitted = registration;
+      await admitCurrent(() => {
+        if (!admitted.markOpenCommitted())
+          throw new Error('Reserved input admission expired.');
+      });
       const { outcome, answer } = await registration.result;
-      assertCurrent();
-      const response = readInputRequestResponse(answer);
-      if (outcome === 'approved' && response?.action === 'accept')
-        return {
-          action: 'accept',
-          content: validateInputRequestContent(form, response.content),
-        };
-      if (outcome === 'denied' && response?.action === 'decline')
-        return { action: 'decline' };
-      return { action: 'cancel' };
+      let disclosed: InputRequestResponse = { action: 'cancel' };
+      await admitCurrent(() => {
+        const response = readInputRequestResponse(answer);
+        if (outcome === 'approved' && response?.action === 'accept')
+          disclosed = {
+            action: 'accept',
+            content: validateInputRequestContent(form, response.content),
+          };
+        if (outcome === 'denied' && response?.action === 'decline')
+          disclosed = { action: 'decline' };
+      });
+      return disclosed;
     } finally {
       signal.removeEventListener('abort', onAbort);
       observation?.cancel();

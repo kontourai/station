@@ -1,19 +1,47 @@
 import assert from 'node:assert/strict';
+import { mkdirSync } from 'node:fs';
+import { join } from 'node:path';
 import type {
   InputRequestForm,
   InputRequestResponse,
 } from '@kontourai/station-contracts/input-request';
 import { onTestFinished, test, vi } from 'vitest';
 import { StationAgentAdapter } from '../../../providers/adapters/station-agent-adapter.js';
+import { isRuntimePublicationParticipant } from '../../../runtime/bootstrap/runtime-publication-participant.js';
+import { StationRuntime } from '../../../runtime/bootstrap/station-runtime.js';
+import * as canonicalCommit from '../../../runtime/conversation/canonical-request-commit.js';
 import { ApprovalRegistry } from '../../approvals/approval-registry.js';
+import {
+  type HomeWriterLease,
+  HomeWriterOwner,
+} from '../../ssh/home-writer-owner.js';
+import { StationDelegationPersistence } from '../delegation-group-persistence.js';
 import { inspectSdkSourceWire } from '../delegation-group-sdk-source-wire-owner.js';
+import { withReportRoundsPublication } from '../report-rounds-publication.js';
 import { publicFenceFixture } from './delegation-source-fixtures/fence.js';
 import { deferred } from './delegation-source-fixtures/sdk.js';
 import { sdkFixture } from './delegation-source-fixtures/sdk-source.js';
 import { subject } from './delegation-source-fixtures/source.js';
 
+function revokedRetention(error: unknown): boolean {
+  return (
+    error instanceof AggregateError &&
+    error.message === 'Round retention unknown; admission remains held' &&
+    error.errors.length === 1 &&
+    error.errors[0] instanceof Error &&
+    error.errors[0].message === 'actual-local-grant-revoked'
+  );
+}
+
 test.each([
   'answer',
+  'entry-contention',
+  'open-contention',
+  'reply-contention',
+  'reply-revocation',
+  'commit-wait',
+  'queued-abort',
+  'queued-revocation',
   'abort-before-open',
   'invocation-abort-before-open',
   'invocation-abort-after-open',
@@ -85,6 +113,67 @@ test.each([
     );
     const { wire } = inspectSdkSourceWire(f.sdkOwner, prepared.sdkHandle);
     const invocation = new AbortController();
+    mkdirSync(join(f.home, 'report-groups'), { recursive: true, mode: 0o700 });
+    const writer = await HomeWriterOwner.forHome(f.home);
+    const ownerRuntime = new StationRuntime({ projectHomeDir: f.home });
+    const participant = Reflect.get(
+      ownerRuntime,
+      'runtimePublicationParticipant',
+    );
+    assert.ok(isRuntimePublicationParticipant(participant));
+    const publicationReady =
+      deferred<
+        Parameters<Parameters<typeof withReportRoundsPublication>[1]>[0]
+      >();
+    const publicationDone = deferred<void>();
+    const publicationPending = withReportRoundsPublication(
+      { participant, home: f.home, signal: invocation.signal },
+      async (publication) => {
+        publicationReady.resolve(publication);
+        await publicationDone.promise;
+      },
+    );
+    const publication = await publicationReady.promise;
+    onTestFinished(async () => {
+      publicationDone.resolve();
+      try {
+        await publicationPending;
+      } finally {
+        await ownerRuntime.shutdown();
+      }
+    });
+    let held: HomeWriterLease | undefined;
+    let watchingQueue = false;
+    let bridgeAdmission = false;
+    const inputRejected = deferred<unknown>();
+    const queued = deferred<void>();
+    const admissionRefused = deferred<unknown>();
+    let expectedRunRefusal = false;
+    const commitStarted = deferred<void>();
+    let releaseCommit: (() => void) | undefined;
+    const acknowledge = canonicalCommit.acknowledgeCanonicalRequestCommit;
+    const commitObserver = vi
+      .spyOn(canonicalCommit, 'acknowledgeCanonicalRequestCommit')
+      .mockImplementation((...args) => {
+        if (scenario === 'commit-wait' && args[0].method === 'request.opened') {
+          releaseCommit = () => acknowledge(...args);
+          commitStarted.resolve();
+        } else acknowledge(...args);
+      });
+    onTestFinished(() => commitObserver.mockRestore());
+    const acquire = writer.acquire.bind(writer);
+    const acquireObserver = vi
+      .spyOn(writer, 'acquire')
+      .mockImplementation((signal) => {
+        const pending = acquire(signal);
+        if (watchingQueue && bridgeAdmission) {
+          queued.resolve();
+          void pending.catch((error) => admissionRefused.resolve(error));
+        }
+        return pending;
+      });
+    onTestFinished(() => acquireObserver.mockRestore());
+
     let runtimeSignal: AbortSignal | undefined;
     const binding = deferred<void>();
     const releaseOpen = deferred<void>();
@@ -109,11 +198,16 @@ test.each([
       },
     };
     let registry: ApprovalRegistry | undefined;
+    let registrations = 0;
     let liveAdapter: StationAgentAdapter | undefined;
     const register = ApprovalRegistry.prototype.registerCanonicalAnswer;
     const interceptedRegistration = vi
       .spyOn(ApprovalRegistry.prototype, 'registerCanonicalAnswer')
       .mockImplementation(function (this: ApprovalRegistry, ...args) {
+        registrations++;
+        assert.throws(() => writer.assertSynchronous(), {
+          reason: 'borrow-unavailable',
+        });
         registry = this;
         return register.apply(this, args);
       });
@@ -138,6 +232,27 @@ test.each([
       {
         provider: 'anthropic',
         protocol: 'rounds',
+        reportHome: {
+          owner: writer,
+          persistence: new StationDelegationPersistence(
+            join(f.home, 'report-groups'),
+          ),
+          current: () => undefined,
+          preparationCurrent: () => undefined,
+          check: (current, body) =>
+            publication.check({ owner: writer, current }, body),
+          invokeCurrent: (current, invoke) => {
+            bridgeAdmission = true;
+            try {
+              return publication.invokeCurrent(
+                { owner: writer, current },
+                invoke,
+              );
+            } finally {
+              bridgeAdmission = false;
+            }
+          },
+        },
         contract: f.configuration.contract,
         now: () => 1000,
         invocationSignal: invocation.signal,
@@ -148,15 +263,40 @@ test.each([
             { id: 'call-input', question: 'Which scope?' },
           );
           assert.ok(request.providerEvidence);
-          const response = await open(form, async (event) => {
+          if (scenario === 'entry-contention') {
+            held = await writer.acquire();
+            watchingQueue = true;
+          }
+          const opening = open(form, async (event) => {
             assert.equal(
               event.turnId,
               driver.canonicalEvents().find((e) => e.method === 'turn.started')
                 ?.turnId,
             );
+            const available = await writer.acquire();
+            await available.release();
             binding.resolve();
             await releaseOpen.promise;
           });
+          void opening.catch((error) => inputRejected.resolve(error));
+          if (scenario === 'entry-contention') {
+            const first = await Promise.race([
+              queued.promise.then(() => 'queued'),
+              opening.then(
+                () => 'returned',
+                () => 'refused',
+              ),
+            ]);
+            await held?.release();
+            held = undefined;
+            watchingQueue = false;
+            assert.equal(
+              first,
+              'queued',
+              'input entry must queue behind the actual Home holder',
+            );
+          }
+          const response = await opening;
           answered.resolve(response);
           await assert.rejects(async () => open(form, async () => {}));
           await finishTool.promise;
@@ -200,7 +340,84 @@ test.each([
         );
         assert.equal(registry, undefined);
       } else {
+        const queuedOpen = [
+          'open-contention',
+          'queued-abort',
+          'queued-revocation',
+        ].includes(scenario);
+        if (queuedOpen) {
+          held = await writer.acquire();
+          watchingQueue = true;
+        }
         releaseOpen.resolve();
+        if (queuedOpen) {
+          const first = await Promise.race([
+            queued.promise.then(() => 'queued'),
+            inputRejected.promise.then((error) => {
+              throw error;
+            }),
+            running.then(
+              () => 'returned',
+              () => 'refused',
+            ),
+          ]);
+          assert.equal(
+            first,
+            'queued',
+            'post-persistence input must queue on its original Home',
+          );
+          assert.equal(registry, undefined);
+          if (scenario === 'queued-abort') {
+            invocation.abort('queued input cancelled');
+            await admissionRefused.promise;
+          }
+          if (scenario === 'queued-revocation')
+            writer.runWithLease(held!, () => {
+              f.environment.devicePairing.revokeDevice(
+                f.paired.device.id,
+                'operator-credential',
+              );
+            });
+          await held?.release();
+          held = undefined;
+          watchingQueue = false;
+          if (scenario === 'queued-abort' || scenario === 'queued-revocation') {
+            if (scenario === 'queued-revocation') {
+              expectedRunRefusal = true;
+              await assert.rejects(running, revokedRetention);
+            } else await running;
+            assert.ok(driver.invocationFailure);
+            assert.equal(registry, undefined);
+            assert.equal(
+              driver
+                .canonicalEvents()
+                .filter(
+                  (e) =>
+                    e.method === 'request.opened' ||
+                    e.method === 'request.resolved',
+                ).length,
+              0,
+            );
+            assert.equal(f.starts, 1);
+            return;
+          }
+        }
+        if (scenario === 'commit-wait') {
+          await Promise.race([
+            commitStarted.promise,
+            inputRejected.promise.then((error) => {
+              throw error;
+            }),
+            running.then(() => {
+              throw Error('Input ended before canonical commit');
+            }),
+          ]);
+          const available = await writer.acquire();
+          await available.release();
+          assert.ok(releaseCommit);
+          releaseCommit();
+          releaseCommit = undefined;
+        }
         let opened:
           | Extract<
               ReturnType<typeof driver.canonicalEvents>[number],
@@ -275,14 +492,68 @@ test.each([
             },
           ),
         );
-        await driver.orchestration.dispatch({
-          type: 'respondToRequest',
-          threadId: opened.threadId,
-          requestId: opened.requestId,
-          expectedRequestEventId: opened.eventId,
-          decision: 'accept',
-          content: { answer: 'Only current source' },
-        });
+        // Human wait owns no Home lease.
+        const available = await writer.acquire();
+        await available.release();
+        if (
+          scenario === 'reply-contention' ||
+          scenario === 'reply-revocation'
+        ) {
+          held = await writer.acquire();
+          watchingQueue = true;
+        }
+        const responding = liveAdapter.respondToRequest(
+          opened.threadId,
+          opened.requestId,
+          'accept',
+          {
+            expectedRequestEventId: opened.eventId,
+            inputContent: { answer: 'Only current source' },
+          },
+        );
+        void responding.catch(() => {});
+        if (
+          scenario === 'reply-contention' ||
+          scenario === 'reply-revocation'
+        ) {
+          const first = await Promise.race([
+            queued.promise.then(() => 'queued'),
+            responding.then(
+              () => 'returned',
+              () => 'refused',
+            ),
+          ]);
+          if (scenario === 'reply-revocation')
+            writer.runWithLease(held!, () => {
+              f.environment.devicePairing.revokeDevice(
+                f.paired.device.id,
+                'operator-credential',
+              );
+            });
+          await held?.release();
+          held = undefined;
+          watchingQueue = false;
+          assert.equal(
+            first,
+            'queued',
+            'canonical answer must queue on the original Home',
+          );
+        }
+        if (scenario === 'reply-revocation') {
+          await assert.rejects(responding, /actual-local-grant-revoked/);
+          assert.equal(
+            driver
+              .canonicalEvents()
+              .filter((e) => e.method === 'request.resolved').length,
+            0,
+          );
+          expectedRunRefusal = true;
+          invocation.abort('revoked reply cleanup');
+          await assert.rejects(running, revokedRetention);
+          assert.equal(f.starts, 1);
+          return;
+        }
+        await responding;
         const reply = await answered.promise;
         assert.equal(reply.action, 'accept');
         if (reply.action !== 'accept') throw Error('Input was not accepted');
@@ -292,6 +563,29 @@ test.each([
         );
         assert.ok(
           !driver.canonicalEvents().some((e) => e.method === 'turn.completed'),
+        );
+        await assert.rejects(() =>
+          liveAdapter!.respondToRequest(
+            opened!.threadId,
+            opened!.requestId,
+            'accept',
+            {
+              expectedRequestEventId: opened!.eventId,
+              inputContent: { answer: 'late' },
+            },
+          ),
+        );
+        assert.equal(registrations, 1);
+        assert.equal(
+          driver.canonicalEvents().filter((e) => e.method === 'request.opened')
+            .length,
+          1,
+        );
+        assert.equal(
+          driver
+            .canonicalEvents()
+            .filter((e) => e.method === 'request.resolved').length,
+          1,
         );
         finishTool.resolve();
         await running;
@@ -305,10 +599,15 @@ test.each([
       assert.equal(f.starts, 1);
       assert.equal(driver.relayCalls, 0);
     } finally {
+      releaseCommit?.();
+      watchingQueue = false;
+      await held?.release();
+      held = undefined;
       releaseOpen.resolve();
       finishTool.resolve();
       await driver.interrupt();
-      await running;
+      if (expectedRunRefusal) await assert.rejects(running, revokedRetention);
+      else await running;
     }
   },
 );

@@ -49,6 +49,7 @@ import {
   type FinalWire,
   type ReservedWireBinding,
   RoundsFinalFetchLaunchFence,
+  type RoundsFinalFetchOwners,
 } from '../../delegation-group-launch-fence.js';
 import { StationDelegationPersistence } from '../../delegation-group-persistence.js';
 import {
@@ -90,6 +91,7 @@ export async function publicFenceFixture(
   beforeInner: () => void = () => {},
   observation?: {
     protocol?: 'legacy' | 'rounds';
+    reportHome?: RoundsFinalFetchOwners['reportHome'];
     inputRuntime?: ReservedStationInputRuntime;
     allowedTools?: string[];
     invocationSignal?: AbortSignal;
@@ -445,6 +447,7 @@ export async function publicFenceFixture(
               launch: roundsFence
                 ? {
                     protocol: 'rounds-v1',
+                    reportHome: observation.reportHome,
                     groups: persistence.roundsStore(finalize),
                     authorities: persistence.roundsAuthorityStore(finalize),
                     host,
