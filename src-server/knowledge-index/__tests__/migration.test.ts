@@ -454,6 +454,7 @@ describe('migratePreIndexKnowledge', () => {
       let calls = 0;
       let retarget = false;
       let retargeted = false;
+      let recordReads = 0;
       vi.spyOn(actualStore, 'withRootRevision').mockImplementation(
         async (root, operation) => {
           calls += 1;
@@ -466,6 +467,15 @@ describe('migratePreIndexKnowledge', () => {
         if (retarget) {
           retarget = false;
           retargeted = true;
+          if (leaseNumber === 2) {
+            const list = adapter.listByType.bind(adapter);
+            vi.spyOn(adapter, 'listByType').mockImplementation(
+              async (...args) => {
+                recordReads += 1;
+                return list(...args);
+              },
+            );
+          }
           rmSync(alias);
           symlinkSync(join(destination, '..'), alias, 'dir');
         }
@@ -486,6 +496,7 @@ describe('migratePreIndexKnowledge', () => {
         }
       }
       expect(retargeted).toBe(true);
+      if (leaseNumber === 2) expect(recordReads).toBe(0);
       expect(embed).not.toHaveBeenCalled();
       expect(result.namespaceResults[0]?.status).toBe('error');
       const root = (await actualStore.listRoots()).find(
