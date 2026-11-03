@@ -157,6 +157,63 @@ describe('knowledge-index routes', () => {
       expect(res.status).toBe(503);
       expect((await indexProvider.stats(root.id)).chunks).toBe(0);
     });
+    test.each([true, false])(
+      'rebuild refuses an index provider without revision support (private=%s)',
+      async (isPrivate) => {
+        const actualStore = new KnowledgeStoreProvider(
+          new FileStorageAdapter(dataDir),
+        );
+        const root = await actualStore.createRoot({
+          scope: { kind: 'personal' },
+          ...(isPrivate
+            ? {
+                readPolicy: {
+                  kind: 'author-private' as const,
+                  ownerId: 'human:owner',
+                },
+              }
+            : {}),
+          adapterId: 'kit-default-store',
+          storeRoot: storeDir,
+          displayName: 'Test root',
+        });
+        await (await actualStore.adapterFor(root.id)).create({
+          type: 'raw',
+          title: 'Record',
+          body: 'private text',
+          category: 'test',
+          provenance: { agent: 'fixture' },
+        });
+        const legacyProvider = Object.assign(Object.create(indexProvider), {
+          supportsRootRevision: false,
+          rebuildRoot: (
+            id: string,
+            deps: Parameters<typeof indexProvider.rebuildRoot>[1],
+          ) =>
+            indexProvider.rebuildRoot(id, {
+              store: deps.store,
+              embedder: deps.embedder,
+            }),
+        });
+        const embed = vi.spyOn(embedder, 'embed');
+        const app = createKnowledgeIndexRoutes({
+          store: actualStore,
+          indexProvider: legacyProvider,
+          dataDir,
+          getEmbedder: () => embedder,
+          mayBuildSessionBackedRoot: () => true,
+          mayBuildPrivateRoot: () => true,
+        });
+        const res = await app.request('/index/rebuild', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ rootId: root.id }),
+        });
+        expect(embed).not.toHaveBeenCalled();
+        expect(res.status).toBe(503);
+        expect((await indexProvider.stats(root.id)).chunks).toBe(0);
+      },
+    );
     test('a private registration changed during embedding is not published', async () => {
       const persistence = new FileStorageAdapter(dataDir);
       const actualStore = new KnowledgeStoreProvider(persistence);

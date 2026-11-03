@@ -363,6 +363,33 @@ describe('migratePreIndexKnowledge', () => {
     expect(embed).not.toHaveBeenCalled();
   });
 
+  test('migration refuses an index provider without root revision support before writing', async () => {
+    const fixture = seedPreIndexFixture(homeDir, { vectorDim: 4 });
+    const actualStore = new KnowledgeStoreProvider(
+      new FileStorageAdapter(homeDir),
+    );
+    const legacyProvider = Object.assign(Object.create(indexProvider), {
+      supportsRootRevision: false,
+    });
+    const embedder = new StubEmbedder(4);
+    const embed = vi.spyOn(embedder, 'embed');
+    const result = await migratePreIndexKnowledge(
+      {
+        dataDir: homeDir,
+        store: actualStore,
+        indexProvider: legacyProvider,
+        embedder,
+      },
+      { projectSlug: fixture.projectSlug },
+    );
+    const root = (await actualStore.listRoots())[0];
+    expect(result.namespaceResults[0]?.status).toBe('error');
+    expect(embed).not.toHaveBeenCalled();
+    expect(
+      await (await actualStore.adapterFor(root.id)).listByType('raw'),
+    ).toHaveLength(0);
+  });
+
   test.each([
     ['before record writes', 1, 0],
     ['before index rebuild', 2, 2],

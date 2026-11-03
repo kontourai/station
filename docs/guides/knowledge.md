@@ -137,7 +137,8 @@ records and while publishing index rows, but releases it during embedding. A
 recheck immediately precedes embedding. A changed registration or lost authority
 prevents publication; an embedding call
 already sent to a provider cannot be recalled. A private rebuild is refused when
-the lease is unavailable. Example output:
+the lease is unavailable. When the store offers revision leases, rebuilds require
+an index provider that supports revision checks. Example output:
 
 ```
 Reindexed root root:personal: 42 record(s), 118 chunk(s).

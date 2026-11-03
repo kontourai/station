@@ -233,6 +233,19 @@ export function createKnowledgeIndexRoutes(deps: KnowledgeIndexRouteDeps) {
         selectedRootIds.push(rootId);
       }
 
+      if (
+        selectedRootIds.length > 0 &&
+        deps.store.withRootRevision &&
+        !deps.indexProvider.supportsRootRevision
+      )
+        return c.json(
+          {
+            success: false,
+            error: 'Knowledge index revision support is unavailable.',
+          },
+          503,
+        );
+
       const roots: RebuildRootReport[] = [];
       for (const rootId of selectedRootIds) {
         const expected = privateRoots.get(rootId);

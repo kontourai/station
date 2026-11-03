@@ -310,6 +310,8 @@ async function migrateNamespace(
     namespace,
     vectorNamespace,
   );
+  if (store.withRootRevision && !indexProvider.supportsRootRevision)
+    throw new Error('Knowledge index cannot pin a root revision.');
   const migrateIntoRoot = async (
     adapter: Awaited<ReturnType<KnowledgeStoreProvider['adapterFor']>>,
   ) => {

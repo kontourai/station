@@ -111,6 +111,7 @@ interface SqliteVecIndexProviderOptions {
  * the two genuinely rare, explicit, multi-step admin actions are.
  */
 export class SqliteVecIndexProvider implements KnowledgeIndexProvider {
+  readonly supportsRootRevision = true;
   readonly id = 'sqlite-vec';
   readonly displayName = 'sqlite-vec (embedded semantic index)';
 

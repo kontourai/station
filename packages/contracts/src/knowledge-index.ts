@@ -102,6 +102,9 @@ export interface KnowledgeIndexProvider {
    * an index without it cannot report stale generations. */
   generations?(rootIds?: string[]): Promise<KnowledgeIndexGeneration[]>;
 
+  /** True only when rebuildRoot honors withRootRevision at every documented boundary. */
+  readonly supportsRootRevision?: boolean;
+
   /**
    * THE rebuild contract: drop everything held for `rootId` and re-derive it by enumerating the
    * root's records through the K2 seam (listByType over all types → chunk → embed → upsert).
