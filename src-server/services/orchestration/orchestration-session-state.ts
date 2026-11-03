@@ -565,12 +565,14 @@ export function reservedSourceDurabilityProfile(
   const unavailable = valid
     ? 'A sealed source Session needs fresh bounded admission; arbitrary continuation is unavailable.'
     : 'The recorded sealed source declaration is unavailable.';
+  const inputUnavailable = valid
+    ? "This session can't take Steer or Queue messages. To ask for another turn, use the report or group controls."
+    : unavailable;
   return {
+    queuedFollowUp: { state: 'none', detail: inputUnavailable },
     steerPlacement: {
       state: 'none',
-      detail: valid
-        ? 'Use the report or group controls to request another turn with fresh bounded admission. This Session cannot accept Steer or Queue.'
-        : unavailable,
+      detail: inputUnavailable,
     },
     crashContinuation: {
       state: 'none',

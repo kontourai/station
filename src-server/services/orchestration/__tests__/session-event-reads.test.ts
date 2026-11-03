@@ -227,6 +227,10 @@ describe('recorded sealed source Session policy', () => {
         'sealed-input',
         'malformed-sealed',
       ]) {
+        const queueReason =
+          threadId === 'malformed-sealed'
+            ? 'The recorded sealed source declaration is unavailable.'
+            : "This session can't take Steer or Queue messages. To ask for another turn, use the report or group controls.";
         const point = await service.readSession(
           threadId,
           INTERNAL_SESSION_READ_SCOPE,
@@ -242,7 +246,8 @@ describe('recorded sealed source Session policy', () => {
           listed.find((row) => row.threadId === threadId),
         ]) {
           expect(summary?.durability).toMatchObject({
-            steerPlacement: { state: 'none' },
+            queuedFollowUp: { state: 'none', detail: queueReason },
+            steerPlacement: { state: 'none', detail: queueReason },
             crashContinuation: { state: 'none' },
             toolReplay: { state: 'none' },
             pendingApprovals: { state: 'none' },
@@ -267,9 +272,10 @@ describe('recorded sealed source Session policy', () => {
           }),
         ).toThrow('do not support post-tool steering');
         expect(store.countEventsByThread(threadId)).toBe(count);
-        expect(
-          service.conversationInputAdmissionRefusal(threadId)?.reasonCode,
-        ).toBe('sealed_source_admission_required');
+        expect(service.conversationInputAdmissionRefusal(threadId)).toEqual({
+          reasonCode: 'sealed_source_admission_required',
+          reason: queueReason,
+        });
       }
       for (const threadId of ['ordinary', 'cursor-only']) {
         const point = await service.readSession(

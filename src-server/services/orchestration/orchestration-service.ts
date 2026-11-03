@@ -5837,12 +5837,13 @@ export class OrchestrationService {
     | { reasonCode: 'sealed_source_admission_required'; reason: string }
     | undefined {
     const threadId = this.currentConversationSessionId(conversationId);
-    if (this.readRecordedReservedSourceMode(threadId) === undefined)
-      return undefined;
+    const declaration = this.readRecordedReservedSourceMode(threadId);
+    if (declaration === undefined) return undefined;
     return {
       reasonCode: 'sealed_source_admission_required',
       reason:
-        'This sealed source Session needs fresh bounded admission. Use its report or group controls.',
+        reservedSourceDurabilityProfile(declaration)?.queuedFollowUp?.detail ??
+        "This session can't take Steer or Queue messages. To ask for another turn, use the report or group controls.",
     };
   }
 
