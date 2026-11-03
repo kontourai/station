@@ -592,6 +592,11 @@ it('completed turn retention expires replay payloads while preserving its no-red
     implementation: 'station-agent/1',
   });
   expect(next).toBeDefined();
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  expect(
+    f.database.prepare('SELECT count(*) AS n FROM agent_steps_retained').get()
+      ?.n,
+  ).toBe(0);
   const liveEffect = await live.effect({ type: 'effectRead', id: 'live-tool' });
   expect(liveEffect.effect.attempts[0]?.output).toBe(agentWire('live-result'));
   await live.run(async () => {});
