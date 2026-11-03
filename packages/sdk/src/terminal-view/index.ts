@@ -4,6 +4,11 @@
  * the engine, renderer and input modules behind it are internal.
  */
 
+export {
+  type TerminalViewChord,
+  type TerminalViewShortcut,
+  terminalViewShortcuts,
+} from './input/keyboard';
 export type { TerminalLinkTarget } from './links';
 export type {
   TerminalViewSession,

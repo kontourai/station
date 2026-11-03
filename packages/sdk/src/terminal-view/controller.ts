@@ -16,6 +16,7 @@ import type { Frame } from './engine/frame';
 import type { EngineSize, SearchState } from './engine/terminal-engine';
 import {
   FocusEscape,
+  isHostChord,
   keyInput,
   modsOf,
   type ViewKeyAction,
@@ -653,7 +654,7 @@ export class TerminalController {
       this.runViewAction(action);
       return;
     }
-    if (MODIFIER_KEYS.has(event.key)) return;
+    if (MODIFIER_KEYS.has(event.key) || isHostChord(event)) return;
     // Printable keys without modifiers arrive through beforeinput, which also
     // covers soft keyboards; everything else is encoded here.
     const printable = [...event.key].length === 1;

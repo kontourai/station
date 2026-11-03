@@ -109,6 +109,81 @@ export class FocusEscape {
   }
 }
 
+/** A chord in Station's shortcut vocabulary: `cmd` is Control off a Mac. */
+export interface TerminalViewChord {
+  key: string;
+  modifiers: ('cmd' | 'ctrl' | 'shift' | 'alt')[];
+}
+
+/** One key the view keeps for itself, as a host lists it. */
+export interface TerminalViewShortcut {
+  id: string;
+  description: string;
+  /** Pressed in order; most are one chord. */
+  chords: TerminalViewChord[];
+}
+
+/**
+ * The keys a focused terminal keeps for itself, in this platform's chords,
+ * so a host can list them beside its own shortcuts. Off a Mac the view's
+ * chords add Shift, leaving plain Control chords to the program.
+ */
+export function terminalViewShortcuts(
+  mac: boolean = isMac(),
+): readonly TerminalViewShortcut[] {
+  const view = (key: string): TerminalViewChord => ({
+    key,
+    modifiers: mac ? ['cmd'] : ['cmd', 'shift'],
+  });
+  return [
+    { id: 'terminal.copy', description: 'Copy selection', chords: [view('c')] },
+    { id: 'terminal.paste', description: 'Paste', chords: [view('v')] },
+    { id: 'terminal.find', description: 'Find', chords: [view('f')] },
+    {
+      id: 'terminal.selectAll',
+      description: 'Select all',
+      chords: [view('a')],
+    },
+    {
+      id: 'terminal.menu',
+      description: 'Open the terminal menu',
+      chords: [{ key: 'F10', modifiers: ['shift'] }],
+    },
+    {
+      id: 'terminal.leave',
+      description: 'Leave the terminal (Shift+Tab: backwards)',
+      chords: [
+        { key: 'Escape', modifiers: [] },
+        { key: 'Tab', modifiers: [] },
+      ],
+    },
+  ];
+}
+
+/**
+ * Chords the view leaves to the page, so the host's shortcuts work from a
+ * focused terminal: Command chords on a Mac, which terminals do not send to
+ * programs, and Control+Shift letter chords elsewhere. Checked after the
+ * view's own keys.
+ */
+export function isHostChord(
+  event: Pick<
+    KeyboardEvent,
+    'key' | 'ctrlKey' | 'shiftKey' | 'altKey' | 'metaKey'
+  >,
+  mac: boolean = isMac(),
+): boolean {
+  if ([...event.key].length !== 1) return false;
+  if (mac) return event.metaKey;
+  return (
+    event.ctrlKey &&
+    event.shiftKey &&
+    !event.altKey &&
+    !event.metaKey &&
+    /^[a-z]$/i.test(event.key)
+  );
+}
+
 /** Keys the view handles instead of sending to the program. */
 export function viewKeyAction(
   event: KeyboardEvent,

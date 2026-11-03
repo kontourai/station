@@ -312,6 +312,38 @@ describe('TerminalController', () => {
     controller.dispose();
   });
 
+  // Station's own shortcuts (the command palette, Settings, the shortcut
+  // list) were swallowed while a terminal had focus: the view encoded every
+  // modifier chord and prevented it, and the app skips prevented keys.
+  it.each([
+    { platform: 'MacIntel', host: { key: 'k', metaKey: true } },
+    { platform: 'Linux x86_64', host: { key: 'D', ctrlKey: true, shiftKey: true } },
+  ])('leaves app chords to the page and Control chords to the program on $platform', async ({ platform, host }) => {
+    vi.stubGlobal('navigator', { ...navigator, platform });
+    const { controller, session, root } = await startController();
+    const input = root.querySelector('textarea')!;
+    const press = (init: KeyboardEventInit) => {
+      const event = new KeyboardEvent('keydown', {
+        ...init,
+        bubbles: true,
+        cancelable: true,
+      });
+      input.dispatchEvent(event);
+      return event;
+    };
+    expect(press(host).defaultPrevented).toBe(false);
+    expect(session.write).not.toHaveBeenCalled();
+    expect(press({ key: 'd', code: 'KeyD', ctrlKey: true }).defaultPrevented).toBe(true);
+    await vi.waitFor(() =>
+      expect(
+        session.write.mock.calls.map(([bytes]) =>
+          new TextDecoder().decode(bytes),
+        ),
+      ).toContain('\x04'),
+    );
+    controller.dispose();
+  });
+
   // A dock region put away keeps its view mounted with no box; sizing the
   // shared shell from it squeezed every other view to two columns.
   it('never sizes the session from a view with no box', async () => {

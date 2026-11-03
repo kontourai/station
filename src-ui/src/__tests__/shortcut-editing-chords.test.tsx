@@ -205,4 +205,20 @@ describe('shortcut list spelling and duplicates', () => {
     expect(rows[0].parentElement?.textContent).toContain('Esc');
     expect(rows[0].parentElement?.textContent).not.toContain('ESCAPE');
   });
+
+  test('the cheatsheet lists the keys a focused terminal keeps', () => {
+    render(
+      <KeyboardShortcutsProvider>
+        <SettingsLikePage />
+      </KeyboardShortcutsProvider>,
+    );
+    const copy = screen.getByText('Copy selection').parentElement;
+    expect(copy?.textContent).toContain(
+      mac() ? '⌘C' : formatShortcutChord(['cmd', 'shift'], 'c', false),
+    );
+    expect(
+      screen.getByText('Leave the terminal (Shift+Tab: backwards)')
+        .parentElement?.textContent,
+    ).toContain('Esc then Tab');
+  });
 });
