@@ -36,10 +36,23 @@ function errorSummary(request: TroubleshootRequest): string | undefined {
   const code =
     request.code === undefined || request.code === ''
       ? ''
-      : String(request.code).trim();
+      : // A code is one token; a multi-line one may carry a stack.
+        (String(request.code).split(/\r?\n/)[0] ?? '').trim();
+  // Sanitized apart, then joined: the shared redactor reads a leading
+  // `CODE: ` as a non-secret `key: value` pair and would skip any credential
+  // pair later in the message.
+  const safeCode = code
+    ? sanitizeFreeText(code, TROUBLESHOOT_SUMMARY_LENGTH)
+    : '';
   const message = firstMessageLine(request.message ?? '');
-  const text = code && message ? `${code}: ${message}` : code || message;
-  return text ? sanitizeFreeText(text, TROUBLESHOOT_SUMMARY_LENGTH) : undefined;
+  const safeMessage = message
+    ? sanitizeFreeText(message, TROUBLESHOOT_SUMMARY_LENGTH)
+    : '';
+  const text =
+    safeCode && safeMessage
+      ? `${safeCode}: ${safeMessage}`
+      : safeCode || safeMessage;
+  return text ? text.slice(0, TROUBLESHOOT_SUMMARY_LENGTH) : undefined;
 }
 
 /**

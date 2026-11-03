@@ -95,4 +95,18 @@ describe('buildTroubleshootSeed', () => {
     expect(over.conversationId).toBeUndefined();
     expect(over.turnId).toBeUndefined();
   });
+
+  test('keeps pairing codes and stack frames out of the summary', () => {
+    const seed = buildTroubleshootSeed(
+      {
+        code: 'E_PAIR\n    at pair (/Users/alice/station/src/pair.ts:10:5)',
+        message: 'pairing failed manualCode=23456789AB',
+      },
+      '/settings',
+    );
+    expect(seed.errorSummary).not.toContain('23456789AB');
+    expect(seed.errorSummary).not.toContain(' at ');
+    expect(seed.errorSummary).not.toContain('pair.ts');
+    expect(seed.errorSummary?.startsWith('E_PAIR: ')).toBe(true);
+  });
 });
