@@ -304,7 +304,8 @@ against its own filesystem.
 
 A plain-folder workspace (`{ "kind": "directory", "cwd": "..." }`) starts the
 engine in a folder that is not confined to a Project, so a paired device needs
-the operator's `coding:exec` grant to name one; without it the route answers
+the operator's `coding:exec` grant to name one (one of the owner's own devices
+with owner-device standing counts as the operator in person); without it the route answers
 `403` with `code: "working-directory-not-granted"` and starts nothing. This
 applies to `/chat`, `/chat/delegated`, `/chat/background`,
 `/conversations/:conversationId/handoff` and `POST /api/orchestration/delegations`;

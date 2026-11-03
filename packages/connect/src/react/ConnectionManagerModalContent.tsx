@@ -1076,6 +1076,7 @@ export function ConnectionManagerModalContent({
 
         {panel === 'pair-host' && (
           <HostDevicePairingPanel
+            quickPair
             initialClientChannel={pairingClientChannel}
             apiBase={activeConnection?.url ?? window.location.origin}
             publicEndpoint={activeConnection?.url ?? window.location.origin}
