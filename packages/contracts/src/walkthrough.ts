@@ -1,4 +1,5 @@
 import type { ActionOperation } from './action-operation.js';
+import { DEVICE_ARTIFACT_UPLOAD_MAX_BYTES } from './device-tools.js';
 import { isMobileDeviceHostId } from './mobile-device.js';
 
 export const WALKTHROUGH_SCHEMA = 'station.walkthrough/v1' as const;
@@ -36,16 +37,29 @@ export const MEDIA_UPLOAD_POLICIES = Object.freeze({
     totalMs: TRANSCRIPTION_UPLOAD_TIMEOUT_MS,
     responseMs: 16 * 60_000,
   },
+  deviceArtifact: {
+    bytes: DEVICE_ARTIFACT_UPLOAD_MAX_BYTES,
+    idleMs: 60_000,
+    totalMs: 2 * 60 * 60_000,
+    responseMs: 2 * 60 * 60_000,
+  },
 });
 export function mediaUploadPolicy(
   method: string,
   path: string,
-  policies: typeof MEDIA_UPLOAD_POLICIES,
+  policies: Omit<typeof MEDIA_UPLOAD_POLICIES, 'deviceArtifact'> &
+    Partial<Pick<typeof MEDIA_UPLOAD_POLICIES, 'deviceArtifact'>>,
 ) {
   if (method !== 'POST') return undefined;
   if (/^\/api\/projects\/[^/]+\/walkthroughs\/import$/.test(path))
     return policies.walkthrough;
   if (path === '/api/transcription') return policies.transcription;
+  if (
+    /^\/api\/mobile-devices\/projects\/[^/]+\/device-artifacts\/upload$/.test(
+      path,
+    )
+  )
+    return policies.deviceArtifact;
   return undefined;
 }
 export const WALKTHROUGH_CHANNELS = [

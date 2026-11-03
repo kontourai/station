@@ -647,6 +647,24 @@ test('opens Chat inventory from the actions sheet, not a third bar control', asy
 });
 
 describe('full-screen and peek control (#4391)', () => {
+  test('a collapsed bar opens full screen with one size control', () => {
+    const onToggle = vi.fn();
+    renderHeader({
+      dockToggle: {
+        state: 'collapsed',
+        onExpand: vi.fn(),
+        onCollapse: vi.fn(),
+      },
+      extentToggle: { maximized: false, onToggle },
+    });
+    expect(
+      screen.getAllByRole('button', { name: 'Full screen chat' }),
+    ).toHaveLength(1);
+    expect(screen.queryByRole('button', { name: 'Expand chat' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Full screen chat' }));
+    expect(onToggle).toHaveBeenCalledOnce();
+  });
+
   test('an open dock shows a full-screen control that grows it', () => {
     const onToggle = vi.fn();
     renderHeader({ extentToggle: { maximized: false, onToggle } });

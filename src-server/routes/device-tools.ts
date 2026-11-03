@@ -12,15 +12,32 @@ import { type Context, Hono } from 'hono';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import { readBoundedRequestBody } from '../security/bounded-request-body.js';
 import type { DeviceAccess } from '../services/devices/device-access.js';
+import {
+  DeviceArtifactError,
+  type DeviceArtifactStaging,
+  installFilesFor,
+} from '../services/devices/device-app-artifacts.js';
+import type {
+  DeviceHistoryAction,
+  DeviceHistoryEntry,
+  DeviceInstallation,
+} from '../services/devices/device-session-service.js';
 import { DeviceHostBusyError } from '../services/devices/device-shares.js';
 import {
   type DeviceControlConflict,
   DeviceToolsAdmissionError,
   DeviceToolsError,
   type DeviceToolsService,
+  type DeviceToolsTarget,
+  deviceActionRefused,
   isDeviceAppId,
   isDeviceToolsTarget,
+  parseDeviceAppAction,
 } from '../services/devices/device-tools.js';
+import type {
+  DeviceInstallFile,
+  DeviceInstallOutcome,
+} from '../services/devices/hosts/device-app-install.js';
 
 /**
  * The Device pane's Tools drawer (#1971, D10), under `/api/mobile-devices`:
@@ -58,6 +75,32 @@ import {
 
 export interface DeviceToolsRouteOptions {
   isRequestPrincipalCurrent: (request: Request) => boolean;
+  actionHistory?: {
+    read(
+      target: DeviceToolsTarget,
+    ): { sessionId: string; entries: DeviceHistoryEntry[] } | undefined;
+    installed?(target: DeviceToolsTarget): DeviceInstallation | undefined;
+    installation(target: DeviceToolsTarget, value: DeviceInstallation): void;
+    note(
+      target: DeviceToolsTarget,
+      action: DeviceHistoryAction,
+      outcome: DeviceHistoryEntry['outcome'],
+    ): void;
+  };
+  appInstall?: {
+    staging: DeviceArtifactStaging;
+    projectId(slug: string): string | undefined;
+    authorize(request: Request, projectId: string): Promise<boolean>;
+    run(input: {
+      hostId: string;
+      platform: 'ios' | 'android';
+      deviceId: string;
+      digest: string;
+      files: DeviceInstallFile[];
+      beforeInstall: () => Promise<boolean>;
+      signal: AbortSignal;
+    }): Promise<DeviceInstallOutcome>;
+  };
   deviceLoopEnabled?: () => boolean;
   access?: DeviceAccess;
   /** The local device host's service. */
@@ -114,6 +157,7 @@ const FAILURE_STATUS: Partial<
   unsupported: 422,
   'tool-failed': 502,
   'app-not-running': 409,
+  'postcondition-failed': 409,
   'tool-timeout': 504,
 };
 
@@ -407,6 +451,265 @@ export function createDeviceToolsRoutes(options: DeviceToolsRouteOptions) {
     },
   );
 
+  app.get(
+    '/hosts/:hostId/devices/:platform/:deviceId/tools/history',
+    async (c) => {
+      if (!options.deviceLoopEnabled?.())
+        return c.json(
+          { success: false, code: 'feature_preview_disabled' },
+          404,
+        );
+      if (!queryIsClean(c, ['projectSlug']))
+        return failure(c, 'invalid-request');
+      const admitted = await admit(c, 'view');
+      if (!admitted.ok) return admitted.response;
+      const history = options.actionHistory?.read(admitted.target);
+      if (!history) return failure(c, 'unavailable');
+      if (!stillCurrent(c) || !options.deviceLoopEnabled?.())
+        return failure(c, 'access-denied');
+      return publish(c, history);
+    },
+  );
+
+  app.post(
+    '/hosts/:hostId/devices/:platform/:deviceId/tools/install',
+    async (c) => {
+      if (!options.deviceLoopEnabled?.())
+        return c.json(
+          { success: false, code: 'feature_preview_disabled' },
+          404,
+        );
+      const config = options.appInstall;
+      const slug = c.req.query('projectSlug');
+      if (!config || !options.controlConflict) return failure(c, 'unavailable');
+      if (
+        !queryIsClean(c, ['projectSlug']) ||
+        !slug ||
+        !/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(slug)
+      )
+        return failure(c, 'invalid-request');
+      const projectId = config.projectId(slug);
+      if (!projectId) return failure(c, 'access-denied');
+      const body = await readBoundedRequestBody(c.req.raw, 4096);
+      let value: unknown;
+      try {
+        value = body.status === 'ok' ? JSON.parse(body.body) : null;
+      } catch {
+        value = null;
+      }
+      if (!value || typeof value !== 'object' || Array.isArray(value))
+        return failure(c, 'invalid-request');
+      const handle = (value as { artifactHandle?: unknown }).artifactHandle;
+      if (
+        Object.keys(value).length !== 1 ||
+        typeof handle !== 'string' ||
+        !/^[0-9a-f-]{36}$/.test(handle)
+      )
+        return failure(c, 'invalid-request');
+      const admitted = await admit(c, 'drive');
+      if (!admitted.ok) return admitted.response;
+      const { target, caller, service } = admitted;
+      const current = async () => {
+        if (
+          !options.deviceLoopEnabled?.() ||
+          !stillCurrent(c) ||
+          c.req.raw.signal.aborted ||
+          config.projectId(slug) !== projectId ||
+          !(await config.authorize(c.req.raw, projectId))
+        )
+          return false;
+        const fresh = await admit(c, 'drive');
+        return (
+          fresh.ok &&
+          fresh.service === service &&
+          fresh.caller.principal === caller.principal &&
+          fresh.caller.device === caller.device &&
+          options.controlConflict!(
+            caller,
+            target.platform,
+            target.deviceId,
+            target.hostId,
+          ) === 'none' &&
+          config.projectId(slug) === projectId &&
+          options.deviceLoopEnabled?.() === true &&
+          stillCurrent(c)
+        );
+      };
+      let started = false;
+      let outcome: DeviceInstallOutcome | undefined;
+      try {
+        const result = await config.staging.withArtifact(
+          projectId,
+          handle,
+          current,
+          async (receipt, payload, artifactCurrent, signal) => {
+            if (receipt.platform !== target.platform)
+              return {
+                ok: false as const,
+                code: 'incompatible-artifact',
+                effect: 'none' as const,
+              };
+            started = true;
+            outcome = await config.run({
+              ...target,
+              digest: receipt.digest,
+              files: installFilesFor(payload),
+              signal,
+              beforeInstall: async () =>
+                (await current()) &&
+                (await artifactCurrent()) &&
+                (await current()),
+            });
+            if (!(await current()))
+              return {
+                ok: false as const,
+                code: 'interrupted',
+                effect:
+                  outcome.ok || outcome.effect === 'unknown'
+                    ? ('unknown' as const)
+                    : ('none' as const),
+              };
+            if (outcome.ok)
+              options.actionHistory?.installation(target, {
+                ...outcome,
+                source: receipt.source,
+              });
+            return outcome.ok
+              ? {
+                  ...outcome,
+                  source: receipt.source,
+                  hostId: target.hostId,
+                  deviceId: target.deviceId,
+                }
+              : outcome;
+          },
+          c.req.raw.signal,
+        );
+        options.actionHistory?.note(
+          target,
+          'install-app',
+          result.ok
+            ? 'success'
+            : result.effect === 'unknown'
+              ? 'unknown'
+              : 'failed',
+        );
+        return result.ok
+          ? publish(c, result)
+          : c.json({ success: false, ...result }, 409);
+      } catch (error) {
+        options.actionHistory?.note(
+          target,
+          'install-app',
+          started ? 'unknown' : 'failed',
+        );
+        return c.json(
+          {
+            success: false,
+            code:
+              !started && error instanceof DeviceArtifactError
+                ? error.code
+                : 'interrupted',
+            effect:
+              started &&
+              (!outcome || outcome.ok || outcome.effect === 'unknown')
+                ? 'unknown'
+                : 'none',
+          },
+          409,
+        );
+      }
+    },
+  );
+
+  app.post(
+    '/hosts/:hostId/devices/:platform/:deviceId/tools/app-actions',
+    async (c) => {
+      if (!options.deviceLoopEnabled?.())
+        return c.json(
+          {
+            success: false,
+            code: 'feature_preview_disabled',
+            previewId: 'device-developer-loop',
+          },
+          404,
+        );
+      if (!queryIsClean(c, ['projectSlug']))
+        return failure(c, 'invalid-request');
+      const body = await readBoundedRequestBody(c.req.raw, 4096);
+      let value: unknown;
+      try {
+        value = body.status === 'ok' ? JSON.parse(body.body) : null;
+      } catch {
+        value = null;
+      }
+      const action = parseDeviceAppAction(value);
+      if (!action) return failure(c, 'invalid-request');
+      const admitted = await admit(c, 'drive');
+      if (!admitted.ok) return admitted.response;
+      const { target, caller, service } = admitted;
+      if (!options.controlConflict) return failure(c, 'unavailable');
+      const readmit = async () => {
+        if (
+          !options.deviceLoopEnabled?.() ||
+          !stillCurrent(c) ||
+          !(await access!.mayAccessDevice(
+            c.req.raw,
+            target.platform,
+            target.deviceId,
+            'drive',
+            target.hostId,
+          )) ||
+          (target.hostId === LOCAL_DEVICE_HOST_ID
+            ? tools
+            : options.toolsFor?.(target.hostId)) !== service ||
+          !stillCurrent(c) ||
+          !options.deviceLoopEnabled?.()
+        )
+          throw new DeviceToolsAdmissionError({ code: 'access-denied' });
+        const heldBy = options.controlConflict!(
+          caller,
+          target.platform,
+          target.deviceId,
+          target.hostId,
+        );
+        if (heldBy !== 'none')
+          throw new DeviceToolsAdmissionError({
+            code: 'device-controlled-by-other',
+            heldBy,
+          });
+      };
+      return run(c, async () => {
+        let dispatched = false;
+        try {
+          await readmit();
+          const installed = options.actionHistory?.installed?.(target);
+          const result = await service.appAction(target, action, {
+            beforeRun: readmit,
+            onDispatch: () => {
+              dispatched = true;
+            },
+            declaredSchemes:
+              installed?.metadata.appId === action.appId
+                ? installed.metadata.urlSchemes
+                : undefined,
+            signal: c.req.raw.signal,
+          });
+          await readmit();
+          options.actionHistory?.note(target, action.type, 'success');
+          return publish(c, result);
+        } catch (error) {
+          options.actionHistory?.note(
+            target,
+            action.type,
+            !dispatched && deviceActionRefused(error) ? 'failed' : 'unknown',
+          );
+          throw error;
+        }
+      });
+    },
+  );
+
   app.post(
     '/hosts/:hostId/devices/:platform/:deviceId/tools/actions',
     async (c) => {
@@ -470,14 +773,26 @@ export function createDeviceToolsRoutes(options: DeviceToolsRouteOptions) {
             heldBy: now,
           });
       };
-      return run(c, async () =>
-        publish(
-          c,
-          await admitted.service.act(admitted.target, action, {
+      return run(c, async () => {
+        try {
+          const result = await admitted.service.act(admitted.target, action, {
             beforeRun: readmit,
-          }),
-        ),
-      );
+          });
+          options.actionHistory?.note(
+            admitted.target,
+            'tool-action',
+            'success',
+          );
+          return publish(c, result);
+        } catch (error) {
+          options.actionHistory?.note(
+            admitted.target,
+            'tool-action',
+            deviceActionRefused(error) ? 'failed' : 'unknown',
+          );
+          throw error;
+        }
+      });
     },
   );
 

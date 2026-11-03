@@ -1,5 +1,4 @@
 import {
-  PROJECT_WORKING_CONFIGURATION_PREVIEW,
   type ProjectWorkingConfiguration,
   type ProjectWorkingConfigurationView,
 } from '@kontourai/station-contracts/project-working-configuration';
@@ -22,7 +21,6 @@ export interface ProjectWorkingConfigurationAdmission {
 /** The runtime supplies the canonical Project read/configuration authority. */
 export function createProjectWorkingConfigurationRoutes(deps: {
   service: ProjectWorkingConfigurationService;
-  enabled(): boolean;
   authorize(
     request: Request,
     slug: string,
@@ -31,19 +29,6 @@ export function createProjectWorkingConfigurationRoutes(deps: {
 }) {
   const app = new Hono();
   const run = async (c: Context, action: 'read' | 'configure') => {
-    if (!deps.enabled())
-      return c.json(
-        {
-          success: false,
-          error:
-            'Enable Project working configuration in Settings → Advanced → Feature previews.',
-          code: 'feature_preview_disabled',
-          previewId: PROJECT_WORKING_CONFIGURATION_PREVIEW,
-          settingsPath:
-            '/settings?view=feature-previews&highlight=feature-previews',
-        },
-        404,
-      );
     const slug = c.req.param('slug');
     if (!slug)
       return c.json({ success: false, error: 'Project not found' }, 404);
@@ -51,9 +36,7 @@ export function createProjectWorkingConfigurationRoutes(deps: {
     if (!admission)
       return c.json({ success: false, error: 'Project not found' }, 404);
     const isCurrent = async () =>
-      !c.req.raw.signal.aborted &&
-      deps.enabled() &&
-      (await admission.isCurrent());
+      !c.req.raw.signal.aborted && (await admission.isCurrent());
     try {
       if (!(await isCurrent()))
         return c.json({ success: false, error: 'Project not found' }, 404);

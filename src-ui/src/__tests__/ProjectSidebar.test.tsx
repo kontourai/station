@@ -364,20 +364,30 @@ describe('ProjectSidebar WORK list labeling (station#1300)', () => {
     ).toContain('Acme Station');
   });
 
-  test('keeps conversations and composer drafts out of the workspace map', () => {
-    resetState();
-    chats['session-draft'] = { title: 'Conversation in the dock' };
-    act(() => chatDraftsStore.set('session-draft', 'Remember migration'));
-    renderSidebar(<ProjectSidebar />);
-    expect(screen.getByRole('button', { name: 'Home' })).toBeTruthy();
-    expect(screen.queryByText('Open chats')).toBeNull();
-    expect(screen.queryByText('Drafts')).toBeNull();
-    expect(screen.queryByText('Conversation in the dock')).toBeNull();
-    expect(chatDraftsStore.getSnapshot()['session-draft']?.text).toBe(
-      'Remember migration',
-    );
-    act(() => chatDraftsStore.clear('session-draft'));
-  });
+  test.each([false, true])(
+    'keeps conversations and composer drafts out of the workspace map (phone %s)',
+    async (phone) => {
+      resetState();
+      presentation.isMobile = phone;
+      chats['session-draft'] = { title: 'Conversation in the dock' };
+      act(() => chatDraftsStore.set('session-draft', 'Remember migration'));
+      const view = renderSidebar(<ProjectSidebar />);
+      if (phone)
+        act(() => window.dispatchEvent(new CustomEvent('toggle-sidebar')));
+      await screen.findByText('Personal Boards');
+      expect(screen.getByRole('button', { name: 'Home' })).toBeTruthy();
+      expect(screen.queryByText('Recent chats')).toBeNull();
+      expect(screen.queryByText('Open chats')).toBeNull();
+      expect(screen.queryByText('Drafts')).toBeNull();
+      expect(screen.queryByText('Conversation in the dock')).toBeNull();
+      expect(chatDraftsStore.getSnapshot()['session-draft']?.text).toBe(
+        'Remember migration',
+      );
+      act(() => chatDraftsStore.clear('session-draft'));
+      view.unmount();
+      presentation.isMobile = false;
+    },
+  );
 });
 
 describe('ProjectSidebar Boards section mounts (#2062)', () => {

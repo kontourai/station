@@ -565,6 +565,9 @@ export interface ModelOptionCapabilities {
   supportsAdaptiveThinking?: boolean;
   supportsFastMode?: boolean;
   fastModeLabel?: string;
+  /** Exact service-tier ids and display names reported by the runtime. */
+  serviceTiers?: { id: string; name: string; description?: string }[];
+  defaultServiceTier?: string;
   supportsAutoMode?: boolean;
   contextWindow?: number;
   /**

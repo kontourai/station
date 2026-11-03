@@ -160,11 +160,13 @@ export type {
   RelatedPaneCloseOutcome,
   RelatedPaneOpenOutcome,
   RelatedPaneOpenRequest,
+  RelatedPaneOpenTarget,
   RelatedPanePresentation,
   RelatedPaneRevealOutcome,
   RelatedPaneTarget,
   RelatedPaneUnavailable,
   RelatedPaneUnavailableReason,
+  RelatedTerminalOpenRequest,
 } from '@kontourai/station-contracts/workspace-pane-host-contract';
 export * from './answer-support';
 export type { InvokeOptions } from './api';
@@ -241,6 +243,7 @@ export {
   getProjectView,
   listProjectRunLocations,
   listProjectViews,
+  openOrAdoptProjectShell,
 } from './client/projects';
 export {
   getReviewReceipt,
@@ -1572,6 +1575,14 @@ export {
   useTelemetryCompanionPrerequisitesQuery,
   useTelemetryDeliveryStatusQuery,
 } from './query-domains/telemetryDelivery';
+export {
+  clearTerminalHistory,
+  fetchTerminalHistory,
+  TerminalHistoryUnsupportedError,
+  type TerminalHistoryUsage,
+  useClearTerminalHistoryMutation,
+  useTerminalHistoryQuery,
+} from './query-domains/terminalHistory.js';
 export { extractUIBlocks } from './query-domains/uiBlocks.js';
 export {
   continueAfterMemoryExhaustion,

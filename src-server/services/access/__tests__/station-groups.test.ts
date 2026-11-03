@@ -187,7 +187,15 @@ describe('Station groups cap a device tied to a person', () => {
   test("a device tied to no person is the operator's own and is never capped", async () => {
     const { security } = await station();
     const phone = pair(security.devicePairing, 'My phone', ADMIN_LIKE);
-    expect(security.resolveGrantedScope(phone.credential)).toBe(ADMIN_LIKE);
+    // Never capped: the stored grant is untouched by groups. The granted
+    // scope also carries the derived access:manage of owner-device standing
+    // (2026-11-02), since this unbound device holds a host shell.
+    expect(security.devicePairing.identifyDevice(phone.credential)?.scope).toBe(
+      ADMIN_LIKE,
+    );
+    expect(
+      new Set(security.resolveGrantedScope(phone.credential)?.split(' ')),
+    ).toEqual(new Set([...ADMIN_LIKE.split(' '), 'access:manage']));
     expect(security.credentialMayDecidePairingRequests(phone.credential)).toBe(
       true,
     );

@@ -1,6 +1,6 @@
 # Settings you may not have found
 
-Most Settings rows explain themselves. This page covers four sections that
+Most Settings rows explain themselves. This page covers five sections that
 change what Station offers rather than how it looks. Open **Settings**, pick a
 page in the left rail, or search for a setting by name. You can also find any
 Settings row from the [command palette](../guides/keyboard-shortcuts.md#command-palette)
@@ -11,7 +11,8 @@ Settings row from the [command palette](../guides/keyboard-shortcuts.md#command-
 | Feature previews | **Advanced** | On this Station |
 | Developer tools | **Advanced** | To your account when you are signed in, otherwise on this device |
 | Shared answers | **Privacy & sharing** | On this Station |
-| Device hosts | **Devices** | On this Station |
+| Browser & devices | **Advanced** | On this Station, per Project for the Browser rows |
+| Device hosts | **Advanced** | On this Station |
 
 ## Feature previews
 
@@ -24,8 +25,6 @@ only when this Station's build can run it; if none is, the section says
 | --- | --- | --- | --- |
 | `durable-station-agent` | Crash-durable Station Agent | Keeps Station-engine text turns running after a client disconnect and resumes journaled steps after restart. Stop still cancels. | Experimental; writes every model/tool step to private SQLite and can add substantial latency. An uncertain model request is surfaced without automatic resend; pending approvals still require an answer. |
 | `reviewed-usage-tariffs` | Reviewed usage tariffs | Lets the operator review exact Bearing source bytes and route/model tariff bindings for later usage capture. | No default price or live fetching. Retail values remain separate from billing, subscription fees and quota. Historical snapshots stay frozen. |
-| `project-working-configuration` | Project working configuration | Discovers repository guidance and lets an operator review the rules, checks and completion criteria used in Task briefs. | Reads bounded repository files. Applying defaults runs no command and grants no setup authority. Stale sources refuse dispatch until reviewed again. |
-| `progressive-station-tools` | Progressive Station tools | Offers an index and on-demand tool families to eligible runtime credentials. | Experimental engine notification support; ordinary tool authorization still runs on each call. Turning it off restores the static catalog. |
 | `codex-bound-browser-device-tools` | Codex browser and device tools | Offers eligible Codex Sessions the built-in browser and device tools over a bound channel. | Calls require current Project access and tool approval policy; browser pages and device contents can contain private data. Changing this choice retires existing bindings; start a new Session to use it again. |
 | `learning-lifecycle-review` | Learning lifecycle review | Shows evidence, decisions, active guidance, effects and retirement in Project Sources. | Personal POSIX hosts only. Owner-reviewed activation can change future Task context; it does not install or deploy a Skill. |
 | `context-compaction` | Context compaction | Offers a bounded summary cold start and opt-in threshold compaction where supported. | Summary generation can spend model tokens. Old messages stay retained; native tool and approval state is omitted, not transferred. Unknown capacity prevents automatic compaction. |
@@ -40,6 +39,7 @@ only when this Station's build can run it; if none is, the section says
 | `integration-content-trust` | Integration content trust | Shows trust classification and after-untrusted-content permissions for integrations in Connections. | Saved choices remain effective when the preview is off; enforcement depends on the engine and integration path. |
 | `browser-experience` | Browser experience | Adds Browser shortcuts, per-tab zoom and appearance, float over chat, and agent action visualization. | Off by default on personal hosts; ordinary Browser authority and control checks still apply. |
 | `plugin-recovery-inventory` | Plugin recovery inventory | Enables the operator's retained plugin backup listing and manual recovery guidance. | The listing reveals local backup paths to the operator; it does not restore backups. |
+| `browser-artifacts` | Browser artifacts | Enables Browser annotation, chat attachment, recording and network diagnostics. | Images and clips can contain page content; recording uses FFmpeg and temporary storage; network query values are redacted. |
 | `walkthroughs` | Walkthroughs | Imports narrated recordings and enables Task-bound Browser and Device clips. | One-time consented media/speech tool download; CPU use; recordings may contain private information. |
 | `device-developer-loop` | Device developer loop | Enables app-filtered logs, Device clips and agent-open auto-float. | Device clips also require Walkthroughs; logs and recordings may contain private information. |
 | `local-speech` | Local speech | Offers Station (local) in Voice → Speech-to-text: record a message, then transcribe it on this Station. | One-time consented tool/model download; English batch dictation only; microphone permission; shares one recognizer and a bounded wait queue with Walkthroughs. |
@@ -51,6 +51,7 @@ only when this Station's build can run it; if none is, the section says
 | `task-collaboration` | Task collaboration | Shows member names and presence in shared Task rooms. | Project membership and an explicit Task share are still required. |
 | `chat-apps` | Chat apps | Shows integration capability status in Connections and write-back history in Task Details. | Status checks can run `gh auth status` on the Station host; an unverified result does not prove delivery. |
 | `continue-interrupted-turn` | Continue after restart | Offers **Continue** on a chat turn a Station restart cut off, which sends the agent a short note to pick up where it stopped. | Continue starts an ordinary agent turn, once per interrupted turn; it is never sent on its own. |
+| `paired-station-chats` | Paired Station chats | Starts text chats on a paired Station from New Chat, with that Station’s Project picker, transcript, replies and approvals. | Personal hosts only. Uses the destination’s providers and credits. Off disables reads and new operations; saved tabs and unconfirmed messages remain. Existing remote Tasks keep their separate flow. |
 | `visual-skills` | Visual skills | Offers installed visual skills in the start composer (**⋯ → Use a visual skill**) and the New Chat agent list. | Only the entry points are the preview: installing, validating and authoring visual skills work either way, and a chat already started with one keeps its skill view and any unsent next stage. Turning it off mid-draft stops New Chat showing or starting a chosen, unsent visual skill; turning it back on restores that choice. |
 | `workload-budget-settings` | Workload budget settings | Shows a memory budget editor under **Settings → Advanced → Host options**: per-engine and total memory for engine workloads, beside the host's memory and where each value comes from. | Only the editor is the preview; budgets themselves are enforced either way. On a Linux Station service a lower budget kills memory-heavy commands sooner, and a total below current use is refused; an environment variable still overrides the saved value; elsewhere the values are only saved. Turning the preview off keeps saved values in force (save empty fields first to clear them). |
 | `project-sharing-setting` | Project sharing setting | Shows **Project sharing with local accounts** under **Settings → System**, where the Station operator turns on invitations with username and password accounts and picks the sign-in address. | Only the control is the preview. Applying restarts Station through its process supervisor. Turning the preview off keeps the saved choice in force; environment variables set by the deployment always win. See [deployment authentication](https://github.com/kontourai/station/blob/main/docs/guides/deployment-authentication.md#turn-it-on-from-settings). |
@@ -177,6 +178,21 @@ lists those addresses but still connects only through its saved one; see
 
 This section lists the answer links you have created, with their state and
 expiry, and lets you revoke them. See [Share an answer](sharing-answers.md).
+
+## Browser & devices
+
+Configuration the Browser and Device panes keep out of their toolbars. The
+Browser's **⋯ › Browser settings…** opens it on that Browser's Project.
+
+- **Agent JavaScript** lets agents run scripts in the chosen Project's
+  pages. It is off by default, and only the operator or a Project admin can
+  change it.
+- **Shared local servers** (operator only) lists the local servers the
+  Project's admins can open in the Browser. **Find local servers** suggests
+  some, and nothing is shared until you choose it. Shared servers appear as
+  buttons on an empty Browser.
+- **Open device setup** opens the device setup wizard: the device hub,
+  sharing devices with Projects, and agent device access.
 
 ## Device hosts
 

@@ -34,6 +34,7 @@ export const EXPECTED_LABEL_NAMES = Object.freeze([
   NEEDS_REPORTER,
   'needs-regrounding',
   'question',
+  'reported:troubleshoot',
   'rust',
   'security',
   'stage:preview',

@@ -82,6 +82,41 @@ export class SessionAuthorization {
    * access) via `SESSION_OWNER_CACHE_MAX_ENTRIES`.
    */
   private readonly sessionOwnerCache = new Map<string, string>();
+  /**
+   * threadId -> the owner a fresh accepted start stamped (`metadata.userId`)
+   * while that start's own `session.started` has not yet settled (#4480).
+   * The adapter echoes that metadata, and the echo becomes the durable
+   * owner, but it reaches the store through the observed-event publish,
+   * which retries asynchronously under SQLite contention (#3560). Without
+   * this, a command sent right after the start (a delegation's initial
+   * turn) can reach the command gate first and be refused as "Session not
+   * found".
+   *
+   * Bound only when the stamp is the requesting principal's own (a fork's
+   * admitted requester, whose stamp is what becomes durable) or the start is
+   * internal. Consulted only when the store has no durable owner; never
+   * enters the positive cache and never answers a read (SSE, transcript,
+   * `canReadSession`). Dropped when the adapter stream settles the start's
+   * `session.started` (appended, declined, abandoned after retries, or lost
+   * to a fault before publishing) or delivers a `session.exited`; when an
+   * owner-bearing `session.configured` or any `session.exited` is appended;
+   * when a failed start is cleaned up; and on thread teardown. A start whose
+   * `session.started` already settled never binds one.
+   *
+   * It is the owner for the same policy the durable owner gets: on a
+   * personal (non-hosted) install a `personalConversationAccess` reader of
+   * the stamped owner passes during the window exactly as after the durable
+   * owner lands; hosted installs still require the bound tenant.
+   *
+   * Every `canReadSessionForCommand` caller sees it: `dispatchWithReceipt`'s
+   * pre-dispatch gate and its in-command rechecks (the native `sendTurn`
+   * generation check, `steerChildWork`, `respondToRequest`), the start
+   * reattach (`sessionState.canRead`), attached-session adoption,
+   * `canUserMutateSession`, `retireNeverRanSession`, the discard/delete
+   * member gate, `authorizeDurableStationTurn` and
+   * `recoverDurableNativeOutput`.
+   */
+  private readonly startOwners = new Map<string, string>();
   private readonly sessionOwnerCacheMaxEntries: number;
   /** Process-local currentness fence, not a second authorization/owner store. */
   private readGeneration = {};
@@ -122,6 +157,17 @@ export class SessionAuthorization {
   forgetTenantContext(threadId: string): void {
     this.readGeneration = {};
     this.tenantContexts.delete(threadId);
+    this.startOwners.delete(threadId);
+  }
+
+  /** C12's start hook: the accepted start's stamped owner, pending its event. */
+  bindStartOwner(threadId: string, ownerUserId: string): void {
+    this.startOwners.set(threadId, ownerUserId);
+  }
+
+  /** The start's `session.started` settled, or the session ended: see `startOwners`. */
+  settleStartOwner(threadId: string): void {
+    this.startOwners.delete(threadId);
   }
 
   /**
@@ -211,9 +257,9 @@ export class SessionAuthorization {
    * `eventStore.listEvents(threadId)` per call was a 50x N amplification on
    * a streaming burst. Session ownership is established exactly once, by
    * whichever `session.started`/`session.configured` event first carries a
-   * `metadata.userId` for a threadId (stamped server-side from the
-   * authenticated caller at `startSession` dispatch — see
-   * `orchestration.ts`'s `/commands` route), and every later command
+   * `metadata.userId` for a threadId (stamped into the start input by the
+   * server code that starts the session, from its resolved principal; the
+   * `/commands` route accepts no `startSession`), and every later command
    * against that thread already requires `canReadSession` to pass for the
    * SAME owner (`dispatchWithReceipt`'s pre-dispatch check), so no later
    * event can legitimately carry a different owner. `sessionOwnerCache`
@@ -427,18 +473,23 @@ export class SessionAuthorization {
       ) {
         return false;
       }
-      const ownerUserId = this.sessionOwnerUserId(threadId);
+      const ownerUserId = this.commandOwnerUserId(threadId);
       return ownerUserId !== undefined && ownerUserId === userId;
     }
     // Internal commands (no caller) keep their existing reach.
     if (userId === undefined) return true;
-    const ownerUserId = this.sessionOwnerUserId(threadId);
+    const ownerUserId = this.commandOwnerUserId(threadId);
     if (ownerUserId === undefined) return false;
     return (
       ownerUserId === userId ||
       this.deps.personalConversationAccess?.canRead(userId, ownerUserId) ===
         true
     );
+  }
+
+  /** The durable owner, else a pending start's stamped owner (`startOwners`). */
+  private commandOwnerUserId(threadId: string): string | undefined {
+    return this.sessionOwnerUserId(threadId) ?? this.startOwners.get(threadId);
   }
 
   /**

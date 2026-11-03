@@ -31,33 +31,31 @@ export const DEVICE_HOST_FAILURE_COPY: Record<
   DeviceOutcomeCopy
 > = {
   'not-configured': {
-    title: 'Set up device inspection',
+    title: 'Set up devices to start a simulator',
     description:
-      'This Station is not running a device hub yet, so it cannot list simulators or emulators. Choose Set up devices and Station installs and runs one for you, or set the Device helper URL setting — in Settings, under Station host — to a hub you run yourself and restart Station.',
+      'Choose Set up devices, or set Device helper URL in Settings › Advanced › Host options and restart Station.',
   },
   'invalid-configuration': {
-    title: 'The configured device helper address was refused',
+    title: 'Device helper address refused',
     description:
-      'Station only accepts a loopback address on a high port — http://127.0.0.1:<port>, and not port 3000 or 3141. Correct the Device helper URL setting in Settings, under Station host, and restart Station.',
+      'Set Device helper URL in Settings › Advanced › Host options to http://127.0.0.1:<port> (not 3000 or 3141), then restart Station.',
   },
   'hub-unavailable': {
-    title: 'The device helper did not answer',
-    description:
-      'Station reached the configured address and got nothing back. Check that the helper is still running, then refresh.',
+    title: 'Device helper not answering',
+    description: 'Check that the helper is running, then refresh.',
   },
   'invalid-response': {
-    title: 'The device helper answered with something Station could not read',
+    title: "Device helper reply couldn't be read",
     description:
-      'The reply did not match the shape Station expects, so nothing about the devices on this machine can be shown. A helper version mismatch is the usual cause.',
+      'This is usually a helper version mismatch. Update the helper, then refresh.',
   },
   'response-too-large': {
-    title: 'The device helper sent more than Station will read',
-    description:
-      'The reply exceeded the size Station accepts and was discarded unread rather than partially trusted.',
+    title: 'Device helper reply too large',
+    description: 'Station discarded it unread. Refresh to try again.',
   },
   busy: {
-    title: 'The device helper is busy',
-    description: 'It was already answering another request. Try again shortly.',
+    title: 'Device helper busy',
+    description: 'Try again shortly.',
   },
 };
 

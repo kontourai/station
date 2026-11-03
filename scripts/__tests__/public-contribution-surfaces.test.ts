@@ -211,6 +211,44 @@ describe('public contribution surfaces', () => {
     expect(findings).toContain("Bug form must include 'observed-behavior'.");
   });
 
+  it('rejects a troubleshoot form that loses its privacy warning, a prefilled id, or its label', () => {
+    const troubleshoot = readFileSync(
+      '.github/ISSUE_TEMPLATE/troubleshoot-report.yml',
+      'utf8',
+    )
+      .replace('Do not include secrets', 'Share everything')
+      .replace('id: diagnosis', 'id: renamed-diagnosis')
+      .replace('id: diagnosed-by', 'id: renamed-diagnosed-by')
+      .replace('  - reported:troubleshoot', '  - bug');
+    const findings = findingsWith({
+      '.github/ISSUE_TEMPLATE/troubleshoot-report.yml': troubleshoot,
+    });
+    expect(findings).toEqual([
+      'Troubleshoot form must warn reporters not to include private or unredacted diagnostics.',
+      "Troubleshoot form must include 'diagnosis'.",
+      "Troubleshoot form must include 'diagnosed-by'.",
+      "Troubleshoot form must apply 'reported:troubleshoot'.",
+    ]);
+  });
+
+  it('rejects a reporter-ineligible label on the troubleshoot form', () => {
+    const [label] = BACKLOG_POLICY.classificationLabels;
+    const troubleshoot = readFileSync(
+      '.github/ISSUE_TEMPLATE/troubleshoot-report.yml',
+      'utf8',
+    ).replace(
+      '  - reported:troubleshoot',
+      `  - reported:troubleshoot\n  - ${label}`,
+    );
+    expect(
+      findingsWith({
+        '.github/ISSUE_TEMPLATE/troubleshoot-report.yml': troubleshoot,
+      }),
+    ).toContain(
+      `Troubleshoot form must not assign reporter-ineligible label '${label}'.`,
+    );
+  });
+
   it('rejects a required solution and laundered feature priority field', () => {
     const feature =
       `${readFileSync('.github/ISSUE_TEMPLATE/feature-request.yml', 'utf8')}

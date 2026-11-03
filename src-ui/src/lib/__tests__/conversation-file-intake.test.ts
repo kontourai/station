@@ -2,6 +2,7 @@
 import { afterEach, expect, test, vi } from 'vitest';
 import {
   FILE_INTAKE_HANDOFF_MS,
+  type FileIntakeOperation,
   registerConversationFileReceiver,
   requestConversationFileIntake,
 } from '../conversation-file-intake';
@@ -146,4 +147,25 @@ test('a lost Station scope refuses before receiver intake', async () => {
     }),
   );
   expect(receive).not.toHaveBeenCalled();
+});
+
+test('passes the atomic intake request to the receiving composer', async () => {
+  const receive = vi.fn(
+    async (_files: File[], operation: FileIntakeOperation) => {
+      expect(operation.allOrNothing).toBe(true);
+      return { added: 1, errors: [] };
+    },
+  );
+  cleanups.push(
+    registerConversationFileReceiver({
+      apiBase: 'http://station.test',
+      sessionId: 'atomic',
+      receive,
+    }),
+  );
+  await expect(
+    requestConversationFileIntake(scope(), 'atomic', files(), () => {}, {
+      allOrNothing: true,
+    }),
+  ).resolves.toEqual({ added: 1, errors: [] });
 });

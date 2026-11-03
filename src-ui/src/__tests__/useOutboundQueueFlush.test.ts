@@ -1182,6 +1182,48 @@ describe('useOutboundQueueFlush', () => {
       });
     };
 
+    it('keeps observing a queued unanswered send until Station starts it without resending', async () => {
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+      await orphanedLiveRow();
+      let started = false;
+      getTurnDelivery.mockImplementation(
+        async (_api, conversationId, clientTurnId) => ({
+          outcome: started ? 'started' : 'queued',
+          conversationId,
+          clientTurnId,
+          ...(started
+            ? { sessionId: conversationId, turnId: 'recovered-turn' }
+            : {}),
+        }),
+      );
+      const view = renderHook(() => useOutboundQueueFlush('http://api.test'));
+      try {
+        await settleImports();
+        expect(getTurnDelivery).toHaveBeenCalledTimes(1);
+        expect(await outboundDispatch.snapshot()).toEqual([
+          expect.objectContaining({
+            clientTurnId: 'key-orphan',
+            status: 'invoking',
+          }),
+        ]);
+        started = true;
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(5_000);
+        });
+        await settleImports();
+        expect(getTurnDelivery).toHaveBeenCalledTimes(2);
+        expect(await outboundDispatch.snapshot()).toEqual([]);
+        expect(
+          activeChatsStore.getSnapshot()['session-1']?.outboundQueuedTurns,
+        ).toEqual([]);
+        expect(sendMessage).not.toHaveBeenCalled();
+      } finally {
+        view.unmount();
+        await settleImports();
+        vi.useRealTimers();
+      }
+    });
+
     it.each([
       'hidden',
       'browser offline',

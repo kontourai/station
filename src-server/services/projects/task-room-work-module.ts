@@ -190,12 +190,29 @@ function requesterDisplayId(taskId: string, ownerId: string): string {
 export class TaskRoomWorkModule {
   constructor(private readonly file: string) {}
 
-  /** Private publication lookup; callers must verify the durable session/room binding. */
   async readPublicationRequests(input: {
     taskId: string;
     projectId: string;
     taskCreatedAt: string;
     roomProjectId: string;
+    readBinding: (
+      sessionId: string,
+    ) => { projectId: string; taskId: string } | undefined;
+  }): Promise<readonly StoredRecord[]> {
+    return this.readPublicationRequestsForTasks({
+      tasks: [input],
+      readBinding: input.readBinding,
+    });
+  }
+
+  /** Private publication lookup; callers must verify the durable session/room binding. */
+  async readPublicationRequestsForTasks(input: {
+    tasks: readonly {
+      taskId: string;
+      projectId: string;
+      taskCreatedAt: string;
+      roomProjectId: string;
+    }[];
     readBinding: (
       sessionId: string,
     ) => { projectId: string; taskId: string } | undefined;
@@ -211,19 +228,22 @@ export class TaskRoomWorkModule {
       throw new TaskRoomWorkUnavailableError(
         'Agent request history exceeds its limit.',
       );
+    const scopes = new Map(input.tasks.map((task) => [task.taskId, task]));
     return checkedStore(JSON.parse(bytes.toString('utf8'))).records.filter(
       (record) => {
+        const scope = scopes.get(record.taskId);
         if (
-          record.taskId !== input.taskId ||
-          record.projectId !== input.projectId ||
-          record.taskCreatedAt !== input.taskCreatedAt ||
+          !scope ||
+          record.taskId !== scope.taskId ||
+          record.projectId !== scope.projectId ||
+          record.taskCreatedAt !== scope.taskCreatedAt ||
           record.state === 'refused'
         )
           return false;
         const binding = input.readBinding(record.sessionId);
         return (
-          binding?.projectId === input.roomProjectId &&
-          binding.taskId === input.taskId
+          binding?.projectId === scope.roomProjectId &&
+          binding.taskId === scope.taskId
         );
       },
     );

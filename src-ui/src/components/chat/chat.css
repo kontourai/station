@@ -2012,6 +2012,7 @@
    specificity this would win only by being written later, so a rule-sorting
    formatter or a hoist could silently restore the double ring. */
 .composer-popover-panel.chat-input__model-popover-panel {
+  --composer-popover-width: 820px;
   border: 0;
   background: none;
   box-shadow: none;
@@ -3027,6 +3028,13 @@
   width: 100%;
   min-height: 44px;
   text-align: start;
+}
+/* Why Steer is disabled: inset to the options' text and quieter than them. */
+.chat-input__mode-note {
+  margin: 0;
+  padding: var(--k-space-2) var(--k-space-3);
+  color: var(--k-text-muted);
+  font-size: var(--k-text-sm);
 }
 
 .chat-input .chat-input__stop-btn {

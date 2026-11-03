@@ -716,7 +716,7 @@ describe('status facts for chat, task and merged rows', () => {
     ['todo', 'Task · To do', 'idle', 'idle'],
     ['ready', 'Task · To do', 'idle', 'idle'],
     ['triage', 'Task · To do', 'idle', 'idle'],
-    ['in_progress', 'Task · In progress', 'running', 'running'],
+    ['in_progress', 'Task · In progress', 'idle', 'idle'],
     ['review', 'Task · In review', 'needsYou', 'waiting'],
     ['verification', 'Task · In review', 'needsYou', 'waiting'],
     ['blocked', 'Task · Blocked', 'needsYou', 'blocked'],
@@ -740,7 +740,7 @@ describe('status facts for chat, task and merged rows', () => {
       expect(row.item).toMatchObject({
         kind: 'task',
         title: 'Plan the release',
-        agentLabel: 'No agent assigned',
+        agentLabel: 'Task',
         taskSessionId: undefined,
       });
       expect(workStatus(row.item, NOW, row.facts)).toMatchObject({
@@ -758,7 +758,7 @@ describe('status facts for chat, task and merged rows', () => {
     ['todo', 2, 'Task · Needs answer', 'needsYou', 'answer'],
     // The answer is what a person can act on, ahead of the lock.
     ['blocked', 1, 'Task · Needs answer', 'needsYou', 'answer'],
-    ['in_progress', 0, 'Task · In progress', 'running', 'running'],
+    ['in_progress', 0, 'Task · In progress', 'idle', 'idle'],
     // A finished Task's leftover question asks nobody.
     ['done', 3, 'Task · Done', 'finished', 'done'],
     ['canceled', 1, 'Task · Canceled', 'finished', 'stopped'],
@@ -790,7 +790,7 @@ describe('status facts for chat, task and merged rows', () => {
       // Home partitions without facts; both consumers name the same state.
       expect(workStatus(row.item, NOW)).toMatchObject({ line, lane, rung });
       // And Home's lane model files it in that lane.
-      if (lane === 'needsYou' || lane === 'running') {
+      if (lane === 'needsYou' || lane === 'idle') {
         const lanes = partitionHomeWorkItems({
           items: [row.item],
           now: NOW,

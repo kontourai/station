@@ -88,6 +88,8 @@ export function renderSystemdUnit(
     input.instanceId,
     input.lifecycle,
   );
+  // User-service mount namespaces inherit AppArmor restrictions that prevent
+  // child engines from creating their own command sandboxes.
   return `[Unit]
 Description=Station user service (${input.instanceId})
 After=network-online.target
@@ -107,7 +109,7 @@ RestartSec=5
 TimeoutStopSec=${SYSTEMD_STOP_TIMEOUT_SECONDS}
 KillMode=mixed
 NoNewPrivileges=true
-PrivateTmp=true
+PrivateTmp=false
 
 [Install]
 WantedBy=default.target

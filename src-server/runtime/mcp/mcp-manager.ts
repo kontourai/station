@@ -1068,7 +1068,13 @@ function toStationMCPTool(
           callToolWithRoute(connection, tool.originalName, args, route)
       : undefined);
   if (!call) throw new Error('An MCP tool needs a connection or an executor.');
+  const declaredReplay = isNativeStationControl
+    ? tool._meta?.['ai.kontour/durable-replay']
+    : undefined;
   const stationTool = {
+    ...(declaredReplay === 'safe' || declaredReplay === 'unsafe'
+      ? { replay: declaredReplay }
+      : {}),
     id: tool.name,
     name: tool.name,
     description: tool.description ?? '',

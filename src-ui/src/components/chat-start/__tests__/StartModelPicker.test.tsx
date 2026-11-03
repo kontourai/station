@@ -103,11 +103,8 @@ describe('StartModelPicker', () => {
       />,
     );
     // An effort change is not a finished choice: the picker stays.
-    fireEvent.click(await screen.findByRole('button', { name: 'Options' }));
-    fireEvent.change(
-      await screen.findByRole('combobox', { name: 'Thinking effort' }),
-      { target: { value: 'low' } },
-    );
+    await screen.findByRole('group', { name: 'Thinking effort' });
+    fireEvent.click(await screen.findByRole('radio', { name: 'Low' }));
     expect(onRuntimeOptionChange).toHaveBeenCalledWith('effort', 'low');
     expect(screen.queryByText('picker closed')).toBeNull();
 

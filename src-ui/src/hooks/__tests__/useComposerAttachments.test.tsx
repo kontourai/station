@@ -925,3 +925,41 @@ describe('useComposerAttachments', () => {
     );
   });
 });
+
+test('all-or-nothing intake refuses the image when its metadata cannot be accepted', async () => {
+  const add = vi.fn();
+  const updateStages = vi.fn();
+  readChatAttachmentFiles.mockResolvedValue({
+    attachments: [attachment('image')],
+    errors: ['Files are not supported.'],
+  });
+  const { result } = renderHook(() =>
+    useComposerAttachments({
+      apiBase: 'http://station.test',
+      ownerKey: 'chat',
+      attachments: [],
+      stages: [],
+      capabilities: { images: true, files: false },
+      onAddAttachments: add,
+      onStagesChange: updateStages,
+    }),
+  );
+  let outcome: unknown;
+  await act(async () => {
+    outcome = await result.current.selectFilesWithResult(
+      [new File(['image'], 'image.png'), new File(['{}'], 'metadata.json')],
+      {
+        requestScope: {
+          apiBase: 'http://station.test',
+          authorityKey: 'owner',
+          isCurrent: () => true,
+        },
+        signal: new AbortController().signal,
+        allOrNothing: true,
+      },
+    );
+  });
+  expect(outcome).toEqual({ added: 0, errors: ['Files are not supported.'] });
+  expect(add).not.toHaveBeenCalled();
+  expect(updateStages).not.toHaveBeenCalled();
+});

@@ -119,6 +119,13 @@ vi.mock('../../contexts/ConfigContext', () => ({
   useConfig: () => ({ mcpUiHost: true }),
 }));
 
+// A plugin pane's related-panes host reads the API base for terminal targets
+// (#4440); the app provides it from ConnectionsProvider at the root.
+vi.mock('../../contexts/ApiBaseContext', async (original) => ({
+  ...(await original<typeof import('../../contexts/ApiBaseContext')>()),
+  useApiBase: () => ({ apiBase: 'http://station.test' }),
+}));
+
 vi.mock('../builtinWorkspacePaneRegistry', () => ({
   getBuiltinWorkspacePaneRenderer: (descriptor: {
     id: string;

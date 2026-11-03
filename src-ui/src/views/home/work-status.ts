@@ -139,7 +139,8 @@ function rungFor(item: HomeWorkItem, facts: WorkFacts | undefined): Rung {
           ? { rung: 'blocked', lane: 'needsYou', tone: 'attention', word }
           : { rung: 'waiting', lane: 'needsYou', tone: 'attention', word };
       case 'Running':
-        return { rung: 'running', lane: 'running', tone: 'active', word };
+        // Task progress does not establish a running engine turn. A working chat promotes its family.
+        return { rung: 'idle', lane: 'idle', tone: 'neutral', word };
       case 'Completed':
         return { rung: 'done', lane: 'finished', tone: 'neutral', word };
       case 'Stopped':

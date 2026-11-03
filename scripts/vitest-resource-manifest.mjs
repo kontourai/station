@@ -158,6 +158,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'src-server/services/transcription/__tests__/sherpa-transcriber.test.ts',
   'src-server/services/transcription/__tests__/sherpa-transcriber.real.test.ts',
 
+  // Generates a synthetic frame and encodes a private WebM with real FFmpeg when available.
+  'src-server/services/browser/__tests__/browser-human-recording.test.ts',
   // Explicit opt-in ffmpeg fixture; owns its video, children and Project home.
   'src-server/services/walkthroughs/__tests__/walkthrough-video.integration.test.ts',
   'src-server/services/walkthroughs/__tests__/walkthrough-media-regressions.integration.test.ts',
@@ -172,6 +174,8 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   'src-server/adapters/__tests__/node-pty-adapter.test.ts',
   // Real node-pty shells in isolated homes; no shared ports or host state.
   'src-server/services/terminal/__tests__/terminal-sessions.process.test.ts',
+  // Real node-pty shells in a private home; one loopback server on port 0.
+  'src-server/services/terminal/__tests__/terminal-retention.process.test.ts',
   // Production route/auth composition opens real terminal PTYs in a private home.
   'src-server/runtime/routes/__tests__/runtime-routes-station-control-read-scope.test.ts',
   'src-server/services/terminal/__tests__/terminal-gateway.process.test.ts',
@@ -179,6 +183,9 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // command children it kills as trees; a core restart is a second
   // TerminalSessions on the same private home. No ports or host state.
   'src-server/services/terminal/__tests__/supervisor-shell-host.process.test.ts',
+  // Command sessions (output cap, exit, ACP agent terminals) and restart of
+  // a real PTY, in private homes; no ports or host state.
+  'src-server/services/terminal/__tests__/terminal-command-sessions.process.test.ts',
   // Two disposable workers contend on private SQLite connections; no shared host output or timing assertion.
   'src-server/services/outside-agent/__tests__/oauth-concurrency.test.ts',
   // Two cache-enabled server bootstrap processes drive real MCP, Strands, CLI and shell children.
@@ -1598,6 +1605,10 @@ export const PROCESS_HEAVY_VITEST_FILES = Object.freeze([
   // Station side through the registry with an ssh stand-in that runs those
   // same words locally. No ssh, no network, no device.
   'src-server/services/devices/hosts/__tests__/ssh-device-tools.process.test.ts',
+  // Fixed app installer and its admission/cleanup protocol in a private HOME.
+  'src-server/services/devices/hosts/__tests__/device-app-install-program.test.ts',
+  // Agent workspace intake invokes the bounded snapshot child against a private fixture.
+  'src-server/routes/__tests__/device-agent.routes.test.ts',
   // SSH device hosts over REAL ssh to this machine's sshd: one `ssh
   // localhost true` probe at load, then (only with key auth and a known host
   // key, never on CI) Test connection and, with STATION_DEVICE_HUB_TEST_HOME,

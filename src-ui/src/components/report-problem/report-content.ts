@@ -54,7 +54,7 @@ function consoleSection(
   return `${lines}${omissionNote}`;
 }
 
-function reportBody(context: ReportContext, omittedCount: number): string {
+function bundleBody(context: ReportContext): string {
   return [
     '## What happened',
     '',
@@ -69,18 +69,14 @@ function reportBody(context: ReportContext, omittedCount: number): string {
     '',
     '## Recent console errors and warnings',
     '',
-    consoleSection(context.consoleEntries, omittedCount),
+    consoleSection(context.consoleEntries, 0),
     '',
   ].join('\n');
 }
 
-function reportTitle(context: ReportContext): string {
-  return `Problem report: ${context.route}`;
-}
-
 /** The full, untruncated report — what "Save report bundle" writes. */
 export function renderReportBundleText(context: ReportContext): string {
-  return `# Station problem report\n\n${reportBody(context, 0)}`;
+  return `# Station problem report\n\n${bundleBody(context)}`;
 }
 
 interface IssueUrlResult {
@@ -89,11 +85,40 @@ interface IssueUrlResult {
   omittedEntryCount: number;
 }
 
+/**
+ * The issue opens on `.github/ISSUE_TEMPLATE/bug-report.yml`, prefilled by
+ * field id, so the report keeps the form's structure instead of replacing it
+ * with a free-form `body`. Only fields this dialog has data for are sent;
+ * the rest stay for the user. No `labels` param: the form applies `bug`.
+ *
+ * `platform-install` is a dropdown, and GitHub documents URL prefill only
+ * for an issue form's text fields, so the platform goes into the
+ * `observed-behavior` text and the user picks the dropdown option.
+ */
+const BUG_REPORT_TEMPLATE = 'bug-report.yml';
+
+function buildIdentityField(context: ReportContext): string {
+  return context.channel
+    ? `${context.version} (${context.channel} channel)`
+    : context.version;
+}
+
+function observedBehaviorField(context: ReportContext): string {
+  return [
+    '<!-- What did you expect, what happened instead, and what are the smallest steps to see it again? If you took a screenshot, attach it here — Station never uploads anything automatically. -->',
+    '',
+    `- Route: \`${context.route}\``,
+    `- Platform: ${context.platform}`,
+  ].join('\n');
+}
+
 function assembleIssueUrl(context: ReportContext, omitted: number): string {
   const params = new URLSearchParams({
-    title: reportTitle(context),
-    body: reportBody(context, omitted),
-    labels: 'bug',
+    template: BUG_REPORT_TEMPLATE,
+    title: `bug: problem on ${context.route}`,
+    'build-identity': buildIdentityField(context),
+    'observed-behavior': observedBehaviorField(context),
+    'redacted-diagnostic': consoleSection(context.consoleEntries, omitted),
   });
   return `https://github.com/${REPORT_ISSUE_REPO}/issues/new?${params.toString()}`;
 }
@@ -101,8 +126,8 @@ function assembleIssueUrl(context: ReportContext, omitted: number): string {
 /**
  * Builds the prefilled new-issue URL, dropping the OLDEST console entries one
  * at a time until the URL fits `MAX_ISSUE_URL_LENGTH`. When anything was
- * dropped, the body says so and points at the bundle — the report never
- * silently pretends the omitted entries did not exist.
+ * dropped, the diagnostic field says so and points at the bundle — the
+ * report never silently pretends the omitted entries did not exist.
  */
 export function buildGitHubIssueUrl(context: ReportContext): IssueUrlResult {
   let entries = context.consoleEntries;

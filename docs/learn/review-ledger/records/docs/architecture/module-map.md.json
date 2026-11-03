@@ -942,8 +942,6 @@
 
     "src-ui/src/workspace-panes/browser-pane/BrowserAcquisitionPanel.tsx",
 
-    "src-ui/src/workspace-panes/browser-pane/BrowserAgentSettingsPanel.tsx",
-
     "src-ui/src/workspace-panes/browser-pane/BrowserPane.tsx",
 
     "src-ui/src/workspace-panes/browser-pane/BrowserSetup.tsx",
@@ -1494,8 +1492,6 @@
 
     "packages/sdk/src/client/terminal-session-store.ts",
 
-    "packages/monument/src/turn-dedup.ts",
-
     "src-server/runtime/agents/durable-agent-owner.ts",
 
     "src-server/runtime/agents/durable-agent-recovery.ts",
@@ -1522,15 +1518,29 @@
 
     "packages/monument/src/recovery-ledger.ts",
 
-    "src-server/services/orchestration/station-turn-dedup-bindings.ts",
+    "packages/monument/src/session-control.ts",
 
-    "src-server/runtime/routes/__tests__/send-route-key-inventory.test.ts",
+    "src-server/services/orchestration/recovery-ledger-binding.ts",
 
-    "src-server/services/orchestration/create-request-claims.ts",
+    "src-server/services/orchestration/sqlite-session-control-request-keys.ts",
 
-    "src-server/services/orchestration/__tests__/create-request-claims.test.ts",
+    "packages/monument/src/sqlite-recovery.ts",
 
-    "src-server/services/orchestration/__tests__/create-request-claims.process.test.ts",
+    "packages/monument/src/memory-recovery.ts",
+
+    "packages/monument/src/decisions/recovery-storage.ts",
+
+    "packages/monument/src/testing/recovery-conformance.ts",
+
+    "packages/monument/src/session-boundary.ts",
+
+    "src-server/services/orchestration/session-turn-boundary-binding.ts",
+
+    "src-server/telemetry/metrics.ts",
+
+    "packages/contracts/src/connection-recovery.ts",
+
+    "src-ui/src/components/chat-dock/UsageLimitBanner.tsx",
 
     "src-server/services/orchestration/ownership-tree.ts",
 
@@ -1578,31 +1588,27 @@
 
     "src-ui/src/__tests__/ConversationInboxMessages.geometry.test.tsx",
 
-    "packages/monument/src/session-control.ts",
+    "src-server/runtime/routes/task-inbox-projection.ts",
 
-    "src-server/services/orchestration/recovery-ledger-binding.ts",
+    "packages/monument/src/turn-dedup.ts",
 
-    "src-server/services/orchestration/sqlite-session-control-request-keys.ts",
+    "src-server/services/orchestration/station-turn-dedup-bindings.ts",
 
-    "packages/monument/src/sqlite-recovery.ts",
+    "src-server/runtime/routes/__tests__/send-route-key-inventory.test.ts",
 
-    "packages/monument/src/memory-recovery.ts",
+    "src-server/services/orchestration/create-request-claims.ts",
 
-    "packages/monument/src/decisions/recovery-storage.ts",
+    "src-server/services/orchestration/__tests__/create-request-claims.test.ts",
 
-    "packages/monument/src/testing/recovery-conformance.ts",
+    "src-server/services/orchestration/__tests__/create-request-claims.process.test.ts",
 
-    "packages/monument/src/session-boundary.ts",
+    "src-server/services/orchestration/__tests__/ownership-cascade-gaps.test.ts",
 
-    "src-server/services/orchestration/session-turn-boundary-binding.ts",
+    "src-server/services/orchestration/__tests__/session-start-ownership.test.ts",
 
-    "src-server/telemetry/metrics.ts",
+    "src-server/services/orchestration/__tests__/create-request-claims.routes.test.ts",
 
-    "packages/contracts/src/connection-recovery.ts",
-
-    "src-ui/src/components/chat-dock/UsageLimitBanner.tsx",
-
-    "src-server/services/orchestration/__tests__/create-request-claims.routes.test.ts"
+    "src-ui/src/views/settings/BrowserAgentSettingsPanel.tsx"
   ],
 
   "checks": [

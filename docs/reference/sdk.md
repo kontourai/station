@@ -12,6 +12,10 @@ entry point. Exports select TypeScript/TSX source and host components may also
 need CSS, React and a Query Client. See the [package README](../../packages/sdk/README.md)
 for source distribution and a checked authoring example.
 
+The React-free client exports `mutateBinary(url, method, options, blob)` for
+binary requests. Pass a captured `requestScope` to bind dispatch and response
+reads to that Station authority; the helper sends `application/octet-stream`.
+
 ## Terminal sessions
 
 `TerminalSessionStore` (from `@kontourai/station-sdk` and
@@ -57,6 +61,15 @@ server's reason), `connection-lost` and `protocol`. A refused ticket
 `StationHttpError` with its status, code and details, and uses its message. See the
 [socket protocol](api.md#terminal-socket-operator-transport).
 
+`list` records carry `ordinal`, a shell's stable "Shell N" within its binding,
+and `restoredAt` when the shell was reopened after its host restarted.
+`openOrAdoptProjectShell(apiBase, projectSlug, {cols, rows})` answers with the
+Project binding's running shell or opens one; concurrent callers share one
+shell, and it returns null on a host that predates it. Terminal history usage
+and clearing (#3994) are `fetchTerminalHistory`, `clearTerminalHistory(projectId?)`,
+`useTerminalHistoryQuery` and `useClearTerminalHistoryMutation`; an older or
+hosted Station throws `TerminalHistoryUnsupportedError`.
+
 ## Terminal output sessions
 
 `TerminalOutputSession` from `@kontourai/station-sdk/client` observes an existing
@@ -89,6 +102,54 @@ protocol errors settle `connect()` and are reported through `onError`.
 
 This read-only client sends no shell input or terminal lifecycle commands; use
 `TerminalSessionStore` to operate a terminal.
+
+## Terminal view
+
+`TerminalView` from `@kontourai/station-sdk/terminal-view` renders a terminal
+session with Station's own surface over Ghostty's `libghostty-vt` emulator
+([design](../design/terminal.md#emulator)). Import only this entry; the engine,
+renderer and input modules behind it are internal and may change.
+
+Pass a `session` implementing `TerminalViewSession`: `state`, `readOnly`,
+`subscribe(listener)`, `write(bytes)` and `resize(cols, rows)`. The listener's
+`output(bytes, kind)` receives PTY output in order; `kind: 'replay'` marks output
+from before this attachment. The view renders replayed output but answers none
+of its device queries and rings none of its bells. Terminal replies (device
+attributes, status reports) for live output are written back through
+`session.write` only while the session is `ready`. A `readOnly` session never
+receives input, pastes or resizes. Several views may subscribe to one session:
+the view copies output before handing it to its worker, so a session may give
+every listener, and later subscribers, the same array. A view with no box (a
+hidden tab, a dock region put away) keeps its last grid and never resizes the
+session.
+
+`toTerminalViewSession(session)` adapts a `TerminalSession` from the
+[terminal session store](#terminal-output-sessions). Output the store hands a
+new subscriber from its retained buffer, and output that arrives while the
+session replays, both count as replay. A program that has exited reads as
+`exited` whatever the connection state. The Coding terminal pane renders
+through this entry and adapter, the same surface a plugin gets.
+
+Optional props:
+
+| Prop | Purpose |
+| --- | --- |
+| `label` | Accessible name (default `Terminal`) |
+| `fontSize`, `fontFamily` | Font in CSS pixels; the default stack ends in a bundled Nerd Font symbols face |
+| `screenReaderMode` | Keeps a navigable text mirror and polite announcements; off means no mirror is kept |
+| `detectScreenReader` | Host signal used when `screenReaderMode` is unset; browsers expose none themselves |
+| `touchKeys` | Shows the Ctrl+C (`^C`), Esc, Tab, arrow and sticky Ctrl key row: 44px targets that fit a 390px phone; narrower, the row scrolls and fades at the edge with more keys |
+| `onOpenLink(target)` | Receives `{ kind: 'url', url }` (http and https only) or `{ kind: 'path', path, line, column? }` |
+| `onAddToChat(text)` | Adds an Add to chat item to the context menu |
+| `onTitleChange`, `onBell`, `onReconnect` | Program title (untrusted text), bell, and retry of an exited or failed session |
+| `notices` | Connection and exit notices over the terminal (default on); off for a host that reports them itself |
+
+The emulator runs in a Web Worker. The WebAssembly module and the symbols font
+load with the first terminal on a page. Rendering uses WebGL2 and falls back to
+canvas 2D; a hidden terminal releases its GPU context and draws nothing.
+Escape then Tab moves focus out of the terminal (Shift+Tab backwards);
+Shift+F10 opens the context menu (Copy, Paste, Select all, Add to chat, Find,
+Jump to latest, Clear).
 
 ## Local speech and media tools
 
@@ -576,7 +637,8 @@ current revision, including a previous unlink tombstone, for an explicit relink.
 Conversation through the chat inbox's existing open resolver; linking does not
 start an Agent or create a subtask. Reparent invalidates the child and both old
 and new parent relationship queries, plus affected Task detail/graph and Task
-lists. Work-chat changes invalidate that Task's scoped work-chat list. Runtime
+lists. Work-chat changes invalidate that Task's scoped work-chat list and Task
+lists; independent room-request mutations also invalidate Task lists. Runtime
 must mount the dedicated relationship factory with current authority adapters
 before these APIs are available.
 
@@ -1850,7 +1912,9 @@ launcher; the foreground thread-execution path has no portable admission
 in this slice, so a non-portable Project workspace resolved onto a paired
 Station is refused rather than run as an unrelated same-slug Project, and
 the thread-default environment picker preserves — but no longer newly
-offers — paired-Station selections.
+offers — paired-Station selections. The separate `paired-station-chats` preview
+starts a fresh foreground conversation with an explicitly selected receiver
+Project; it does not interpret a source workspace as portable execution authority.
 
 ### `delegateTask(apiBase, input, options?)` with files
 
@@ -2220,6 +2284,18 @@ instead of assuming the request completes when invalidation is scheduled.
 Re-exported from `@tanstack/react-query` for direct cache access.
 
 ---
+
+## Bridged chat requests
+
+For a chat bridged through the current host, the target API base and captured
+request authority remain distinct. `interruptOrchestrationTurn` and
+`resolveOrchestrationRequest` accept `requestScope`;
+`dispatchOrchestrationCommand` accepts it in its fourth options argument.
+The runtime-event-content hooks accept `apiBase` and `requestScope` in their
+input. `useChildWorkTranscriptQuery` also accepts `requestScope` in its input
+and the target API base as its second argument. Explicit target reads partition
+cache entries by that target and authority. These options grant no access and
+expose no outbound peer credential.
 
 ## API Functions
 
@@ -3641,6 +3717,43 @@ Station retains its readable legacy return rather than writing an unreadable
 relation. Up already on its exact route does not add a history entry: on a
 phone it leaves through the guarded layer close; on desktop it is a no-op.
 
+### Opening a terminal
+
+A plugin can also open a terminal through the same capability. It names the
+closed built-in terminal target (`RelatedTerminalOpenRequest`, see the
+[terminal design](../design/terminal.md#plugins)) instead of one of its own
+descriptors. Station renders the session in its own pane, on its own socket,
+as the person viewing. The plugin never receives the terminal.
+
+```tsx
+const outcome = await related.open({
+  kind: 'terminal',
+  binding: 'project', // or `thread:<id>`, a session of the same Project
+  new: {},            // or `terminalId`: an existing session to show
+});
+```
+
+- Exactly one of `terminalId` (a session's UUID) and `new` is present.
+  `binding` is `project` or `thread:<id>`. The request carries no working
+  directory or program, and any field the contract does not define is
+  `invalid-request`. `new.profile` may name only `shell`, which the server
+  resolves; any other profile is `unsupported`.
+- The binding, and the session a `terminalId` names, must fall inside the
+  caller's captured Project. A thread whose session belongs to another
+  Project, or a session that does not run in that Project and binding, is
+  `context-mismatch`.
+- A plugin holds no terminal grant, so the viewer's own grant decides. A new
+  shell needs `terminal:operate`; showing an existing session needs
+  `terminal:observe`. Without either, the answer is `not-authorized`. A
+  session shown without `terminal:operate` is read-only: no input, paste or
+  resize.
+- The pane opens with the Tools (`presentation: 'tool'`). Opening the same
+  session again `focused` it. `reveal` and `close` take the handle as for any
+  related pane. Closing the pane leaves the shell running.
+
+[Related Terminal](../../examples/related-terminal/README.md) is the sample
+plugin.
+
 From a frame, each member is a request carrying an `id`, answered by one
 `pane-host/related-result` `{ id, data }`:
 `pane-host/related-open` `{ id, request }`, `pane-host/related-reveal`
@@ -4354,7 +4467,10 @@ content, while retaining the observed HTTP status (usually 200).
   destination picker. `TaskDestinationRequestError` identifies a rejected
   destination read; both are exported from the SDK root and query barrel.
   It returns `TaskListRecord[]`: a `TaskRecord` plus `openQuestionCount`
-  when the Task has open Task-memory questions (#4003).
+  when the Task has open Task-memory questions (#4003), and optional
+  `workChatConversationIds` for authorized Inbox grouping. These canonical
+  Conversation IDs are a presentation projection, not a lead assignment or
+  permission grant. Servers predating that projection may omit it.
 
 ### Tracker-backed Tasks and Task memory (#4003)
 
@@ -5362,10 +5478,11 @@ it is a metadata mismatch precondition, never an authorization grant or immutabl
 incarnation. Identically restored registrations can share the same key.
 
 The GET endpoint is `/api/knowledge/roots/:rootId/records/:id/source-observation`.
-It requires a currently authorized, middleware-bound home-possession credential,
+It requires a currently authorized, middleware-bound home-possession credential
+or owner-device standing,
 current route scope, single-operator deployment without tenant-scoped execution,
 and the exact registered personal `kit-default-store` root.
-Ordinary operator or paired remote credentials do not confer this capability.
+Ordinary operator or other paired remote credentials do not confer this capability.
 The constructor policy and route recheck authority before publishing the result.
 Other roots and credentials receive an identity-free restricted outcome.
 
@@ -5994,7 +6111,7 @@ The hook polls every 30 seconds while enabled and refreshes stale data on mount/
 HTTP 401/403 stops polling; explicit retry can reauthorize the read. A consumer
 must hide cached data on an error or lost authority, as the Profile operator
 panel does. A query key is not an operator grant. The server requires the bound
-home-possession local operator on a personal host; hosted deployments and tenant
+Station owner (home-possession or owner-device standing) on a personal host; hosted deployments and tenant
 workers are refused. Ordinary usage/rescan responses omit the person breakdown.
 
 The [monitoring guide](../guides/monitoring.md#operator-view-of-this-instance)
@@ -6462,7 +6579,8 @@ owner loads bounded body pages only after a turn is selected.
 `@kontourai/station-sdk/client/project-working-configuration` exposes bounded
 repository discovery and exact-revision apply. Pass the current host request
 scope and immutable Project identity. A 404/501 is unavailable/update guidance;
-a preview refusal does not enable the feature. Apply saves defaults only.
+an older host's preview refusal does not enable the feature. Working configuration
+needs no preview on current personal hosts. Apply saves defaults only.
 
 `@kontourai/station-sdk/client/learning-review` exports
 `fetchProjectLearning`, `fetchProjectLearningDetail`, `proposeProjectLearning`

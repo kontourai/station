@@ -193,7 +193,7 @@ export function forwardListeningPort(line: string): number | undefined {
   return match ? Number(match[1]) : undefined;
 }
 
-const REMOTE_LOADER_JS =
+export const REMOTE_LOADER_JS =
   "let b=Buffer.alloc(0),r=0;const f=(c)=>{b=Buffer.concat([b,c]);const i=b.indexOf(10);if(i<0)return;r=1;process.stdin.removeListener('data',f);process.stdin.pause();const m=JSON.parse(b.subarray(0,i).toString('utf8'));require('vm').runInThisContext(m.s)(require,b.subarray(i+1),m.p)};process.stdin.on('data',f);process.stdin.on('end',()=>{if(!r)process.exit(2)})";
 
 const REMOTE_PRELUDE_SH = [

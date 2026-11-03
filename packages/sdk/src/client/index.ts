@@ -68,6 +68,7 @@ export {
   getClientRequestTimeout,
   getJson,
   isApiRequestScope,
+  mutateBinary,
   notifyCredentialChanged,
   StationCredentialConflictError,
   StationHttpError,

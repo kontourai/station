@@ -656,7 +656,12 @@ export interface ThreadInboxDeliveryPorts {
   }): void;
   steerFidelity?(
     threadId: string,
-  ): 'native' | 'emulated' | 'none' | Promise<'native' | 'emulated' | 'none'>;
+  ):
+    | 'native'
+    | 'emulated'
+    | 'none'
+    | 'pending'
+    | Promise<'native' | 'emulated' | 'none' | 'pending'>;
   /** Read the durable receipt before deciding whether a steer may be handed off. */
   inspectSteer?(input: {
     readonly threadId: string;
