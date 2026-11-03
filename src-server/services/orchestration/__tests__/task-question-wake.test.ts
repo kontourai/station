@@ -315,8 +315,9 @@ async function emit(
   invocationId?: string,
 ) {
   sequence += 1;
+  const eventId = `wake-event-${sequence}`;
   world.adapter.events.push({
-    eventId: `wake-event-${sequence}`,
+    eventId,
     provider: 'claude',
     threadId: LEAD,
     createdAt: new Date().toISOString(),
@@ -324,7 +325,13 @@ async function emit(
     ...fields,
     ...(invocationId === undefined ? {} : { invocationId }),
   } as unknown as CanonicalRuntimeEvent);
-  await new Promise((resolve) => setTimeout(resolve, 5));
+  // The service ingests adapter events asynchronously, and an append can
+  // retry under store contention (#3560). Wait for this event's append, not
+  // a fixed sleep: the lead's owner exists only once its session.started is
+  // stored, and a wake read before then is refused as no-owner (#4480).
+  await vi.waitFor(() => expect(world.store.hasEventId(eventId)).toBe(true), {
+    timeout: 5_000,
+  });
 }
 
 /** The lead Session is live and idle, owned by OWNER. */

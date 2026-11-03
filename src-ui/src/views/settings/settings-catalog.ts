@@ -16,6 +16,8 @@ export type SettingsSectionId =
   | 'feature-previews'
   | 'answer-shares'
   | 'plugin-visibility'
+  // Configuration the Browser and Device panes keep out of their chrome.
+  | 'browser-devices'
   // #1973: machines this Station runs simulators and emulators on over SSH.
   | 'device-hosts'
   // #3557: people with devices tied to them, their Station group and tokens.
@@ -114,6 +116,8 @@ export const SETTINGS_SECTIONS = [
     title: 'Plugin visibility',
     group: 'this-station',
   },
+  // Configuration the Browser and Device panes keep out of their chrome.
+  { id: 'browser-devices', title: 'Browser & devices', group: 'this-station' },
   // #1973: operator-only, like plugin visibility: the hosts are machines
   // Station reaches with the operator's own ssh keys.
   { id: 'device-hosts', title: 'Device hosts', group: 'this-station' },
@@ -309,6 +313,20 @@ const SETTINGS_CATALOG_SOURCE = [
     section: 'plugin-visibility',
     keywords: ['plugins share grant collaborator board panes'],
     conditional: 'operator',
+  },
+  {
+    id: 'browser-project-settings',
+    title: 'Browser agent access and local servers',
+    section: 'browser-devices',
+    keywords: [
+      'browser javascript evaluate agent local server localhost share',
+    ],
+  },
+  {
+    id: 'device-setup',
+    title: 'Device setup',
+    section: 'browser-devices',
+    keywords: ['simulator emulator hub agent device access share project'],
   },
   {
     id: 'device-hosts',

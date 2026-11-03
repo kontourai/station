@@ -14,7 +14,7 @@ export function useBrowserArtifactIntake() {
     (isCurrent: () => boolean = () => true) => {
       const sessionId = navigationStore.getSnapshot().activeChat;
       if (!sessionId) throw new Error('Open a conversation before attaching.');
-      if (!scope || !scope.isCurrent())
+      if (!scope?.isCurrent())
         throw new Error('Reconnect to this Station before attaching.');
       const boundScope = {
         ...scope,

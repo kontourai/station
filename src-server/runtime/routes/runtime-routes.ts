@@ -157,6 +157,7 @@ import {
 import {
   createDeviceToolRunner,
   DeviceToolsService,
+  type DeviceToolsTarget,
   deviceControlConflict,
 } from '../../services/devices/device-tools.js';
 import { createFfmpegDecoderProvider } from '../../services/devices/h264-jpeg-decoder.js';
@@ -4871,6 +4872,19 @@ export function configureRuntimeRoutes(
     };
     const artifacts = new DeviceArtifactStaging();
     deviceArtifacts = artifacts;
+    const installDeviceApp = (
+      input: Omit<
+        Parameters<typeof runDeviceAppInstall>[0],
+        'target' | 'spawn'
+      > & { hostId: string },
+    ) =>
+      input.hostId === LOCAL_DEVICE_HOST_ID
+        ? runDeviceAppInstall({
+            ...input,
+            target: { host: 'localhost' },
+            spawn: spawnLocalDeviceInstall,
+          })
+        : hostRegistry.installApp(input.hostId, input);
     const authorizeArtifactProject = createBrowserProjectAuthorizer(
       deviceMembershipAccess,
     );
@@ -4988,14 +5002,7 @@ export function configureRuntimeRoutes(
             ? resolve(expandTilde(project.workingDirectory))
             : undefined;
         },
-        installApp: (input) =>
-          input.hostId === LOCAL_DEVICE_HOST_ID
-            ? runDeviceAppInstall({
-                ...input,
-                target: { host: 'localhost' },
-                spawn: spawnLocalDeviceInstall,
-              })
-            : hostRegistry.installApp(input.hostId, input),
+        installApp: installDeviceApp,
         remoteHostIds: () =>
           hostRegistry.summaries().map((host) => host.hostId),
         remoteHost: (hostId) => {
@@ -5107,6 +5114,14 @@ export function configureRuntimeRoutes(
     const toolSessions = deviceSessions;
     const toolSurfaces = liveSurfaceRegistry;
     const toolCaller = resolveLiveSurfaceHumanCaller;
+    const deviceSessionFor = (target: DeviceToolsTarget) => {
+      const sessions =
+        target.hostId === LOCAL_DEVICE_HOST_ID
+          ? toolSessions
+          : remoteDeviceHosts?.get(target.hostId)?.sessions;
+      const session = sessions?.forDevice(target.platform, target.deviceId);
+      return sessions && session ? { sessions, session } : undefined;
+    };
     context.app.route(
       '/api/mobile-devices',
       createDeviceToolsRoutes({
@@ -5115,61 +5130,30 @@ export function configureRuntimeRoutes(
         access: deviceAccess,
         actionHistory: {
           read: (target) => {
-            const sessions =
-              target.hostId === LOCAL_DEVICE_HOST_ID
-                ? toolSessions
-                : remoteDeviceHosts?.get(target.hostId)?.sessions;
-            const session = sessions?.forDevice(
-              target.platform,
-              target.deviceId,
+            const found = deviceSessionFor(target);
+            const entries = found?.sessions.actionHistory(
+              found.session.sessionId,
             );
-            const entries = session
-              ? sessions?.actionHistory(session.sessionId)
-              : undefined;
-            return session && entries
-              ? { sessionId: session.sessionId, entries }
+            return found && entries
+              ? { sessionId: found.session.sessionId, entries }
               : undefined;
           },
           installed: (target) => {
-            const sessions =
-              target.hostId === LOCAL_DEVICE_HOST_ID
-                ? toolSessions
-                : remoteDeviceHosts?.get(target.hostId)?.sessions;
-            const session = sessions?.forDevice(
-              target.platform,
-              target.deviceId,
-            );
-            return session
-              ? sessions?.latestInstallation(session.sessionId)
-              : undefined;
+            const found = deviceSessionFor(target);
+            return found?.sessions.latestInstallation(found.session.sessionId);
           },
           installation: (target, value) => {
-            const sessions =
-              target.hostId === LOCAL_DEVICE_HOST_ID
-                ? toolSessions
-                : remoteDeviceHosts?.get(target.hostId)?.sessions;
-            const session = sessions?.forDevice(
-              target.platform,
-              target.deviceId,
-            );
-            if (session) sessions?.noteInstallation(session.sessionId, value);
+            const found = deviceSessionFor(target);
+            found?.sessions.noteInstallation(found.session.sessionId, value);
           },
           note: (target, action, outcome) => {
-            const sessions =
-              target.hostId === LOCAL_DEVICE_HOST_ID
-                ? toolSessions
-                : remoteDeviceHosts?.get(target.hostId)?.sessions;
-            const session = sessions?.forDevice(
-              target.platform,
-              target.deviceId,
+            const found = deviceSessionFor(target);
+            found?.sessions.noteAction(
+              found.session.sessionId,
+              action,
+              'person',
+              outcome,
             );
-            if (session)
-              sessions?.noteAction(
-                session.sessionId,
-                action,
-                'person',
-                outcome,
-              );
           },
         },
         appInstall: {
@@ -5180,14 +5164,7 @@ export function configureRuntimeRoutes(
               .find((project) => project.slug === slug)?.id,
           authorize: async (request, projectId) =>
             !!(await authorizeArtifactProject(request, projectId, 'drive')),
-          run: (input) =>
-            input.hostId === LOCAL_DEVICE_HOST_ID
-              ? runDeviceAppInstall({
-                  ...input,
-                  target: { host: 'localhost' },
-                  spawn: spawnLocalDeviceInstall,
-                })
-              : hostRegistry.installApp(input.hostId, input),
+          run: installDeviceApp,
         },
         // THIS machine's xcrun/adb and hub serve the local device host; an
         // SSH device host has its own service (#2442), built per host.

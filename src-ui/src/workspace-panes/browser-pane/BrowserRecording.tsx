@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { ActionRow } from '../../components/ActionRow';
 import { Button } from '../../components/Button';
 import { IconButton } from '../../components/IconButton';
-import { CloseGlyph, RecordGlyph } from '../../components/icons/Glyph';
+import { CloseGlyph } from '../../components/icons/Glyph';
 import { activeChatsStore } from '../../contexts/active-chats-store';
 import { navigationStore } from '../../contexts/navigation-store';
 import { BROWSER_PAGE_CONTENT_NOTICE } from './browserArtifactContent';
@@ -154,31 +154,6 @@ export function useBrowserRecording(
 }
 
 type Recording = ReturnType<typeof useBrowserRecording>;
-export function BrowserRecordingButton({
-  recording,
-  live,
-}: {
-  recording: Recording;
-  live: boolean;
-}) {
-  const label = recording.active ? 'Stop recording' : 'Record';
-  return (
-    <IconButton
-      aria-label={label}
-      title={label}
-      active={recording.active}
-      disabled={
-        !live ||
-        recording.busy ||
-        recording.stopping ||
-        (!recording.active && recording.phase !== 'idle')
-      }
-      onClick={recording.toggle}
-    >
-      <RecordGlyph />
-    </IconButton>
-  );
-}
 export function BrowserRecordingStatus({
   recording,
 }: {
@@ -316,7 +291,16 @@ export function BrowserRecordingStatus({
         overflowLabel="More recording actions"
         label="Recording actions"
         primary={
-          url ? (
+          recording.active ? (
+            <Button
+              size="sm"
+              variant="primary"
+              disabled={recording.busy || recording.stopping}
+              onClick={recording.toggle}
+            >
+              Stop recording
+            </Button>
+          ) : url ? (
             <a
               className="button button--primary button--small browser-pane__control browser-pane__link-button"
               href={url}
@@ -333,7 +317,7 @@ export function BrowserRecordingStatus({
               disabled={attaching}
               onClick={() => void attach()}
             >
-              Attach recording frames to chat
+              Attach frames to chat
             </Button>
           ) : undefined
         }

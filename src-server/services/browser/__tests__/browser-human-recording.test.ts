@@ -218,17 +218,9 @@ describe('human Browser recording', () => {
     const deviceSource = vi.fn(async (): Promise<never> => {
       throw new Error('Device source reached');
     });
-    const refused = device.start(
-      deviceAccess,
-      { durationMs: 1000 },
-      deviceSource,
-    );
-    await vi.waitFor(() =>
-      expect(device.status(deviceAccess, refused.id)).toMatchObject({
-        state: 'failed',
-        code: 'recording-unavailable',
-      }),
-    );
+    expect(() =>
+      device.start(deviceAccess, { durationMs: 1000 }, deviceSource),
+    ).toThrow('Recording capacity is exhausted.');
     expect(deviceSource).not.toHaveBeenCalled();
     expect(h.recorder.stop(first, 'alice', 'bs_test', 3)).toBe(true);
     await vi.waitFor(() =>
@@ -236,8 +228,14 @@ describe('human Browser recording', () => {
         'ready',
       ),
     );
-    await expect(task.record(access, authority, options)).rejects.toThrow(
-      'Task source reached',
+    // The human recording frees its slot in a `.finally` after it reports
+    // `ready`, so the next admission is awaited rather than assumed.
+    await vi.waitFor(
+      () =>
+        expect(task.record(access, authority, options)).rejects.toThrow(
+          'Task source reached',
+        ),
+      { timeout: 10_000, interval: 10 },
     );
     const admitted = device.start(
       deviceAccess,
@@ -253,17 +251,29 @@ describe('human Browser recording', () => {
     await h.recorder.dispose();
   });
 
-  it('finishes the clip at the 300-frame bound', async () => {
+  it('finishes the clip at the 300-frame bound', {
+    timeout: 45_000,
+  }, async () => {
     const h = fixture(undefined, 301);
     const id = h.recorder.start({
       session: h.session,
       owner: 'alice',
       authorize: async () => true,
     });
-    await vi.waitFor(() =>
-      expect(h.recorder.status(id, 'alice', 'bs_test', 3)?.state).toBe('ready'),
+    // 300 real frame writes and the encode run first; under host load that
+    // takes far longer than vi.waitFor's 1 s default, so wait on the encode
+    // with a generous bound, then on the state it settles.
+    await vi.waitFor(() => expect(h.encode).toHaveBeenCalledOnce(), {
+      timeout: 30_000,
+      interval: 10,
+    });
+    await vi.waitFor(
+      () =>
+        expect(h.recorder.status(id, 'alice', 'bs_test', 3)?.state).toBe(
+          'ready',
+        ),
+      { timeout: 10_000, interval: 10 },
     );
-    expect(h.encode).toHaveBeenCalledOnce();
     expect(h.recorder.video(id, 'alice', 'bs_test', 3)).toBeDefined();
     await h.recorder.dispose();
   });
