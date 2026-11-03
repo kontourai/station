@@ -96,6 +96,7 @@ import {
 } from '../../../knowledge-store/neo4j-connection.js';
 import { NEO4J_SYNC_QUERIES } from '../../../knowledge-store/neo4j-graph-sync.js';
 import { getCachedUser } from '../../../routes/system/auth.js';
+import { FeaturePreviewRegistry } from '../../../services/feature-previews/feature-preview-registry.js';
 import { createApplicationSessionRuntime } from '../../../services/identity/application-session-runtime.js';
 import type { LoadedDeploymentAuthentication } from '../../../services/identity/deployment-authentication-loader.js';
 import { DeploymentAuthenticationService } from '../../../services/identity/deployment-authentication-service.js';
@@ -270,6 +271,7 @@ describe('device-session chat principal resolution over the REAL auth path (stat
     runEveryStep([
       ...searchCleanup.splice(0),
       () => vi.restoreAllMocks(),
+      () => vi.unstubAllEnvs(),
       ...directories
         .splice(0)
         .map(
@@ -606,13 +608,24 @@ describe('device-session chat principal resolution over the REAL auth path (stat
           (value) => pairing.identifyDevice(value),
         )
       : undefined;
+    const knowledgePersistence =
+      membershipStorage ?? new FileStorageAdapter(roomHomeDir);
+    const featurePreviews = new FeaturePreviewRegistry(roomHomeDir, {
+      info() {},
+      warn() {},
+      error() {},
+      debug() {},
+    } as never);
     const consentChannel = new ConsentChannelService();
     consentChannel.markListening(4322);
     const context = deepStub({
       consentChannel,
       projectMembership: membership?.service,
       projectSharedTasks: membership?.sharedTasks,
-      ...(membershipStorage ? { storageAdapter: membershipStorage } : {}),
+      ...(membershipStorage || orchestrationExtras.knowledge
+        ? { storageAdapter: knowledgePersistence }
+        : {}),
+      ...(orchestrationExtras.knowledge ? { featurePreviews } : {}),
       deploymentAuthentication: localAccounts ?? deploymentAuthentication,
       localAccounts,
       applicationSessions,
@@ -688,7 +701,7 @@ describe('device-session chat principal resolution over the REAL auth path (stat
               },
             }),
             knowledgeStoreProvider: await (async () => {
-              const persistence = new FileStorageAdapter(roomHomeDir);
+              const persistence = knowledgePersistence;
               const provider = new KnowledgeStoreProvider(persistence);
               knowledgeProvider = provider;
               // The Station runtime's own registration (station-runtime.ts),
@@ -815,6 +828,7 @@ describe('device-session chat principal resolution over the REAL auth path (stat
       referenceTask,
       taskGraph,
       knowledgeProvider,
+      featurePreviews,
     };
   }
 
@@ -3972,6 +3986,200 @@ describe('device-session chat principal resolution over the REAL auth path (stat
         REMOTE_TAILNET_ENV,
       );
       expect(direct.status).toBe(404);
+    });
+
+    test('private memory preview keeps pending proposals out of search and away from delegation peers', async () => {
+      const embedded: string[][] = [];
+      const {
+        app,
+        pairing,
+        paired,
+        knowledgeProvider,
+        roomHomeDir,
+        featurePreviews,
+      } = await principalSetup({
+        knowledge: true,
+        ownerDeviceStanding: true,
+        onKnowledgeEmbed: (texts) => embedded.push(texts),
+      });
+      vi.stubEnv('STATION_HOME', roomHomeDir);
+      const headers = {
+        Authorization: `Bearer ${OPERATOR_SECRET}`,
+        'Content-Type': 'application/json',
+      };
+      const request = (path: string, init: RequestInit = {}) =>
+        app.request(path, init, REMOTE_TAILNET_ENV);
+      expect(
+        (
+          await request('/api/knowledge/memory/root', {
+            method: 'POST',
+            headers,
+          })
+        ).status,
+      ).toBe(404);
+      expect(
+        (await knowledgeProvider!.listRoots()).some(
+          (root) => root.adapterId === 'corpus-private-memory',
+        ),
+      ).toBe(false);
+      await featurePreviews.setEnabled('private-memory', true);
+      const created = await request('/api/knowledge/memory/root', {
+        method: 'POST',
+        headers,
+      });
+      expect(created.status, await created.clone().text()).toBe(200);
+      const root = ((await created.json()) as { data: { id: string } }).data;
+      const candidate = {
+        requestKey: 'opaque-request',
+        candidate: {
+          type: 'raw',
+          title: 'Pending',
+          body: 'pending-only-memory',
+          category: 'memory',
+          provenance: { agent: 'fixture' },
+        },
+        evidence: { agent: 'fixture', proposal: 'evidence' },
+      };
+      const createdProposal = await request('/api/knowledge/memory/proposals', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(candidate),
+      });
+      expect(createdProposal.status, await createdProposal.clone().text()).toBe(
+        201,
+      );
+      const id = ((await createdProposal.json()) as { data: { id: string } })
+        .data.id;
+      const proposalList = await request('/api/knowledge/memory/proposals', {
+        headers,
+      });
+      expect(await proposalList.json()).toMatchObject({
+        success: true,
+        data: [{ id, state: 'pending' }],
+      });
+      const pairedHeaders = {
+        Authorization: `Bearer ${paired.credential}`,
+        'Content-Type': 'application/json',
+      };
+      const pairedRoots = await request('/api/knowledge/roots', {
+        headers: pairedHeaders,
+      });
+      expect(
+        (
+          (await pairedRoots.json()) as { data: Array<{ id: string }> }
+        ).data.some((entry) => entry.id === root.id),
+      ).toBe(true);
+      expect(
+        (
+          await request(`/api/knowledge/roots/${root.id}/records?type=raw`, {
+            headers: pairedHeaders,
+          })
+        ).status,
+      ).toBe(200);
+      const pairedProposals = await request('/api/knowledge/memory/proposals', {
+        headers: pairedHeaders,
+      });
+      expect(pairedProposals.status, await pairedProposals.clone().text()).toBe(
+        200,
+      );
+      expect(await pairedProposals.json()).toMatchObject({
+        success: true,
+        data: [{ id, state: 'pending' }],
+      });
+      const peer = pairDelegationPeer(pairing);
+      for (const credential of [paired.credential, peer.credential]) {
+        const deniedCreate = await request('/api/knowledge/memory/root', {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${credential}` },
+        });
+        expect(deniedCreate.status).toBe(403);
+      }
+      const peerHeaders = {
+        Authorization: `Bearer ${peer.credential}`,
+        'Content-Type': 'application/json',
+      };
+      const peerRoots = await request('/api/knowledge/roots', {
+        headers: peerHeaders,
+      });
+      expect(
+        ((await peerRoots.json()) as { data: Array<{ id: string }> }).data.some(
+          (entry) => entry.id === root.id,
+        ),
+      ).toBe(false);
+      expect(
+        (
+          await request(`/api/knowledge/roots/${root.id}/records?type=raw`, {
+            headers: peerHeaders,
+          })
+        ).status,
+      ).toBe(403);
+      expect(
+        (
+          await request('/api/knowledge/memory/proposals', {
+            headers: peerHeaders,
+          })
+        ).status,
+      ).not.toBe(200);
+      expect((await request('/api/knowledge/memory/proposals')).status).toBe(
+        401,
+      );
+      const rebuilt = await request('/api/knowledge/index/rebuild', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ rootId: root.id }),
+      });
+      expect(rebuilt.status, await rebuilt.clone().text()).toBe(200);
+      expect(embedded.flat()).not.toContain('pending-only-memory');
+      for (const auth of [headers, peerHeaders]) {
+        const search = await request('/api/knowledge/index/search', {
+          method: 'POST',
+          headers: auth,
+          body: JSON.stringify({ query: 'pending-only-memory' }),
+        });
+        expect(search.status).toBe(200);
+        const results = (await search.json()) as {
+          data: Array<{ title: string; excerpt: string }>;
+        };
+        expect(
+          results.data.some(
+            (hit) =>
+              hit.title === 'Pending' ||
+              hit.excerpt.includes('pending-only-memory'),
+          ),
+        ).toBe(false);
+      }
+      await featurePreviews.setEnabled('private-memory', false);
+      const disabledRecord = await request(
+        `/api/knowledge/roots/${root.id}/records?type=raw`,
+        { headers },
+      );
+      expect(disabledRecord.status).toBe(404);
+      expect(await disabledRecord.json()).toMatchObject({
+        code: 'feature_preview_disabled',
+      });
+      for (const [path, body] of [
+        ['/api/knowledge/index/rebuild', { rootId: root.id }],
+        ['/api/knowledge/index/search', { query: 'test', rootIds: [root.id] }],
+      ] as const) {
+        const refused = await request(path, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(body),
+        });
+        expect(refused.status).toBe(404);
+        expect(await refused.json()).toMatchObject({
+          code: 'feature_preview_disabled',
+        });
+      }
+      const hidden = await request('/api/knowledge/roots', { headers });
+      expect(
+        ((await hidden.json()) as { data: Array<{ id: string }> }).data.some(
+          (entry) => entry.id === root.id,
+        ),
+      ).toBe(false);
+      expect(
+        (await request('/api/knowledge/memory/proposals', { headers })).status,
+      ).toBe(404);
     });
 
     test('author-private roots follow the personal account and refuse a delegation peer', async () => {

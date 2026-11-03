@@ -23,9 +23,11 @@ import {
   readObservationFile,
 } from '../knowledge-store/adapters/shared/observation-file.js';
 import type { KnowledgeRootObservation } from '../knowledge-store/knowledge-record-observation.js';
+import { assertNoPrivateRootOverlap } from '../knowledge-store/root-path-privacy.js';
 import {
   FileWriteConflictError,
   mutateJsonFile,
+  mutateJsonFileWithGuardedRead,
   readJsonFile,
   writeJsonFile,
 } from './file-storage-helpers.js';
@@ -801,31 +803,51 @@ export class FileStorageAdapter implements IStorageAdapter {
 
   async saveKnowledgeStoreRoot(
     root: KnowledgeStoreRoot,
-    options?: { createOnly?: boolean; expectedRoot?: KnowledgeStoreRoot },
+    options?: {
+      createOnly?: boolean;
+      expectedRoot?: KnowledgeStoreRoot;
+      assertCurrent?: () => void;
+    },
   ): Promise<void> {
-    const captured = { ...root, scope: { ...root.scope } };
-    parseKnowledgeStoreRoots([captured]);
+    const captured = parseKnowledgeStoreRoots([root])[0];
     const expected = options?.expectedRoot
       ? parseKnowledgeStoreRoots([options.expectedRoot])[0]
       : undefined;
     const createOnly = options?.createOnly;
-    await mutateJsonFile<unknown>(this.knowledgeStoreRootsPath, [], (value) => {
-      const roots = parseKnowledgeStoreRoots(value);
-      const index = roots.findIndex(
-        (candidate) => candidate.id === captured.id,
-      );
-      if (createOnly && index >= 0)
-        throw new FileStorageConflictError(
-          'Knowledge source ID is already registered.',
+    await mutateJsonFileWithGuardedRead<unknown>(
+      this.knowledgeStoreRootsPath,
+      [],
+      async () => readJsonFile<unknown>(this.knowledgeStoreRootsPath, []),
+      (value) => {
+        options?.assertCurrent?.();
+        const roots = parseKnowledgeStoreRoots(value);
+        const index = roots.findIndex(
+          (candidate) => candidate.id === captured.id,
         );
-      if (expected && (index < 0 || !isDeepStrictEqual(roots[index], expected)))
-        throw new FileStorageConflictError(
-          'Knowledge source changed before attachment.',
-        );
-      if (index >= 0) roots[index] = captured;
-      else roots.push(captured);
-      return roots;
-    });
+        if (createOnly && index >= 0)
+          throw new FileStorageConflictError(
+            'Knowledge source ID is already registered.',
+          );
+        if (
+          expected &&
+          (index < 0 || !isDeepStrictEqual(roots[index], expected))
+        )
+          throw new FileStorageConflictError(
+            'Knowledge source changed before attachment.',
+          );
+        try {
+          assertNoPrivateRootOverlap(captured, roots);
+        } catch {
+          throw new FileStorageConflictError(
+            'Knowledge source paths overlap or cannot be resolved.',
+          );
+        }
+        if (index >= 0) roots[index] = captured;
+        else roots.push(captured);
+        return roots;
+      },
+      { beforeCommit: options?.assertCurrent },
+    );
   }
 
   async removeKnowledgeStoreRoot(

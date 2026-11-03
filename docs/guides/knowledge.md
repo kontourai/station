@@ -122,6 +122,21 @@ flowchart LR
 The arrows show data flow. They do not imply automatic indexing or that every
 caller may read or rebuild every root.
 
+## Private memory preview
+
+**Private memory** is off by default in Settings → Advanced → Feature previews.
+With the preview on, the host operator can create their author-private memory
+root through `POST /api/knowledge/memory/root`. Disabling the preview hides the
+root and refuses memory operations; saved records and proposals remain on disk.
+Project membership and delegation do not grant access to this root.
+
+`POST /api/knowledge/memory/proposals` stages a candidate with an opaque
+`requestKey`, and `GET /api/knowledge/memory/proposals` is the explicit proposal
+query. Reusing a key for different input is refused. Pending proposals are not
+records and are not indexed or returned by ordinary Knowledge search. Ordinary
+record mutation routes cannot write directly into this root. Review decisions,
+distillation and erasure are separate work and are not provided by this preview.
+
 ## `./station knowledge reindex` — (re)build the index
 
 Run this any time you want the semantic-search index brought up to date with what's currently in

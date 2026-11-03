@@ -385,6 +385,11 @@ import { KnowledgeIndexAdapterRegistry } from '../../knowledge-index/index-adapt
 import { CONVERSATION_STORE_ADAPTER_ID } from '../../knowledge-store/adapters/conversation-store.js';
 import { isLocalKnowledgeSourceRequestCurrent } from '../../knowledge-store/knowledge-source-observation-policy.js';
 import type { KnowledgeStoreProvider } from '../../knowledge-store/knowledge-store-provider.js';
+import {
+  MEMORY_ADAPTER_ID,
+  MemoryRootManager,
+} from '../../knowledge-store/memory-root.js';
+import { assertNoPrivateRootOverlap } from '../../knowledge-store/root-path-privacy.js';
 import { classifyKnowledgeRoot } from '../../knowledge-store/session-backed-roots.js';
 import type { MonitoringEmitter } from '../../monitoring/emitter.js';
 import { monitoringSessionIdentity } from '../../monitoring/monitoring-session-identity.js';
@@ -463,6 +468,11 @@ import { createKnowledgeIndexRoutes } from '../../routes/knowledge/knowledge-ind
 import { createKnowledgeRecordRoutes } from '../../routes/knowledge/knowledge-record-routes.js';
 import { createKnowledgeSourceRoutes } from '../../routes/knowledge/knowledge-source-routes.js';
 import { createKnowledgeStoreRoutes } from '../../routes/knowledge/knowledge-store-routes.js';
+import {
+  createMemoryRoutes,
+  isMemoryRootId,
+  MEMORY_PREVIEW_DISABLED,
+} from '../../routes/knowledge/memory-routes.js';
 import { createNeo4jGraphRoutes } from '../../routes/knowledge/neo4j-graph-routes.js';
 import { createStationControlCallerRoutes } from '../../routes/mcp/station-control-caller-route.js';
 import { createStationControlExternalClientRoutes } from '../../routes/mcp/station-control-external-client-routes.js';
@@ -10640,6 +10650,30 @@ export function configureRuntimeRoutes(
     if (authority) knowledgeReadAuthorities.set(c.req.raw, authority);
     await next();
   });
+  const privateMemoryPreview = context.featurePreviews.bind({
+    id: 'private-memory',
+    label: 'Private memory',
+    description:
+      'Create a private memory store and inspect proposed memories. Memory can contain personal information.',
+  });
+  const memoryEnabled = () =>
+    privateMemoryPreview.select({ enabled: () => true, disabled: () => false });
+  const memoryRootManager = new MemoryRootManager(
+    context.knowledgeStoreProvider,
+    context.storageAdapter,
+    context.configLoader.getProjectHomeDir(),
+    memoryEnabled,
+  );
+  const memoryRootPreviewGuard = async (
+    c: import('hono').Context,
+    next: () => Promise<void>,
+  ) => {
+    if (!memoryEnabled() && isMemoryRootId(c.req.param('rootId')))
+      return c.json(MEMORY_PREVIEW_DISABLED, 404);
+    await next();
+  };
+  context.app.use('/api/knowledge/roots/:rootId', memoryRootPreviewGuard);
+  context.app.use('/api/knowledge/roots/:rootId/*', memoryRootPreviewGuard);
   const mayUseProjectKnowledge = async (
     request: Request,
     root: NonNullable<Awaited<ReturnType<KnowledgeStoreProvider['getRoot']>>>,
@@ -10681,12 +10715,40 @@ export function configureRuntimeRoutes(
       return false;
     }
   };
+  const knowledgeRootSnapshots = new WeakMap<
+    Request,
+    Promise<Awaited<ReturnType<KnowledgeStoreProvider['listRoots']>>>
+  >();
+  const knowledgeRootsForRequest = (request: Request) => {
+    let roots = knowledgeRootSnapshots.get(request);
+    if (!roots) {
+      roots = context.knowledgeStoreProvider.listRoots();
+      knowledgeRootSnapshots.set(request, roots);
+    }
+    return roots;
+  };
   const mayUseKnowledgeRoot = async (
     request: Request,
     root: Awaited<ReturnType<KnowledgeStoreProvider['getRoot']>>,
     action: 'view' | 'edit',
+    snapshot?: Awaited<ReturnType<KnowledgeStoreProvider['listRoots']>>,
   ): Promise<boolean> => {
     if (!root) return false;
+    if (
+      root.adapterId === MEMORY_ADAPTER_ID &&
+      (!memoryEnabled() || !memoryRootManager.isMemoryRoot(root))
+    )
+      return false;
+    try {
+      const roots =
+        snapshot ??
+        (action === 'edit'
+          ? await context.knowledgeStoreProvider.listRoots()
+          : await knowledgeRootsForRequest(request));
+      assertNoPrivateRootOverlap(root, roots);
+    } catch {
+      return false;
+    }
     if (classifyKnowledgeRoot(root) === 'author-private') {
       const authority = knowledgeReadAuthorities.get(request);
       const ownerId = root.readPolicy?.ownerId;
@@ -10736,20 +10798,61 @@ export function configureRuntimeRoutes(
     response: Response,
   ) =>
     guardProjectResponse(response, async () => {
+      const currentRoots = await context.knowledgeStoreProvider.listRoots();
       for (const expected of roots) {
-        const current = await context.knowledgeStoreProvider.getRoot(
-          expected.id,
-        );
+        const current = currentRoots.find((root) => root.id === expected.id);
         if (
           !current ||
           knowledgeRootIncarnationKey(current) !==
             knowledgeRootIncarnationKey(expected) ||
-          !(await mayUseKnowledgeRoot(request, current, 'view'))
+          !(await mayUseKnowledgeRoot(request, current, 'view', currentRoots))
         )
           return false;
       }
       return true;
     });
+  context.app.route(
+    '/api/knowledge',
+    createMemoryRoutes({
+      manager: memoryRootManager,
+      enabled: memoryEnabled,
+      authority: (request, action) => {
+        const scope = currentRequestReadAuthority();
+        if (
+          !scope ||
+          scope.mode !== 'personal' ||
+          !scope.userId ||
+          !isRuntimeRequestPrincipalCurrent(
+            request,
+            context.environmentSecurityService,
+          ) ||
+          (action === 'create' && !isOperatorAtHostNotAgent(request))
+        )
+          return undefined;
+        const assertCurrent = () => {
+          const current = currentRequestReadAuthority();
+          if (
+            !memoryEnabled() ||
+            request.signal.aborted ||
+            !current ||
+            current.mode !== 'personal' ||
+            current.userId !== scope.userId ||
+            !isRuntimeRequestPrincipalCurrent(
+              request,
+              context.environmentSecurityService,
+            ) ||
+            (action === 'create' && !isOperatorAtHostNotAgent(request))
+          )
+            throw new Error('Private memory authority ended.');
+        };
+        return { scope, assertCurrent };
+      },
+      mayReadRoot: (request, root) =>
+        mayUseKnowledgeRoot(request, root, 'view'),
+      guardReadResponse: guardKnowledgeReadResponse,
+    }),
+  );
+
   // The knowledge index and the Neo4j projection are shared, Station-wide
   // artifacts, built by the Station indexer from ALL sessions (the named
   // internal scope); every read path re-reads each session-backed record as
@@ -10783,6 +10886,7 @@ export function configureRuntimeRoutes(
     '/api/knowledge',
     createKnowledgeIndexRoutes({
       store: context.knowledgeStoreProvider,
+      previewDisabledForRoot: (id) => !memoryEnabled() && isMemoryRootId(id),
       runAsIndexer: runAsKnowledgeIndexer,
       mayBuildSessionBackedRoot,
       mayBuildPrivateRoot: (request, root) =>

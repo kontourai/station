@@ -493,9 +493,16 @@ describe('project guest administration over the production composition', () => {
         },
       }),
       accountSharingPreview,
+      featurePreviews,
       applicationSessions,
       storageAdapter: storage,
       knowledgeStoreProvider,
+      resolveEmbeddingProvider: () => ({
+        id: 'stub-embedder',
+        displayName: 'Stub embedder',
+        dimensions: () => 4,
+        embed: async (texts: string[]) => texts.map(() => [1, 0, 0, 0]),
+      }),
       projectService,
       app,
       port: 4321,
@@ -742,6 +749,7 @@ describe('project guest administration over the production composition', () => {
       operatorCredential,
       projectService,
       knowledgeStoreProvider,
+      featurePreviews,
       membership,
       localAccounts,
       storage,
@@ -4313,6 +4321,85 @@ describe('project guest administration over the production composition', () => {
       vi.unstubAllEnvs();
     }
   });
+  test('a Project member cannot list or read the operator private memory root or its proposals', async () => {
+    const h = await setup();
+    const { guest } = await h.shareWithGuestAdmin(
+      'memory-private',
+      'Memory private',
+    );
+    vi.stubEnv('STATION_HOME', h.homeDir);
+    await h.featurePreviews.setEnabled('private-memory', true);
+    const created = await h.request(
+      '/api/knowledge/memory/root',
+      h.operatorHeaders({ method: 'POST' }),
+    );
+    expect(created.status, await created.clone().text()).toBe(200);
+    const root = (await readJson<{ data: { id: string } }>(created)).data;
+    const proposal = {
+      requestKey: 'member-boundary',
+      candidate: {
+        type: 'raw',
+        title: 'Private',
+        body: 'private pending text',
+        category: 'memory',
+        provenance: { agent: 'fixture' },
+      },
+      evidence: { agent: 'fixture', proposal: 'evidence' },
+    };
+    const proposed = await h.request(
+      '/api/knowledge/memory/proposals',
+      h.operatorHeaders({
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(proposal),
+      }),
+    );
+    expect(proposed.status, await proposed.clone().text()).toBe(201);
+    const roots = await h.request('/api/knowledge/roots', guest());
+    expect(roots.status).toBe(200);
+    expect(
+      (await readJson<{ data: Array<{ id: string }> }>(roots)).data.some(
+        (entry) => entry.id === root.id,
+      ),
+    ).toBe(false);
+    expect(
+      (
+        await h.request(
+          `/api/knowledge/roots/${encodeURIComponent(root.id)}/records?type=raw`,
+          guest(),
+        )
+      ).status,
+    ).toBe(403);
+    expect(
+      (await h.request('/api/knowledge/memory/proposals', guest())).status,
+    ).not.toBe(200);
+    expect(
+      (await h.request('/api/knowledge/memory/root', guest({ method: 'POST' })))
+        .status,
+    ).toBe(403);
+    expect((await h.request('/api/knowledge/memory/proposals')).status).toBe(
+      401,
+    );
+    const rebuilt = await h.request(
+      '/api/knowledge/index/rebuild',
+      h.operatorHeaders({
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rootId: root.id }),
+      }),
+    );
+    expect(rebuilt.status, await rebuilt.clone().text()).toBe(200);
+    const search = await h.request(
+      '/api/knowledge/index/search',
+      guest({
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: 'private pending text' }),
+      }),
+    );
+    expect(search.status).toBe(403);
+  });
+
   test('knowledge roots and records enforce the account Project membership through real ingress', async () => {
     const h = await setup();
     const { scope, guest } = await h.shareWithGuestAdmin(

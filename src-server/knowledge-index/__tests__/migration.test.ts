@@ -423,11 +423,11 @@ describe('migratePreIndexKnowledge', () => {
     expect(await actualStore.listRoots()).toEqual([]);
   });
 
-  test.each([
+  test.skipIf(process.platform === 'win32').each([
     ['before record writes', 1, 0],
     ['before index rebuild', 2, 2],
   ])(
-    'migration refuses a private parent registered %s',
+    'migration refuses a private alias retargeted %s',
     async (_phase, leaseNumber, expectedRecords) => {
       const fixture = seedPreIndexFixture(homeDir, { vectorDim: 4 });
       const actualStore = new KnowledgeStoreProvider(
@@ -438,29 +438,54 @@ describe('migratePreIndexKnowledge', () => {
         fixture.projectSlug,
         fixture.namespace,
       );
+      const safe = join(homeDir, 'private-safe');
+      const alias = join(homeDir, 'private-alias-race');
+      mkdirSync(safe);
+      symlinkSync(safe, alias, 'dir');
+      await actualStore.createRoot({
+        scope: { kind: 'personal' },
+        readPolicy: { kind: 'author-private', ownerId: 'human:other' },
+        adapterId: 'kit-default-store',
+        storeRoot: alias,
+        displayName: 'Private alias',
+      });
       const lease = actualStore.withRootRevision!;
+      const getAdapter = actualStore.adapterFor.bind(actualStore);
       let calls = 0;
+      let retarget = false;
+      let retargeted = false;
       vi.spyOn(actualStore, 'withRootRevision').mockImplementation(
         async (root, operation) => {
           calls += 1;
-          if (calls === leaseNumber) {
-            await actualStore.createRoot({
-              scope: { kind: 'personal' },
-              readPolicy: { kind: 'author-private', ownerId: 'human:other' },
-              adapterId: 'kit-default-store',
-              storeRoot: join(destination, '..'),
-              displayName: 'Private parent',
-            });
-          }
+          retarget = calls === leaseNumber;
           return lease(root, operation);
         },
       );
+      vi.spyOn(actualStore, 'adapterFor').mockImplementation(async (id) => {
+        const adapter = await getAdapter(id);
+        if (retarget) {
+          retarget = false;
+          retargeted = true;
+          rmSync(alias);
+          symlinkSync(join(destination, '..'), alias, 'dir');
+        }
+        return adapter;
+      });
       const embedder = new StubEmbedder(4);
       const embed = vi.spyOn(embedder, 'embed');
-      const result = await migratePreIndexKnowledge(
-        { dataDir: homeDir, store: actualStore, indexProvider, embedder },
-        { projectSlug: fixture.projectSlug },
-      );
+      let result: Awaited<ReturnType<typeof migratePreIndexKnowledge>>;
+      try {
+        result = await migratePreIndexKnowledge(
+          { dataDir: homeDir, store: actualStore, indexProvider, embedder },
+          { projectSlug: fixture.projectSlug },
+        );
+      } finally {
+        if (retargeted) {
+          rmSync(alias);
+          symlinkSync(safe, alias, 'dir');
+        }
+      }
+      expect(retargeted).toBe(true);
       expect(embed).not.toHaveBeenCalled();
       expect(result.namespaceResults[0]?.status).toBe('error');
       const root = (await actualStore.listRoots()).find(

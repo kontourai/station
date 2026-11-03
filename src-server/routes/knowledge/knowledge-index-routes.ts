@@ -34,9 +34,11 @@ import {
 import { chunkKnowledgeText } from '../../services/knowledge/knowledge-storage.js';
 import { errorMessage } from '../schemas/schemas.js';
 import { projectKnowledgePersistenceError } from './knowledge-persistence-errors.js';
+import { MEMORY_PREVIEW_DISABLED } from './memory-routes.js';
 
 interface KnowledgeIndexRouteDeps {
   store: KnowledgeStoreProvider;
+  previewDisabledForRoot?: (rootId: string) => boolean;
   indexProvider: KnowledgeIndexProvider;
   /** Station home dir — the root both pre-index trees and K2 store roots hang off
    * (`migratePreIndexKnowledge`'s `dataDir`). */
@@ -162,11 +164,6 @@ export function createKnowledgeIndexRoutes(deps: KnowledgeIndexRouteDeps) {
     deps.runAsIndexer ?? (<T>(build: () => Promise<T>) => build());
   app.post('/index/rebuild', async (c) => {
     try {
-      const embedder = deps.getEmbedder();
-      if (!embedder) {
-        return c.json({ success: false, error: NO_EMBEDDER_ERROR }, 400);
-      }
-
       const body = (await c.req.json().catch(() => ({}))) as {
         rootId?: unknown;
       };
@@ -177,6 +174,11 @@ export function createKnowledgeIndexRoutes(deps: KnowledgeIndexRouteDeps) {
         typeof body.rootId === 'string' && body.rootId.length > 0
           ? body.rootId
           : undefined;
+      if (requestedRootId && deps.previewDisabledForRoot?.(requestedRootId))
+        return c.json(MEMORY_PREVIEW_DISABLED, 404);
+      const embedder = deps.getEmbedder();
+      if (!embedder)
+        return c.json({ success: false, error: NO_EMBEDDER_ERROR }, 400);
       const rootIds = requestedRootId
         ? [requestedRootId]
         : (await deps.store.listRoots()).map((root) => root.id);
@@ -377,11 +379,6 @@ export function createKnowledgeIndexRoutes(deps: KnowledgeIndexRouteDeps) {
   // report, applied per-hit here).
   app.post('/index/search', async (c) => {
     try {
-      const embedder = deps.getEmbedder();
-      if (!embedder) {
-        return c.json({ success: false, error: NO_EMBEDDER_ERROR }, 400);
-      }
-
       const body = (await c.req.json().catch(() => ({}))) as SearchIndexBody;
 
       if (typeof body.query !== 'string' || body.query.trim().length === 0) {
@@ -408,6 +405,12 @@ export function createKnowledgeIndexRoutes(deps: KnowledgeIndexRouteDeps) {
         }
         rootIds = body.rootIds;
       }
+
+      if (rootIds?.some((id) => deps.previewDisabledForRoot?.(id)))
+        return c.json(MEMORY_PREVIEW_DISABLED, 404);
+      const embedder = deps.getEmbedder();
+      if (!embedder)
+        return c.json({ success: false, error: NO_EMBEDDER_ERROR }, 400);
 
       let filter: Record<string, unknown> | undefined;
       if (body.filter !== undefined) {

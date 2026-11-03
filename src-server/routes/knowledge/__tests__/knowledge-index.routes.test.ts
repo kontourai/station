@@ -131,6 +131,37 @@ describe('knowledge-index routes', () => {
     });
   }
 
+  test.each([
+    ['/index/rebuild', { rootId: `root:memory:${'a'.repeat(64)}` }],
+    [
+      '/index/search',
+      { query: 'memory', rootIds: [`root:memory:${'a'.repeat(64)}`] },
+    ],
+  ])(
+    'disabled memory request to %s refuses before resolving an embedder',
+    async (path, body) => {
+      const getEmbedder = vi.fn(() => embedder);
+      const app = createKnowledgeIndexRoutes({
+        store,
+        indexProvider,
+        dataDir,
+        getEmbedder,
+        previewDisabledForRoot: (id) => id.startsWith('root:memory:'),
+      });
+      const response = await app.request(path, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      expect(response.status).toBe(404);
+      expect(await response.json()).toMatchObject({
+        code: 'feature_preview_disabled',
+        previewId: 'private-memory',
+      });
+      expect(getEmbedder).not.toHaveBeenCalled();
+    },
+  );
+
   describe('POST /index/rebuild', () => {
     const makeAdditionalStoreDir = trackTempDirs();
     test('private rebuild refuses when the registry cannot pin a revision', async () => {
