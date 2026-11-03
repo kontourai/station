@@ -2049,7 +2049,7 @@ export function HostDevicePairingPanel({
       // access form, so there is always a next step.
       if (!created) setShowOtherOptions(true);
     });
-  }, [quickPair, routes, apiBase]);
+  }, [quickPair, routes, apiBase, setError]);
   const selectRoute = async (route: PairingRoute) => {
     if (creatingOffer.current || offer?.endpoint === route.url) return;
     setEndpoint(route.url);

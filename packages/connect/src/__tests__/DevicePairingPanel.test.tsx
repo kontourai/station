@@ -3830,7 +3830,7 @@ describe('Pair phone quick flow (owner-device standing, 2026-11-02)', () => {
     expect(
       (
         screen.getByRole('radio', {
-          name: /Tailscale HTTPS/,
+          name: /kontour\.example\.ts\.net$/,
         }) as HTMLInputElement
       ).checked,
     ).toBe(true);
