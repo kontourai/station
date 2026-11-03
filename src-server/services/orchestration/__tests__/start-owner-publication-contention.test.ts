@@ -298,3 +298,55 @@ test('a publication-timeout smoke retains its failed-stop handle without a durab
     store.close();
   }
 });
+
+test('stops a session completed by an adapter replaced during launch', async () => {
+  const store = new EventStore(
+    join(makeTempDir('start-replaced-'), 'events.sqlite'),
+  );
+  const launching = new EchoingAdapter(true);
+  let resolveStart!: (session: ProviderSession) => void;
+  const started = new Promise<ProviderSession>((resolve) => {
+    resolveStart = resolve;
+  });
+  const start = vi
+    .spyOn(launching, 'startSession')
+    .mockReturnValueOnce(started);
+  const stop = vi
+    .spyOn(launching, 'stopSession')
+    .mockImplementation(async (threadId) => {
+      launching.sessions.delete(threadId);
+    });
+  const registry = createGateTestRegistry(launching);
+  const sessions = new OrchestrationService({
+    adapterRegistry: registry,
+    eventBus: new EventBus(),
+    eventStore: store,
+    logger: { debug: vi.fn(), warn: vi.fn() },
+  });
+  try {
+    const launch = sessions.dispatch({
+      type: 'startSession',
+      input: { threadId: 'start-race', provider: 'claude', cwd: process.cwd() },
+    });
+    await vi.waitFor(() => expect(start).toHaveBeenCalled());
+    vi.spyOn(registry, 'get').mockReturnValue(new EchoingAdapter(true));
+    const session: ProviderSession = {
+      provider: 'claude',
+      threadId: 'start-race',
+      status: 'ready',
+      createdAt: '2026-07-19T00:00:00.000Z',
+      updatedAt: '2026-07-19T00:00:00.000Z',
+    };
+    launching.sessions.set(session.threadId, session);
+    resolveStart(session);
+    await expect(launch).rejects.toThrow('replaced while');
+    expect(stop).toHaveBeenCalledWith('start-race');
+    expect(launching.sessions.size).toBe(0);
+    expect(
+      store.readSessions().find((row) => row.threadId === 'start-race'),
+    ).toBeUndefined();
+  } finally {
+    await sessions.shutdown();
+    store.close();
+  }
+});

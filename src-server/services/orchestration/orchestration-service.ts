@@ -7649,7 +7649,10 @@ export class OrchestrationService {
           this.startedSessionCommits.delete(threadId);
         },
         attachStarted: async (session, adapter, tenant, startInput) => {
-          this.assertAdapterCurrent(adapter);
+          if (!this.isAdapterCurrent(adapter))
+            throw new Error(
+              `${adapter.provider} adapter was replaced while the session was starting.`,
+            );
           if (
             startInput.metadata?.[SESSION_VISIBILITY_METADATA_KEY] ===
             'ephemeral'

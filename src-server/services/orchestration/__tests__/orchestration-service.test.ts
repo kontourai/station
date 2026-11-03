@@ -22031,47 +22031,6 @@ describe('OrchestrationService', () => {
     await dynamicService.shutdown();
   });
 
-  test('stops a session completed by an adapter replaced during launch', async () => {
-    const launching = new FakeAdapter('claude');
-    const started = deferred<ProviderSession>();
-    launching.startSession.mockReturnValueOnce(started.promise);
-    const registry = createReplaceableRegistry([launching]);
-    const dynamicService = new OrchestrationService({
-      adapterRegistry: registry,
-      eventBus,
-      eventStore,
-      logger: { debug: vi.fn(), warn: vi.fn() },
-    });
-    const launch = dynamicService.dispatch({
-      type: 'startSession',
-      input: {
-        threadId: 'start-race',
-        provider: 'claude',
-        modelId: 'claude-sonnet',
-      },
-    });
-    await vi.waitFor(() => expect(launching.startSession).toHaveBeenCalled());
-
-    registry.register(new FakeAdapter('claude'));
-    started.resolve({
-      provider: 'claude',
-      threadId: 'start-race',
-      status: 'ready',
-      model: 'claude-sonnet',
-      createdAt: '2026-07-19T00:00:00.000Z',
-      updatedAt: '2026-07-19T00:00:00.000Z',
-    });
-
-    await expect(launch).rejects.toThrow('replaced while');
-    expect(launching.stopSession).toHaveBeenCalledWith('start-race');
-    expect(
-      eventStore
-        .readSessions()
-        .find((session) => session.threadId === 'start-race'),
-    ).toBeUndefined();
-    await dynamicService.shutdown();
-  });
-
   test('stops every current adapter during orchestration shutdown', async () => {
     await service.dispatch({
       type: 'startSession',
