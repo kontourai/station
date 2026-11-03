@@ -231,42 +231,41 @@ function redactContextualFields(text: string): string {
         : match,
   );
 
-  return jsonRedacted.replace(
-    // The boundary group also swallows a `-`/`--` flag prefix, so
-    // `--password=hunter2` on a command line is contextually redacted the same
-    // way `password=hunter2` already was; the dashes travel in `boundary` and
-    // are re-emitted unchanged. Deliberately NOT extended to the attached form
-    // (`-phunter2`, mysql's password flag): with no separator to anchor on,
-    // a single letter followed by anything is too ambiguous to redact safely.
-    //
-    // The unquoted VALUE stops before a following flag (`(?!\s-)`, and `\s-`
-    // joins the lookahead) rather than running to the end of the line. Without
-    // that, one NON-secret pair earlier on a command line consumed the rest of
-    // it and the secret pair was never examined at all: `mysql --user=root
-    // --password=hunter2 -h db` came through verbatim, because `--user=`'s value
-    // had already eaten `--password=hunter2 -h db`. A quoted value is unaffected
-    // and still spans spaces and dashes, so `-m 'password=hunter2'` stays the
-    // single argument it is.
-    /((?:^|[?&;\s])--?|^|[?&;\s])(?:"([^"\r\n]+)"|'([^'\r\n]+)'|([A-Za-z][A-Za-z0-9_-]*))(\s*(?:=|:)\s*)("(?:\\.|[^"\\])*"|'[^']*'|(?:(?!\s-)[^&;\r\n])*)(?=$|[&;\r\n]|\s-)/gim,
-    (
-      match,
-      boundary: string,
-      doubleQuotedKey: string | undefined,
-      singleQuotedKey: string | undefined,
-      plainKey: string | undefined,
-      separator: string,
-      value: string,
-    ) => {
-      const key = doubleQuotedKey ?? singleQuotedKey ?? plainKey ?? '';
-      if (!isSecretField(key)) return match;
-      const renderedKey = doubleQuotedKey
-        ? `"${doubleQuotedKey}"`
-        : singleQuotedKey
-          ? `'${singleQuotedKey}'`
-          : plainKey;
-      return `${boundary}${renderedKey}${separator}${redactContextValue(value)}`;
-    },
-  );
+  const keys =
+    /((?:^|[?&;\s])--?|^|[?&;\s])(?:"([^"\r\n]+)"|'([^'\r\n]+)'|([A-Za-z][A-Za-z0-9_-]*))(\s*(?:=|:)\s*)/gim;
+  const values =
+    /\[REDACTED\]|"(?:\\.|[^"\\])*"|'[^']*'|(?:(?!\s-|\s[A-Za-z][A-Za-z0-9_-]*[ \t]*[=:])[^&;\r\n])*/y;
+  let output = '';
+  let copied = 0;
+  for (
+    let match = keys.exec(jsonRedacted);
+    match !== null;
+    match = keys.exec(jsonRedacted)
+  ) {
+    const [, boundary, double, single, plain, separator] = match;
+    const key = double ?? single ?? plain ?? '';
+    if (!isSecretField(key)) {
+      // A harmless unquoted value must not shield later credential keys.
+      // Keep quoted values opaque, as they may contain ordinary example text.
+      const next = jsonRedacted[keys.lastIndex];
+      if (next === '"' || next === "'") {
+        values.lastIndex = keys.lastIndex;
+        const value = values.exec(jsonRedacted);
+        if (value) keys.lastIndex = values.lastIndex;
+      } else if (/\s$/.test(separator)) keys.lastIndex -= 1;
+      continue;
+    }
+    values.lastIndex = keys.lastIndex;
+    const value = values.exec(jsonRedacted);
+    if (!value) continue;
+    const rendered = double ? `"${double}"` : single ? `'${single}'` : plain;
+    output +=
+      jsonRedacted.slice(copied, match.index) +
+      `${boundary}${rendered}${separator}${redactContextValue(value[0])}`;
+    copied = values.lastIndex;
+    keys.lastIndex = copied;
+  }
+  return output + jsonRedacted.slice(copied);
 }
 
 function redactKnownCredentials(text: string): string {

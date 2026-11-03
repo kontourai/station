@@ -358,14 +358,39 @@ describe('#1545: credential vocabulary reachable from a tool-call preview', () =
     expect(redactSecrets(input)).toBe(expected);
   });
 
-  // An unquoted value used to run to the end of the line, so ONE non-secret pair
-  // earlier on a command line consumed the rest of it and the secret pair was
-  // never examined. Every case below came through verbatim before the value
-  // learned to stop at a following flag.
   test.each([
     [
       'mysql --user=root --password=hunter2 -h db',
       'mysql --user=root --password=[REDACTED] -h db',
+    ],
+    [
+      'Error: login failed password=hunter2',
+      'Error: login failed password=[REDACTED]',
+    ],
+    ['E_AUTH: bad api_key=synthetic-secret', 'E_AUTH: bad api_key=[REDACTED]'],
+    [
+      'status=failed token: synthetic-secret',
+      'status=failed token: [REDACTED]',
+    ],
+    [
+      'Error: login failed password=correct horse',
+      'Error: login failed password=[REDACTED]',
+    ],
+    [
+      'password=correct horse status=failed',
+      'password=[REDACTED] status=failed',
+    ],
+    [
+      'Error: bad password="correct horse" status=failed',
+      'Error: bad password="[REDACTED]" status=failed',
+    ],
+    [
+      'Error: bad password=hunter2 token=second-secret',
+      'Error: bad password=[REDACTED] token=[REDACTED]',
+    ],
+    [
+      `Error:${' '.repeat(100_000)}password=hunter2`,
+      `Error:${' '.repeat(100_000)}password=[REDACTED]`,
     ],
     [
       'curl --header=x -d a=1 --password=p2',
@@ -383,6 +408,7 @@ describe('#1545: credential vocabulary reachable from a tool-call preview', () =
     'examines a secret pair that follows a non-secret one: %j',
     (input, expected) => {
       expect(redactSecrets(input)).toBe(expected);
+      expect(redactSecrets(expected)).toBe(expected);
     },
   );
 
