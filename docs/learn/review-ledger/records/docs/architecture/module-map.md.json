@@ -1578,6 +1578,8 @@
 
     "src-ui/src/__tests__/ConversationInboxMessages.geometry.test.tsx",
 
+    "src-server/services/orchestration/__tests__/ownership-cascade-gaps.test.ts",
+
     "packages/monument/src/session-control.ts",
 
     "src-server/services/orchestration/recovery-ledger-binding.ts",

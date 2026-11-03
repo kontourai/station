@@ -1193,6 +1193,7 @@ export class StationRuntime {
    * init when `gracefulShutdown` exits the process (archive#3218 review).
    */
   private stopStoreIntegrityVerification?: () => void;
+  private stopHealthChecks?: () => Promise<void>;
   private readonly operationalEventPublisher: OperationalEventPublisher;
   private readonly pluginOperationalEventSubscriptions: PluginOperationalEventSubscriptionService;
   private readonly stationHomeRuntimeLease: StationHomeRuntimeLease;
@@ -5406,7 +5407,7 @@ export class StationRuntime {
    * Start periodic health checks for all agents
    */
   private async startHealthChecks(): Promise<void> {
-    await startRuntimeHealthChecks({
+    this.stopHealthChecks = await startRuntimeHealthChecks({
       timers: this.timers,
       logger: this.logger,
       maintainOwnedWork: () =>
@@ -6013,6 +6014,7 @@ export class StationRuntime {
       await shutdownRuntimeServices({
         logger: this.logger,
         timers: this.timers,
+        stopHealthChecks: this.stopHealthChecks,
         schedulerService: this.schedulerService,
         orchestrationService: this.orchestrationService,
         attachedSessionFollowService: this.attachedSessionFollowService,
