@@ -98,8 +98,8 @@ class EchoingAdapter extends GateTestAdapter {
     this.turns.push(input);
     return { threadId: input.threadId, turnId: `turn-${this.turns.length}` };
   }
-  override async stopSession(threadId: string) {
-    this.sessions.delete(threadId);
+  override async stopSession(threadId?: string) {
+    if (threadId) this.sessions.delete(threadId);
   }
   override async hasSession(threadId?: string) {
     return !!threadId && this.sessions.has(threadId);
