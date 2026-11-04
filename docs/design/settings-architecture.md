@@ -246,8 +246,9 @@ products:
   ("saved to this device" vs a save-toast for server writes); contextual settings
   live with their entity, not in the global page.
 
-Deliberately skipped: multi-layer file-precedence stacks and org-policy
-constraint engines (Station has no org-policy tier yet); settings-sync services
+Deliberately skipped: multi-layer file-precedence stacks and general
+constraint engines (the one administrator-owned tier, the managed policy, is
+described in [Managed policy tier](#managed-policy-tier)); settings-sync services
 and encrypted account blobs (Station settings are server-authoritative per
 instance); per-setting analytics metadata; duplicated page-vs-modal settings
 implementations (observed in the wild as an explicit anti-pattern).
@@ -256,6 +257,27 @@ The consensus across all four products, independently arrived at: **settings are
 organized by scope — who or what a setting controls and where it lives — not by
 whichever page first needed them.** That is also exactly what #572 and #536 ask
 for.
+
+## Managed policy tier
+
+Status: the foundation shipped with #4516; managed settings land with #4517.
+The [decision record](../decisions/managed-policy.md) owns the rules, and the
+[administrator guide](../guides/managed-policy.md) owns rollout.
+
+A machine administrator can install one managed policy, which every Station
+server on that machine loads at startup. It is the outer bound on the scopes
+below, not a sixth scope: it has no settings screen of its own, and Station
+never writes its values into `app.json` or a project file. Precedence for a
+setting, highest first: managed lock > project > Station > environment >
+managed default > built-in default. Removing the policy and restarting brings
+back the user's own values.
+
+In the current build the policy's `settings` map must be empty, and the server
+refuses to start otherwise. Until #4517 routes managed values through
+`resolveEffectiveAppSetting` and the write paths, no setting is managed.
+Clients can already read the value-free summary at
+`GET /api/settings/managed-policy` (organization, support link, locked setting
+paths), which the "Managed by" presentation will use.
 
 ## 3. Target model: five scopes
 
@@ -724,7 +746,9 @@ Slices 1–2 are foundations; 3 is the visible revamp; 4–6 ride the new rails.
 
 ## 7. Non-goals
 
-- No org/enterprise policy tier — nothing demands it yet.
+- No general org-policy constraint engine. Organization-wide control is the
+  machine-level [managed policy tier](#managed-policy-tier) (#4515), which only
+  narrows; it is not a settings sync or account-policy service.
 - No cross-device settings sync service — Station settings
   are server-authoritative per instance; device settings are deliberately local.
 - No project-level `config` files for app settings — project scope stays entity

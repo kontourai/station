@@ -725,6 +725,31 @@ by every installed agent version.
 
 ## Configuration
 
+### `policy`
+
+Machine administrators use these commands to check and confirm a
+[managed policy](../guides/managed-policy.md).
+
+```bash
+station policy check <file> [--json]
+station policy show [--json] [--api-base=<url>|--station=<name>]
+```
+
+`check` is offline and runs the same validation as server startup. It exits
+`0` and prints the organization, the support link, what the policy manages and
+its `sha256:` fingerprint. It exits `1` and names each problem when the file is
+missing, unreadable, a directory, invalid JSON, or does not match the schema.
+With `--json` it prints `{valid, path, digest, summary}` or
+`{valid: false, path, reason, problems}`.
+
+`show` reads the policy installed on this machine and asks the target Station
+(`GET /api/settings/managed-policy`) which policy it loaded at startup. It
+compares the two only when the target is a loopback address; for a remote
+target it says the comparison was skipped. When the fingerprints differ, it
+says a restart is needed. When the installed policy is invalid, it reports the
+startup error and exits `1`. With `--json` it prints `{installed, running,
+restartNeeded}`, where `restartNeeded` is `null` when nothing could be compared.
+
 ### `telemetry`
 
 Read effective per-publisher tiers from a running Station or save a

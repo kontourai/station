@@ -1,0 +1,150 @@
+/**
+ * #4516: `station policy check <file>` runs as a real CLI child process
+ * through the supported source bootstrap, offline, and its exit status is
+ * the contract an administrator's rollout script branches on.
+ */
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
+import { afterEach, describe, expect, test } from 'vitest';
+import { spawnSyncBounded } from '../../../../scripts/lib/bounded-capture.mjs';
+
+const repoRoot = resolve(import.meta.dirname, '../../../..');
+const roots: string[] = [];
+afterEach(() => {
+  for (const root of roots.splice(0))
+    rmSync(root, { recursive: true, force: true });
+});
+
+function fixture(): string {
+  const root = mkdtempSync(join(tmpdir(), 'station-policy-check-'));
+  roots.push(root);
+  return root;
+}
+
+function check(...args: string[]) {
+  const root = fixture();
+  const result = spawnSyncBounded(
+    process.execPath,
+    [
+      '--import',
+      'tsx',
+      join(repoRoot, 'scripts/station-cli.ts'),
+      'policy',
+      'check',
+      ...args,
+    ],
+    {
+      cwd: repoRoot,
+      encoding: 'utf8',
+      windowsHide: true,
+      timeout: 60_000,
+      killSignal: 'SIGKILL',
+      env: {
+        ...process.env,
+        STATION_HOME: join(root, 'home'),
+        STATION_ROOT: join(root, 'home'),
+        // Offline: nothing may answer here.
+        STATION_PORT: '9',
+      },
+    },
+  );
+  return {
+    status: result.status,
+    stdout: result.stdout,
+    stderr: result.stderr,
+  };
+}
+
+function write(body: string): string {
+  const path = join(fixture(), 'policy.json');
+  writeFileSync(path, body);
+  return path;
+}
+
+describe('station policy check', () => {
+  test('exits 0 on a valid policy and prints what it does', () => {
+    const path = write(
+      JSON.stringify({
+        schemaVersion: 1,
+        organization: 'Acme',
+        supportUrl: 'https://help.example/station',
+      }),
+    );
+    const result = check(path);
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toContain(`Policy ${path} is valid.`);
+    expect(result.stdout).toContain(
+      'Organization: Acme (users see "Managed by Acme")',
+    );
+    expect(result.stdout).toMatch(/Fingerprint: sha256:[0-9a-f]{64}/);
+
+    const json = check(path, '--json');
+    expect(json.status).toBe(0);
+    expect(JSON.parse(json.stdout)).toMatchObject({
+      valid: true,
+      path,
+      summary: { organization: 'Acme', lockedSettings: [], limits: {} },
+    });
+  }, 120_000);
+
+  test.each([
+    ['invalid JSON', '{"schemaVersion":', 'it is not valid JSON'],
+    [
+      'an unknown key',
+      JSON.stringify({ schemaVersion: 1, organization: 'A', extra: true }),
+      'extra: unknown key',
+    ],
+    [
+      'a wrong schemaVersion',
+      JSON.stringify({ schemaVersion: 0, organization: 'A' }),
+      'schemaVersion: must be 1',
+    ],
+    [
+      'an unsupported limit',
+      JSON.stringify({
+        schemaVersion: 1,
+        organization: 'A',
+        limits: { updates: { mode: 'off' } },
+      }),
+      'limits.updates: this limit is not supported by this version of Station',
+    ],
+    [
+      'a managed setting',
+      JSON.stringify({
+        schemaVersion: 1,
+        organization: 'A',
+        settings: { x: { value: 1, locked: true } },
+      }),
+      'settings.x: managed settings are not supported',
+    ],
+  ])(
+    'exits 1 on %s and names the problem',
+    (_name, body, problem) => {
+      const path = write(body);
+      const result = check(path);
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain(
+        `Policy ${path} is not valid: Station would refuse to start.`,
+      );
+      expect(result.stderr).toContain(problem);
+
+      const json = check(path, '--json');
+      expect(json.status).toBe(1);
+      expect(JSON.parse(json.stdout)).toMatchObject({ valid: false, path });
+    },
+    120_000,
+  );
+
+  test('exits 1 for a directory or a missing file', () => {
+    const directory = join(fixture(), 'policy.json');
+    mkdirSync(directory);
+    const isDirectory = check(directory);
+    expect(isDirectory.status).toBe(1);
+    expect(isDirectory.stderr).toContain('it is a directory, not a file');
+
+    const missing = check(join(fixture(), 'absent.json'));
+    expect(missing.status).toBe(1);
+    expect(missing.stderr).toContain('no file exists at this path');
+  }, 120_000);
+});

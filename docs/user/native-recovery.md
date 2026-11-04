@@ -98,6 +98,11 @@ collect the bounded diagnostics below. A data-home schema error containing
 not repair it. Follow the exact `station home reset` conditions only after you
 have a backup and have selected the intended home.
 
+A [managed policy](../guides/managed-policy.md) error containing
+`STATION_MANAGED_POLICY_INVALID` is also fail-closed. Your organization's
+policy on this computer cannot be used, so the app reports the failure without
+restarting. Only an administrator can fix or remove the policy.
+
 Some home or schema refusals occur before the supervisor starts. They show a
 separate **Exit**-only dialog and start no backend. Repeatedly launching the app
 does not repair the refused home.

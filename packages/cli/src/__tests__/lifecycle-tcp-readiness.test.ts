@@ -174,4 +174,34 @@ describe('start failure names its cause (#4382)', () => {
       `Server log: ${missing}`,
     ]);
   });
+
+  test('names a managed-policy refusal over the generic fatal line after it', () => {
+    const dir = makeTempDir('station-start-policy-failure-');
+    const log = join(dir, 'station-x.log');
+    const refusal =
+      'STATION_MANAGED_POLICY_INVALID: Station cannot use the managed policy at /etc/station/policy.json: it is not valid JSON (x). Station will not start until an administrator fixes or removes it.';
+    writeFileSync(
+      log,
+      [
+        '--- 2026-10-31T19:00:00.000Z station lifecycle start instance=x build=a pid=1 ---',
+        'STATION_MANAGED_POLICY_INVALID: an earlier boot',
+        '--- 2026-10-31T19:16:29.000Z station lifecycle start instance=x build=a pid=2 ---',
+        `\u001b[31m${refusal}\u001b[39m`,
+        '[19:16:29.300] FATAL (station): Failed to start Station',
+        '',
+      ].join('\n'),
+    );
+    expect(lastFatalServerLogLine(log)).toBe(refusal);
+
+    // A marker from an earlier start is not this start's cause.
+    writeFileSync(
+      log,
+      [
+        'STATION_MANAGED_POLICY_INVALID: an earlier boot',
+        '--- 2026-10-31T19:20:00.000Z station lifecycle start instance=x build=a pid=4 ---',
+        'starting',
+      ].join('\n'),
+    );
+    expect(lastFatalServerLogLine(log)).toBeNull();
+  });
 });

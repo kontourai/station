@@ -96,11 +96,25 @@ pub enum ServerOwnership {
 /// A home-schema failure is deterministic, so retrying cannot repair it.
 pub const HOME_RESET_MARKER: &str = "STATION_HOME_RESET_REQUIRED";
 
+/// The server refuses to start under a managed policy it cannot enforce
+/// (`MANAGED_POLICY_INVALID_MARKER` in the contracts package). Only an
+/// administrator can change the policy, so retrying cannot repair it either.
+pub const MANAGED_POLICY_MARKER: &str = "STATION_MANAGED_POLICY_INVALID";
+
 /// The reader-facing fail-closed sentence. The marker stays a detection key
 /// only: it names an internal constant nothing in the dialog can act on, and
 /// echoing it made the message read as if the string were the diagnosis.
 pub fn fail_closed_message(detail: Option<&str>) -> Option<String> {
-    detail?.contains(HOME_RESET_MARKER).then(|| {
+    let detail = detail?;
+    if detail.contains(MANAGED_POLICY_MARKER) {
+        return Some(
+            "Your organization's managed policy for Station cannot be used, \
+             so Station will not start. Restarting cannot fix this: ask your \
+             administrator to fix or remove the policy named in the error log."
+                .to_string(),
+        );
+    }
+    detail.contains(HOME_RESET_MARKER).then(|| {
         "Station's data folder was created by an incompatible version, \
          so Station cannot start. Restarting cannot fix this: move or \
          reset the Station home shown in the error log, then start \
@@ -344,6 +358,27 @@ mod tests {
         assert_eq!(next.attempt, 1);
         assert_eq!(effect, vec![SupervisorEffect::None]);
         assert!(next.fail_closed);
+    }
+
+    #[test]
+    fn managed_policy_refusal_fails_without_a_further_retry_attempt() {
+        let detail = "STATION_MANAGED_POLICY_INVALID: Station cannot use the managed policy at \
+                      /etc/station/policy.json: it is not valid JSON (x). Station will not \
+                      start until an administrator fixes or removes it.";
+        let (next, effect) = transition(
+            &at(ServerPhase::Starting, 0),
+            &SupervisorInput::Exited {
+                code: Some(1),
+                detail: Some(detail.into()),
+            },
+        );
+        assert_eq!(next.phase, ServerPhase::Failed);
+        assert_eq!(next.attempt, 1);
+        assert_eq!(effect, vec![SupervisorEffect::None]);
+        assert!(next.fail_closed);
+        assert_eq!(next.detail.as_deref(), Some(detail));
+        assert!(!next.message.contains(MANAGED_POLICY_MARKER));
+        assert!(next.message.contains("administrator"));
     }
 
     #[test]

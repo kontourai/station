@@ -40,6 +40,7 @@ import {
   relative,
   resolve,
 } from 'node:path';
+import { MANAGED_POLICY_INVALID_MARKER } from '@kontourai/station-contracts/managed-policy';
 import {
   canonicalTenantAuthority,
   type HostedTenantRegistry,
@@ -4646,6 +4647,15 @@ export function lastFatalServerLogLine(logFile: string): string | null {
     if (LIFECYCLE_START_HEADER.test(lines[index])) {
       from = index + 1;
       break;
+    }
+  }
+  // A fail-closed refusal names its own cause; a later generic logger line
+  // (`FATAL … (station)`) must not hide it.
+  for (let index = lines.length - 1; index >= from; index -= 1) {
+    const at = lines[index].indexOf(`${MANAGED_POLICY_INVALID_MARKER}:`);
+    if (at >= 0) {
+      const line = lines[index].slice(at).trim();
+      return line.length > 500 ? `${line.slice(0, 500)}…` : line;
     }
   }
   for (let index = lines.length - 1; index >= from; index -= 1) {
