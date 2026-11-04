@@ -29,7 +29,10 @@ import type {
   CreateAutomationRuleInput,
   CreateAutomationSourceInput,
 } from './automation-store.js';
-import { projectAutomationSource } from './automation-store.js';
+import {
+  projectAutomationSource,
+  requestedRuleMode,
+} from './automation-store.js';
 import { materializeRepairCredential } from './repair-credentials.mjs';
 import {
   publishRepair,
@@ -133,8 +136,14 @@ export class IsolatedRepairController {
     input: Parameters<AutomationStore['setEnabled']>[0],
     operator: RepairOperator,
   ) {
+    // Anything but switching off is a setup change: `observe` widens what
+    // intake records, `live` what it may start.
+    const switchingOn =
+      input.kind === 'rule'
+        ? requestedRuleMode(input) !== 'off'
+        : 'enabled' in input && input.enabled;
     const assertCurrent = () =>
-      input.enabled ? this.assertSetup(operator) : operator.assertCurrent();
+      switchingOn ? this.assertSetup(operator) : operator.assertCurrent();
     await assertCurrent();
     await this.options.policy.setEnabled(input, assertCurrent);
   }
@@ -168,7 +177,7 @@ export class IsolatedRepairController {
     const fields = intent.event.fields;
     if (
       !source ||
-      !rule?.enabled ||
+      rule?.mode !== 'live' ||
       rule.action.kind !== 'isolated-repair' ||
       !rule.episode ||
       !sourceGrantsRuleAction(source, rule) ||
@@ -302,7 +311,10 @@ export class IsolatedRepairController {
           continue;
         const config = this.options.policy.read();
         const rule = config.rules.find((r) => r.id === intent.ruleId);
-        if (rule?.action.kind !== 'isolated-repair') continue;
+        // `current()` refuses a non-live rule at start; skipping here avoids
+        // claiming admission for a rule that may not act.
+        if (rule?.mode !== 'live' || rule.action.kind !== 'isolated-repair')
+          continue;
         const claim = ledger.claimAction({
           episodeKey: intent.episodeKey,
           expectedEpisodeId: intent.episodeId,

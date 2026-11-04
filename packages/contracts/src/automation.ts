@@ -14,7 +14,8 @@
  * the same `projectId` and `agentId` with `dispatch-task`, and a `notify`
  * rule (which names no Project or Agent) needs some source grant listing
  * `notify`. A revoked or disabled source grants nothing at run time, though
- * its rules stay stored. Sources and rules are created disabled.
+ * its rules stay stored. Sources are created disabled; rules are created in
+ * `observe` mode, which records what they would do but never acts.
  */
 
 /** Current version of every persisted Automation record in this module. */
@@ -256,12 +257,36 @@ export type AutomationEpisodePolicy = Readonly<{
   maxAttempts: number;
 }>;
 
+/**
+ * What a rule does with a matching event (#4509).
+ *
+ * - `off`: the rule is ignored, as a disabled rule always was.
+ * - `observe`: intake evaluates the rule's whole admission path and records a
+ *   per-rule decision (`would-start` or `suppressed`) on the delivery, but
+ *   never retains a dispatchable intent, opens a real episode, claims an
+ *   action or consumes an attempt. Neither action consumer can start work
+ *   for it.
+ * - `live`: the rule acts, subject to the source grant, the
+ *   `github-automation-actions` / `isolated-github-repairs` previews and the
+ *   other admission checks.
+ *
+ * Switching a rule from `observe` to `live` acts only on events that arrive
+ * afterwards; earlier observed events are never replayed.
+ */
+export const AUTOMATION_RULE_MODES = ['off', 'observe', 'live'] as const;
+
+export type AutomationRuleMode = (typeof AUTOMATION_RULE_MODES)[number];
+
 export type AutomationRule = Readonly<{
   /** Server-issued; a recreated rule is a new `automation-rule` principal. */
   id: string;
   name: string;
-  /** Created `false`; only an operator surface may enable a rule. */
-  enabled: boolean;
+  /**
+   * Created `observe`; only an operator surface may set `live`. A stored
+   * rule written before #4509 carries `enabled: boolean` instead; the
+   * server reads `false` as `off` and `true` as `live`, and writes `mode`.
+   */
+  mode: AutomationRuleMode;
   sourceId: string;
   match: AutomationMatcher;
   episode?: AutomationEpisodePolicy;

@@ -528,10 +528,10 @@ describe('GitHubPollAutomationPoller', () => {
     });
   });
 
-  test('a source whose rules are all disabled spends no request', async () => {
+  test('a source whose rules are all off spends no request', async () => {
     writeConfiguration(
       home,
-      configuration([{ ...QUALIFICATION_RULE, enabled: false }]),
+      configuration([{ ...QUALIFICATION_RULE, mode: 'off' }]),
     );
     const fetcher = vi.fn(async () => listing([]));
     expect(await poller(fetcher).poll({ now: T0, signal })).toEqual([

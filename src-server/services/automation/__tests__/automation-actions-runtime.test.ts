@@ -132,7 +132,7 @@ async function world(
     JSON.stringify({
       ...draft,
       sources: draft.sources.map((source) => ({ ...source, enabled: true })),
-      rules: draft.rules.map((rule) => ({ ...rule, enabled: true })),
+      rules: draft.rules.map((rule) => ({ ...rule, mode: 'live' })),
     }),
     { mode: 0o600 },
   );
