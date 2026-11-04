@@ -287,4 +287,60 @@ describe('Task worktree removal races (#4507)', () => {
     expect(outcome).toEqual({ outcome: 'removed' });
     expect(git(repo, 'branch', '--list', metadata.branch).trim()).toBe('');
   });
+
+  // Something in the worktree repoints the Task's branch at main while
+  // finalization runs: every check would judge main, and a deletion that
+  // follows the symbolic ref would delete main.
+  test('a Task branch repointed at main during the checks keeps everything', async () => {
+    const { repo, metadata } = await taskWorktree();
+    writeFileSync(join(repo, 'main-only.txt'), 'main work\n');
+    git(repo, 'add', 'main-only.txt');
+    git(repo, 'commit', '--quiet', '-m', 'main-only work');
+    const mainTip = git(repo, 'rev-parse', 'main').trim();
+    const ref = `refs/heads/${metadata.branch}`;
+    const service = new WorktreeProvisioningService(
+      racingRunner(
+        (args) => args.some((arg) => arg.endsWith('^{commit}')),
+        () => {
+          git(metadata.path, 'update-ref', '-d', ref);
+          git(metadata.path, 'symbolic-ref', ref, 'refs/heads/main');
+          git(metadata.path, 'reset', '--quiet', '--hard', 'HEAD');
+        },
+      ),
+    );
+
+    const outcome = await service.finalizeForTask({
+      metadata,
+      taskId: 'task-race',
+      terminalState: 'completed',
+    });
+
+    expect(outcome).toMatchObject({ outcome: 'kept', reason: 'failed' });
+    expect(git(repo, 'rev-parse', '--verify', 'refs/heads/main').trim()).toBe(
+      mainTip,
+    );
+    expect(existsSync(metadata.path)).toBe(true);
+  });
+
+  test('a Task branch repointed at main just before its deletion deletes only the Task branch', async () => {
+    const { repo, metadata } = await taskWorktree();
+    const mainTip = git(repo, 'rev-parse', 'main').trim();
+    const ref = `refs/heads/${metadata.branch}`;
+    const service = new WorktreeProvisioningService(
+      racingRunner(
+        (args) => args.includes('update-ref'),
+        () => git(repo, 'symbolic-ref', ref, 'refs/heads/main'),
+      ),
+    );
+
+    await service.finalizeForTask({
+      metadata,
+      taskId: 'task-race',
+      terminalState: 'completed',
+    });
+
+    expect(git(repo, 'rev-parse', '--verify', 'refs/heads/main').trim()).toBe(
+      mainTip,
+    );
+  });
 });

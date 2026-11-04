@@ -915,6 +915,20 @@ export class WorktreeProvisioningService {
           { env },
         )
       ).stdout.trim();
+      // The Task's branch must be a branch, not a symbolic ref to another
+      // one (something in the worktree can repoint it at `main`): every
+      // check below would then judge, and the deletion reach, that other
+      // branch.
+      const symbolic = await this.git.run(
+        [...repo, 'symbolic-ref', '-q', branchRef],
+        { allowCodes: [0, 1, 128], env },
+      );
+      if (symbolic.code === 0)
+        return {
+          outcome: 'kept',
+          reason: 'failed',
+          detail: `Branch ${metadata.branch} is a symbolic ref to ${symbolic.stdout.trim()}; nothing was removed.`,
+        };
       const unique = await this.git.run(
         [
           ...repo,
@@ -968,7 +982,9 @@ export class WorktreeProvisioningService {
       // `-c` would win over the runner's.
       const real = ['--git-dir', repository.commonDir];
       const deleted = await this.git.run(
-        [...real, 'update-ref', '-d', branchRef, tip],
+        // `--no-deref`: a branch repointed after the check above is deleted
+        // itself, never the branch it points to.
+        [...real, 'update-ref', '--no-deref', '-d', branchRef, tip],
         { allowCodes: [0, 1, 128] },
       );
       if (deleted.code !== 0)
