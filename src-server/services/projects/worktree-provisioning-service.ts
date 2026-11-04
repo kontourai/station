@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { existsSync, realpathSync } from 'node:fs';
-import { mkdir, rm } from 'node:fs/promises';
+import { mkdir, readdir, readFile, rm } from 'node:fs/promises';
 import { basename, dirname, join, relative, resolve, sep } from 'node:path';
 import type { EngineId } from '@kontourai/station-contracts/provider';
 import {
@@ -664,10 +664,12 @@ export class WorktreeProvisioningService {
     if (found.kind === 'registered')
       return { metadata: found.metadata, provenance: 'adopted' };
     // The Task's own branch outlived its checkout (removed by hand, or the
-    // repository moved): drop git's records of checkouts whose folders are
-    // gone, then check that branch out again instead of refusing it.
-    if (found.branchExists)
-      await this.git.run(['-C', found.repoRoot, 'worktree', 'prune']);
+    // repository moved): forget only this branch's registrations whose
+    // folders are gone, then check the branch out again instead of refusing
+    // it. Other worktrees' records are never touched, even when their
+    // folders are missing (an unmounted volume, a move in progress).
+    for (const stale of found.staleElsewhere)
+      await this.forgetMissingRegistration(found.repoRoot, stale);
     const startedAt = performance.now();
     try {
       const metadata = await this.createWorktree({
@@ -676,6 +678,7 @@ export class WorktreeProvisioningService {
         owner,
         policy,
         reuseOwnBranch: true,
+        reuseOwnMissingPath: found.staleOwnPath,
       });
       worktreeProvisionTotal.add(1, {
         outcome: 'success',
@@ -694,6 +697,38 @@ export class WorktreeProvisioningService {
       worktreeProvisionDuration.record(performance.now() - startedAt, {
         provider_kind: request.providerKind,
       });
+    }
+  }
+
+  /**
+   * #4507: forgets git's record of one checkout of a Task's branch whose
+   * folder is gone: the admin entry under the common directory whose
+   * `gitdir` names exactly that folder, and nothing else.
+   */
+  private async forgetMissingRegistration(
+    repoRoot: string,
+    folder: string,
+  ): Promise<void> {
+    if (existsSync(folder)) return;
+    const common = (
+      await this.git.run([
+        '-C',
+        repoRoot,
+        'rev-parse',
+        '--path-format=absolute',
+        '--git-common-dir',
+      ])
+    ).stdout.trim();
+    const admin = join(common, 'worktrees');
+    for (const name of await readdir(admin).catch(() => [] as string[])) {
+      let gitdir: string;
+      try {
+        gitdir = (await readFile(join(admin, name, 'gitdir'), 'utf8')).trim();
+      } catch {
+        continue;
+      }
+      if (canonicalizePath(dirname(gitdir)) !== folder) continue;
+      await rm(join(admin, name), { recursive: true, force: true });
     }
   }
 
@@ -1000,7 +1035,15 @@ export class WorktreeProvisioningService {
     policy: ReturnType<typeof validateWorktreePolicy>,
   ): Promise<
     | { kind: 'registered'; metadata: WorktreeSessionMetadata }
-    | { kind: 'absent'; repoRoot: string; branchExists: boolean }
+    | {
+        kind: 'absent';
+        repoRoot: string;
+        branchExists: boolean;
+        /** Git still registers this branch at the derived path, now gone. */
+        staleOwnPath: boolean;
+        /** Gone folders git still registers this branch at, elsewhere. */
+        staleElsewhere: string[];
+      }
   > {
     // The folder's own repository, opened the way creation opens it, never
     // one a `.git` file in the Project folder points git at.
@@ -1044,8 +1087,6 @@ export class WorktreeProvisioningService {
         worktreeSessionSegment(ownerKey),
       );
       assertWorktreePathPolicy({ repoRoot, worktreeBaseDir, worktreePath });
-      if (!existsSync(worktreePath))
-        return { kind: 'absent', repoRoot, branchExists };
       const registered = parseWorktreeList(
         (
           await this.git.run([...repo, 'worktree', 'list', '--porcelain'], {
@@ -1054,12 +1095,34 @@ export class WorktreeProvisioningService {
         ).stdout,
       );
       const expectedPath = canonicalizePath(worktreePath);
+      const own = registered.filter((entry) => entry.branch === branch);
+      const checkedOutElsewhere = own.some(
+        (entry) => entry.path !== expectedPath && existsSync(entry.path),
+      );
+      const absent = {
+        kind: 'absent' as const,
+        repoRoot,
+        branchExists,
+        // Reused only while no existing checkout elsewhere holds the
+        // branch; then git refuses the second checkout, as it should.
+        staleOwnPath:
+          !checkedOutElsewhere &&
+          !existsSync(worktreePath) &&
+          own.some((entry) => entry.path === expectedPath),
+        staleElsewhere: checkedOutElsewhere
+          ? []
+          : own
+              .filter(
+                (entry) =>
+                  entry.path !== expectedPath && !existsSync(entry.path),
+              )
+              .map((entry) => entry.path),
+      };
       if (
-        !registered.some(
-          (entry) => entry.path === expectedPath && entry.branch === branch,
-        )
+        !existsSync(worktreePath) ||
+        !own.some((entry) => entry.path === expectedPath)
       )
-        return { kind: 'absent', repoRoot, branchExists };
+        return absent;
       return {
         kind: 'registered',
         metadata: {
@@ -1091,6 +1154,11 @@ export class WorktreeProvisioningService {
      * an existing one is that owner's.
      */
     reuseOwnBranch?: boolean;
+    /**
+     * #4507: git still registers the branch at this (gone) path; `add
+     * --force` reuses that one registration instead of refusing it.
+     */
+    reuseOwnMissingPath?: boolean;
   }): Promise<WorktreeSessionMetadata> {
     const policy = request.policy;
     // The Project's folder is member-writable: a `.git` file there can name
@@ -1197,7 +1265,14 @@ export class WorktreeProvisioningService {
       try {
         await this.git.run(
           reattach
-            ? [...repo, 'worktree', 'add', worktreePath, branch]
+            ? [
+                ...repo,
+                'worktree',
+                'add',
+                ...(request.reuseOwnMissingPath ? ['--force'] : []),
+                worktreePath,
+                branch,
+              ]
             : [
                 ...repo,
                 'worktree',

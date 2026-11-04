@@ -11,6 +11,7 @@ import {
   existsSync,
   mkdirSync,
   realpathSync,
+  renameSync,
   rmSync,
   writeFileSync,
 } from 'node:fs';
@@ -189,6 +190,34 @@ describe('a Task whose recorded worktree is gone is not stuck (#4507)', () => {
       expect(f.graph.readTaskWorktree(f.taskId)).toBeUndefined(),
     );
     expect(branchExists(f.workspace, f.worktree)).toBe(true);
+  });
+
+  test('recovering it leaves other worktrees’ records alone, even with their folder missing', async () => {
+    const f = await fixture();
+    // Another checkout of the repository whose folder is away for now (an
+    // unmounted volume, a move in progress).
+    const other = join(f.parent, 'other-worktree');
+    git(f.workspace, 'worktree', 'add', '--quiet', '-b', 'other', other);
+    renameSync(other, `${other}-away`);
+    rmSync(f.worktree.path, { recursive: true, force: true });
+
+    await new WorktreeProvisioningService().provisionForTask({
+      repoPath: f.workspace,
+      taskId: f.taskId,
+      providerKind: 'codex',
+      isolation: { mode: 'worktree' },
+      recorded: f.worktree,
+    });
+
+    expect(existsSync(f.worktree.path)).toBe(true);
+    expect(git(f.workspace, 'worktree', 'list', '--porcelain')).toContain(
+      `worktree ${other}\n`,
+    );
+    // Back in place, the other checkout is still a working worktree.
+    renameSync(`${other}-away`, other);
+    expect(git(other, 'rev-parse', '--abbrev-ref', 'HEAD').trim()).toBe(
+      'other',
+    );
   });
 
   test('provisioning it again checks its own branch out at the same place', async () => {

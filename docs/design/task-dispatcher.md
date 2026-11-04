@@ -87,9 +87,11 @@ Provisioning is idempotent per Task:
 - a recorded worktree that still exists is reused once git confirms it is
   registered on its branch;
 - a recorded worktree that is gone (removed by hand, or left behind when the
-  repository moved) is provisioned again: git's records of vanished
-  checkouts are pruned and the Task's own branch is checked out at its
-  derived path, so its committed work comes back;
+  repository moved) is provisioned again: the Task's own branch is checked
+  out at its derived path, so its committed work comes back. Only that
+  branch's registrations whose folders are gone are forgotten; other
+  worktrees' records stay, even when their folders are missing for now. A
+  branch still checked out in an existing folder elsewhere is refused;
 - a registered worktree at the Task's derived path and branch that is not
   recorded yet is adopted;
 - otherwise one is created.
