@@ -84,8 +84,54 @@ class NodePtyProcess implements IPtyProcess {
       clearTimeout(this.pauseWatch);
       this.pauseEpoch++;
     });
-    if (process.platform !== 'win32')
-      this.terminate = () => this.terminateGroups();
+    this.terminate =
+      process.platform === 'win32'
+        ? () => this.terminateTree()
+        : () => this.terminateGroups();
+  }
+
+  /**
+   * Windows: closing a ConPTY ends only the processes attached to its
+   * console, so a descendant with no console (one started detached) would
+   * outlive the shell. End the shell's process tree with `taskkill /T /F`
+   * while its parent links still hold, as the supervisor's workload host
+   * does. The console is closed only if the shell outlived that: closing one
+   * whose shell already ended makes node-pty attach to a console that is
+   * gone. A tree taskkill could not end is reported, never a clean close.
+   */
+  private terminateTree(): Promise<void> {
+    this.termination ??= (async () => {
+      if (this.exited) return;
+      const exited = new Promise<void>((resolve) => {
+        const subscription = this.pty.onExit(() => {
+          subscription.dispose();
+          resolve();
+        });
+      });
+      const failure = await new Promise<
+        (Error & { code?: number | string }) | null
+      >((resolve) =>
+        execFile(
+          'taskkill',
+          ['/T', '/F', '/PID', String(this.pid)],
+          { timeout: 5_000, windowsHide: true },
+          (error) => resolve(error),
+        ),
+      );
+      const ended = await Promise.race([
+        exited.then(() => true),
+        new Promise<boolean>((resolve) =>
+          setTimeout(() => resolve(false), 1_000).unref(),
+        ),
+      ]);
+      if (!ended) this.pty.kill();
+      // 128: the shell had already ended, which leaves nothing to report.
+      if (failure && failure.code !== 128)
+        throw new Error(
+          `Terminal process-tree cleanup failed: ${failure.message}`,
+        );
+    })();
+    return this.termination;
   }
 
   private terminateGroups(): Promise<void> {
