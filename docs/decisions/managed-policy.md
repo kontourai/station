@@ -190,9 +190,11 @@ A status read from a server skips that rule, so an older client can read a
 newer server's list.
 
 **Two layers: the network and the credential.** Under the limit the
-entrypoint binds loopback (`127.0.0.1` when `STATION_HOST` is unset, and a
-non-loopback `STATION_HOST` refuses startup), and so do the voice and consent
-listeners, which receive the same host. Loopback alone is not enough:
+entrypoint binds a literal loopback address (`127.0.0.1` when `STATION_HOST`
+is unset or `localhost`, and any other non-loopback `STATION_HOST` refuses
+startup), and so do the voice and consent listeners, which receive the same
+host. A name is never handed to `listen`: it is resolved again at bind
+time, and a resolver can map `localhost` anywhere. Loopback alone is not enough:
 Tailscale Serve, the relay connector and other tunnels all reach Station from
 this machine. So `DevicePairingService` also runs with `localClientsOnly`:
 
@@ -213,9 +215,32 @@ telemetry producer allowed to send from off the machine is held to it.
 Refusals carry `managed-policy-remote-clients`, which maps to
 `permission_denied`.
 
-**Signed out, not revoked.** Station never writes policy into user state, so
-removing the policy restores the devices. They stay listed so an operator can
-still revoke them.
+**Suspended, not revoked.** Station never writes policy into user state, so
+removing the policy restores the devices. That makes the limit a temporary
+admission restriction, not incident response: a compromised device must still
+be revoked. Device lists mark a suspended device with `suspended: { by:
+"managed-policy", organization }`, separate from `revocation`, and the server
+logs the suspended counts at startup. A restoration is not logged, since
+nothing records an earlier run's limit and adding storage for one line was not
+worth it.
+
+**Every listener is admitted.** The startup check covers the ports known
+before binding. Each listener opened later (the MCP Apps frame origin, the
+browser egress proxy, SSH forwards, the telemetry companion's published
+ports, the isolated repair relay) goes through one admission: a literal
+loopback bind, then the Tailscale Serve check for its port, closing it if
+refused. The entrypoint installs that admission before the runtime starts.
+The repair relay binds every interface without the limit, because a Docker
+container reaches the host through `host.docker.internal`. Docker Desktop and
+OrbStack forward that name to the host's loopback, so under the limit the
+relay binds `127.0.0.1` there. Docker on Linux maps it to the bridge gateway,
+which loopback does not serve, so isolated repairs are refused on Linux under
+the limit rather than bound to a network interface.
+
+**The UI dev server is checked where it resolves.** `vite dev` takes `--host`
+from its CLI, which overrides the config's loopback default, so a Vite plugin
+checks the final resolved `server.host` and `preview.host`, and then the
+address actually bound, against the installed policy.
 
 **Startup refusals, not runtime switches.** The relay connector
 (`STATION_BROKER_CONFIG_FILE`) is an opt-in to remote clients, so it refuses
@@ -234,20 +259,39 @@ remove the user's other routes when a route's target is ambiguous, and the
 administrator sees exactly what was found. A target that names a host counts
 as a match, since the name can resolve to this server.
 
-"Nothing forwards" is proven only by: no Tailscale executable, a non-zero
-exit that says the daemon is not running, a backend state of `Stopped`,
+Station believes only a Tailscale CLI an ordinary user cannot stand in for.
+A `tailscale` on `PATH` can be any user's script, and its absence from
+`PATH` does not show that no daemon runs. So the check runs only a CLI at a
+fixed system location the system owns, with a fixed, minimal environment:
+the macOS app bundle, root-owned and accepted by `codesign` against Tailscale
+Inc.'s team; a root-owned Linux binary whose whole directory chain passes the
+policy file's own ownership check; or the Windows installer's path, whose
+ACLs are not yet checked (#4524). `/Applications` is admin-group writable, so
+on macOS the signature stands in for a root-owned chain. Homebrew's CLI is
+user-owned and not trusted. Without a trusted CLI, "not installed" stands
+only when nothing looks like Tailscale: no `tailscale` or `tailscaled` on
+`PATH`, no daemon socket, no app bundle, no Tailscale process. Any of these,
+or a process list that cannot be read, refuses startup and names what to
+install or stop.
+
+"Nothing forwards" is proven only by: no Tailscale at all (as above), a
+trusted CLI's non-zero exit that says the daemon is not running, a backend state of `Stopped`,
 `NoState`, `NeedsLogin` or `NeedsMachineAuth`, or a Serve configuration whose
 every target is another port. A timeout, any other error, output that is not
 JSON, an unknown backend state, or a Serve section this build does not know
-is unverifiable, and Station refuses to start. The check runs once at
+is unverifiable, and Station refuses to start. Backend states are matched
+with a `switch`, so a name such as `constructor` is never found on
+`Object.prototype`. The check runs once at
 startup. A route added later is not detected, but the credential layer still
 refuses to pair or admit anything through it.
 
 **The CLI checks the installed policy too.** `station environment offer
 --tailscale` refuses before it runs `tailscale serve`, and an installed
 policy it cannot load refuses as well. `station start` defaults its UI proxy
-and server to `127.0.0.1` and refuses another `--host`; an unloadable policy
-is left to the server, which reports it.
+and server to `127.0.0.1` and refuses another `--host`. It also refuses a
+non-loopback `STATION_HOST`, which it would otherwise replace with its own
+host for the server child without a word. An unloadable policy is left to
+the server, which reports it.
 
 **No separate relay switch.** The issue asked whether `limits.relay: false`
 is needed. Station's relay only lets remote devices in: relay enrollment
@@ -261,9 +305,16 @@ the place to add one.
 **Out of scope.** Port forwarding with other tools (`ssh -L`/`-R`, reverse
 proxies, tunnel services) connects from loopback and reads as local. A tunnel
 is not detected; the credential layer still refuses earlier devices and new
-pairing through it. Outbound integrations that relay other people's messages
-into turns, such as the Discord gateway, are not client connections and are
-not governed by this limit.
+pairing through it. Inbound webhooks (`/api/webhooks/inbound`) carry their
+own HMAC and grant authority, are not device authentication, and get their
+own switch (#4521).
+
+**Chat integrations are remote control.** The Discord gateway's connection is
+outbound, but the relay connector's is too: direction does not decide whether
+people off the machine drive Station. Discord messages become turns through
+the same foreground seam as chat, so under the limit the gateway does not
+start, and its status carries the managed sentence. Its configuration is
+kept; it is the only such integration in this build.
 
 ## Status of later slices
 

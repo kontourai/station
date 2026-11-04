@@ -3889,7 +3889,11 @@ offer to match); relay setup
 approvals and invitations answer `403` with that `code` and the policy's
 sentence as `message`; turning on `lanDiscoveryEnabled` through
 `PUT /config/app` answers `403` with that `code`; and credentials of devices
-paired earlier answer as unknown. See
+paired earlier answer as unknown. `GET /api/pairing/devices` still lists
+those devices, each with `suspended: { "by": "managed-policy",
+"organization": "<organization>" }` beside an unchanged `revocation`, and
+the Discord integration status reports `unavailable` with the policy's
+sentence. See
 [Network exposure](../guides/managed-policy.md#network-exposure).
 
 ## Branding
