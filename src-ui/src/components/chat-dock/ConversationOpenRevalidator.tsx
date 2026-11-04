@@ -44,9 +44,14 @@ export function ConversationOpenRevalidator({
   modelConnections,
 }: ConversationOpenRevalidatorProps) {
   const observation = useWorkObservation(conversationId);
+  const streamEpoch = observation?.streamEpochGeneration();
   useEffect(() => {
     let cancelled = false;
-    const read = observation?.read(conversationId, 'open', () => !cancelled);
+    const read = observation?.read(
+      conversationId,
+      'open',
+      () => !cancelled && observation.streamEpochGeneration() === streamEpoch,
+    );
     void import('./conversationOpenController')
       .then(async (controller) => {
         if (cancelled || read?.current() === false) return;
@@ -148,6 +153,7 @@ export function ConversationOpenRevalidator({
     };
   }, [
     observation,
+    streamEpoch,
     apiBase,
     conversationId,
     sessionId,

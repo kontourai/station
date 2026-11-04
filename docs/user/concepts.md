@@ -80,7 +80,8 @@ failed observation’s sequence within the same stream epoch supersedes that fai
 current status, even if the older read fails after that update. The sequence is
 captured when the read starts. A stream epoch change (such as replacing the
 orchestration database) resets sequence fences and retires pending old-epoch
-reads. Unrecovered failures stay last known until a new-epoch observation arrives. The history pane keeps any history-read error until its
+reads. An open chat starts a fresh binding read in the new epoch before it can
+continue. Unrecovered failures stay last known until a new-epoch observation arrives. The history pane keeps any history-read error until its
 reader recovers. Hiding and
 showing a row preserves its last-known status. Observations are released when
 the conversation is absent from the loaded inventory and no row or reader
