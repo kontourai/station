@@ -419,7 +419,7 @@ export class ProjectService {
     reservedId?: string,
   ): Promise<ProjectConfig> {
     assertWritableProjectIcon(config.icon);
-    assertProjectOverridesUnlocked(config as Record<string, unknown>);
+    assertProjectOverridesUnlocked(config);
     const project = await this.prepareProjectConfig(config, reservedId);
     await this.storageAdapter.createProject(project);
     // The manifest is derived from the project record that was just written,
@@ -585,10 +585,7 @@ export class ProjectService {
     const revision = this.storageAdapter.projectRevision(slug);
     const existing = revision.value;
     // #4517: a managed lock outranks a project's override of that setting.
-    assertProjectOverridesUnlocked(
-      updates as Record<string, unknown>,
-      existing as unknown as Record<string, unknown>,
-    );
+    assertProjectOverridesUnlocked(updates, existing);
     if (
       updates.defaultApprovalMode === 'never' &&
       existing.defaultApprovalMode !== 'never' &&

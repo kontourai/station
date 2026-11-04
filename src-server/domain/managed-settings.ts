@@ -101,8 +101,8 @@ export function lockedManagedSetting(
  * byte-equal to its loader-written seed is not one: the loader wrote it, and
  * the resolver and provenance already report it as the built-in default.
  */
-export function hasStationDecision(stored: AppConfig, key: string): boolean {
-  const value = (stored as unknown as Record<string, unknown>)[key];
+export function hasStationDecision(stored: object, key: string): boolean {
+  const value: unknown = Reflect.get(stored, key);
   if (!isStoredValue(value)) return false;
   return !(
     SEEDED_KEY_SET.has(key) &&
@@ -132,7 +132,7 @@ function environmentSupplies(
  */
 export function managedDefaultApplies(
   key: string,
-  stored: AppConfig,
+  stored: object,
   managed: ManagedAppSettings | null = installed,
   environment: Record<string, string | undefined> = process.env,
 ): boolean {
@@ -148,21 +148,21 @@ export function managedDefaultApplies(
  * managed defaults filling the keys nothing closer decided. Returns `stored`
  * itself when no policy manages a setting. Never mutates `stored`.
  */
-export function overlayManagedAppSettings(
-  stored: AppConfig,
+export function overlayManagedAppSettings<T extends object = AppConfig>(
+  stored: T,
   managed: ManagedAppSettings | null = installed,
   environment: Record<string, string | undefined> = process.env,
-): AppConfig {
+): T {
   if (!managed) return stored;
-  const effective: Record<string, unknown> = { ...stored };
+  const effective: T = { ...stored };
   for (const [key, entry] of managed.entries) {
     if (
       entry.locked ||
       managedDefaultApplies(key, stored, managed, environment)
     )
-      effective[key] = structuredClone(entry.value);
+      Reflect.set(effective, key, structuredClone(entry.value));
   }
-  return effective as unknown as AppConfig;
+  return effective;
 }
 
 /**
@@ -188,15 +188,15 @@ export class ManagedSettingLockedError extends Error {
  * write that would change or clear the user's hidden value is.
  */
 export function assertLockedSettingsUnchanged(
-  before: AppConfig,
-  after: AppConfig,
+  before: object,
+  after: object,
   managed: ManagedAppSettings | null = installed,
 ): void {
   if (!managed) return;
   for (const [key, entry] of managed.entries) {
     if (!entry.locked) continue;
-    const previous = (before as unknown as Record<string, unknown>)[key];
-    const next = (after as unknown as Record<string, unknown>)[key];
+    const previous: unknown = Reflect.get(before, key);
+    const next: unknown = Reflect.get(after, key);
     if (!isDeepStrictEqual(previous, next))
       throw new ManagedSettingLockedError(key, managed.summary);
   }
@@ -259,8 +259,8 @@ type ProjectOverrideField =
  * (see {@link withoutLockedProjectOverrides}).
  */
 export function assertProjectOverridesUnlocked(
-  updates: Record<string, unknown>,
-  existing: Record<string, unknown> = {},
+  updates: object,
+  existing: object = {},
   managed: ManagedAppSettings | null = installed,
 ): void {
   if (!managed) return;
@@ -268,7 +268,8 @@ export function assertProjectOverridesUnlocked(
     if (!lockedManagedSetting(key, managed)) continue;
     if (!Object.hasOwn(updates, field)) continue;
     // `null` drops an override, which is a change only when one is stored.
-    if (isDeepStrictEqual(updates[field] ?? undefined, existing[field]))
+    const requested: unknown = Reflect.get(updates, field);
+    if (isDeepStrictEqual(requested ?? undefined, Reflect.get(existing, field)))
       continue;
     throw new ManagedSettingLockedError(key, managed.summary);
   }

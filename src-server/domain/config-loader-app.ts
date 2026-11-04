@@ -195,9 +195,7 @@ export async function observeAppConfigFile(
     throw new Error('app config must be an object');
   // #4517: observers decide with it (registry trust, plugin admission), so
   // they see the managed policy's values like every other reader.
-  return overlayManagedAppSettings(
-    value as unknown as AppConfig,
-  ) as unknown as Record<string, unknown>;
+  return overlayManagedAppSettings(value as Record<string, unknown>);
 }
 
 interface AppConfigFileMutationOptions {
