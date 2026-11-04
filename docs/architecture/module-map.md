@@ -5320,7 +5320,10 @@ cycles or growing a second lifecycle authority.
   deadline and a 64 KiB output budget. Framing removes startup banners; missing,
   invalid or over-budget output yields no recovered PATH. Sidecar stderr handling
   in [lib.rs](../../src-desktop/src/lib.rs) retains at most 64 KiB and 16 lines,
-  including the final decoded text, and stops reading on I/O error. These bounds
+  including the final decoded text, and stops reading on I/O error. While it
+  reads, it also latches the first line (at most 4 KiB of its head) carrying a
+  fail-closed marker, and prepends it when the retained tail lost the marker,
+  so a long diagnostic cannot turn a terminal exit into a retry. These bounds
   are diagnostic behavior, not proof that a native launch succeeded.
 
 Adjacent transport, dispatch and native unit tests cover these seams. Keep
