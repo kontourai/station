@@ -118,7 +118,8 @@ export function MemoryErasurePreview() {
             {preview.data.kind}: {preview.data.id}
           </p>
           <p>
-            Claims affected (from Surface): unavailable.{' '}
+            Claims affected (from Surface): unavailable. Station has no verified
+            claim bundle for this memory.{' '}
             <a href="https://github.com/kontourai/surface/issues/360">
               About claim impact
             </a>

@@ -103,5 +103,10 @@
 }
 
 .knowledge-memory-preview__form input {
-  width: min(28rem, 100%);
+  width: 100%;
+}
+
+.knowledge-memory-preview__form label:last-of-type {
+  flex: 1 1 18rem;
+  max-width: 28rem;
 }
