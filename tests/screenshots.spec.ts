@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import type { PublicStationHandshake } from '@kontourai/station-contracts/environment-security';
 import { expect, type Locator, type Page, type Route } from '@playwright/test';
 import { buildLongSessionTurns } from './fixtures/long-session';
@@ -11,6 +11,11 @@ import { contrastRatio } from './helpers/color-contrast';
 import { routeCoreUpdateCheck } from './helpers/core-update-route';
 import { resolveE2EApiBase } from './helpers/e2e-target';
 import { rejectUnexpectedFixtureRequest, test } from './helpers/fixture-audit';
+import {
+  createGalleryAssetDiagnostics,
+  inventoryGalleryAssets,
+  readGalleryLifecycle,
+} from './helpers/gallery-asset-diagnostics';
 import {
   auditGalleryScreen,
   type GalleryUiAudit,
@@ -4123,6 +4128,22 @@ ${tiles}
 }
 
 test('build gallery — capture key screens', async ({ page }) => {
+  const assets = createGalleryAssetDiagnostics(
+    new URL(process.env.PW_BASE_URL ?? test.info().project.use.baseURL ?? '')
+      .origin,
+  );
+  const onRequest = assets.request;
+  const onResponse = assets.response;
+  const onFinished = assets.finished;
+  const onFailed = assets.failed.bind(assets);
+  page.on('request', onRequest);
+  page.on('response', onResponse);
+  page.on('requestfinished', onFinished);
+  page.on('requestfailed', onFailed);
+  const emittedBefore = process.env.STATION_E2E_UI_DIR
+    ? inventoryGalleryAssets(process.env.STATION_E2E_UI_DIR)
+    : null;
+  let assetDiagnosticsRetention = 'NOT_ATTEMPTED';
   const browserErrors: string[] = [];
   page.on('console', (message) => {
     if (message.type() === 'error' && browserErrors.length < 10)
@@ -4324,6 +4345,7 @@ test('build gallery — capture key screens', async ({ page }) => {
 
   try {
     for (const screen of selectedScreens) {
+      assets.screen(screen.name);
       browserErrors.length = 0;
       const file = `${screen.name}.png`;
       let layout: Shot['layout'];
@@ -4598,6 +4620,48 @@ test('build gallery — capture key screens', async ({ page }) => {
       }
     }
   } finally {
+    page.off('request', onRequest);
+    page.off('response', onResponse);
+    page.off('requestfinished', onFinished);
+    page.off('requestfailed', onFailed);
+    try {
+      const network = await assets.finish();
+      writeFileSync(
+        join(GALLERY_DIR, GALLERY_DIAGNOSTICS, 'asset-network.json'),
+        JSON.stringify({
+          network,
+          emittedBefore,
+          emittedAfter: process.env.STATION_E2E_UI_DIR
+            ? inventoryGalleryAssets(process.env.STATION_E2E_UI_DIR)
+            : null,
+          provenance: {
+            workflowEventSha: /^[a-f0-9]{40}$/.test(
+              process.env.GITHUB_SHA ?? '',
+            )
+              ? process.env.GITHUB_SHA
+              : null,
+            checkoutSha: 'UNKNOWN',
+            selectedScreens: selectedScreens.map((screen) => screen.name),
+            nodeVersion: process.version,
+            lifecycle: process.env.STATION_E2E_OUTPUT_DIR
+              ? readGalleryLifecycle(
+                  join(
+                    dirname(process.env.STATION_E2E_OUTPUT_DIR),
+                    'lifecycle.ndjson',
+                  ),
+                )
+              : { incomplete: true, events: [] },
+            uiProcessLifecycle: 'UNKNOWN',
+          },
+        }),
+      );
+      assetDiagnosticsRetention = 'RETAINED';
+    } catch {
+      assetDiagnosticsRetention = 'INCOMPLETE';
+      console.error(
+        'Gallery asset diagnostics incomplete: metadata retention failed.',
+      );
+    }
     // Written in a finally so an abort mid-loop still (best-effort — a hard
     // worker kill can outrun it) leaves the partial gallery and capture.json
     // behind: losing every screen's evidence because one screen was slow
@@ -4614,6 +4678,7 @@ test('build gallery — capture key screens', async ({ page }) => {
           schemaVersion: 1,
           runId: process.env.STATION_E2E_RUN_ID ?? null,
           capturedAt,
+          assetDiagnosticsRetention,
           expected: SCREENS.length,
           // `null` marks a full run over every declared SCREENS entry; a
           // requested-name array marks a targeted run so downstream tooling
