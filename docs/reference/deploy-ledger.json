@@ -1,5 +1,40 @@
 [
   {
+    "timestampUtc": "2026-11-04T22:33:16Z",
+    "channel": "nightly-npm",
+    "version": "0.11.0-nightly.2499.41923272661",
+    "sha": "970191e5e1c4e848415971473e362f79449eca8e",
+    "artifactBuiltAt": null,
+    "workflowRunUrl": "https://github.com/kontourai/station/actions/runs/41923272661",
+    "artifacts": [
+      "npm:@kontourai/station-cli@0.11.0-nightly.2499.41923272661 (dist-tag nightly; artifactBuiltAt unknown)"
+    ],
+    "gateResult": "Nightly exact gates success; npm registry gitHead equals source SHA",
+    "notes": [
+      "artifactBuiltAt is null: npm package has no native artifact manifest"
+    ],
+    "changelog": {
+      "previousSha": "e0b0cec0d1da8e58d29f3c496c1b12b04e8b405a",
+      "groups": {
+        "feat": [
+          "[#4563](https://github.com/kontourai/station/pull/4563) feat(policy): managed settings defaults and locks"
+        ],
+        "fix": [
+          "[#4530](https://github.com/kontourai/station/pull/4530) fix(boards): preserve recovery drafts and contain dock scrolling",
+          "[#4557](https://github.com/kontourai/station/pull/4557) fix(ui): distinguish account preference load failures",
+          "[#4549](https://github.com/kontourai/station/pull/4549) fix: report first Fallow interruption cause and timing"
+        ],
+        "ci": [],
+        "docs": [],
+        "other": [
+          "[#4572](https://github.com/kontourai/station/pull/4572) test(devices): start cleanup observer before publishing cancellation PID"
+        ]
+      },
+      "note": null,
+      "commitCount": 5
+    }
+  },
+  {
     "timestampUtc": "2026-11-04T17:19:19Z",
     "channel": "nightly-npm",
     "version": "0.11.0-nightly.2499.41868844308",
