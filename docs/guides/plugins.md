@@ -1465,6 +1465,9 @@ DELETE /api/plugins/:name
 GET /api/plugins/check-updates
 ```
 
+A registry the [managed policy](managed-policy.md#capability-switches) refuses
+is not asked during an update check.
+
 Update, update checks, git details, and the changelog read only the plugin
 directory's own repository (its `.git`). A plugin without one reports no git
 details and has no git update source, even when the Station home sits inside

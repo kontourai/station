@@ -1589,6 +1589,13 @@ sets `STATION_MCP_SUBREGISTRY_ALLOW_PRIVATE_ADDRESSES=1`. The same check runs
 on every address the server's name resolves to when Station connects, so a
 name that later points at a private address is refused.
 
+On a machine whose [managed policy](managed-policy.md#capability-switches)
+sets `limits.registries.allowedUrls`, a subregistry URL that is not listed is
+never fetched; its row shows the policy's message and nothing can be added
+from it. With `unsignedPackages: false`, no entry can be added from it at all,
+because a tool-server definition carries no signature. Station's curated
+servers are unaffected.
+
 ### Tools after untrusted content
 
 Some servers return content written by others, such as email. In a

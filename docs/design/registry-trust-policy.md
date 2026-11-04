@@ -178,6 +178,9 @@ A direct trust refusal returns HTTP 409 with `code: "registry-trust-refused"` an
 a closed `reason`, such as `stale-review`, `missing-claim`,
 `untrusted-signing-key`, `signature-mismatch`, `continuity-change`, or
 `receipt-unavailable`. Messages contain no raw claim URLs or key material.
+The managed policy's signature requirement is the exception: it answers the
+managed `403` (`managed-policy-capability-disabled`) with reason
+`managed-signature-required` and the policy sentence.
 Preview/review can resolve a stale observation. A continuity or unavailable
 receipt refusal retains data and requires the indicated inspection or reviewed
 migration; automatic retries cannot provide that authority. Aggregate

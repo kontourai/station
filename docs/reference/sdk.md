@@ -3216,7 +3216,9 @@ when its shape does not match `isPluginRegistryTrust` from
 `@kontourai/station-contracts/registry-trust`.
 The server obtains the claim and signing policy from host owners and returns
 `registry-trust-refused` with a closed reason when the review or continuity no
-longer matches. See [registry trust policy](../design/registry-trust-policy.md).
+longer matches. A managed policy's signature requirement instead answers `403`
+with `managed-policy-capability-disabled` and reason
+`managed-signature-required`. See [registry trust policy](../design/registry-trust-policy.md).
 
 `consent` is required (archive#4288). It records the operator's decision from
 the preview they read: the permission set the preview derived, the digest of

@@ -386,6 +386,9 @@ observation or commit receipt. It does not create an installation identifier or
 acknowledge disclosure. Other address shapes report unsupported instead of
 guessing a credential-bearing request path. Revoked keys and incompatible
 storage fail. Probe readiness is distinct from an acknowledged usage event.
+Under a managed policy with `limits.telemetry: false` both checks are refused,
+and the delivery status carries the policy sentence as `managedDenial` on the
+product and OTel rows, so Settings disables both **Check connection** buttons.
 
 Status reads require `orchestration:read`; connection checks require
 `access:manage`, including paired callers. Status responses contain presence
