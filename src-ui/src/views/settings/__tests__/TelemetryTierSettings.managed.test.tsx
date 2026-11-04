@@ -30,7 +30,8 @@ test('shows the managed sentence and offers no sharing choice', () => {
     />,
   );
   expect(
-    screen.getByRole('region', { name: 'Usage sharing is managed' }).textContent,
+    screen.getByRole('region', { name: 'Usage sharing is managed' })
+      .textContent,
   ).toContain(denial);
   expect(screen.queryByRole('radio')).toBeNull();
   expect(screen.queryByRole('combobox')).toBeNull();
@@ -49,6 +50,8 @@ test('control: without the managed reason the choices render', () => {
       }}
     />,
   );
-  expect(screen.queryByRole('region', { name: 'Usage sharing is managed' })).toBeNull();
+  expect(
+    screen.queryByRole('region', { name: 'Usage sharing is managed' }),
+  ).toBeNull();
   expect(screen.getAllByRole('radio').length).toBeGreaterThan(0);
 });

@@ -298,5 +298,7 @@ test('#4521: a managed policy explains OTel and a refused connection check in it
   expect(otelCheck?.disabled).toBe(true);
   fireEvent.click(productCheck!);
   await waitFor(() => expect(screen.getAllByText(denial)).toHaveLength(2));
-  expect(screen.queryByText('An operator must check this connection.')).toBeNull();
+  expect(
+    screen.queryByText('An operator must check this connection.'),
+  ).toBeNull();
 });

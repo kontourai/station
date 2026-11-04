@@ -102,8 +102,13 @@ export class RegistryCatalogRefusal extends Error {
 export class ManagedRegistryRefusal extends RegistryCatalogRefusal {
   readonly managedCode = MANAGED_POLICY_CAPABILITY_DISABLED_CODE;
 
-  constructor(message: string) {
-    super('source-forbidden', message);
+  /**
+   * The outward sentence, built only by `managedCapabilityDenial` from the
+   * policy's organization and support link; routes serialize this field, not
+   * an arbitrary error message.
+   */
+  constructor(readonly denial: string) {
+    super('source-forbidden', denial);
     this.name = 'ManagedRegistryRefusal';
   }
 }

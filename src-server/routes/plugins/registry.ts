@@ -139,7 +139,7 @@ const CATALOG_REFUSAL_MESSAGES: Record<RegistryCatalogRefusal['code'], string> =
  */
 function catalogRefusalBody(error: RegistryCatalogRefusal) {
   return error instanceof ManagedRegistryRefusal
-    ? { success: false, code: error.managedCode, message: error.message }
+    ? { success: false, code: error.managedCode, message: error.denial }
     : {
         success: false,
         code: error.code,
@@ -236,7 +236,7 @@ export function createRegistryRoutes(
             {
               success: false,
               code: error.managedCode,
-              error: error.message,
+              error: error.denial,
             },
             403,
           );
@@ -271,7 +271,7 @@ export function createRegistryRoutes(
             {
               success: false,
               code: error.managedCode,
-              error: error.message,
+              error: error.denial,
             },
             403,
           );
@@ -300,7 +300,7 @@ export function createRegistryRoutes(
             {
               success: false,
               code: error.managedCode,
-              error: error.message,
+              error: error.denial,
             },
             403,
           );
