@@ -259,6 +259,36 @@ describe('Lite ping privacy boundary', () => {
     const { event_id: _omitted, ...missing } = ping;
     expect(() => parseStationDailyPing(missing, ['public-plugin'])).toThrow();
   });
+  test('accepts old builds and bounded token buckets, rejecting duplicate engines and undisclosed values', () => {
+    expect(
+      parseStationDailyPing(ping, ['public-plugin'], ['0.7.0']),
+    ).not.toHaveProperty('engine_tokens_today');
+    const current = {
+      ...ping,
+      engine_tokens_today: [{ engine: 'codex', bucket: '10k-100k' }],
+    };
+    expect(
+      parseStationDailyPing(current, ['public-plugin'], ['0.7.0']),
+    ).toEqual(current);
+    for (const engine_tokens_today of [
+      [{ engine: 'codex', bucket: '0' }],
+      [{ engine: 'codex', bucket: 'exact:12345' }],
+      [{ engine: 'private-engine', bucket: '1-10k' }],
+      [
+        { engine: 'codex', bucket: '1-10k' },
+        { engine: 'codex', bucket: '10M+' },
+      ],
+      [{ engine: 'codex', bucket: '1-10k', tokens: 123 }],
+      null,
+    ])
+      expect(() =>
+        parseStationDailyPing(
+          { ...ping, engine_tokens_today },
+          ['public-plugin'],
+          ['0.7.0'],
+        ),
+      ).toThrow('engine_tokens_today');
+  });
   test('sender SemVer validation differs from receiver release-list admission', () => {
     for (const version of ['0.7.0', '1.2.3-source.1+build.2']) {
       expect(

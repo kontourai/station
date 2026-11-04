@@ -443,7 +443,11 @@ separate acceptance work.
 
 `POST /v1/lite/:source` accepts one `StationDailyPing` or `TelemetryFeedback` from
 `packages/contracts/src/product-telemetry.ts`, validated by the shared
-`parseStationDailyPing`. It requires no installation credential. Unknown fields,
+`parseStationDailyPing`. It requires no installation credential. The optional
+`engine_tokens_today` array admits old builds that omit it and up to eight
+unique positive-throughput engine buckets from new builds. Token buckets are
+counted in exact operator marginals (`engine:bucket`); they remain outside the
+public fixed domain, so public releases and their sensitivity are unchanged. Unknown fields,
 unknown nested fields, excessive or duplicate array entries, unlisted registry
 IDs or catalog-policy versions, invalid enum/count values, and a channel different from the
 source's configured channel are refused with 400. Bodies, including streaming

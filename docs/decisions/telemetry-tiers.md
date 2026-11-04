@@ -73,7 +73,7 @@ architecture, surfaces used today, first-active-week/month flags, installation-a
 and paired-device buckets, known engines, public distribution ID or none/custom,
 at most 20 public plugin IDs, a private-plugin count bucket, branding/home/layout
 customization booleans, abandoned setup step, per-engine connection-failure
-buckets, and safe-mode/crash-disable counts capped at 65,535. Arrays are bounded,
+and token-throughput buckets, and safe-mode/crash-disable counts capped at 65,535. Arrays are bounded,
 unique sets. Only catalog-verified public IDs/versions are accepted; private
 names and custom build labels cannot be laundered through a string-shaped ID.
 The ping carries a random event UUID for retry deduplication, never an installation
@@ -81,6 +81,22 @@ ID or cross-day key. First-run and last-active day/week/month dates stay local.
 Flags permit WAU/MAU estimates by counting first-active flags without identifiers;
 exactness requires complete daily delivery and deduplication and cannot be promised
 over network loss, uninstall/reinstall, or local-state resets.
+
+Daily token throughput is retained, canonically allocated engine input plus
+output, grouped by Station observation UTC day. The positive-only buckets are
+`1-10k` (1–10,000), `10k-100k` (10,001–100,000), `100k-1M`
+(100,001–1,000,000), `1M-10M` (1,000,001–10,000,000), and `10M+`
+(above 10,000,000). Powers of ten distinguish activity scales while withholding
+precise consumption. Zero or unreported engines are omitted; this is observed
+throughput, not billing completeness. Input/output retain the engine's own
+inclusion semantics; cache and reasoning breakdowns are never added separately
+because they can overlap. The shared accounting fold handles cumulative usage;
+child-work summaries are not added to parent usage. Unallocatable corrections,
+undeclared provider usage scopes and undated legacy events are omitted. Hosted tenant deployments omit these
+home-wide counts. The optional wire field preserves older-build admission;
+new senders always include the array, and the changed catalog re-shows the Lite
+notice. These buckets remain in exact operator marginals, outside the fixed
+public domain and its sensitivity calculation.
 
 Full keeps the classified startup, recovery, and engine-turn events and defines
 pane opened, plugin installed/removed, setting category changed, client connected,

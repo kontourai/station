@@ -2798,8 +2798,8 @@ export class OrchestrationService {
       },
       readUsageRevision: (threadId) =>
         this.options.eventStore?.readUsageRevision(threadId) ?? 'empty',
-      listUsageEventPayloads: (threadId) =>
-        this.options.eventStore?.listUsageEventPayloads(threadId) ?? [],
+      listUsageEventPayloads: (threadId, clock) =>
+        this.options.eventStore?.listUsageEventPayloads(threadId, clock) ?? [],
       listUsageReceiptEvents: (input) =>
         this.options.eventStore?.listUsageReceiptEvents(input) ?? [],
       listUsageCoverageEvents: (input) =>
@@ -6854,6 +6854,11 @@ export class OrchestrationService {
   listSessionUsage(authority: SessionReadScope): OrchestrationSessionUsage[] {
     this.initialize();
     return this.transcriptReads.listSessionUsage(authority);
+  }
+
+  listDailyUsage(day: string, authority: SessionReadScope) {
+    this.initialize();
+    return this.transcriptReads.listDailyUsage(day, authority);
   }
 
   listUsageReceipts(

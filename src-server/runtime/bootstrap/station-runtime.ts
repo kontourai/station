@@ -3638,6 +3638,11 @@ export class StationRuntime {
         buildProvenance: this.buildProvenanceSnapshot ?? null,
         logger: this.logger,
         telemetrySecretResolver: this.secretBindingAdministration,
+        dailyUsage: (day) =>
+          this.orchestrationService.listDailyUsage(
+            day,
+            INTERNAL_SESSION_READ_SCOPE,
+          ),
         dailyFacts: async () => {
           const homeDir = this.configLoader.getProjectHomeDir();
           const pluginsDir = `${homeDir}/plugins`;

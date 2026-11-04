@@ -705,6 +705,13 @@ export class LiteRepository {
       ping = {
         ...ping,
         event_id: ping.event_id.toLowerCase(),
+        ...(ping.engine_tokens_today
+          ? {
+              engine_tokens_today: ping.engine_tokens_today
+                .map(({ engine, bucket }) => ({ engine, bucket }))
+                .sort((a, b) => a.engine.localeCompare(b.engine)),
+            }
+          : {}),
         engine_connect_failures: ping.engine_connect_failures.map(
           ({ engine, bucket }) => ({ engine, bucket }),
         ),
