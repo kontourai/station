@@ -254,7 +254,11 @@
 
     "patches/vitest-runner-4.1.12.patch",
 
-    "scripts/__tests__/vitest-resource-manifest.test.ts"
+    "scripts/__tests__/vitest-resource-manifest.test.ts",
+
+    "tests/helpers/hit-target-audit.ts",
+
+    "scripts/__tests__/gallery-ui-audit.browser.test.ts"
   ],
 
   "checks": [
