@@ -3080,8 +3080,12 @@ actual process launch before confinement wrapping. At the `--settings` argument
 layer it permits only `fastMode` as a boolean and `disableAutoMode: "disable"`. Native bookkeeping changes do not
 invalidate an unchanged authentication projection.
 
-These checks support local file/env authentication only. Implicit Claude macOS
-Keychain login, non-file Codex stores, credential/policy helpers, detected managed
+These checks support local file/env authentication and Claude's macOS Keychain
+namespace. The private Keychain witness retains only an in-memory equality digest,
+including explicit absence, and re-reads the item before native launch. Unavailable
+or changed items refuse. Request and admission currency are checked again after
+that bounded read. Credential bytes are neither logged nor included in group
+receipts. Non-file Codex stores, credential/policy helpers, detected managed
 preferences or cloud-config cache, Windows registry stores and alternate cloud
 credential chains currently refuse. Claude's effective-config and default-home
 `remote-settings.json` caches are refusal/absence witnesses; remote-settings path

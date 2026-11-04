@@ -184,12 +184,15 @@ export async function observeNativeAuthenticationLaunch(input: {
     input.assertCurrent();
     executable.assertCurrent();
     assertFiles();
+    executable.assertCurrent();
+    input.assertCurrent();
   };
   return {
     assertCurrent,
     invoke(adapter, threadId, assertAdmissionCurrent, work) {
       assertAdmissionCurrent();
       assertCurrent();
+      assertAdmissionCurrent();
       return nativeAuthentication.run(
         {
           cwd: input.cwd,
@@ -200,6 +203,7 @@ export async function observeNativeAuthenticationLaunch(input: {
             assertCurrent();
             if (profileRef !== input.profileRef || cwd !== input.cwd)
               throw new Error('ensemble_auth_native_context_changed');
+            assertAdmissionCurrent();
           },
           assertLaunch(launch) {
             assertAdmissionCurrent();
@@ -216,6 +220,7 @@ export async function observeNativeAuthenticationLaunch(input: {
             } catch {
               throw new Error('ensemble_auth_arguments_changed');
             }
+            assertAdmissionCurrent();
           },
         },
         work,

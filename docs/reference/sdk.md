@@ -6579,9 +6579,12 @@ and effect fences recheck configuration and permission currency. Login is not
 selected-model entitlement, portable authority or fiscal enforcement. Creation,
 completed replay and zero-allowance execution do not probe login.
 The server retains a private continuation of the native executable, profile,
-launch environment and bounded local-file observation through actual spawn;
-serializing a login observation cannot reproduce it. Unwitnessable OS stores,
-helpers and detected managed/cloud policy refuse. See the [API's login
+launch environment and bounded local-file observation through actual spawn.
+Claude's macOS Keychain namespace also has a private equality witness checked
+before launch, followed by fresh request and admission checks. No credential
+bytes travel in the response. Serializing a login observation cannot reproduce
+its continuation. Other unwitnessable OS stores, helpers and detected
+managed/cloud policy refuse. See the [API's login
 limits](api.md#cli-session-groups); provider-side changes remain unverified.
 
 Preset-derived views may include the retained `preset` identity: preset ID,
