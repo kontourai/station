@@ -690,7 +690,11 @@ export class ChromiumScreencastProducer implements LiveSurfaceProducer {
     y: number,
     modifiers: LiveSurfaceModifiers | undefined,
   ): Promise<void> {
-    if (type === 'move' && !this.touchActive) return;
+    // Only a down starts a touch. With none in progress there is nothing to
+    // move or lift, and Chromium refuses a `touchEnd` ("Must send a
+    // TouchStart first"). A viewer sends such a lift for a second finger,
+    // or after its press was cancelled at a handoff; it is not a failure.
+    if (type !== 'down' && !this.touchActive) return;
     if (type === 'down') this.touchActive = true;
     if (type === 'up') this.touchActive = false;
     await this.send('Input.dispatchTouchEvent', {

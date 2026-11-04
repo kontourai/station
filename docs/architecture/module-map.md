@@ -5462,8 +5462,11 @@ buttons/keys on handoff, and marks a timed-out dispatch wedged until it settles.
 A producer may refuse an event for a reason the viewer can act on
 (`LiveSurfaceInputRefusal`; today the Browser's `page-dialog-open`, while a
 page dialog waits for its person), which reaches the viewer as that code
-rather than `dispatch-failed`. It cannot cancel an arbitrary producer effect
-already in flight.
+rather than `dispatch-failed`. Any other producer error is logged (surface,
+input kind and type, bounded cause; never key or text) and reaches the viewer
+as `dispatch-failed`, which the canvas shows over the surface with a Retry
+that re-sends only the events the result says were not delivered. It cannot
+cancel an arbitrary producer effect already in flight.
 
 Task Browser recordings are owned by the runtime and bound to the selected
 Browser generation. Runtime shutdown disposes the recorder before stopping the
