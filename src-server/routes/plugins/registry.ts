@@ -1,3 +1,4 @@
+import { MANAGED_POLICY_CAPABILITY_DISABLED_CODE } from '@kontourai/station-contracts/managed-policy';
 import type {
   PluginInstallationRevision,
   PluginManifest,
@@ -32,6 +33,7 @@ import { mcpSubregistryIntegrationProviders } from '../../providers/registries/m
 import {
   getAgentRegistryProvider,
   getIntegrationRegistryProvider,
+  integrationCatalogManagedDenial,
 } from '../../providers/registries/registry.js';
 import {
   ManagedRegistryRefusal,
@@ -826,7 +828,27 @@ export function createRegistryRoutes(
             definition: (await provider.getToolDef(id)) ?? undefined,
           };
       const result = installed.result;
-      if (!result.success) return c.json(result, 500);
+      if (!result.success) {
+        // #4521: refused catalogs were left out of the provider, so an entry
+        // only they list is not found; say the policy is why.
+        const managedDenial = integrationCatalogManagedDenial();
+        if (
+          managedDenial !== undefined &&
+          !(await provider.listAvailable().catch(() => [])).some(
+            (item) => item.id === id,
+          )
+        )
+          return c.json(
+            {
+              success: false,
+              code: MANAGED_POLICY_CAPABILITY_DISABLED_CODE,
+              error: managedDenial,
+              retryable: false,
+            },
+            403,
+          );
+        return c.json(result, 500);
+      }
 
       // Auto-generate integration.json from provider metadata
       const toolDef = installed.definition;

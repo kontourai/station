@@ -67,6 +67,27 @@ export function managedPolicyRequiresSignedPackages(): boolean {
 }
 
 /**
+ * #4521: why `limits.registries` refuses a tool-server (MCP) catalog at
+ * `location`, or undefined. Station's bundled curation is never refused. A
+ * catalog outside `allowedUrls` is refused, and with `unsignedPackages: false`
+ * so is every other catalog: a tool-server definition carries no signature,
+ * so it is treated like a skill rather than accepted unsigned.
+ */
+export function managedToolServerCatalogDenial(
+  location: string | undefined,
+  bundled: boolean,
+): string | undefined {
+  if (bundled) return undefined;
+  if (!registryLocationAllowedByManagedPolicy(location))
+    return managedCapabilityDenial('this tool server catalog');
+  if (managedPolicyRequiresSignedPackages())
+    return managedCapabilityDenial(
+      'tool servers from catalogs, because their definitions cannot be signed',
+    );
+  return undefined;
+}
+
+/**
  * "Acme's policy manages <subject>: it is turned off. For help, visit …".
  * `maxChars` bounds it for a length-limited field. Only meaningful
  * once a predicate here refused; without a policy it names no organization.

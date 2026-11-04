@@ -13,6 +13,7 @@ export type {
  */
 
 import type { EngineId } from '@kontourai/station-contracts/provider';
+import { managedToolServerCatalogDenial } from '../../security/managed-capability-limits.js';
 import { adapterRegistration } from '../../telemetry/metrics.js';
 import {
   awaitSettlementWithin,
@@ -836,10 +837,52 @@ export function getAgentRegistryProvider(): IAgentRegistryProvider {
 
 // ── Tool Registry ──────────────────────────────────────
 
+/** Integration catalogs that ship with Station (#4521: never policy-refused). */
+const bundledIntegrationRegistries = new WeakSet<object>();
+
 export function registerIntegrationRegistryProvider(
   provider: IIntegrationRegistryProvider,
+  options: { bundled?: boolean } = {},
 ) {
+  if (options.bundled) bundledIntegrationRegistries.add(provider);
   registerProvider('integrationRegistry', provider);
+}
+
+/**
+ * #4521: registered integration catalogs with the ones `limits.registries`
+ * refuses taken out before anything lists, installs from or syncs them, and
+ * the sentence for the first refusal. A catalog with no location (no
+ * `registryKey`) cannot be on the allow list, so it is refused under one.
+ */
+function managedIntegrationRegistryEntries(): {
+  entries: ReturnType<typeof listProviders>;
+  denial: string | undefined;
+} {
+  let denial: string | undefined;
+  const entries = listProviders('integrationRegistry').filter((entry) => {
+    const provider = entry.provider as IIntegrationRegistryProvider;
+    const refused = managedToolServerCatalogDenial(
+      provider.registryKey,
+      bundledIntegrationRegistries.has(provider),
+    );
+    denial ??= refused;
+    return refused === undefined;
+  });
+  return { entries, denial };
+}
+
+/**
+ * #4521: the sentence for a tool-server install the managed policy may have
+ * caused to fail, or undefined when the policy refuses no integration
+ * catalog. The configured MCP subregistry reports its refusal the same way.
+ */
+export function integrationCatalogManagedDenial(): string | undefined {
+  return (
+    managedIntegrationRegistryEntries().denial ??
+    mcpSubregistryIntegrationProviders().find(
+      (provider) => provider.managedDenial !== undefined,
+    )?.managedDenial
+  );
 }
 
 export function registerACPConnectionRegistryProvider(
@@ -851,7 +894,7 @@ export function registerACPConnectionRegistryProvider(
 }
 
 export function getIntegrationRegistryProvider(): IIntegrationRegistryProvider {
-  const entries = listProviders('integrationRegistry');
+  const { entries } = managedIntegrationRegistryEntries();
   const providers = entries.map(
     (entry) => entry.provider as IIntegrationRegistryProvider,
   );

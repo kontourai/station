@@ -28,7 +28,9 @@ export function registerManifestRegistryProvider(
   origin: ManifestRegistrySourceOrigin,
 ): void {
   registerAgentRegistryProvider(provider.agentRegistry());
-  registerIntegrationRegistryProvider(provider.integrationRegistry());
+  registerIntegrationRegistryProvider(provider.integrationRegistry(), {
+    bundled: origin === 'bundled',
+  });
   registerPluginRegistryProvider(
     provider,
     manifestRegistrySourceLabels[origin],
