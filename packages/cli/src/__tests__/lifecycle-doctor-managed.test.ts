@@ -122,6 +122,11 @@ describe('station doctor under a managed policy', () => {
     );
     expect(report.runtimeReady).toBe(false);
     expect(report.runtimeState.effective).toBeNull();
+    // Rows and the detected list agree with "nothing ready".
+    expect(report.runtimeState.detected).toEqual([]);
+    expect(
+      report.checks.find((item) => item.label === 'Codex CLI')?.status,
+    ).toBe('warn');
     const check = report.checks.find((item) => item.label === 'Managed policy');
     expect(check?.status).toBe('fail');
     expect(check?.detail).toContain('/test/policy.json');

@@ -452,7 +452,7 @@ function cliCheck(
     return {
       label,
       status: 'warn',
-      detail: `${version}, but its connection is disabled by configuration.`,
+      detail: `${version}, but its connection is disabled by configuration or the managed policy cannot be used.`,
     };
   return { label, status: 'pass', detail: version };
 }
@@ -559,10 +559,14 @@ export async function collectDoctorReport(
   // A detected CLI is a usable runtime only while its connection is not
   // disabled in the effective configuration (a managed policy can disable
   // it, #4517).
+  // Under a policy startup would refuse, nothing runs: the server does not
+  // start, so no detected CLI is usable either.
   const runtimeAllowed = (connectionId: string): boolean =>
+    managedPolicyProblem === null &&
     agentConnections[connectionId]?.enabled !== false;
-  // The Kiro CLI runs through the `acp` connection.
-  const kiroUsable = Boolean(kiroVersion) && runtimeAllowed('acp');
+  // Kiro is an ACP registry engine, not an `agentConnections` key, so only
+  // an unusable policy gates it here.
+  const kiroUsable = Boolean(kiroVersion) && managedPolicyProblem === null;
   const awsConfigured = Boolean(
     runtimeDeps.env.AWS_ACCESS_KEY_ID ||
       runtimeDeps.env.AWS_PROFILE ||
@@ -676,7 +680,7 @@ export async function collectDoctorReport(
       detail: kiroUsable
         ? (kiroVersion as string)
         : kiroVersion
-          ? `${kiroVersion}, but the ACP connection is disabled by configuration.`
+          ? `${kiroVersion}, but the managed policy cannot be used.`
           : enabledRuntimeConnections.some(([id]) => id === 'acp')
             ? 'ACP runtime connection configured.'
             : 'No ACP runtime detected.',
