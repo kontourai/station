@@ -31,8 +31,7 @@ function fakeContext(canvas: HTMLCanvasElement) {
       canvas.dispatchEvent(new Event('webglcontextrestored'));
     },
   };
-  const uploads: { x: number; y: number; width: number; height: number }[] =
-    [];
+  const uploads: { x: number; y: number; width: number; height: number }[] = [];
   const calls = {
     texSubImage2D: (...args: unknown[]) => {
       const image = args[6] as { width: number; height: number };

@@ -435,9 +435,7 @@ describe('TerminalController with an Android soft keyboard', () => {
     // The field the keyboard believes empty: a real Backspace with no code.
     input.dispatchEvent(keydown('Backspace', 8));
     input.dispatchEvent(keydown('Enter', 13));
-    await vi.waitFor(() =>
-      expect(written(session)).toBe('echo hix\x7f\x7f\r'),
-    );
+    await vi.waitFor(() => expect(written(session)).toBe('echo hix\x7f\x7f\r'));
     // The line went; the next one starts from an empty field.
     expect(input.value).toBe('');
     controller.dispose();

@@ -330,7 +330,7 @@ export const PR_BROWSER_SMOKE_CONTRACT = {
     {
       path: 'tests/terminal-mobile-keyboard.spec.ts',
       journey:
-        '#3994: a phone soft keyboard types, deletes and sends a command in a real Coding shell, and the terminal redraws after the page is hidden',
+        '#3994: a phone soft keyboard types, deletes and sends a command in a real Coding shell, and a shell shown again after another shell's tab redraws its screen',
     },
   ],
 };
@@ -613,7 +613,7 @@ export const e2eManifest = [
     tierTarget: 'full',
     primary: true,
     rationale:
-      "#3994: \"sending a terminal message didn't work\" on a phone. Android keyboards send each letter as a keydown 229 then beforeinput insertText, and Send/Enter and Backspace as keydowns with key set and code empty (recorded from Gboard on Android Chrome). Pixel 7 emulation drives that exact event shape through the browser's input pipeline (CDP Input.insertText, key events with code '') into a real shell on a real isolated Station, and the shell's own output is read back from the server's journal: the command must run with the deleted characters gone, and the field the keyboard edits must hold what it typed. Then the page is hidden and shown, as switching apps does, and the WebGL view must redraw the same screen rather than a blank one. Listed in PR_BROWSER_SMOKE_CONTRACT.journeys so it runs on every PR.",
+      "#3994: \"sending a terminal message didn't work\" on a phone. Android keyboards send each letter as a keydown 229 then beforeinput insertText, and Send/Enter and Backspace as keydowns with key set and code empty (recorded from Gboard on Android Chrome). Pixel 7 emulation drives that exact event shape through the browser's input pipeline (CDP Input.insertText, key events with code '') into a real shell on a real isolated Station, and the shell's own output is read back from the server's journal: the command must run with the deleted characters gone, and the field the keyboard edits must hold what it typed. Then a second shell's tab hides the first (a hidden view gives its WebGL context back, as it does when the phone switches apps); shown again, the first must draw the same screen rather than a blank one, and closing the second leaves it drawn. Listed in PR_BROWSER_SMOKE_CONTRACT.journeys so it runs on every PR.",
     exceptions: [],
   },
   {

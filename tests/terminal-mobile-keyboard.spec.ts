@@ -22,9 +22,9 @@ import { selectCodingPane } from './helpers/coding-stack';
  * This drives that event shape through the browser's own input pipeline (CDP
  * `Input.insertText` is an IME commit with no key press) into a real shell on
  * a real isolated Station, and reads what the shell printed back from the
- * server's terminal journal. It also hides the page and shows it again, as
- * switching apps does: the view's WebGL context is lost while hidden and must
- * come back with the screen intact.
+ * server's terminal journal. Then a second shell's tab hides the first, as
+ * switching apps does: the hidden view gives its WebGL context back, and
+ * shown again it must draw the same screen rather than a blank one.
  */
 
 const { defaultBrowserType: _defaultBrowserType, ...pixel } =
@@ -133,14 +133,18 @@ test.describe('Coding terminal on a phone keyboard', () => {
     workspace = '';
   });
 
-  test('runs what the soft keyboard types, deletes with its Backspace, and redraws after the app is hidden', async ({
+  test('runs what the soft keyboard types, deletes with its Backspace, and redraws a shell shown again', async ({
     page,
     authenticatedRequest,
   }) => {
     test.setTimeout(180_000);
     workspace = mkdtempSync(join(tmpdir(), 'station-terminal-mobile-'));
     const created = await authenticatedRequest.post('/api/projects', {
-      data: { slug: SLUG, name: 'Terminal Mobile Keyboard', workingDirectory: workspace },
+      data: {
+        slug: SLUG,
+        name: 'Terminal Mobile Keyboard',
+        workingDirectory: workspace,
+      },
     });
     expect(created.status(), await created.text()).toBe(201);
     const layout = await authenticatedRequest.post(
@@ -184,10 +188,12 @@ test.describe('Coding terminal on a phone keyboard', () => {
     ).not.toContain(`${token}xy`);
     await expect(input).toHaveValue('');
 
-    // Switching apps hides the page; the view gives its WebGL context back
-    // and must draw the same screen when shown again, not a blank one.
+    // A second shell's tab hides this one; a hidden view gives its WebGL
+    // context back, as it does when the phone switches apps. Shown again, it
+    // must draw the same screen, not a blank one.
     await expect(terminal).toHaveAttribute('data-renderer', 'webgl2');
-    const canvas = terminal.locator('canvas');
+    const first = page.getByRole('tabpanel', { name: 'Shell 1' });
+    const canvas = first.locator('.station-terminal canvas');
     // Unfocused, so the cursor is drawn the same way in both captures.
     await input.blur();
     await expect(input).not.toBeFocused();
@@ -201,20 +207,35 @@ test.describe('Coding terminal on a phone keyboard', () => {
         return same;
       })
       .toBe(true);
-    const elsewhere = await page.context().newPage();
-    await elsewhere.bringToFront();
-    await expect
-      .poll(() => page.evaluate(() => document.visibilityState))
-      .toBe('hidden');
-    await elsewhere.close();
-    await page.bringToFront();
-    await expect
-      .poll(() => page.evaluate(() => document.visibilityState))
-      .toBe('visible');
+    await page.getByRole('button', { name: 'New terminal', exact: true }).tap();
+    await page
+      .getByRole('dialog', { name: 'New terminal' })
+      .getByRole('button', { name: /Shell/ })
+      .tap();
+    const tabs = page.getByRole('tablist', { name: 'Terminal tabs' });
+    await expect(tabs.getByRole('tab', { name: 'Shell 2' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+    await expect(
+      page
+        .getByRole('tabpanel', { name: 'Shell 2' })
+        .locator('.station-terminal[data-state="ready"]'),
+    ).toBeVisible({ timeout: 60_000 });
+    await tabs.getByRole('tab', { name: 'Shell 1' }).tap();
     await expect
       .poll(async () => (await canvas.screenshot()).equals(shown), {
         timeout: 15_000,
       })
+      .toBe(true);
+
+    // Closing the second shell leaves the first, still drawn.
+    await page
+      .getByRole('button', { name: 'Close Shell 2', exact: true })
+      .tap();
+    await expect(tabs.getByRole('tab')).toHaveCount(1);
+    await expect
+      .poll(async () => (await canvas.screenshot()).equals(shown))
       .toBe(true);
   });
 });
