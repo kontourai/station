@@ -9,7 +9,6 @@ import {
   type ChildProcess,
   spawn as nodeSpawn,
   type SpawnOptions,
-  spawnSync,
 } from 'node:child_process';
 import { constants } from 'node:os';
 import type { IPtyProcess } from '../../domain/pty-adapter.js';
@@ -93,6 +92,8 @@ class CommandProcess implements IPtyProcess {
   private readonly closed: Promise<void>;
   /** Node reaped the leader: its pid no longer reserves the group id. */
   private leaderExited = false;
+  /** When Node saw the leader exit, in the Windows process table's clock. */
+  private leaderExitedUs: bigint | undefined;
   /** The group was seen empty after the leader exited; never signal it again. */
   private groupGone = false;
   /** Checks the group while terminating, so emptiness is seen promptly. */
@@ -102,6 +103,8 @@ class CommandProcess implements IPtyProcess {
   constructor(
     private readonly child: ChildProcess,
     private readonly outputCapBytes: number,
+    /** No later than the leader's creation, in the process table's clock. */
+    private readonly spawnedUs: bigint,
     private readonly census: WindowsCommandCensus = {
       list: listWindowsProcesses,
       kill: killWindowsProcesses,
@@ -109,6 +112,7 @@ class CommandProcess implements IPtyProcess {
   ) {
     child.once('exit', () => {
       this.leaderExited = true;
+      this.leaderExitedUs = windowsNowUs();
     });
     child.stdout?.setEncoding('utf8');
     child.stderr?.setEncoding('utf8');
@@ -209,36 +213,32 @@ class CommandProcess implements IPtyProcess {
 
   private async terminateWindows(): Promise<void> {
     const deadline = Date.now() + WINDOWS_KILL_DEADLINE_MS;
-    const owned = new Map<number, OwnedWindowsProcess>();
-    let seeded = false;
+    // The command ends now, never after a process-table read: that read
+    // goes through PowerShell, and a cold one can take tens of seconds.
+    // Node holds the leader's process handle until it reports the exit, so
+    // until then its pid names no other process and ending it is safe.
+    if (!this.leaderExited) this.signalLeader('SIGKILL');
+    // The leader held its pid from its spawn until it was ended (or until
+    // Node saw it exit), so a process naming that pid as its parent and
+    // created in between is its child, whether the leader still appears in
+    // a later table or not.
+    const owned = new Map<number, OwnedWindowsProcess>([
+      [
+        this.pid,
+        {
+          pid: this.pid,
+          createdUs: this.spawnedUs,
+          lastSeenUs: this.leaderExitedUs ?? windowsNowUs(),
+        },
+      ],
+    ]);
     for (;;) {
       const started = windowsNowUs();
       const table = await this.census.list();
-      if (!table) {
-        // Without a process table no descendant can be proven; end the
-        // leader's current tree the old way and say custody is unknown.
-        if (!this.leaderExited)
-          spawnSync('taskkill', ['/T', '/F', '/PID', String(this.pid)], {
-            stdio: 'ignore',
-            windowsHide: true,
-            timeout: KILL_DEADLINE_MS,
-          });
+      if (!table)
         throw new Error(
-          "The command's processes could not be listed to end them",
+          'The command ended, but the processes it started could not be listed to end them',
         );
-      }
-      if (!seeded) {
-        seeded = true;
-        // Node holds the leader's process handle until it reports the
-        // exit, so while it has not, its pid cannot name another process.
-        const leader = table.find((entry) => entry.pid === this.pid);
-        if (leader && !this.leaderExited)
-          owned.set(leader.pid, {
-            pid: leader.pid,
-            createdUs: leader.createdUs,
-            lastSeenUs: started,
-          });
-      }
       const alive = attributeWindowsProcesses(owned, table, started);
       if (!alive.length) break;
       if (Date.now() >= deadline)
@@ -397,6 +397,8 @@ export function spawnCommandProcess(
 ): Promise<CommandProcess> {
   return new Promise((resolve, reject) => {
     let child: ChildProcess;
+    // Before the spawn: no later than the process's creation time.
+    const spawnedUs = windowsNowUs();
     try {
       child = spawn(input.command, input.args, {
         cwd: input.cwd,
@@ -426,6 +428,7 @@ export function spawnCommandProcess(
         new CommandProcess(
           child,
           input.outputCapBytes ?? DEFAULT_COMMAND_OUTPUT_CAP_BYTES,
+          spawnedUs,
           input.windowsCensus,
         ),
       ),

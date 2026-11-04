@@ -7,6 +7,7 @@
 import { spawnSync } from 'node:child_process';
 import { afterEach, describe, expect, it } from 'vitest';
 import { spawnCommandProcess } from '../command-process.js';
+import { windowsNowUs } from '../windows-owned-processes.js';
 
 const windows = process.platform === 'win32';
 const started: number[] = [];
@@ -117,6 +118,7 @@ setInterval(() => {}, 1000);
   it('keeps ending descendants until the process table shows none, and only proven ones', async () => {
     let round = 0;
     const killed: number[][] = [];
+    const spawnedUs = windowsNowUs();
     const proc = await spawnCommandProcess({
       command: process.execPath,
       args: ['-e', 'setInterval(() => {}, 1000)'],
@@ -125,28 +127,66 @@ setInterval(() => {}, 1000);
       windowsCensus: {
         list: async () => {
           round++;
-          const leader = { pid: proc.pid, ppid: process.pid, createdUs: 10n };
           if (round === 1)
             return [
-              leader,
-              { pid: 900_001, ppid: proc.pid, createdUs: 20n },
+              // The leader's child, orphaned once the leader was ended.
+              { pid: 900_001, ppid: proc.pid, createdUs: spawnedUs + 1_000n },
               // An unrelated process created before the leader: not ours.
-              { pid: 900_009, ppid: proc.pid, createdUs: 5n },
+              { pid: 900_009, ppid: proc.pid, createdUs: spawnedUs - 1n },
             ];
           // Started by the child while the first kill ran.
           if (round === 2)
-            return [{ pid: 900_002, ppid: 900_001, createdUs: 30n }];
+            return [
+              { pid: 900_002, ppid: 900_001, createdUs: spawnedUs + 2_000n },
+            ];
           return [];
         },
         kill: async (pids) => {
           killed.push(pids);
-          if (pids.includes(proc.pid)) process.kill(proc.pid);
         },
       },
     });
     started.push(proc.pid);
+    // The leader has been running a while before it is stopped.
+    await new Promise((resolve) => setTimeout(resolve, 50));
     await proc.terminate();
-    expect(killed).toEqual([[proc.pid, 900_001], [900_002]]);
+    // The leader is ended directly; the table only finds what it started.
+    expect(alive(proc.pid)).toBe(false);
+    expect(killed).toEqual([[900_001], [900_002]]);
     expect(round).toBe(3);
+  }, 60_000);
+
+  it('ends the command at once, while its process table is still being read', async () => {
+    // A cold PowerShell process-table read can take tens of seconds.
+    let release!: () => void;
+    const tableRead = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const proc = await spawnCommandProcess({
+      command: process.execPath,
+      args: ['-e', 'setInterval(() => {}, 1000)'],
+      cwd: process.cwd(),
+      env: process.env,
+      windowsCensus: {
+        list: async () => {
+          await tableRead;
+          return [];
+        },
+        kill: async () => undefined,
+      },
+    });
+    started.push(proc.pid);
+    const exited = new Promise<void>((done) => proc.onExit(() => done()));
+    const terminated = proc.terminate();
+    // The exit is reported while the read is still outstanding.
+    await expect(
+      Promise.race([
+        exited.then(() => 'exited'),
+        new Promise((resolve) => setTimeout(() => resolve('running'), 10_000)),
+      ]),
+    ).resolves.toBe('exited');
+    expect(alive(proc.pid)).toBe(false);
+    release();
+    await terminated;
   }, 60_000);
 });
