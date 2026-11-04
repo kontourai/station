@@ -406,12 +406,44 @@ if [ -n "$mirror_url" ]; then
 fi
 
 
+# Prints the canonical form of <url> when it is on <mirror>'s origin
+# (scheme, host and port), and fails otherwise. curl and Node's URL parser
+# disagree on some text: for `https://mirror:443\@other:443/x` Node reads `\`
+# as a path separator (host `mirror`), while curl reads everything before `@`
+# as a user name and contacts `other`. So the text must leave no room for two
+# readings: printable ASCII only, an explicit `//` authority with no user
+# name, `@` or `%`, and no backslash anywhere. The caller then fetches only
+# the printed `href`, never the text it checked.
+mirror_canonical_url() {
+  node -e '
+    const plain = (text) =>
+      /^[\x21-\x7e]+$/.test(text) && !text.includes("\\") &&
+      /^[A-Za-z][A-Za-z0-9+.-]*:\/\/[^/?#]/.test(text) &&
+      !/[@%]/.test(text.replace(/^[^:]*:\/\//, "").split(/[/?#]/, 1)[0]);
+    const [mirrorText, nextText] = process.argv.slice(1);
+    // A file:// mirror (test-only, allowed above) has no origin and no
+    // redirects; it holds only the files under it.
+    if (process.env.STATION_INSTALL_ALLOW_INSECURE_TEST_URLS === "1" &&
+        mirrorText.startsWith("file:///") && nextText.startsWith(mirrorText) &&
+        /^[\x21-\x7e]+$/.test(nextText) && !nextText.includes("\\")) {
+      process.stdout.write(nextText);
+      process.exit(0);
+    }
+    if (!plain(mirrorText) || !plain(nextText)) process.exit(1);
+    let mirror, next;
+    try { mirror = new URL(mirrorText); next = new URL(nextText); } catch { process.exit(1); }
+    if (mirror.origin === "null" || next.origin !== mirror.origin) process.exit(1);
+    if (next.username || next.password) process.exit(1);
+    process.stdout.write(next.href);
+  ' "$1" "$2"
+}
+
 # Downloads <url> to <destination>, at most <max bytes> when one is given.
 # Without a mirror curl follows redirects itself, as GitHub's release assets
-# need. Under a mirror (#4522) curl follows none: each hop is read here and
-# followed only while it stays on the mirror's origin (scheme, host and
-# port), so a mirror cannot hand a download to another server. Neither URL
-# is printed, since a mirror URL may carry a path token.
+# need. Under a mirror (#4522) curl follows none: each hop, the first one
+# included, must pass mirror_canonical_url, and curl fetches only the
+# canonical URL it prints, so a mirror cannot hand a download to another
+# server. Neither URL is printed, since a mirror URL may carry a path token.
 MIRROR_MAX_REDIRECTS=5
 fetch_release_file() {
   fr_destination=$1
@@ -426,6 +458,8 @@ fetch_release_file() {
     return
   fi
   fr_hops=0
+  fr_url="$(mirror_canonical_url "$mirror_url" "$fr_url")" || \
+    fail "a download URL is outside the managed policy's mirror or is not a plain URL; STATION_INSTALL_MIRROR_URL allows downloads only from the mirror's own origin"
   while :; do
     if [ -n "$fr_max" ]; then
       fr_meta="$(curl -fsS --retry 3 --retry-connrefused --connect-timeout 10 --max-filesize "$fr_max" -o "$fr_destination" -w '%{http_code} %{redirect_url}' -- "$fr_url")" || return
@@ -440,12 +474,8 @@ fetch_release_file() {
     [ -n "$fr_next" ] || fail 'a download from the mirror redirected without a location'
     [ "$fr_hops" -lt "$MIRROR_MAX_REDIRECTS" ] || \
       fail "a download from the mirror redirected more than $MIRROR_MAX_REDIRECTS times"
-    node -e '
-      const mirror = new URL(process.argv[1]), next = new URL(process.argv[2]);
-      process.exit(mirror.origin !== "null" && next.origin === mirror.origin ? 0 : 1);
-    ' "$mirror_url" "$fr_next" || \
-      fail "a download redirected outside the managed policy's mirror; STATION_INSTALL_MIRROR_URL allows redirects only within the mirror's own origin"
-    fr_url=$fr_next
+    fr_url="$(mirror_canonical_url "$mirror_url" "$fr_next")" || \
+      fail "a download redirected outside the managed policy's mirror or to a URL that is not plain; STATION_INSTALL_MIRROR_URL allows redirects only within the mirror's own origin"
     fr_hops=$((fr_hops + 1))
   done
 }

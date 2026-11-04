@@ -3099,8 +3099,10 @@ describe('installs from a managed mirror (#4522)', {
    * The mirror over http on two loopback ports: `/m/` (the mirror) and `/n/`
    * both serve the mirror tree, and each path in `redirects` answers 302 to
    * `/n/<same path>` on the mirror's port (`same`) or the other port
-   * (`other`). A separate process, because the installer runs under
-   * spawnSync, which blocks this one.
+   * (`other`), or to a Location template where `{a}` is the mirror's port,
+   * `{b}` the other port and `{rest}` the path. `otherHits()` counts every
+   * request the other port received. A separate process, because the
+   * installer runs under spawnSync, which blocks this one.
    */
   const servers: ChildProcess[] = [];
   afterEach(() => {
@@ -3108,8 +3110,12 @@ describe('installs from a managed mirror (#4522)', {
   });
   async function serveMirror(
     root: string,
-    redirects: Record<string, 'same' | 'other'>,
-  ): Promise<{ mirrorUrl: string; manifestUrl: string }> {
+    redirects: Record<string, string>,
+  ): Promise<{
+    mirrorUrl: string;
+    manifestUrl: string;
+    otherHits: () => Promise<number>;
+  }> {
     const script = join(tempDir('station-mirror-server-'), 'server.cjs');
     writeFileSync(
       script,
@@ -3117,12 +3123,20 @@ describe('installs from a managed mirror (#4522)', {
 const [root, redirectsJson] = process.argv.slice(2);
 const redirects = JSON.parse(redirectsJson);
 const ports = {};
+let otherHits = 0;
 const handler = (req, res) => {
   const url = new URL(req.url, 'http://127.0.0.1');
+  if (req.socket.localPort === ports.b) otherHits += 1;
+  else if (url.pathname === '/other-hits') return res.end(String(otherHits));
   const rest = url.pathname.replace(/^\\/(m|n)\\//, '');
   if (url.pathname.startsWith('/m/') && redirects[rest]) {
-    const port = redirects[rest] === 'same' ? ports.a : ports.b;
-    res.writeHead(302, { location: 'http://127.0.0.1:' + port + '/n/' + rest });
+    const template = redirects[rest] === 'same'
+      ? 'http://127.0.0.1:{a}/n/{rest}'
+      : redirects[rest] === 'other'
+        ? 'http://127.0.0.1:{b}/n/{rest}'
+        : redirects[rest];
+    const location = template.replaceAll('{a}', ports.a).replaceAll('{b}', ports.b).replaceAll('{rest}', rest);
+    res.writeHead(302, { location });
     return res.end();
   }
   const file = path.join(root, rest);
@@ -3157,6 +3171,10 @@ const a = http.createServer(handler).listen(0, '127.0.0.1', () => {
     return {
       mirrorUrl,
       manifestUrl: `${mirrorUrl}portable-stable/station-portable-stable-manifest.json`,
+      otherHits: async () =>
+        Number(
+          await (await fetch(`http://127.0.0.1:${ports.a}/other-hits`)).text(),
+        ),
     };
   }
 
@@ -3223,5 +3241,75 @@ const a = http.createServer(handler).listen(0, '127.0.0.1', () => {
         false,
       );
     }
+  });
+
+  // #4522 round 2: Node's URL parser and curl must never read one Location
+  // two ways. `\` is a path separator to Node but part of a user name to
+  // curl, so the first form below looked like the mirror to the check while
+  // curl contacted the other port. Each form is refused for the manifest and
+  // the archive, and the other port is never contacted.
+  it.each([
+    [
+      'a backslash before @ (the reported repro)',
+      'http://127.0.0.1:{a}\\@127.0.0.1:{b}/n/{rest}',
+    ],
+    ['a backslash in the path', 'http://127.0.0.1:{a}/n\\..\\{rest}'],
+    ['a user name on the mirror origin', 'http://user@127.0.0.1:{a}/n/{rest}'],
+    // curl decodes a percent-encoded host itself (`127.0.0.%31` reaches the
+    // check as `127.0.0.1`), but passes `%40` through verbatim.
+    [
+      'a percent-encoded @ in the authority',
+      'http://127.0.0.1:{b}%40127.0.0.1:{a}/n/{rest}',
+    ],
+    ['a space in the path', 'http://127.0.0.1:{a}/n/ {rest}'],
+    ['a tab', 'http://127.0.0.1:{a}\t@127.0.0.1:{b}/n/{rest}'],
+  ])(
+    'refuses a redirect with %s, for the manifest and the archive',
+    async (_name, location) => {
+      const MANIFEST_PATH =
+        'portable-stable/station-portable-stable-manifest.json';
+      for (const escaping of ['manifest', 'archive'] as const) {
+        const fixture = mirrorFixture(`station-mirror-ambiguous-${escaping}-`);
+        const archive = readdirSync(
+          join(fixture.harness.root, 'mirror', 'v1.2.3'),
+        )[0] as string;
+        const server = await serveMirror(join(fixture.harness.root, 'mirror'), {
+          [escaping === 'manifest' ? MANIFEST_PATH : `v1.2.3/${archive}`]:
+            location,
+        });
+        const refused = runArchiveInstaller(
+          fixture.harness,
+          fixture.manifest,
+          [],
+          {
+            STATION_INSTALL_MIRROR_URL: server.mirrorUrl,
+            STATION_INSTALL_PUBLIC_MANIFEST_URL: server.manifestUrl,
+          },
+        );
+        expect(refused.status, `${escaping}: ${refused.stderr}`).not.toBe(0);
+        expect(refused.stderr, escaping).toContain(
+          "a download redirected outside the managed policy's mirror or to a URL that is not plain",
+        );
+        expect(await server.otherHits(), escaping).toBe(0);
+        expect(existsSync(join(fixture.harness.installRoot, 'current'))).toBe(
+          false,
+        );
+      }
+    },
+  );
+
+  it('refuses a first download URL that is not plain, before contacting anything', async () => {
+    const fixture = mirrorFixture('station-mirror-ambiguous-first-');
+    const server = await serveMirror(join(fixture.harness.root, 'mirror'), {});
+    const port = new URL(server.mirrorUrl).port;
+    const refused = runArchiveInstaller(fixture.harness, fixture.manifest, [], {
+      STATION_INSTALL_MIRROR_URL: server.mirrorUrl,
+      // Starts with the mirror's text, so it passes the prefix check.
+      STATION_INSTALL_PUBLIC_MANIFEST_URL: `${server.mirrorUrl}x\\@127.0.0.1:${port}/n/portable-stable/station-portable-stable-manifest.json`,
+    });
+    expect(refused.status).not.toBe(0);
+    expect(refused.stderr).toContain(
+      "a download URL is outside the managed policy's mirror or is not a plain URL",
+    );
   });
 });
