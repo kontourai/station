@@ -1062,12 +1062,12 @@ function validateTaskGraphStoreData(
       );
       // The record belongs to exactly this Task; a transplanted record is
       // corruption, not a worktree this Task may finalize.
+      const owner = worktree.owner;
       if (
-        !worktree.owner ||
-        typeof worktree.owner !== 'object' ||
-        worktree.owner.kind !== 'task' ||
-        worktree.owner.taskId !== task.id ||
-        Object.keys(worktree.owner).length !== 2
+        !isPlainObject(owner) ||
+        owner.kind !== 'task' ||
+        owner.taskId !== task.id ||
+        Object.keys(owner).length !== 2
       )
         problems.push(`${at}.taskWorktree.owner: must name this Task`);
     }
@@ -4962,22 +4962,24 @@ export class TaskGraphService {
         ...(task.taskWorktree ? { recorded: task.taskWorktree } : {}),
       });
       if (provisioned.provenance === 'reused') return provisioned.metadata;
-      const recorded = await this.mutateStore((data) => {
-        const current = data.tasks.find((item) => item.id === taskId);
-        if (!current || isTerminalTaskStatus(current.status))
-          return { data, result: current?.status ?? null };
-        return {
-          data: {
-            ...data,
-            tasks: data.tasks.map((item) =>
-              item.id === taskId
-                ? { ...item, taskWorktree: provisioned.metadata }
-                : item,
-            ),
-          },
-          result: 'recorded' as const,
-        };
-      });
+      const recorded = await this.mutateStore<TaskStatus | 'recorded' | null>(
+        (data) => {
+          const current = data.tasks.find((item) => item.id === taskId);
+          if (!current || isTerminalTaskStatus(current.status))
+            return { data, result: current?.status ?? null };
+          return {
+            data: {
+              ...data,
+              tasks: data.tasks.map((item) =>
+                item.id === taskId
+                  ? { ...item, taskWorktree: provisioned.metadata }
+                  : item,
+              ),
+            },
+            result: 'recorded' as const,
+          };
+        },
+      );
       if (recorded !== 'recorded') {
         await this.worktreeProvisioning.finalizeForTask({
           metadata: provisioned.metadata,

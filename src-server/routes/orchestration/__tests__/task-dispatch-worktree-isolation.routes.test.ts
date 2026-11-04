@@ -252,9 +252,9 @@ describe('Task dispatch honours the Project worktree isolation (#4507)', () => {
   });
 
   function compose(
-    worktreeProvisioning?: ConstructorParameters<
-      typeof TaskGraphService
-    >[1]['worktreeProvisioning'],
+    worktreeProvisioning?: NonNullable<
+      ConstructorParameters<typeof TaskGraphService>[1]
+    >['worktreeProvisioning'],
   ) {
     const eventStore = new EventStore(join(home, 'orchestration.sqlite'));
     stores.push(eventStore);
