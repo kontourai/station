@@ -147,9 +147,12 @@ export interface ThreadInboxPayload {
  * 2. The origin the Station sender wrote on the entry (`dispatchOrigin`): a
  *    scheduled Automation run says `automation`.
  * 3. A person's entry (operator or paired device) is `interactive`.
- * 4. Station's own entry (`internal` actor) into a Session bound to a Task
+ * 4. A delegated child's result (`sender.kind` `delegation-result`, which
+ *    the server stamps) is `delegation`, on a Task's Session too: the cause
+ *    is the delegation, and both are unattended work.
+ * 5. Station's own entry (`internal` actor) into a Session bound to a Task
  *    (`taskBound`: its room execution binding) is `task-dispatch`.
- * 5. Anything else is `unknown`.
+ * 6. Anything else is `unknown`.
  */
 export function inboxTurnDispatchOrigin(
   payload: Pick<
@@ -162,6 +165,11 @@ export function inboxTurnDispatchOrigin(
   if (payload.dispatchOrigin) return payload.dispatchOrigin;
   const actor = payload.clientOrigin?.actor.kind;
   if (actor === 'operator' || actor === 'device') return 'interactive';
+  if (
+    actor === 'internal' &&
+    payload.clientOrigin?.sender?.kind === 'delegation-result'
+  )
+    return 'delegation';
   if (actor === 'internal' && taskBound) return 'task-dispatch';
   return 'unknown';
 }

@@ -5,6 +5,7 @@ import { trackTempDirs } from '../../../__test-utils__/temp-dirs.js';
 import { EventStore } from '../../../services/orchestration/event-store.js';
 import type { ThreadInboxPayload } from '../../../services/orchestration/thread-inbox.js';
 import {
+  delegationResultStartPort,
   inboxPlacementStartPort,
   type RecordedActorContinuation,
   scheduledDedicatedStartPort,
@@ -149,6 +150,53 @@ describe('scheduled Automation dedicated start port (#4512)', () => {
     expect(calls[0]!.input).toMatchObject({
       clientOrigin: { actor: { kind: 'internal' } },
       fullAccessGrant: null,
+    });
+  });
+});
+
+describe('delegated result start port (#4512)', () => {
+  test("a child's result delivered into a Task-bound parent Session is delegation, not task-dispatch", async () => {
+    const store = new EventStore(
+      join(makeTempDir('station-start-ports-'), 'orchestration.sqlite'),
+    );
+    stores.push(store);
+    expect(
+      await store.bindProjectTaskRoomExecution({
+        projectId: 'project-1',
+        taskId: 'task-1',
+        sessionId: BOUND_SESSION,
+      }),
+    ).toEqual({ kind: 'bound' });
+    const continued: RecordedActorContinuation[] = [];
+    const deliver = delegationResultStartPort({
+      origin: origin({ kind: 'internal' }),
+      readProjectTaskRoomExecutionBinding: (sessionId) =>
+        store.readProjectTaskRoomExecutionBinding(sessionId),
+      continueAsRecordedActor: async (input, threadId) => {
+        continued.push(input);
+        return {
+          outcome: 'started',
+          conversationId: input.conversationId,
+          sessionId: threadId,
+          turnId: 'turn-1',
+        };
+      },
+    });
+    await deliver({
+      parentConversationId: CONVERSATION,
+      threadId: BOUND_SESSION,
+      actor: { userId: 'owner', attribution: 'verified-bound' },
+      sender: { kind: 'delegation-result', sessionId: 'child-1' },
+      text: 'The child finished.',
+      clientTurnId: 'delegation-result:child-1',
+    });
+    expect(continued[0]).toMatchObject({
+      conversationId: CONVERSATION,
+      clientOrigin: {
+        actor: { kind: 'internal' },
+        sender: { kind: 'delegation-result', sessionId: 'child-1' },
+      },
+      dispatchOrigin: 'delegation',
     });
   });
 });

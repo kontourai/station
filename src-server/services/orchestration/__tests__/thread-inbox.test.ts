@@ -2883,11 +2883,15 @@ test('restart preserves delivery proof before applying coordinator policy', asyn
 });
 
 describe('inbox turn dispatch origin (#4512)', () => {
-  const by = (actor: { kind: string; deviceId?: string }) => ({
+  const by = (
+    actor: { kind: string; deviceId?: string },
+    sender?: { kind: string; sessionId: string },
+  ) => ({
     clientOrigin: {
       version: 1,
       actor,
       reported: { version: 1, surface: 'unknown' },
+      ...(sender ? { sender } : {}),
     } as never,
   });
   test.each([
@@ -2900,6 +2904,17 @@ describe('inbox turn dispatch origin (#4512)', () => {
     [by({ kind: 'operator' }), true, 'interactive'],
     [by({ kind: 'device', deviceId: 'phone' }), false, 'interactive'],
     [by({ kind: 'internal' }), true, 'task-dispatch'],
+    // A delegated child's result is delegation, on a Task's Session too.
+    [
+      by({ kind: 'internal' }, { kind: 'delegation-result', sessionId: 'c' }),
+      true,
+      'delegation',
+    ],
+    [
+      by({ kind: 'internal' }, { kind: 'delegation-result', sessionId: 'c' }),
+      false,
+      'delegation',
+    ],
     // A scheduled Automation run says so itself; never Task work.
     [
       { dispatchOrigin: 'automation', ...by({ kind: 'internal' }) },

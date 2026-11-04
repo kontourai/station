@@ -2328,6 +2328,11 @@ describe('Station Control canonical Environment + Agent execution', () => {
     expect(service.startSessionInternal.mock.calls[0]?.[2]).toMatchObject({
       resourceAdmissionIntent: 'delegated_background',
     });
+    // #4512: the same server-carried fact classifies the send's turn.
+    const sendTurn = service.dispatchWithReceipt.mock.calls.find(
+      (call: unknown[]) => (call[0] as { type?: string }).type === 'sendTurn',
+    );
+    expect(sendTurn?.[2]).toMatchObject({ dispatchOrigin: 'delegation' });
   });
 
   test('derives queued/background admission from the fixed background route seam', async () => {
@@ -2352,6 +2357,12 @@ describe('Station Control canonical Environment + Agent execution', () => {
     expect(service.startSessionInternal.mock.calls[0]?.[2]).toMatchObject({
       resourceAdmissionIntent: 'queued_background',
     });
+    // #4512: no delegation context, so the send names no delegated origin.
+    const sendTurn = service.dispatchWithReceipt.mock.calls.find(
+      (call: unknown[]) => (call[0] as { type?: string }).type === 'sendTurn',
+    );
+    expect(sendTurn).toBeDefined();
+    expect(sendTurn?.[2]?.dispatchOrigin).toBeUndefined();
   });
 
   test('refuses a foreground start without fabricating a session when provider creation is uncertain', async () => {

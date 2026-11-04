@@ -1,7 +1,7 @@
 /**
  * The start ports runtime routes hand to Station's own durable deliveries:
- * the conversation inbox's placement and a scheduled Automation's first
- * run on a dedicated conversation. Each continues the conversation as the recorded sender and says, from the
+ * the conversation inbox's placement, a delegated result's delivery, and a
+ * scheduled Automation's first run on a dedicated conversation. Each continues the conversation as the recorded sender and says, from the
  * server's own facts, who caused the turn (#4512 `dispatchOrigin`).
  *
  * Kept apart from `runtime-routes.ts` so the exact port production composes
@@ -11,6 +11,7 @@ import type { SessionStartResult } from '@kontourai/monument';
 import { agentId } from '@kontourai/station-contracts/agent-identity';
 import {
   type ClientOrigin,
+  type ClientOriginSender,
   UNKNOWN_CLIENT_ORIGIN,
 } from '@kontourai/station-contracts/client-origin';
 import type { ExecutionModelRequest } from '@kontourai/station-contracts/execution-target';
@@ -145,5 +146,44 @@ export function scheduledDedicatedStartPort(deps: {
       sessionId: handle.sessionId,
       turnId: handle.providerTurnId,
     };
+  };
+}
+
+/**
+ * A delegated child's result delivered into its parent's conversation, as
+ * the delegating dispatch's recorded sender.
+ */
+export function delegationResultStartPort(
+  deps: StartPortDeps & { readonly origin: ClientOrigin },
+) {
+  return (input: {
+    readonly parentConversationId: string;
+    readonly threadId: string;
+    readonly actor: {
+      readonly userId: string;
+      readonly principal?: PrincipalRef;
+      readonly attribution?: StartOwnerAttribution;
+    };
+    readonly sender: ClientOriginSender;
+    readonly text: string;
+    readonly clientTurnId: string;
+  }): Promise<SessionStartResult> => {
+    const clientOrigin: ClientOrigin = { ...deps.origin, sender: input.sender };
+    return deps.continueAsRecordedActor(
+      {
+        conversationId: input.parentConversationId,
+        message: input.text,
+        clientTurnId: input.clientTurnId,
+        userId: input.actor.userId,
+        principal: input.actor.principal,
+        ownerAttribution: input.actor.attribution,
+        clientOrigin,
+        dispatchOrigin: inboxTurnDispatchOrigin(
+          { clientOrigin },
+          taskBound(deps, input.threadId),
+        ),
+      },
+      input.threadId,
+    );
   };
 }

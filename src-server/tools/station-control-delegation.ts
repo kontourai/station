@@ -7431,7 +7431,19 @@ export async function executeExecutionTargetMessage(
       return { turnId: dispatched.result.turnId };
     },
   } satisfies Parameters<typeof executeResolvedForegroundMessage>[1];
-  return executeResolvedForegroundMessage(input, resolverDependencies, context);
+  // #4512: a send carrying the server-resolved delegation context (the fact
+  // that admits its engine start as delegated background work above; the
+  // `/chat/delegated` route resolves it from the verified caller, e.g. a
+  // Station Control `send_message`) is a delegated turn.
+  const turnContext: ForegroundMessageContext | undefined =
+    input.delegation && !context?.dispatchOrigin
+      ? { ...context, dispatchOrigin: 'delegation' }
+      : context;
+  return executeResolvedForegroundMessage(
+    input,
+    resolverDependencies,
+    turnContext,
+  );
 }
 
 /**

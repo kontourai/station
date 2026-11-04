@@ -1068,6 +1068,7 @@ import {
 import { createOrchestrationBoardAuthorization } from './board-route-authorization.js';
 import { createClientStreamPresence } from './client-stream-presence.js';
 import {
+  delegationResultStartPort,
   inboxPlacementStartPort,
   type RecordedActorContinuation,
   scheduledDedicatedStartPort,
@@ -6880,7 +6881,12 @@ export function configureRuntimeRoutes(
   function createDelegationResultDelivery(
     eventStore: EventStore,
   ): DelegationResultDelivery {
-    const origin = DELEGATION_RESULT_CLIENT_ORIGIN;
+    const continueDelegationResult = delegationResultStartPort({
+      origin: DELEGATION_RESULT_CLIENT_ORIGIN,
+      readProjectTaskRoomExecutionBinding: (sessionId) =>
+        eventStore.readProjectTaskRoomExecutionBinding(sessionId),
+      continueAsRecordedActor,
+    });
     return new DelegationResultDelivery({
       ...conversationDeliveryPorts(eventStore),
       store: eventStore.delegationResultStore(),
@@ -6926,18 +6932,14 @@ export function configureRuntimeRoutes(
                 INTERNAL_SESSION_READ_SCOPE,
               ),
             start: () =>
-              continueAsRecordedActor(
-                {
-                  conversationId: parentConversationId,
-                  message: text,
-                  clientTurnId,
-                  userId: actor.userId,
-                  principal: actor.principal,
-                  ownerAttribution: actor.attribution,
-                  clientOrigin: { ...origin, sender },
-                },
+              continueDelegationResult({
+                parentConversationId,
                 threadId,
-              ),
+                actor,
+                sender,
+                text,
+                clientTurnId,
+              }),
           }),
       ),
       steer: stationServerEntry(
