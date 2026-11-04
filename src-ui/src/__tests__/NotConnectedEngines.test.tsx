@@ -89,6 +89,7 @@ vi.mock('@kontourai/station-sdk', async (importActual) => ({
   useUpdateACPConnectionMutation: () => ({ mutateAsync: mocks.update }),
 }));
 
+import { captureTroubleshootSeeds } from '../components/troubleshoot/__tests__/captureTroubleshootSeeds';
 import { NotConnectedEngineDetail } from '../views/NotConnectedEngineDetail';
 
 afterEach(() => {
@@ -118,6 +119,25 @@ describe('a saved engine that never connected', () => {
     expect(
       screen.queryByRole('button', { name: 'Check connection' }),
     ).toBeNull();
+  });
+
+  // #4470.
+  test('offers Troubleshoot seeded with the engine’s last failure', () => {
+    window.history.pushState({}, '', '/connections/engines/stub');
+    const capture = captureTroubleshootSeeds();
+    try {
+      render(<Page index={0} custom />);
+      fireEvent.click(screen.getByRole('button', { name: 'Troubleshoot' }));
+      expect(capture.seeds).toEqual([
+        {
+          route: '/connections/engines/stub',
+          errorSummary: 'engine-spawn: Stub Engine: spawn stub-acp ENOENT',
+        },
+      ]);
+    } finally {
+      capture.stop();
+      window.history.pushState({}, '', '/');
+    }
   });
 
   test('Retry check re-checks the saved connection in place and shows its result', async () => {

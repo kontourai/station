@@ -46,6 +46,7 @@ import {
   SkeletonList,
   useRetainedReadFailure,
 } from '../components/state';
+import { TroubleshootAction } from '../components/troubleshoot/TroubleshootAction';
 import { useDeveloperFeatures } from '../hooks/useDeveloperFeatures';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { LayoutRenderer } from '../layouts';
@@ -1033,6 +1034,14 @@ export function LayoutStackHost({
           action={
             presentation.reviewExtensions ? (
               <StationExtensionsAccess onlyWhenOff />
+            ) : presentation.state === 'temporarily-unavailable' &&
+              !presentation.pending ? (
+              <TroubleshootAction
+                request={{
+                  code: `pane-${presentation.reasonCode}`,
+                  message: `${paneEntry.descriptor.name}: ${presentation.reasonLabel}`,
+                }}
+              />
             ) : undefined
           }
         />

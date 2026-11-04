@@ -14,6 +14,7 @@ import { FlowRunConsole } from '../components/flow/FlowRunConsole';
 import { MCPToolUIFrame } from '../components/mcp-ui/MCPToolUIFrame';
 import { StationExtensionsAccess } from '../components/registry/StationExtensionsAccess';
 import { Empty, SkeletonBlock } from '../components/state';
+import { TroubleshootAction } from '../components/troubleshoot/TroubleshootAction';
 import { pluginRegistry } from '../core/PluginRegistry';
 import type { AgentSummary, LayoutDefinition, LayoutTab } from '../types';
 import { log } from '../utils/logger';
@@ -185,6 +186,11 @@ const UnsupportedLayoutComponent: AgentLayoutComponent = ({ activeTab }) => {
         variant="prominent"
         label="Unsupported layout tab"
         description={detail}
+        action={
+          <TroubleshootAction
+            request={{ code: 'unsupported-layout-tab', message: detail }}
+          />
+        }
       />
     </div>
   );
