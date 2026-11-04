@@ -9766,10 +9766,6 @@ button.choice-trigger:hover:not(:disabled):not([aria-disabled="true"]),
   opacity: 0.6;
 }
 
-.composer-mode-sheet__managed {
-  color: var(--text-primary);
-}
-
 .composer-mode-sheet__option-glyph {
   flex: 0 0 auto;
   width: 24px;

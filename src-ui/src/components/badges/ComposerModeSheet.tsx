@@ -3,7 +3,6 @@ import {
   approvalModeExceedsCeiling,
   managedApprovalCeiling,
   managedApprovalCeilingDenial,
-  managedByLabel,
 } from '@kontourai/station-contracts/managed-policy';
 import { isConcreteApprovalMode } from '@kontourai/station-contracts/provider';
 import { Badge } from '@kontourai/ui/react';
@@ -146,7 +145,7 @@ export function ComposerModeSheet({
       />
       <div className="composer-mode-sheet__notes">
         {policySummary && ceiling ? (
-          <p className="composer-mode-sheet__confirm-body composer-mode-sheet__managed">
+          <p className="composer-mode-sheet__confirm-body">
             {managedApprovalCeilingDenial(policySummary, ceiling)}
           </p>
         ) : null}
@@ -246,13 +245,12 @@ export function ComposerModeSheet({
                 <span className="composer-mode-sheet__option-body">
                   <strong>
                     {option.label}
-                    {managed && policySummary ? (
+                    {/* The sentence above names whose policy; the badge only
+                        marks which rows it covers (one fact per surface). */}
+                    {managed ? (
                       <>
                         {' '}
-                        <Badge
-                          value={managedByLabel(policySummary)}
-                          tone="neutral"
-                        />
+                        <Badge value="Managed" tone="neutral" />
                       </>
                     ) : null}
                   </strong>

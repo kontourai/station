@@ -69,7 +69,7 @@ test('a ceiling of Ask disables Auto and Full access and names the organization'
       "Acme's policy manages approval modes: the broadest allowed is Ask first. For help, visit https://help.acme.example",
     ),
   ).toBeTruthy();
-  expect(screen.getAllByText('Managed by Acme')).toHaveLength(2);
+  expect(screen.getAllByText('Managed')).toHaveLength(2);
   fireEvent.click(radio('auto')!);
   expect(onSelect).not.toHaveBeenCalled();
 });

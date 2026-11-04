@@ -93,8 +93,8 @@ Under a ceiling:
   `ask`, "Auto-accept file edits for this session" approves only the edit in
   front of you, because keeping it would move the chat to Auto.
 
-The approval picker shows the modes above the ceiling disabled, marked
-"Managed by Example Corp", with the same message.
+The approval picker shows the modes above the ceiling disabled and marked
+"Managed", under the same message.
 
 ### This is not a sandbox
 
