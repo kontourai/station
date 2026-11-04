@@ -11,6 +11,8 @@ import { expect, test, vi } from 'vitest';
 import { readJson } from '../../__test-utils__/read-json.js';
 import { trackTempDirs } from '../../__test-utils__/temp-dirs.js';
 import { FileMemoryAdapter } from '../../adapters/file/memory-adapter.js';
+import { OllamaAdapter } from '../../providers/adapters/ollama-adapter.js';
+import { OllamaLLMProvider } from '../../providers/llm/ollama-provider.js';
 import { createAnalyticsRoutes } from '../../routes/operations/analytics.js';
 import { EventBus } from '../../services/orchestration/event-bus.js';
 import { EventStore } from '../../services/orchestration/event-store.js';
@@ -944,7 +946,7 @@ test('canonical engine usage reaches the next-day Lite ping without cumulative, 
       defaultModel: '',
       invokeModel: '',
       structureModel: '',
-      productTelemetryEndpoint: 'http://127.0.0.1:43190/lite',
+      productTelemetryEndpoint: 'https://receiver.test/lite',
     },
     version: '1.2.3',
     env: {},
@@ -1016,6 +1018,41 @@ test('canonical engine usage reaches the next-day Lite ping without cumulative, 
       promptTokens: 0,
       completionTokens: 0,
     });
+    // Drive a real adapter turn from its reported finish chunk into durable accounting.
+    const llm = new OllamaLLMProvider({ baseUrl: 'http://ollama.test' });
+    vi.spyOn(llm, 'listModelCatalog').mockResolvedValue({
+      source: 'live',
+      models: [{ id: 'model-a', name: 'Model A' }],
+    });
+    vi.spyOn(llm, 'createStream').mockImplementation(async function* () {
+      yield {
+        type: 'finish',
+        finishReason: 'stop',
+        usage: {
+          inputTokens: 10_000,
+          outputTokens: 1,
+          raw: { prompt_tokens: 10_000, completion_tokens: 1 },
+        },
+      };
+    });
+    const adapter = new OllamaAdapter('http://ollama.test', { llm });
+    const adapterEvents = adapter.streamEvents();
+    const adapterSession = await adapter.startSession({
+      provider: 'ollama',
+      threadId: 'adapter-turn',
+      modelId: 'model-a',
+      metadata: { userId: 'reader' },
+    });
+    f.store.upsertSession(adapterSession);
+    try {
+      await adapter.sendTurn({
+        threadId: adapterSession.threadId,
+        input: 'Report throughput',
+      });
+    } finally {
+      await adapter.stopAll();
+    }
+    for await (const event of adapterEvents) f.store.appendEvent(event);
     await telemetry.flushDaily();
     expect(bodies).toHaveLength(1);
     expect(bodies[0]).toMatchObject({
@@ -1035,6 +1072,7 @@ test('canonical engine usage reaches the next-day Lite ping without cumulative, 
       engine_tokens_today: [
         { engine: 'codex', bucket: '10k-100k' },
         { engine: 'claude', bucket: '1-10k' },
+        { engine: 'ollama', bucket: '10k-100k' },
       ],
     });
     await telemetry.flushDaily();
@@ -1043,6 +1081,7 @@ test('canonical engine usage reaches the next-day Lite ping without cumulative, 
     await telemetry.shutdown();
     await orchestration.shutdown();
     f.store.close();
+    vi.restoreAllMocks();
     vi.useRealTimers();
   }
 });

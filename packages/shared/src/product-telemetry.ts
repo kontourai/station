@@ -490,12 +490,10 @@ export function parseStationDailyPing(
   };
   for (const [field, definition] of Object.entries(STATION_DAILY_FIELDS)) {
     const item = value[field];
-    if (
-      !Object.hasOwn(value, field) &&
-      'optional' in definition &&
-      definition.optional
-    )
-      continue;
+    if (!Object.hasOwn(value, field)) {
+      if ('optional' in definition && definition.optional) continue;
+      throw new Error(`Missing station_daily field: ${field}`);
+    }
     const limit =
       'maxLength' in definition
         ? definition.maxLength

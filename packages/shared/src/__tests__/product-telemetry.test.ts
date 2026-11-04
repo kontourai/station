@@ -263,6 +263,15 @@ describe('Lite ping privacy boundary', () => {
     expect(
       parseStationDailyPing(ping, ['public-plugin'], ['0.7.0']),
     ).not.toHaveProperty('engine_tokens_today');
+    for (const bucket of ['1-10k', '10k-100k', '100k-1M', '1M-10M', '10M+']) {
+      expect(
+        parseStationDailyPing(
+          { ...ping, engine_tokens_today: [{ engine: 'codex', bucket }] },
+          ['public-plugin'],
+          ['0.7.0'],
+        ).engine_tokens_today,
+      ).toEqual([{ engine: 'codex', bucket }]);
+    }
     const current = {
       ...ping,
       engine_tokens_today: [{ engine: 'codex', bucket: '10k-100k' }],
