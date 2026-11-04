@@ -13,12 +13,38 @@ import {
 } from 'node:child_process';
 import { constants } from 'node:os';
 import type { IPtyProcess } from '../../domain/pty-adapter.js';
+import {
+  killWindowsProcesses,
+  listWindowsProcesses,
+  type WindowsProcessKiller,
+  type WindowsProcessLister,
+} from '../infra/process-utils.js';
+import {
+  attributeWindowsProcesses,
+  type OwnedWindowsProcess,
+  windowsNowUs,
+} from './windows-owned-processes.js';
 
 export const DEFAULT_COMMAND_OUTPUT_CAP_BYTES = 16 * 1024 * 1024;
 /** A terminated command gets this long after SIGTERM before SIGKILL. */
 const KILL_GRACE_MS = 3_000;
-/** Termination fails when the command has not exited this long after it began. */
+/**
+ * Termination fails when the command, or a process it started, has not
+ * exited this long after it began.
+ */
 const KILL_DEADLINE_MS = 6_000;
+/**
+ * Windows reads the process table through PowerShell, which can take
+ * seconds to start on a loaded host; each round of termination reads it.
+ */
+const WINDOWS_KILL_DEADLINE_MS = 60_000;
+/**
+ * While terminating, how often the command's process group is checked
+ * after its leader exited. A group id is reserved only while the group has
+ * a member; once it is seen empty it is never signaled again, so its number
+ * cannot be reused under a later signal.
+ */
+const GROUP_WATCH_MS = 20;
 /**
  * After the command exits, how long its pipes may stay open before its exit
  * is reported anyway. A background child that inherited them (`server &`)
@@ -52,6 +78,12 @@ export function signalName(number: number | null | undefined): string | null {
 
 type CommandExit = Parameters<Parameters<IPtyProcess['onExit']>[0]>[0];
 
+/** How a command's descendants are found and ended on Windows (test seam). */
+interface WindowsCommandCensus {
+  list: WindowsProcessLister;
+  kill: WindowsProcessKiller;
+}
+
 class CommandProcess implements IPtyProcess {
   private delivered = 0;
   private capped = false;
@@ -59,11 +91,25 @@ class CommandProcess implements IPtyProcess {
   private readonly dataListeners = new Set<(data: string) => void>();
   private readonly exitListeners = new Set<(event: CommandExit) => void>();
   private readonly closed: Promise<void>;
+  /** Node reaped the leader: its pid no longer reserves the group id. */
+  private leaderExited = false;
+  /** The group was seen empty after the leader exited; never signal it again. */
+  private groupGone = false;
+  /** Checks the group while terminating, so emptiness is seen promptly. */
+  private groupWatch: ReturnType<typeof setInterval> | undefined;
+  private terminating: Promise<void> | undefined;
 
   constructor(
     private readonly child: ChildProcess,
     private readonly outputCapBytes: number,
+    private readonly census: WindowsCommandCensus = {
+      list: listWindowsProcesses,
+      kill: killWindowsProcesses,
+    },
   ) {
+    child.once('exit', () => {
+      this.leaderExited = true;
+    });
     child.stdout?.setEncoding('utf8');
     child.stderr?.setEncoding('utf8');
     const deliver = (data: string) => this.deliver(data);
@@ -125,35 +171,148 @@ class CommandProcess implements IPtyProcess {
   }
 
   /**
-   * Ends the command and what it started: its process group on POSIX
-   * (SIGTERM, then SIGKILL), its tree with `taskkill /T /F` on Windows.
-   * Resolves once its exit is reported.
+   * Ends the command and what it started, and resolves only once none of it
+   * remains: the leader exiting is not enough, since a process it started
+   * can ignore SIGTERM or outlive its parent. POSIX: its process group,
+   * SIGTERM then SIGKILL. Windows: every process proven to descend from it,
+   * forcibly, until a process table shows none left. Rejects when that
+   * cannot be established before the deadline.
    */
-  async terminate(): Promise<void> {
-    if (this.exit) return;
-    if (process.platform === 'win32')
-      spawnSync('taskkill', ['/T', '/F', '/PID', String(this.pid)], {
-        stdio: 'ignore',
-        windowsHide: true,
-        timeout: KILL_DEADLINE_MS,
-      });
-    else this.signalGroup('SIGTERM');
+  terminate(): Promise<void> {
+    if (this.exit && !this.terminating) return Promise.resolve();
+    this.terminating ??= (
+      process.platform === 'win32'
+        ? this.terminateWindows()
+        : this.terminateGroup()
+    ).finally(() => this.stopGroupWatch());
+    return this.terminating;
+  }
+
+  private async terminateGroup(): Promise<void> {
+    this.startGroupWatch();
+    this.signalGroup('SIGTERM');
     const escalation = setTimeout(
       () => this.signalGroup('SIGKILL'),
       KILL_GRACE_MS,
     );
-    let deadline: ReturnType<typeof setTimeout> | undefined;
     try {
-      const ended = await Promise.race([
-        this.closed.then(() => true),
-        new Promise<boolean>((done) => {
-          deadline = setTimeout(() => done(false), KILL_DEADLINE_MS);
-        }),
-      ]);
-      if (!ended) throw new Error('The command did not exit');
+      const ended = await this.within(
+        Promise.all([this.closed, this.groupEmpty()]),
+        KILL_DEADLINE_MS,
+      );
+      if (!ended)
+        throw new Error('The command or a process it started did not exit');
     } finally {
       clearTimeout(escalation);
-      clearTimeout(deadline);
+    }
+  }
+
+  private async terminateWindows(): Promise<void> {
+    const deadline = Date.now() + WINDOWS_KILL_DEADLINE_MS;
+    const owned = new Map<number, OwnedWindowsProcess>();
+    let seeded = false;
+    for (;;) {
+      const started = windowsNowUs();
+      const table = await this.census.list();
+      if (!table) {
+        // Without a process table no descendant can be proven; end the
+        // leader's current tree the old way and say custody is unknown.
+        if (!this.leaderExited)
+          spawnSync('taskkill', ['/T', '/F', '/PID', String(this.pid)], {
+            stdio: 'ignore',
+            windowsHide: true,
+            timeout: KILL_DEADLINE_MS,
+          });
+        throw new Error(
+          "The command's processes could not be listed to end them",
+        );
+      }
+      if (!seeded) {
+        seeded = true;
+        // Node holds the leader's process handle until it reports the
+        // exit, so while it has not, its pid cannot name another process.
+        const leader = table.find((entry) => entry.pid === this.pid);
+        if (leader && !this.leaderExited)
+          owned.set(leader.pid, {
+            pid: leader.pid,
+            createdUs: leader.createdUs,
+            lastSeenUs: started,
+          });
+      }
+      const alive = attributeWindowsProcesses(owned, table, started);
+      if (!alive.length) break;
+      if (Date.now() >= deadline)
+        throw new Error('The command or a process it started did not exit');
+      // Each by pid, never `/T`: a stale parent pid is not ownership.
+      await this.census
+        .kill(alive.map((entry) => entry.pid))
+        .catch(() => undefined);
+    }
+    if (
+      !(await this.within(
+        this.closed,
+        Math.max(0, deadline - Date.now()) || 1,
+      ))
+    )
+      throw new Error('The command did not exit');
+  }
+
+  /** True when `promise` settles before `ms`. */
+  private async within(promise: Promise<unknown>, ms: number) {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      return await Promise.race([
+        promise.then(() => true),
+        new Promise<boolean>((done) => {
+          timer = setTimeout(() => done(false), ms);
+        }),
+      ]);
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  private groupEmpty(): Promise<void> {
+    return new Promise((done) => {
+      const check = () => {
+        if (this.leaderExited && !this.groupAlive()) done();
+        else setTimeout(check, GROUP_WATCH_MS).unref();
+      };
+      check();
+    });
+  }
+
+  private startGroupWatch(): void {
+    if (this.groupWatch) return;
+    this.groupWatch = setInterval(() => {
+      if (this.leaderExited) this.groupAlive();
+    }, GROUP_WATCH_MS);
+    this.groupWatch.unref();
+  }
+
+  private stopGroupWatch(): void {
+    clearInterval(this.groupWatch);
+    this.groupWatch = undefined;
+  }
+
+  /**
+   * Whether the command's process group may still have members. Before Node
+   * reports the leader's exit, the leader (or its zombie) reserves the id.
+   * After it, the id is reserved by the remaining members; it is checked
+   * only while the watch runs, and latched as gone the first time it is
+   * seen empty.
+   */
+  private groupAlive(): boolean {
+    if (this.groupGone || this.child.pid === undefined) return false;
+    if (!this.leaderExited) return true;
+    if (!this.groupWatch) return false;
+    try {
+      process.kill(-this.child.pid, 0);
+      return true;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'EPERM') return true;
+      this.groupGone = true;
+      return false;
     }
   }
 
@@ -189,12 +348,27 @@ class CommandProcess implements IPtyProcess {
   }
 
   private signalGroup(signal: NodeJS.Signals): void {
-    if (this.exit || this.child.pid === undefined) return;
+    if (this.child.pid === undefined) return;
+    if (process.platform === 'win32') {
+      if (this.exit || this.leaderExited) return;
+      try {
+        this.child.kill(signal);
+      } catch {
+        // Already gone.
+      }
+      return;
+    }
+    // The command leads its own group; a negative pid reaches all of it. A
+    // check immediately before the signal keeps it to a group still ours.
+    if (!this.groupAlive()) return;
     try {
-      // The command leads its own group on POSIX; a negative pid reaches it all.
-      if (process.platform === 'win32') throw new Error('no process groups');
       process.kill(-this.child.pid, signal);
-    } catch {
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ESRCH') {
+        if (this.leaderExited) this.groupGone = true;
+        return;
+      }
+      if (this.leaderExited) return;
       try {
         this.child.kill(signal);
       } catch {
@@ -216,6 +390,8 @@ export function spawnCommandProcess(
     cwd: string;
     env: NodeJS.ProcessEnv;
     outputCapBytes?: number;
+    /** Test seam: the Windows process table and per-pid kill. */
+    windowsCensus?: WindowsCommandCensus;
   },
   spawn: (
     command: string,
@@ -255,6 +431,7 @@ export function spawnCommandProcess(
         new CommandProcess(
           child,
           input.outputCapBytes ?? DEFAULT_COMMAND_OUTPUT_CAP_BYTES,
+          input.windowsCensus,
         ),
       ),
     );
