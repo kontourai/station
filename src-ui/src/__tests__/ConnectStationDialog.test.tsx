@@ -546,7 +546,6 @@ describe('Connect Station grant composition', () => {
           <ConnectionsProvider store={store}>
             <PendingPairingReconciler
               pending={pendingExchange}
-              enabled
               onCompleted={completed}
               onTerminalFailure={vi.fn()}
               onConnectionWaiting={vi.fn()}
@@ -748,7 +747,6 @@ describe('Connect Station grant composition', () => {
           <ConnectionsProvider store={store}>
             <PendingPairingReconciler
               pending={pendingExchange}
-              enabled
               onCompleted={vi.fn()}
               onTerminalFailure={failure}
               onConnectionWaiting={vi.fn()}

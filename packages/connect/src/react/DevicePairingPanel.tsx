@@ -185,6 +185,7 @@ export function JoinDevicePairingPanel({
   onPaired,
   onCancel,
   onApprovalPending,
+  onApprovalCancelled,
   initialMode = 'scan',
   initialManualEndpoint = '',
   initialManualCode = '',
@@ -203,8 +204,17 @@ export function JoinDevicePairingPanel({
    * Hand a persisted approval request to persistent connection chrome. The
    * caller can close its fixed-geometry chooser without abandoning the
    * bounded exchange.
+   *
+   * Returning the persisted record keeps this panel open on its waiting view
+   * while the caller's owner completes the exchange: the panel adopts that
+   * record (so both name the same request) and does not start a competing
+   * completion of its own. Returning nothing keeps the panel-owned completion.
    */
-  onApprovalPending?: (pending: PendingPairingExchange) => void;
+  onApprovalPending?: (
+    pending: PendingPairingExchange,
+  ) => PendingPairingExchange | undefined;
+  /** The person stopped waiting; the caller's owner must stop its exchange. */
+  onApprovalCancelled?: (pending: PendingPairingExchange) => void;
   initialMode?: 'direct' | 'scan' | 'manual';
   /** Destination and short code already collected by the host setup journey. */
   initialManualEndpoint?: string;
@@ -334,6 +344,17 @@ export function JoinDevicePairingPanel({
   // panel says why nothing is happening instead of sitting mute.
   const [waitingOnConnection, setWaitingOnConnection] = useState(false);
   const cancelled = useRef(false);
+  // The request whose completion the caller's owner took over, if any.
+  const [hostOwnedRequestId, setHostOwnedRequestId] = useState<string | null>(
+    null,
+  );
+  const hostOwnsPending =
+    pending !== null && pending.requestId === hostOwnedRequestId;
+  const handOffPending = (nextPending: PendingPairingExchange) => {
+    const persisted = onApprovalPending?.(nextPending);
+    setHostOwnedRequestId(persisted ? persisted.requestId : null);
+    setPending(persisted || nextPending);
+  };
 
   useEffect(() => {
     cancelled.current = false;
@@ -372,7 +393,10 @@ export function JoinDevicePairingPanel({
   }, [initialPairingPayload]);
 
   useEffect(() => {
-    if (!pending) return;
+    // A caller-owned request has exactly one completion owner. The record's
+    // flight key includes the caller's target, so a second subscription here
+    // would race the owner's claim on the same single-use proof.
+    if (!pending || hostOwnsPending) return;
     let disposed = false;
     let resumedAfterSharedAbort = false;
     const abort = new AbortController();
@@ -483,7 +507,7 @@ export function JoinDevicePairingPanel({
       disposed = true;
       abort.abort();
     };
-  }, [directLabel, onPaired, pending]);
+  }, [directLabel, hostOwnsPending, onPaired, pending]);
 
   const begin = async (offer: ScannedPairingOffer) => {
     if (!httpConsent.allowed) return;
@@ -522,8 +546,7 @@ export function JoinDevicePairingPanel({
       // station#1711 — persisted before the poll starts, so the exchange
       // survives an unmount from this point on.
       savePendingExchange(nextPending);
-      setPending(nextPending);
-      onApprovalPending?.(nextPending);
+      handOffPending(nextPending);
     } catch (requestError) {
       setError(describePairingRequestFailure(requestError));
     }
@@ -568,8 +591,7 @@ export function JoinDevicePairingPanel({
         requestKind: 'code',
       };
       savePendingExchange(nextPending);
-      setPending(nextPending);
-      onApprovalPending?.(nextPending);
+      handOffPending(nextPending);
     } catch (requestError) {
       setError(describePairingRequestFailure(requestError));
     }
@@ -710,8 +732,7 @@ export function JoinDevicePairingPanel({
           : {}),
       };
       savePendingExchange(nextPending);
-      setPending(nextPending);
-      onApprovalPending?.(nextPending);
+      handOffPending(nextPending);
     } catch (requestError) {
       const status = (requestError as { status?: number }).status;
       setError(
@@ -769,7 +790,8 @@ export function JoinDevicePairingPanel({
     );
 
   if (pending) {
-    const target = directLabel || 'this Station';
+    const pendingLabel = directLabel || pending.targetConnectionLabel;
+    const target = pendingLabel || 'this Station';
     const approveCommand = `${pending.operatorCli ?? 'station'} environment access approve ${pending.requestId}`;
     return (
       <div className="pairing-wait">
@@ -780,7 +802,7 @@ export function JoinDevicePairingPanel({
                 pending.requestKind === 'direct'
                   ? 'waiting-for-approval'
                   : 'waiting-for-code-approval',
-                directLabel,
+                pendingLabel,
               ).message}
         </strong>
         {waitingOnConnection && (
@@ -872,6 +894,7 @@ export function JoinDevicePairingPanel({
             // killed) this persistence exists to survive: only THIS action
             // is the user explicitly abandoning the request, so only this
             // action clears the stored record.
+            onApprovalCancelled?.(pending);
             clearPendingExchange(pending.endpoint, pending.requestKind);
             onCancel();
           }}
@@ -905,7 +928,9 @@ export function JoinDevicePairingPanel({
           onClick={() => void begin(reviewOffer)}
           style={primaryBtnStyle}
         >
-          Request access
+          {/* A pairing code is the invitation itself; only an address-only
+              request (the direct mode) asks for access. */}
+          Connect
         </button>
         <button
           type="button"
@@ -1088,7 +1113,7 @@ export function JoinDevicePairingPanel({
             disabled={!httpConsent.allowed}
             style={primaryBtnStyle}
           >
-            Request access
+            Connect
           </button>
           <button type="button" onClick={onCancel} style={secondaryBtnStyle}>
             Back
@@ -1236,7 +1261,7 @@ const SCOPE_PRESET_COPY: Record<
   },
 };
 
-function requestExpiryLabel(expiresAt: number, now: number): string {
+export function requestExpiryLabel(expiresAt: number, now: number): string {
   if (!Number.isFinite(expiresAt)) return 'Short-lived request';
   const remainingSeconds = Math.max(0, Math.ceil((expiresAt - now) / 1_000));
   if (remainingSeconds === 0) return 'Expiring now';

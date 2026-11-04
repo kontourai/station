@@ -206,43 +206,88 @@ describe('ConnectionListPanel', () => {
     await screen.findByText('Could not copy. The full address is shown above.');
     expect(screen.queryByText('Address copied')).toBeNull();
   });
-  it('marks the exact saved target as pending without duplicating Request access', () => {
+  it('makes a pending approval the row status, with its countdown and a way to stop waiting', () => {
     const pending = { ...connection, credentialState: 'required' as const };
-    render(
-      <ConnectionListPanel
-        connections={[pending]}
-        activeConnectionId={pending.id}
-        pendingConnectionId={pending.id}
-        editingId={null}
-        editName=""
-        editUrl=""
-        credentialEntry=""
-        getStatus={() => 'connecting'}
-        onSelect={() => {}}
-        onCheck={() => {}}
-        onStartEdit={() => {}}
-        onRemove={() => {}}
-        onEditNameChange={() => {}}
-        onEditUrlChange={() => {}}
-        onCredentialEntryChange={() => {}}
-        onRemoveCredential={() => {}}
-        onConfirmEndpoint={() => {}}
-        onSaveEdit={() => {}}
-        onCancelEdit={() => {}}
-        onAddManual={() => {}}
-        onRequestAccess={() => {}}
-        onScanQr={() => {}}
-        onEnterPairingCode={() => {}}
-        onViewDevices={() => {}}
-        discoveryAvailable={false}
-        onDiscover={() => {}}
-      />,
+    const now = Date.now();
+    // The exact record shape the pairing panel persists for a code request.
+    globalThis.localStorage.setItem(
+      `station-pairing-pending-exchange:v1:${pending.url}:code`,
+      JSON.stringify({
+        endpoint: pending.url,
+        offerId: 'offer-1',
+        proof: 'ABCDE12345',
+        requestId: 'request-1',
+        requestedAt: now,
+        expiresAt: now + 150_000,
+        browserSession: false,
+        requestKind: 'code',
+        targetConnectionId: pending.id,
+        targetConnectionLabel: pending.name,
+      }),
     );
+    const onCancelPendingApproval = vi.fn();
+    const renderConnectionDetails = vi.fn(() => (
+      <p>Extensions from Station One are off on this device.</p>
+    ));
+    try {
+      render(
+        <ConnectionListPanel
+          connections={[pending]}
+          activeConnectionId={pending.id}
+          pendingConnectionId={pending.id}
+          onCancelPendingApproval={onCancelPendingApproval}
+          renderConnectionDetails={renderConnectionDetails}
+          editingId={null}
+          editName=""
+          editUrl=""
+          credentialEntry=""
+          // Every probe fails while this device has no access yet.
+          getStatus={() => 'error'}
+          onSelect={() => {}}
+          onCheck={() => {}}
+          onStartEdit={() => {}}
+          onRemove={() => {}}
+          onEditNameChange={() => {}}
+          onEditUrlChange={() => {}}
+          onCredentialEntryChange={() => {}}
+          onRemoveCredential={() => {}}
+          onConfirmEndpoint={() => {}}
+          onSaveEdit={() => {}}
+          onCancelEdit={() => {}}
+          onAddManual={() => {}}
+          onRequestAccess={() => {}}
+          onScanQr={() => {}}
+          onEnterPairingCode={() => {}}
+          onViewDevices={() => {}}
+          discoveryAvailable={false}
+          onDiscover={() => {}}
+        />,
+      );
 
-    expect(screen.getByText('Access request pending approval')).toBeTruthy();
-    expect(
-      screen.queryByRole('button', { name: 'Request access to Station One' }),
-    ).toBeNull();
+      expect(document.body.textContent).not.toContain("Can't connect");
+      expect(screen.getByText('Current · Waiting for approval')).toBeTruthy();
+      expect(
+        screen.getByText('Waiting for the code to be approved on Station One…'),
+      ).toBeTruthy();
+      expect(screen.getByText(/^Expires in 2m 30s$/)).toBeTruthy();
+      expect(
+        screen.queryByRole('button', { name: 'Request access to Station One' }),
+      ).toBeNull();
+
+      // Station-scoped cards wait for access instead of crowding the row.
+      fireEvent.click(
+        screen.getByRole('button', { name: 'View details for Station One' }),
+      );
+      expect(renderConnectionDetails).not.toHaveBeenCalled();
+      expect(document.body.textContent).not.toContain('Extensions from');
+
+      fireEvent.click(
+        screen.getByRole('button', { name: 'Stop waiting for Station One' }),
+      );
+      expect(onCancelPendingApproval).toHaveBeenCalledOnce();
+    } finally {
+      globalThis.localStorage.clear();
+    }
   });
 
   it('keeps every connection method visible without an advanced disclosure', () => {
@@ -637,7 +682,7 @@ describe('ConnectionListPanel', () => {
 
       const rows = warningRows();
       expect(rows).toHaveLength(1);
-      expect(rows[0]?.textContent).toContain('Access request pending approval');
+      expect(rows[0]?.textContent).toContain('Waiting for approval on');
       // The retired copy: none of the other three prose blocks render
       // alongside it — including the identity-mismatch explanation this
       // same connection also carries in `lastError`.

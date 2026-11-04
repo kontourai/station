@@ -440,7 +440,7 @@ one each of `linkVersion`, `clientChannel`, and `payload`: no credentials, URLs 
 fragments, duplicate fields, user info, or ports are accepted. The value must
 pass the same `station-pairing:v1:` decoder used by the QR scanner, including
 offer expiry, scope, and HTTPS/loopback endpoint validation. The link merely
-prefills a Join review screen; the user must explicitly request access before
+prefills a Join review screen; the user must explicitly choose **Connect** before
 Station sends any network request. It does not enable generic share intake,
 webview navigation, opener permission, or a new credential transport.
 

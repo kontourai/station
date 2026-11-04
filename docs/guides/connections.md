@@ -306,6 +306,9 @@ For the current saved Station, **Reconnect** opens its access-request flow
 even when this device is already paired, so you can request fresh approval.
 It is not offered for an inactive Station or a connection managed by the
 native host. Completing reauthorization still requires Station approval.
+A row with an open access request reads **Waiting for approval** rather than
+**Can't connect**, shows the request's countdown, and offers **Stop waiting**;
+the request keeps polling while the manager is open and connects on approval.
 The manager uses the current Station's live status; inactive rows show
 **Not checked** until checked there. Connections with valid saved access do
 not prompt for another access request. A rejected or missing credential still

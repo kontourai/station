@@ -249,6 +249,15 @@
   color: var(--warning-text, #fbbf24);
 }
 
+/* A pending approval is the row's status: its sentence, countdown and the
+   one action stack instead of running together on a narrow phone row. */
+.station-connect-row__pending {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--k-space-1);
+}
+
 /* The desktop-supervised local server, listed while it is not running: it is
    not a selectable base, so the row is inert and shows its lifecycle state in
    place of a URL. */
