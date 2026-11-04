@@ -58,11 +58,13 @@ vi.mock('../../../providers/registries/registry.js', () => {
     ],
     listInstalled: async () => [{ id: 'p1', installed: true }],
   };
+  const pluginProviders = () => [{ source: 'test', provider: pluginProvider }];
   return {
     pluginProviderSourceGeneration: () => 0,
-    getPluginRegistryProviders: () => [
-      { source: 'test', provider: pluginProvider },
-    ],
+    getPluginRegistryProviders: pluginProviders,
+    // No managed policy here: nothing is refused.
+    getRegisteredPluginRegistryProviders: pluginProviders,
+    integrationCatalogManagedDenial: () => undefined,
     getSkillRegistryProviders: vi
       .fn()
       .mockReturnValue([{ provider: skillProvider, source: 'test' }]),
