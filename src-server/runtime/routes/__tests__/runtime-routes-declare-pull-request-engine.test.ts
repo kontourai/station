@@ -679,6 +679,51 @@ describe('an external engine declares a pull request: the Task shows it, a merge
     });
   });
 
+  // A corrupt (or newer-version) worktree store reads as no entries: a
+  // shared Task still keeps its Session's pull request, and a worktree
+  // Task's keep is an ordinary refusal, never a server error.
+  test('an unreadable worktree store does not break keeping', async () => {
+    const e = await setup({ git: true });
+    e.states['kontourai/station#7'] = 'OPEN';
+    writeFileSync(join(e.homeDir, 'task-worktrees.json'), 'not json');
+    await e.declare(PR);
+    const eventId = e.emit({
+      method: 'turn.completed',
+      turnId: 'turn-1',
+      finishReason: 'stop',
+    });
+    const shared = await e.taskGraph.createTask({
+      projectId: PROJECT,
+      title: 'Shared Task',
+    });
+    const kept = await e.asOperator(
+      'POST',
+      `/api/tasks/${shared.id}/declared-outputs/${THREAD}/${eventId}/keep`,
+      { operationId: 'keep-shared' },
+    );
+    expect(kept.status, JSON.stringify(kept.json)).toBe(201);
+
+    // The Session now runs in a Task's worktree the store cannot vouch for.
+    const worktreeTask = await e.taskGraph.createTask({
+      projectId: PROJECT,
+      title: 'Worktree Task',
+    });
+    const { metadata } =
+      await new WorktreeProvisioningService().provisionForTask({
+        repoPath: e.workspace,
+        taskId: worktreeTask.id,
+        providerKind: 'codex',
+        isolation: { mode: 'worktree' },
+      });
+    e.setSessionCwd(metadata.path);
+    const refused = await e.asOperator(
+      'POST',
+      `/api/tasks/${worktreeTask.id}/declared-outputs/${THREAD}/${eventId}/keep`,
+      { operationId: 'keep-worktree' },
+    );
+    expect(refused.status).toBe(404);
+  });
+
   test('a Task a person opted in is done after the pull request merges and the conversation refreshes', async () => {
     const e = await setup();
     e.states['kontourai/station#7'] = 'OPEN';

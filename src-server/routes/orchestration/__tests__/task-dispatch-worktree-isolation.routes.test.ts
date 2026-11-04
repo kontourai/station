@@ -535,6 +535,36 @@ describe('Task dispatch honours the Project worktree isolation (#4507)', () => {
     });
   });
 
+  // A corrupt (or newer-version) worktree store must not make Tasks
+  // unopenable: reads see no entries; writes still refuse to replace it.
+  test('an unreadable worktree store leaves Tasks openable and refuses to be overwritten', async () => {
+    installCurrentStation(workspace, 'worktree');
+    const { app, graph } = compose();
+    const taskId = await createTask(app, 'Task with a damaged store');
+    await dispatch(app, taskId);
+    const storePath = join(home, 'task-worktrees.json');
+    writeFileSync(storePath, '{"version": 2, "entries": {');
+
+    const opened = await app.request(`/${taskId}`);
+    expect(opened.status).toBe(200);
+    const body = await readJson(opened);
+    expect(body.data).toMatchObject({ id: taskId });
+    expect(body.data.taskWorktree).toBeUndefined();
+    expect(graph.taskWorkingDirectory(graph.readTask(taskId)!)).toBe(workspace);
+
+    // A new dispatch would record a worktree: it refuses instead of
+    // replacing a file this Station cannot read.
+    await graph.updateTaskStatus(taskId, 'blocked');
+    const response = await app.request(`/${taskId}/dispatch`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ agentId: 'task-lead' }),
+    });
+    const refused = await readJson(response);
+    expect(refused.success).not.toBe(true);
+    expect(readFileSync(storePath, 'utf8')).toBe('{"version": 2, "entries": {');
+  });
+
   test('a shared Project dispatches in its shared checkout, unchanged', async () => {
     installCurrentStation(workspace, undefined);
     const { app, graph, claude } = compose();

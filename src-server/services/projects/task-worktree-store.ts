@@ -11,6 +11,12 @@
  * a checkout. An entry that does not validate is ignored on its own (never
  * reused, never finalized) instead of making the other Tasks' entries
  * unreadable; the next provisioning for that Task replaces it.
+ *
+ * A file that cannot be read at all (corrupt, or written by a newer Station
+ * in a version this one does not know) reads as having no entries, so every
+ * Task still opens and is compared against its Project checkout; it is
+ * logged once. Writes still refuse it: `update` never replaces a file it
+ * could not read.
  */
 import { join } from 'node:path';
 import type { WorktreeSessionMetadata } from '@kontourai/station-contracts/workspace-isolation';
@@ -18,7 +24,10 @@ import {
   acquireFileMutationLockAsync,
   type FileMutationLock,
 } from '@kontourai/station-shared/lifecycle-events';
+import { createLogger } from '../../utils/logger.js';
 import { JsonFileStore } from '../infra/json-store.js';
+
+const logger = createLogger({ name: 'task-worktree-store' });
 
 export const TASK_WORKTREE_STORE_FILE = 'task-worktrees.json';
 
@@ -149,18 +158,43 @@ export class TaskWorktreeStore {
     return data;
   }
 
+  private unreadableLogged = false;
+
+  /** For reads: an unreadable file has no entries (see the module note). */
+  private loadForRead(): TaskWorktreeStoreData {
+    try {
+      const data = this.load();
+      this.unreadableLogged = false;
+      return data;
+    } catch (error) {
+      if (!this.unreadableLogged) {
+        this.unreadableLogged = true;
+        logger.warn('Task worktree store is unreadable; reading no entries', {
+          path: this.path,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+      return { version: 1, entries: {} };
+    }
+  }
+
   /** The Task's entry for this incarnation, if any. */
   read(taskId: string, taskCreatedAt: string): TaskWorktreeEntry | undefined {
-    const entry = parseTaskWorktreeEntry(taskId, this.load().entries[taskId]);
+    const entry = parseTaskWorktreeEntry(
+      taskId,
+      this.loadForRead().entries[taskId],
+    );
     return entry?.taskCreatedAt === taskCreatedAt ? entry : undefined;
   }
 
   /** Every valid entry, for the deferred-finalization sweep. */
   list(): Array<{ taskId: string; entry: TaskWorktreeEntry }> {
-    return Object.entries(this.load().entries).flatMap(([taskId, value]) => {
-      const entry = parseTaskWorktreeEntry(taskId, value);
-      return entry ? [{ taskId, entry }] : [];
-    });
+    return Object.entries(this.loadForRead().entries).flatMap(
+      ([taskId, value]) => {
+        const entry = parseTaskWorktreeEntry(taskId, value);
+        return entry ? [{ taskId, entry }] : [];
+      },
+    );
   }
 
   /**
