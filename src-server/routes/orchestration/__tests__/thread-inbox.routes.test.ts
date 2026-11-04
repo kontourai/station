@@ -5,6 +5,7 @@ import {
 } from '@kontourai/station-contracts/orchestration';
 import type { CanonicalRuntimeEvent } from '@kontourai/station-contracts/runtime-events';
 import { sessionReadAuthorityFromRequest } from '@kontourai/station-contracts/tenancy';
+import { turnInterruptedContinueClientTurnId } from '@kontourai/station-shared/conversation-message';
 import { TURN_INTERRUPTED_CONTINUE_PROMPT } from '@kontourai/station-shared/runtime-event-projection';
 import { describe, expect, test, vi } from 'vitest';
 import { ClientTurnInputConflictError } from '../../../providers/adapter-shape.js';
@@ -1620,7 +1621,7 @@ describe('restart continuation and the person’s Continue (#4512)', () => {
   const station = createInboxHarness();
   const BOUNDARY = 'turn-boundary:restart-1';
 
-  test('a queued restart continuation and a live Continue tap start one turn', async () => {
+  async function queuedContinuation() {
     const world = station();
     const first = await world.send('first', 'read the file');
     expect(first.status, await first.clone().text()).toBe(200);
@@ -1644,39 +1645,43 @@ describe('restart continuation and the person’s Continue (#4512)', () => {
     await eventually(() => expect(world.inboxStartGate.wait).toBeUndefined());
     expect(world.adapter.turns).toHaveLength(1);
 
-    // Another member's tap is refused, saying Station is on it.
+    return { world, entry };
+  }
+
+  test('a queued restart continuation and a live Continue tap start one turn', async () => {
+    const { world, entry } = await queuedContinuation();
+    // The owner's own tap, same key and note.
+    // The chat dock's Continue key for this interruption.
+    const tap = await world.send(
+      turnInterruptedContinueClientTurnId(BOUNDARY),
+      TURN_INTERRUPTED_CONTINUE_PROMPT,
+    );
+    expect(tap.status, await tap.clone().text()).toBeLessThan(300);
+    const continued = () =>
+      world.prompts().filter((p) => p === TURN_INTERRUPTED_CONTINUE_PROMPT);
+    await eventually(() => expect(continued()).toHaveLength(1));
+    await world.inbox.idle();
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect(continued()).toHaveLength(1);
+    expect(world.adapter.turns.at(-1)?.clientTurnId).toBe(entry.clientTurnId);
+    expect(world.prompts()).toEqual([
+      'read the file',
+      TURN_INTERRUPTED_CONTINUE_PROMPT,
+    ]);
+  });
+
+  test("another member's tap on the held Continue key is refused, saying Station is on it", async () => {
+    const { world } = await queuedContinuation();
     const other = await world.as(READER, () =>
-      world.send(entry.clientTurnId, TURN_INTERRUPTED_CONTINUE_PROMPT),
+      world.send(
+        turnInterruptedContinueClientTurnId(BOUNDARY),
+        TURN_INTERRUPTED_CONTINUE_PROMPT,
+      ),
     );
     expect(other.status, await other.clone().text()).toBe(409);
     expect(await other.json()).toMatchObject({
       code: 'inbox_key_held',
       error: 'Station is already continuing this interrupted turn.',
     });
-
-    // The owner's own tap, same key and note.
-    const tap = await world.send(
-      entry.clientTurnId,
-      TURN_INTERRUPTED_CONTINUE_PROMPT,
-    );
-    expect(tap.status, await tap.clone().text()).toBeLessThan(300);
-    await eventually(() =>
-      expect(
-        world.adapter.turns.filter(
-          (turn) => turn.clientTurnId === entry.clientTurnId,
-        ),
-      ).toHaveLength(1),
-    );
-    await world.inbox.idle();
-    await new Promise((resolve) => setTimeout(resolve, 300));
-    expect(
-      world.adapter.turns.filter(
-        (turn) => turn.clientTurnId === entry.clientTurnId,
-      ),
-    ).toHaveLength(1);
-    expect(world.prompts()).toEqual([
-      'read the file',
-      TURN_INTERRUPTED_CONTINUE_PROMPT,
-    ]);
   });
 });
