@@ -1,3 +1,4 @@
+import { join } from 'node:path';
 /**
  * #3163: the child transcript route, end to end: the persisted child-work
  * facts a REAL Claude capture produced (replayed through the adapter's own
@@ -20,6 +21,7 @@ import {
 } from '../../../providers/__tests__/codex-collab-fixtures.js';
 import { installCodexSubagentRollout } from '../../../providers/__tests__/codex-subagent-rollout-fixture.js';
 import { createChildWorkTranscriptModule } from '../../../services/orchestration/child-work-transcript.js';
+import { EventStore } from '../../../services/orchestration/event-store.js';
 import type { OrchestrationService } from '../../../services/orchestration/orchestration-service';
 import { createOrchestrationRoutes } from '../orchestration';
 
@@ -45,10 +47,11 @@ function persistedHistory(): CanonicalRuntimeEvent[] {
 function fixture(
   history: CanonicalRuntimeEvent[] = persistedHistory(),
   thread = THREAD,
+  readHistory?: (threadId: string) => CanonicalRuntimeEvent[],
 ) {
   let current = true;
   let readable = true;
-  const listChildWorkHistory = vi.fn(() => history);
+  const listChildWorkHistory = vi.fn(readHistory ?? (() => history));
   const readChildSteerInstructions = vi.fn(() => ({ entries: [] }));
   const childWorkTranscripts = createChildWorkTranscriptModule({
     listChildWorkHistory,
@@ -122,6 +125,44 @@ describe('#3163 GET /sessions/:threadId/child-work/:childId/transcript', () => {
     ]);
     expect(body.data.entries.at(-1)?.text).toBe('INNER DONE');
     expect(f.listChildWorkHistory).toHaveBeenCalledWith(THREAD);
+  });
+
+  test('a reopened SQLite history drives a fresh transcript reader after the parent exits', async () => {
+    const database = join(makeTempDir('cold-child-history-'), 'events.sqlite');
+    const history = persistedHistory();
+    const writer = new EventStore(database);
+    try {
+      for (const event of history) writer.appendEvent(event);
+    } finally {
+      writer.close();
+    }
+    history.length = 0;
+    const reader = new EventStore(database);
+    try {
+      const f = fixture([], THREAD, (threadId) =>
+        (
+          reader.listChildWorkHistoryForThreads([threadId]).get(threadId) ?? []
+        ).map((row) => row.payload),
+      );
+      const response = await f.request();
+      expect(response.status).toBe(200);
+      expect(response.headers.get('cache-control')).toContain('no-store');
+      const body = (await response.json()) as {
+        data: { entries: Array<{ kind: string; text?: string }> };
+      };
+      expect(body.data.entries.map((entry) => entry.kind)).toEqual([
+        'text',
+        'tool-call',
+        'tool-result',
+        'text',
+      ]);
+      expect(body.data.entries.at(-1)?.text).toBe('INNER DONE');
+      expect(f.listChildWorkHistory).toHaveBeenCalledWith(THREAD);
+      f.revokeSession();
+      await unavailable(await f.request());
+    } finally {
+      reader.close();
+    }
   });
 
   test('pages are bounded by the query', async () => {
