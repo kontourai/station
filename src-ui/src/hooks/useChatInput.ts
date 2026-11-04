@@ -32,10 +32,7 @@ import { conversationOpenPhase } from '../contexts/conversation-open-policy';
 import { useToast } from '../contexts/ToastContext';
 import { resolveTurnModel } from '../lib/turnModel';
 import type { FileAttachment } from '../types';
-import {
-  composeQuotedReply,
-  type SavedAnswerQuote,
-} from '../utils/answer-quotes';
+import { composeQuotedReply, type DraftQuote } from '../utils/answer-quotes';
 import type { ApprovalMode } from '../utils/approvalMode';
 import {
   approvalModeLabel,
@@ -1222,7 +1219,7 @@ export function useChatInput({
     (
       text: string,
       restoredAttachments: FileAttachment[],
-      restoredQuotes: readonly SavedAnswerQuote[] = [],
+      restoredQuotes: readonly DraftQuote[] = [],
     ) => {
       if (!sessionId) return;
       chatDraftsStore.clear(sessionId);

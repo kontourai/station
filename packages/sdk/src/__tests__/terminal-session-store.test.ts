@@ -282,3 +282,65 @@ test('the ticket rides a subprotocol and the socket keeps the API prefix', async
     'wss://phone.example.ts.net/station/api/terminal/socket',
   ]);
 });
+
+// Every session shares one socket. A busy shell's output, progress, replay
+// and reset must reach only its own listeners: a view of another terminal
+// (a dock pane, another tab) is never woken for it.
+test('a session’s events reach only its own listeners', async () => {
+  vi.useFakeTimers();
+  const f = fixture(ticket);
+  const other = '0f8f0d5e-8a8c-4c71-9b52-3c0f4b3cbd7e';
+  const busy = f.store.attach(target, id);
+  const quiet = f.store.attach(target, other);
+  await flush();
+  const socket = f.sockets[0]!;
+  socket.open();
+  const [busyAttach, quietAttach] = socket
+    .controls()
+    .filter((command) => command.type === 'attach');
+  const seen = { busy: [] as string[], quiet: [] as string[] };
+  for (const [name, session] of [
+    ['busy', busy],
+    ['quiet', quiet],
+  ] as const)
+    session.subscribe({
+      output: () => seen[name].push('output'),
+      reset: () => seen[name].push('reset'),
+      change: () => seen[name].push('change'),
+    });
+  for (const [command, terminalId] of [
+    [busyAttach!, id],
+    [quietAttach!, other],
+  ] as const) {
+    socket.message({
+      type: 'attached',
+      requestId: command.requestId,
+      channel: command.channel,
+      terminalId,
+      status: 'running',
+      replayThrough: 0,
+      readOnly: false,
+      maxOutstandingOutputFrames: TERMINAL_MAX_OUTSTANDING_OUTPUT_FRAMES,
+    });
+    socket.message({ type: 'ready', channel: command.channel, seq: 0 });
+  }
+  seen.busy.length = 0;
+  seen.quiet.length = 0;
+
+  const channel = busyAttach!.channel as number;
+  for (let seq = 1; seq <= 50; seq += 1) output(socket, channel, seq, 'x');
+  socket.message({
+    type: 'progress',
+    channel,
+    sentThrough: 50,
+    replayThrough: 50,
+    status: 'exited',
+  });
+  socket.message({ type: 'reset', channel, fromSeq: 50, replayThrough: 50 });
+
+  expect(seen.busy.filter((event) => event === 'output')).toHaveLength(50);
+  expect(seen.busy).toContain('change');
+  expect(seen.busy).toContain('reset');
+  expect(seen.quiet).toEqual([]);
+  expect(quiet.status).toBe('running');
+});

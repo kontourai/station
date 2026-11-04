@@ -130,14 +130,23 @@ beforeEach(() => {
     'fetch',
     vi.fn(async () => new Response(new Uint8Array(readFileSync(WASM_PATH)))),
   );
+  // Fires only for what is observed: unhooking the view's observer must
+  // leave a resize unseen.
   vi.stubGlobal(
     'ResizeObserver',
     class {
+      private readonly targets = new Set<Element>();
       constructor(callback: () => void) {
-        resizeObservers.push(callback);
+        resizeObservers.push(() => {
+          if (this.targets.size) callback();
+        });
       }
-      observe() {}
-      disconnect() {}
+      observe(target: Element) {
+        this.targets.add(target);
+      }
+      disconnect() {
+        this.targets.clear();
+      }
     },
   );
   vi.stubGlobal(
@@ -284,6 +293,73 @@ describe('TerminalController', () => {
       controller.dispose();
     }
   });
+
+  // "Reconnect terminal" and a read-only change keep the view and hand it a
+  // fresh attachment, which replays the journal from its start. Without a
+  // reset first, the history drew again under the screen it had restored.
+  it('restores a reattached session from its replay once, without the old screen', async () => {
+    const writeText = vi.fn(async (_text: string) => undefined);
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText },
+    });
+    const first = sharedSession();
+    const { controller } = await startController(first);
+    first.output('$ make\r\nbuilt\r\n');
+    controller.setSession(null);
+    const reattached = sharedSession();
+    reattached.output('$ make\r\nbuilt\r\n');
+    reattached.output('$ ls\r\nREADME\r\n');
+    controller.setSession(reattached.session);
+    await vi.waitFor(async () => {
+      controller.selectAll();
+      expect(await controller.copy()).toBe(true);
+      const text = String(writeText.mock.lastCall?.[0]);
+      expect(text).toContain('README');
+      expect(text.match(/built/g)).toHaveLength(1);
+    });
+    controller.dispose();
+  });
+
+  // Station's own shortcuts (the command palette, Settings, the shortcut
+  // list) were swallowed while a terminal had focus: the view encoded every
+  // modifier chord and prevented it, and the app skips prevented keys.
+  it.each([
+    { platform: 'MacIntel', host: { key: 'k', metaKey: true } },
+    {
+      platform: 'Linux x86_64',
+      host: { key: 'D', ctrlKey: true, shiftKey: true },
+    },
+  ])(
+    'leaves app chords to the page and Control chords to the program on $platform',
+    async ({ platform, host }) => {
+      vi.stubGlobal('navigator', { ...navigator, platform });
+      const { controller, session, root } = await startController();
+      const input = root.querySelector('textarea')!;
+      const press = (init: KeyboardEventInit) => {
+        const event = new KeyboardEvent('keydown', {
+          ...init,
+          bubbles: true,
+          cancelable: true,
+        });
+        input.dispatchEvent(event);
+        return event;
+      };
+      expect(press(host).defaultPrevented).toBe(false);
+      expect(session.write).not.toHaveBeenCalled();
+      expect(
+        press({ key: 'd', code: 'KeyD', ctrlKey: true }).defaultPrevented,
+      ).toBe(true);
+      await vi.waitFor(() =>
+        expect(
+          session.write.mock.calls.map(([bytes]) =>
+            new TextDecoder().decode(bytes),
+          ),
+        ).toContain('\x04'),
+      );
+      controller.dispose();
+    },
+  );
 
   // A dock region put away keeps its view mounted with no box; sizing the
   // shared shell from it squeezed every other view to two columns.

@@ -121,6 +121,11 @@
   font-family: var(--k-font-mono);
 }
 
+/* A terminal command and its directory, exactly as they run (#3994). */
+.agent-schedule-card__command {
+  font-family: var(--k-font-mono);
+}
+
 /* The whole text an approval is for, never clamped: long text scrolls in
    place (touch and keyboard), so nothing is approved unseen. */
 .agent-schedule-card__prompt,

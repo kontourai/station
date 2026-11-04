@@ -1,10 +1,12 @@
-import { Hono } from 'hono';
+import { type Context, Hono, type Next } from 'hono';
 import { z } from 'zod/v3';
+import { MAX_SCRIPT_NAME_CHARS } from '../../services/terminal/terminal-command-programs.js';
 import {
   TERMINAL_LINK_PROTOCOLS,
   TerminalOutputSanitizer,
 } from '../../services/terminal/terminal-output-sanitizer.js';
 import {
+  TerminalCommandUnavailable,
   TerminalSessionRefusal,
   type TerminalSessions,
 } from '../../services/terminal/terminal-sessions.js';
@@ -34,14 +36,18 @@ export function createTerminalSessionRoutes(
   authorizeRequest: (request: Request) => boolean,
 ) {
   const app = new Hono();
-  app.use('/:slug/terminal-sessions/*', async (c, next) => {
+  const admit = async (c: Context, next: Next) => {
     if (!authorizeRequest(c.req.raw))
       return c.json({ success: false, error: 'Terminal access refused' }, 403);
     await next();
-  });
+  };
+  app.use('/:slug/terminal-sessions/*', admit);
+  app.use('/:slug/terminal-scripts', admit);
   app.onError((error, c) => {
     if (error instanceof z.ZodError)
       return c.json({ success: false, error: 'Invalid terminal request' }, 400);
+    if (error instanceof TerminalCommandUnavailable)
+      return c.json({ success: false, error: error.message }, 409);
     if (error instanceof TerminalSessionRefusal)
       return c.json({ success: false, error: 'Terminal access refused' }, 403);
     logger.error('Terminal session operation failed', { error });
@@ -126,6 +132,30 @@ export function createTerminalSessionRoutes(
         },
       },
     });
+  });
+  // The script runner (#3994): the binding's package scripts, and one run
+  // by name as a command session. The server resolves the package manager.
+  app.get('/:slug/terminal-scripts', async (c) => {
+    const result = await sessions.scripts(
+      c.req.raw,
+      scope(c.req.param('slug'), binding.parse(c.req.query('bindingKey'))),
+    );
+    return c.json({ success: true, data: result });
+  });
+  app.post('/:slug/terminal-scripts', async (c) => {
+    const input = z
+      .object({
+        bindingKey: binding,
+        script: z.string().min(1).max(MAX_SCRIPT_NAME_CHARS),
+      })
+      .strict()
+      .parse(await c.req.json());
+    const { record } = await sessions.openCommand(
+      c.req.raw,
+      scope(c.req.param('slug'), input.bindingKey),
+      { program: { kind: 'script', name: input.script } },
+    );
+    return c.json({ success: true, data: record });
   });
   app.post('/:slug/terminal-sessions/:terminalId/input', async (c) => {
     const input = z

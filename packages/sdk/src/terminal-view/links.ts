@@ -19,7 +19,7 @@ export interface TerminalLink {
 }
 
 /** Row text with, for every UTF-16 index, the cell column it came from. */
-export function rowTextWithColumns(row: RowCells): {
+function rowTextWithColumns(row: RowCells): {
   text: string;
   columns: number[];
 } {
