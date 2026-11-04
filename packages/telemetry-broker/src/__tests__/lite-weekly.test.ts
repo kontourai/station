@@ -63,14 +63,14 @@ beforeEach(async () => {
   await lite.createSource({
     id: 'kontour',
     publisher: 'kontour',
-    channel: 'stable',
+    channels: ['stable'],
     registryIds: ['public.plugin', 'rare.plugin'],
     releaseVersions: ['1.2.3'],
   });
   await lite.createSource({
     id: 'third-party',
     publisher: 'publisher:example',
-    channel: 'stable',
+    channels: ['stable'],
     registryIds: ['third.plugin'],
     releaseVersions: ['2.0.0'],
   });
@@ -247,7 +247,7 @@ test('trusted proxy contributes distinct clients and accepts the sender unknown 
   await lite.createSource({
     id: 'unknown-channel',
     publisher: 'kontour',
-    channel: 'unknown',
+    channels: ['unknown'],
     registryIds: [],
     releaseVersions: [],
   });
@@ -415,7 +415,7 @@ test('a published week cannot be finalized again when counts or operator catalog
   await lite.createSource({
     id: 'later',
     publisher: 'kontour',
-    channel: 'stable',
+    channels: ['stable'],
     registryIds: ['new.plugin'],
     releaseVersions: ['9.9.9'],
   });
@@ -447,7 +447,7 @@ test('bounded cursor pages cover more than ten thousand values without truncatio
   await lite.createSource({
     id: 'large',
     publisher: 'publisher:large',
-    channel: 'stable',
+    channels: ['stable'],
     registryIds: Array.from({ length: 1000 }, (_, i) => `plugin.${i}`),
     releaseVersions: Array.from({ length: 1000 }, (_, i) => `v${i}`),
   });
@@ -514,7 +514,8 @@ test('expired full and publisher credential snapshots return 503 after refresh f
 
 test('migrations 5 to 8 are transactional and idempotent without changing exact marginals or noise key', async () => {
   await db.exec(
-    'ALTER TABLE station_telemetry.lite_sources DROP COLUMN version_policy; DROP TABLE station_telemetry.lite_feedback; DROP TABLE station_telemetry.lite_published; DROP TABLE station_telemetry.lite_publications; DELETE FROM station_telemetry.migrations WHERE version IN (6,7,8)',
+    // A pre-6 database also predates migration 10's channel lists.
+    'ALTER TABLE station_telemetry.lite_sources ADD COLUMN channel text; UPDATE station_telemetry.lite_sources SET channel=channels->>0; ALTER TABLE station_telemetry.lite_sources ALTER COLUMN channel SET NOT NULL; ALTER TABLE station_telemetry.lite_sources DROP COLUMN channels; ALTER TABLE station_telemetry.lite_sources DROP COLUMN version_policy; DROP TABLE station_telemetry.lite_feedback; DROP TABLE station_telemetry.lite_published; DROP TABLE station_telemetry.lite_publications; DELETE FROM station_telemetry.migrations WHERE version IN (6,7,8,10)',
   );
   await db.query(
     "INSERT INTO station_telemetry.lite_marginals VALUES($1,'kontour','platform','linux',123,45,true)",
@@ -535,7 +536,7 @@ test('migrations 5 to 8 are transactional and idempotent without changing exact 
   expect(
     (
       await db.query(
-        'SELECT version FROM station_telemetry.migrations WHERE version IN (6,7,8)',
+        'SELECT version FROM station_telemetry.migrations WHERE version IN (6,7,8,10)',
       )
     ).rows,
   ).toEqual([]);
@@ -906,7 +907,7 @@ test('feedback HTTP admission, publisher/action/day dedupe, operator counts and 
   await lite.createSource({
     id: 'kontour-alias',
     publisher: 'kontour',
-    channel: 'stable',
+    channels: ['stable'],
     registryIds: [],
     releaseVersions: [],
   });
@@ -1037,7 +1038,7 @@ test('tunnel permits public reads and Lite ingest while operator and publisher r
   const source = {
     id: 'new',
     publisher: 'kontour',
-    channel: 'stable',
+    channels: ['stable'],
     registryIds: [],
     releaseVersions: [],
   };
@@ -1068,7 +1069,7 @@ test('version policies admit catalog or SemVer independently of the fixed public
   await lite.createSource({
     id: 'semver-empty',
     publisher: 'publisher:semver',
-    channel: 'stable',
+    channels: ['stable'],
     registryIds: [],
     releaseVersions: [],
     versionPolicy: 'semver',
@@ -1076,7 +1077,7 @@ test('version policies admit catalog or SemVer independently of the fixed public
   await lite.createSource({
     id: 'semver-kontour',
     publisher: 'kontour',
-    channel: 'stable',
+    channels: ['stable'],
     registryIds: ['public.plugin'],
     releaseVersions: ['1.2.3'],
     versionPolicy: 'semver',
@@ -1507,3 +1508,51 @@ test.each([false, true])(
     }
   },
 );
+
+test('schema 10 keeps single-channel sources as one-element lists, and a source admits each listed channel', async () => {
+  // Rebuild the schema-9 source shape: one `channel` column per source.
+  await db.exec(
+    `ALTER TABLE station_telemetry.lite_sources ADD COLUMN channel text;
+     UPDATE station_telemetry.lite_sources SET channel=channels->>0;
+     ALTER TABLE station_telemetry.lite_sources ALTER COLUMN channel SET NOT NULL;
+     ALTER TABLE station_telemetry.lite_sources DROP COLUMN channels;
+     DELETE FROM station_telemetry.migrations WHERE version=10`,
+  );
+  await db.transaction((tx) => migrateLite(sqlClient(tx)));
+  await db.transaction((tx) => migrateLite(sqlClient(tx)));
+  await db.transaction((tx) => assertLiteSchema(sqlClient(tx)));
+  expect(
+    (
+      await db.query(
+        'SELECT id,channels FROM station_telemetry.lite_sources ORDER BY id',
+      )
+    ).rows,
+  ).toEqual([
+    { id: 'kontour', channels: ['stable'] },
+    { id: 'third-party', channels: ['stable'] },
+  ]);
+  const post = (source: string, channel: string, address: string) =>
+    app.request(
+      `/v1/lite/${source}`,
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ ...dailyPing(), channel }),
+      },
+      socketBindings(address),
+    );
+  expect((await post('kontour', 'stable', '198.51.100.61')).status).toBe(202);
+  expect((await post('kontour', 'preview', '198.51.100.62')).status).toBe(400);
+  await lite.createSource({
+    id: 'station',
+    publisher: 'kontour',
+    channels: ['nightly', 'stable'],
+    registryIds: ['public.plugin'],
+    releaseVersions: ['1.2.3'],
+  });
+  expect((await post('station', 'nightly', '198.51.100.63')).status).toBe(202);
+  expect((await post('station', 'stable', '198.51.100.64')).status).toBe(202);
+  const refused = await post('station', 'preview', '198.51.100.65');
+  expect(refused.status).toBe(400);
+  expect(await refused.json()).toEqual({ error: 'invalid_daily_ping' });
+});

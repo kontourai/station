@@ -158,15 +158,18 @@ export const post = (
     body: typeof body === 'string' ? body : JSON.stringify(body),
   });
 
-/** The three official sources, as the deployment README provisions them. */
-export async function provision(env: Env, channel = 'nightly') {
+/** The Lite ingest path of the source `provision` creates. */
+export const LITE_PATH = '/v1/lite/station';
+
+/** The official source, as the Worker README provisions it. */
+export async function provision(env: Env) {
   const response = await post(
     env,
     '/v1/operator/lite/sources',
     {
-      id: `kontour-${channel}-v1`,
+      id: 'station',
       publisher: 'kontour',
-      channel,
+      channels: ['nightly', 'preview', 'stable'],
       registryIds: ['public.plugin'],
       releaseVersions: ['1.2.3'],
       versionPolicy: 'semver',

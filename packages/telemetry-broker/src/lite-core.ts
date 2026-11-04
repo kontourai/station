@@ -56,15 +56,27 @@ export function brokerErrorStatus(code: BrokerError['code']): number {
 const IPV4 =
   /^(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)(?:\.(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)){3}$/;
 
-/** 4, 6 or 0 (not a single bare address: lists, ports, brackets, zones). */
+/**
+ * 4, 6 or 0 for anything that is not one bare address (lists, ports,
+ * brackets). Like Node's `net.isIP`, an IPv6 address may carry a zone ID
+ * (`fe80::1%eth0`); callers that must refuse zones check for `%` themselves.
+ */
 export function ipFamily(address: string): 0 | 4 | 6 {
   if (IPV4.test(address)) return 4;
-  if (!address.includes(':') || !/^[0-9A-Fa-f:.]+$/.test(address)) return 0;
+  return withoutZone(address) === undefined ? 0 : 6;
+}
+
+/** The IPv6 address without its zone ID, or undefined when it is not one. */
+function withoutZone(address: string): string | undefined {
+  const at = address.indexOf('%');
+  const bare = at < 0 ? address : address.slice(0, at);
+  if (at >= 0 && !/^[0-9A-Za-z.:-]+$/.test(address.slice(at + 1))) return;
+  if (!bare.includes(':') || !/^[0-9A-Fa-f:.]+$/.test(bare)) return;
   try {
-    new URL(`http://[${address}]/`);
-    return 6;
+    new URL(`http://[${bare}]/`);
+    return bare;
   } catch {
-    return 0;
+    return;
   }
 }
 
@@ -74,11 +86,12 @@ export function ipFamily(address: string): 0 | 4 | 6 {
  * IPv4-mapped IPv6 addresses group with their IPv4 address.
  */
 export function networkKey(address: string, prefix: 48 | 64): string {
-  const family = ipFamily(address);
-  if (family !== 6) return family === 4 ? address : 'unavailable';
+  if (IPV4.test(address)) return address;
+  const bare = withoutZone(address);
+  if (bare === undefined) return 'unavailable';
   // The URL parser canonicalizes the address: lower case, an embedded dotted
   // IPv4 tail rewritten as two hex words, and at most one `::`.
-  const canonical = new URL(`http://[${address}]/`).hostname.slice(1, -1);
+  const canonical = new URL(`http://[${bare}]/`).hostname.slice(1, -1);
   const [left, right] = canonical.split('::');
   const start = left ? left.split(':') : [];
   const end = right ? right.split(':') : [];
@@ -152,7 +165,8 @@ export class LiteDailyBudget {
 interface LiteSourceConfig {
   id: string;
   publisher: TelemetryPublisherId;
-  channel: string;
+  /** The ping channels this source admits; the body names which one. */
+  channels: string[];
   registryIds: string[];
   releaseVersions: string[];
   versionPolicy: 'catalog' | 'semver';
@@ -183,6 +197,9 @@ function catalog(
   );
 }
 
+/** Every channel a daily ping can carry. */
+const LITE_CHANNELS: readonly string[] = [...TELEMETRY_CHANNELS, 'unknown'];
+
 /** At most this many distinct versions and registry IDs per publisher. */
 export const LITE_PUBLISHER_CATALOG_LIMIT = 1000;
 /** At most this many sources (and, separately, publisher keys). */
@@ -200,7 +217,7 @@ export function parseLiteSource(value: unknown): LiteSourceConfig {
         ![
           'id',
           'publisher',
-          'channel',
+          'channels',
           'registryIds',
           'releaseVersions',
           'versionPolicy',
@@ -209,8 +226,9 @@ export function parseLiteSource(value: unknown): LiteSourceConfig {
     typeof v.id !== 'string' ||
     !/^[a-z0-9][a-z0-9._-]{0,79}$/.test(v.id) ||
     !isPublisherId(v.publisher) ||
-    typeof v.channel !== 'string' ||
-    ![...TELEMETRY_CHANNELS, 'unknown'].some((c) => c === v.channel) ||
+    !catalog(v.channels, LITE_CHANNELS.length, 64) ||
+    v.channels.length === 0 ||
+    v.channels.some((c) => !LITE_CHANNELS.includes(c)) ||
     !catalog(v.registryIds, 1000, 128) ||
     !catalog(v.releaseVersions, 1000, 64) ||
     (v.versionPolicy !== undefined &&
@@ -221,7 +239,7 @@ export function parseLiteSource(value: unknown): LiteSourceConfig {
   return {
     id: v.id,
     publisher: v.publisher,
-    channel: v.channel,
+    channels: v.channels,
     registryIds: v.registryIds,
     releaseVersions: v.releaseVersions,
     versionPolicy: v.versionPolicy ?? 'catalog',
@@ -246,7 +264,8 @@ type LiteObservation =
 /**
  * Validates one Lite body against the URL source's configuration with the
  * shared contract parsers. Feedback must name the source's publisher; a daily
- * ping must carry the source's channel. Every refusal is the same
+ * ping's channel must be one the source lists. The publisher always comes
+ * from the source mapping, never the body. Every refusal is the same
  * content-free `invalid_daily_ping`, so no rejected value is echoed.
  */
 export function admitLiteObservation(
@@ -254,7 +273,7 @@ export function admitLiteObservation(
   source: Pick<
     LiteSourceConfig,
     | 'publisher'
-    | 'channel'
+    | 'channels'
     | 'registryIds'
     | 'releaseVersions'
     | 'versionPolicy'
@@ -281,7 +300,7 @@ export function admitLiteObservation(
   } catch {
     throw new BrokerError('invalid_daily_ping');
   }
-  if (parsed.channel !== source.channel)
+  if (!source.channels.includes(parsed.channel))
     throw new BrokerError('invalid_daily_ping');
   const ping = normalizeDailyPing(parsed);
   return {

@@ -128,7 +128,8 @@ const parseJson = (body: string): unknown => {
  */
 function clientAddress(request: Request): { address: string; valid: boolean } {
   const header = request.headers.get('cf-connecting-ip') ?? '';
-  return ipFamily(header)
+  // Cloudflare never sends a zone ID; one here is not a visitor address.
+  return ipFamily(header) && !header.includes('%')
     ? { address: header, valid: true }
     : { address: 'unavailable', valid: false };
 }

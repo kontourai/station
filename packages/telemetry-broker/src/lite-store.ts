@@ -123,6 +123,19 @@ INSERT INTO station_telemetry.lite_publication_fence VALUES(true,'active');
 const PUBLICATION_FENCE_DIGEST = createHash('sha256')
   .update(PUBLICATION_FENCE_SCHEMA)
   .digest('hex');
+// Owner decision (2026-11-04): a source names the product, and the ping's
+// own channel selects the ring, so one baked-in URL serves every ring.
+// Existing single-channel sources become one-element lists.
+const SOURCE_CHANNELS_SCHEMA = `
+ALTER TABLE station_telemetry.lite_sources ADD COLUMN channels jsonb;
+UPDATE station_telemetry.lite_sources SET channels=jsonb_build_array(channel);
+ALTER TABLE station_telemetry.lite_sources ALTER COLUMN channels SET NOT NULL;
+ALTER TABLE station_telemetry.lite_sources ADD CHECK (jsonb_typeof(channels)='array' AND jsonb_array_length(channels)>0);
+ALTER TABLE station_telemetry.lite_sources DROP COLUMN channel;
+`;
+const SOURCE_CHANNELS_DIGEST = createHash('sha256')
+  .update(SOURCE_CHANNELS_SCHEMA)
+  .digest('hex');
 const PUBLICATION_SUPPRESSED =
   'publication permanently suppressed; history unreconciled';
 
@@ -265,6 +278,17 @@ export async function migrateLite(client: LiteSqlClient): Promise<void> {
     );
   } else if (fence.rows[0].digest !== PUBLICATION_FENCE_DIGEST)
     throw new BrokerError('schema_incompatible');
+  const sourceChannels = await client.query(
+    'SELECT digest FROM station_telemetry.migrations WHERE version=10',
+  );
+  if (!sourceChannels.rows.length) {
+    await client.query(SOURCE_CHANNELS_SCHEMA);
+    await client.query(
+      'INSERT INTO station_telemetry.migrations VALUES(10,$1)',
+      [SOURCE_CHANNELS_DIGEST],
+    );
+  } else if (sourceChannels.rows[0].digest !== SOURCE_CHANNELS_DIGEST)
+    throw new BrokerError('schema_incompatible');
 }
 
 export async function assertLiteSchema(client: LiteSqlClient): Promise<void> {
@@ -293,7 +317,7 @@ export async function assertLiteSchema(client: LiteSqlClient): Promise<void> {
     'lite_publication_fence|singleton:boolean:true,state:text:true',
     'lite_publications|week:date:true,publisher:text:true',
     'lite_published|week:date:true,publisher:text:true,dimension:text:true,value:text:true,estimate:bigint:true',
-    'lite_sources|id:text:true,publisher:text:true,channel:text:true,registry_ids:jsonb:true,release_versions:jsonb:true,enabled:boolean:true,version_policy:text:true',
+    'lite_sources|id:text:true,publisher:text:true,registry_ids:jsonb:true,release_versions:jsonb:true,enabled:boolean:true,version_policy:text:true,channels:jsonb:true',
     'publisher_keys|publisher:text:true,credential_hash:bytea:true',
   ];
   if (
@@ -340,6 +364,7 @@ export async function assertLiteSchema(client: LiteSqlClient): Promise<void> {
         'lite_published|CHECK ((estimate >= 0))',
         'lite_published|FOREIGN KEY (week, publisher) REFERENCES station_telemetry.lite_publications(week, publisher)',
         'lite_published|PRIMARY KEY (week, publisher, dimension, value)',
+        "lite_sources|CHECK (((jsonb_typeof(channels) = 'array'::text) AND (jsonb_array_length(channels) > 0)))",
         "lite_sources|CHECK ((version_policy = ANY (ARRAY['catalog'::text, 'semver'::text])))",
         'lite_sources|PRIMARY KEY (id)',
         'publisher_keys|CHECK ((octet_length(credential_hash) = 32))',
@@ -404,6 +429,11 @@ export async function assertLiteSchema(client: LiteSqlClient): Promise<void> {
     'SELECT digest FROM station_telemetry.migrations WHERE version=9',
   );
   if (fenceMarker.rows[0]?.digest !== PUBLICATION_FENCE_DIGEST)
+    throw new BrokerError('schema_incompatible');
+  const channelsMarker = await client.query(
+    'SELECT digest FROM station_telemetry.migrations WHERE version=10',
+  );
+  if (channelsMarker.rows[0]?.digest !== SOURCE_CHANNELS_DIGEST)
     throw new BrokerError('schema_incompatible');
   await publicationSuppressed(client);
   const secret = await client.query(
@@ -503,11 +533,11 @@ export class LiteRepository {
       if (Number(bounds.rows[0].count) >= LITE_SOURCE_LIMIT)
         throw new BrokerError('storage_limit');
       const result = await client.query(
-        'INSERT INTO station_telemetry.lite_sources(id,publisher,channel,registry_ids,release_versions,version_policy) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT DO NOTHING',
+        'INSERT INTO station_telemetry.lite_sources(id,publisher,channels,registry_ids,release_versions,version_policy) VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT DO NOTHING',
         [
           v.id,
           v.publisher,
-          v.channel,
+          JSON.stringify(v.channels),
           JSON.stringify(v.registryIds),
           JSON.stringify(v.releaseVersions),
           v.versionPolicy,
@@ -589,19 +619,19 @@ export class LiteRepository {
       await this.admission(client);
       const source = await client.query<{
         publisher: TelemetryPublisherId;
-        channel: string;
+        channels: string[];
         registry_ids: string[];
         release_versions: string[];
         version_policy: 'catalog' | 'semver';
       }>(
-        'SELECT publisher,channel,registry_ids,release_versions,version_policy FROM station_telemetry.lite_sources WHERE id=$1 AND enabled FOR UPDATE',
+        'SELECT publisher,channels,registry_ids,release_versions,version_policy FROM station_telemetry.lite_sources WHERE id=$1 AND enabled FOR UPDATE',
         [sourceId],
       );
       const config = source.rows[0];
       if (!config) throw new BrokerError('source_unauthorized');
       const observation = admitLiteObservation(value, {
         publisher: config.publisher,
-        channel: config.channel,
+        channels: config.channels,
         registryIds: config.registry_ids,
         releaseVersions: config.release_versions,
         versionPolicy: config.version_policy,

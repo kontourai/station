@@ -3,12 +3,15 @@ import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 import {
   call,
   fakeReceiver,
+  LITE_PATH,
   OPERATOR_KEY,
   ping,
   post,
   provision,
   testEnv,
 } from './helpers.ts';
+
+const LITE = LITE_PATH;
 
 // The served page scripts, run in a DOM against what the Worker actually
 // answers for the same request.
@@ -74,12 +77,7 @@ test('insights renders the operator JSON as headline numbers and charts', async 
   const env = testEnv(receiver);
   await provision(env);
   for (const ip of ['192.0.2.1', '192.0.2.2', '192.0.2.3'])
-    await post(
-      env,
-      '/v1/lite/kontour-nightly-v1',
-      ping({ install_age_bucket: '0d' }),
-      { ip },
-    );
+    await post(env, LITE, ping({ install_age_bucket: '0d' }), { ip });
   const { document, requests } = await openPage(
     env,
     '/insights',
@@ -167,7 +165,7 @@ test('the public page charts the published weeks', async () => {
   const env = testEnv(receiver);
   vi.setSystemTime(new Date('2026-10-26T09:00:00Z'));
   await provision(env);
-  await post(env, '/v1/lite/kontour-nightly-v1', ping());
+  await post(env, LITE, ping());
   vi.setSystemTime(new Date('2026-11-02T00:10:00Z'));
   await receiver.object.alarm();
   const { document, requests } = await openPage(
@@ -178,14 +176,164 @@ test('the public page charts the published weeks', async () => {
   expect(requests[0]).toBe('/v1/public/aggregates');
   expect(requests.length).toBeGreaterThan(1);
   expect(document.querySelector('.tile.hero .label')?.textContent).toBe(
-    'Network-days, week of Oct 26',
+    'Weekly active networks, week of Oct 26',
   );
   expect(titles(document)).toEqual(
     expect.arrayContaining([
-      'Weekly network-days',
+      'Weekly active networks',
       'Harnesses used',
       'Platform',
       'Versions',
     ]),
   );
+});
+
+/** Stores one published week with chosen estimates, as the alarm would. */
+function publish(
+  receiver: ReturnType<typeof fakeReceiver>,
+  cells: [string, string, number][],
+) {
+  const insert = receiver.storage.db.prepare(
+    'INSERT INTO lite_published VALUES (?, ?, ?, ?, ?)',
+  );
+  receiver.storage.db
+    .prepare('INSERT INTO lite_publications VALUES (?, ?)')
+    .run('2026-10-26', 'kontour');
+  for (const [dimension, value, estimate] of cells)
+    insert.run('2026-10-26', 'kontour', dimension, value, estimate);
+}
+
+test('the public page never sums clipped cells and names a top value only above the noise', async () => {
+  const receiver = fakeReceiver();
+  const env = testEnv(receiver);
+  // Noise-level channel cells: each is clipped at zero, so their sum (1,450)
+  // overstates activity. Harness leaders are within noise of each other;
+  // the platform leader clears both the noise bound and the runner-up.
+  publish(receiver, [
+    ['channel', 'nightly', 50],
+    ['channel', 'preview', 300],
+    ['channel', 'stable', 280],
+    ['channel', 'dev', 290],
+    ['channel', 'source-checkout', 270],
+    ['channel', 'unknown', 260],
+    ['first_active_this_week', 'true', 120],
+    ['first_active_this_week', 'false', 410],
+    ['engines_used_today', 'claude', 2900],
+    ['engines_used_today', 'codex', 2850],
+    ['platform', 'darwin', 2400],
+    ['platform', 'linux', 300],
+  ]);
+  const { document } = await openPage(env, '/public/', '/public/dashboard.js');
+  const text = document.body.textContent ?? '';
+  expect(text).not.toContain('1,450');
+  const hero = document.querySelector('.tile.hero');
+  expect(hero?.querySelector('.label')?.textContent).toBe(
+    'Weekly active networks, week of Oct 26',
+  );
+  expect(hero?.querySelector('.value')?.textContent).toBe('Too few to show');
+  const tiles = [...document.querySelectorAll('.tile')].map(
+    (tile) => tile.querySelector('.label')?.textContent,
+  );
+  expect(tiles).not.toContain('Most used harness');
+  const platform = [...document.querySelectorAll('.tile')].find(
+    (tile) => tile.querySelector('.label')?.textContent === 'Top platform',
+  );
+  expect(platform?.querySelector('.value')?.textContent).toBe('darwin');
+  expect(text).toContain(
+    'Estimates with privacy noise added, not counts of people. Small values are unreliable.',
+  );
+});
+
+test('a weekly-active estimate clear of the noise is the headline', async () => {
+  const receiver = fakeReceiver();
+  const env = testEnv(receiver);
+  publish(receiver, [
+    ['first_active_this_week', 'true', 4210],
+    ['channel', 'stable', 3900],
+  ]);
+  const { document } = await openPage(env, '/public/', '/public/dashboard.js');
+  expect(document.querySelector('.tile.hero .value')?.textContent).toBe(
+    '≈ 4,210',
+  );
+});
+
+test('insights tiles and period charts count the right flags on seeded pings', async () => {
+  const receiver = fakeReceiver();
+  const env = testEnv(receiver);
+  vi.setSystemTime(new Date('2026-10-31T10:00:00Z'));
+  await provision(env);
+  // Today is Wednesday 2026-11-04: the ISO week began Monday 11-02, the
+  // month on Sunday 11-01.
+  const seed: [string, Record<string, unknown>][] = [
+    [
+      '2026-10-31T10:00:00Z',
+      {
+        first_active_this_week: true,
+        first_active_this_month: true,
+        install_age_bucket: '0d',
+      },
+    ],
+    [
+      '2026-11-01T10:00:00Z',
+      {
+        first_active_this_week: true,
+        first_active_this_month: true,
+        install_age_bucket: '0d',
+      },
+    ],
+    [
+      '2026-11-02T10:00:00Z',
+      {
+        first_active_this_week: true,
+        first_active_this_month: false,
+        install_age_bucket: '1-7d',
+      },
+    ],
+    [
+      '2026-11-02T11:00:00Z',
+      {
+        first_active_this_week: true,
+        first_active_this_month: false,
+        install_age_bucket: '8-30d',
+      },
+    ],
+    [
+      '2026-11-04T09:00:00Z',
+      {
+        first_active_this_week: false,
+        first_active_this_month: false,
+        install_age_bucket: '0d',
+      },
+    ],
+  ];
+  let host = 10;
+  for (const [time, fields] of seed) {
+    vi.setSystemTime(new Date(time));
+    expect(
+      (await post(env, LITE, ping(fields), { ip: `192.0.2.${host++}` })).status,
+    ).toBe(202);
+  }
+  vi.setSystemTime(new Date('2026-11-04T12:00:00Z'));
+  const { document } = await openPage(
+    env,
+    '/insights',
+    '/insights/insights.js',
+    OPERATOR_KEY,
+  );
+  const tile = (label: string) =>
+    [...document.querySelectorAll('.tile')]
+      .find((node) => node.querySelector('.label')?.textContent === label)
+      ?.querySelector('.value')?.textContent;
+  expect(tile('Active installs today')).toBe('1');
+  expect(tile('Yesterday')).toBe('0');
+  expect(tile('This week')).toBe('2');
+  expect(tile('This month')).toBe('1');
+  expect(tile('New installs')).toBe('3');
+  expect(tile('Installs counted')).toBe('3');
+  const endLabel = (title: string) =>
+    [...document.querySelectorAll('.card')]
+      .find((card) => card.querySelector('h2')?.textContent === title)
+      ?.querySelector('svg text.end')?.textContent;
+  expect(endLabel('Weekly actives')).toBe('2');
+  expect(endLabel('Monthly actives')).toBe('1');
 });

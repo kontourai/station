@@ -72,7 +72,7 @@ const SCHEMA_VERSION = 1;
 const SCHEMA = [
   `CREATE TABLE IF NOT EXISTS lite_schema (singleton INTEGER PRIMARY KEY CHECK (singleton = 1), version INTEGER NOT NULL)`,
   `CREATE TABLE IF NOT EXISTS lite_sources (
-    id TEXT PRIMARY KEY, publisher TEXT NOT NULL, channel TEXT NOT NULL,
+    id TEXT PRIMARY KEY, publisher TEXT NOT NULL, channels TEXT NOT NULL,
     registry_ids TEXT NOT NULL, release_versions TEXT NOT NULL,
     version_policy TEXT NOT NULL CHECK (version_policy IN ('catalog','semver')),
     enabled INTEGER NOT NULL DEFAULT 1)`,
@@ -101,6 +101,10 @@ const SCHEMA = [
   `CREATE TABLE IF NOT EXISTS lite_published (
     week TEXT NOT NULL, publisher TEXT NOT NULL, dimension TEXT NOT NULL, value TEXT NOT NULL,
     estimate INTEGER NOT NULL CHECK (estimate >= 0), PRIMARY KEY (week, publisher, dimension, value))`,
+  // `closed_through`: the latest UTC day that can no longer receive pings.
+  `CREATE TABLE IF NOT EXISTS lite_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)`,
+  // One row per finalized publisher/day: finalization happens once.
+  `CREATE TABLE IF NOT EXISTS lite_finalized (day TEXT NOT NULL, publisher TEXT NOT NULL, PRIMARY KEY (day, publisher))`,
   `CREATE TABLE IF NOT EXISTS lite_finalization_failures (
     period TEXT NOT NULL, publisher TEXT NOT NULL, stage TEXT NOT NULL, code TEXT NOT NULL)`,
 ];
@@ -149,18 +153,42 @@ export class LiteReceiverStore {
     );
   }
 
+  /** The latest UTC day that can no longer receive pings, or ''. */
+  private closedThrough(): string {
+    const row = one(
+      this.exec(`SELECT value FROM lite_meta WHERE key = 'closed_through'`),
+    );
+    return row ? text(row.value) : '';
+  }
+
+  private closeThrough(day: string): void {
+    this.exec(
+      `INSERT INTO lite_meta VALUES ('closed_through', ?)
+       ON CONFLICT (key) DO UPDATE SET value = max(value, excluded.value)`,
+      day,
+    );
+  }
+
   /**
    * Today's salt, created on the day's first arrival. Any other day's salt
    * is deleted in the same step, so a closed day's salt is gone by the
    * next day's first request even if the maintenance alarm has not run.
+   *
+   * A day is closed once a later day has begun or maintenance has passed
+   * it. An arrival for a closed day (the clock stepped back) is refused with
+   * `storage_busy`, as the Node receiver refuses a day mismatch: accepting it
+   * would mint a second salt for that day, giving one network two
+   * contributor keys, after its marginals were already final.
    */
   private saltFor(day: string): Buffer {
+    if (day <= this.closedThrough()) throw new BrokerError('storage_busy');
     const existing = one(
       this.exec(`SELECT salt FROM lite_salts WHERE day = ?`, day),
     );
     if (existing) return Buffer.from(text(existing.salt), 'hex');
     const salt = randomBytes(32);
     this.storage.transactionSync(() => {
+      this.closeThrough(addUtcDays(day, -1));
       this.exec(`DELETE FROM lite_salts WHERE day <> ?`, day);
       this.exec(
         `INSERT INTO lite_salts VALUES (?, ?)`,
@@ -210,7 +238,7 @@ export class LiteReceiverStore {
       this.assertStorageRoom();
       const source = one(
         this.exec(
-          `SELECT publisher, channel, registry_ids, release_versions, version_policy
+          `SELECT publisher, channels, registry_ids, release_versions, version_policy
            FROM lite_sources WHERE id = ? AND enabled = 1`,
           sourceId,
         ),
@@ -218,7 +246,7 @@ export class LiteReceiverStore {
       if (!source) throw new BrokerError('source_unauthorized');
       const observation = admitLiteObservation(body, {
         publisher: text(source.publisher) as never,
-        channel: text(source.channel),
+        channels: JSON.parse(text(source.channels)),
         registryIds: JSON.parse(text(source.registry_ids)),
         releaseVersions: JSON.parse(text(source.release_versions)),
         versionPolicy:
@@ -295,7 +323,7 @@ export class LiteReceiverStore {
          ON CONFLICT DO NOTHING RETURNING 1`,
         source.id,
         source.publisher,
-        source.channel,
+        JSON.stringify(source.channels),
         JSON.stringify(source.registryIds),
         JSON.stringify(source.releaseVersions),
         source.versionPolicy,
@@ -323,7 +351,10 @@ export class LiteReceiverStore {
   maintain(now: number): void {
     const today = utcDay(now);
     const failures: LiteFinalizationFailure[] = [];
-    this.exec(`DELETE FROM lite_salts WHERE day < ?`, today);
+    this.storage.transactionSync(() => {
+      this.closeThrough(addUtcDays(today, -1));
+      this.exec(`DELETE FROM lite_salts WHERE day < ?`, today);
+    });
     const pending = this.exec(
       `SELECT DISTINCT p.day AS day, s.publisher AS publisher
        FROM lite_pings p JOIN lite_sources s ON s.id = p.source_id
@@ -334,6 +365,25 @@ export class LiteReceiverStore {
       const day = text(job.day);
       const publisher = text(job.publisher);
       try {
+        const finalized = one(
+          this.exec(
+            `SELECT 1 FROM lite_finalized WHERE day = ? AND publisher = ?`,
+            day,
+            publisher,
+          ),
+        );
+        if (finalized) {
+          // Marginals are final once written. Late keys are erased, never
+          // counted, and the operator sees that it happened.
+          this.storage.transactionSync(() => this.eraseKeys(day, publisher));
+          failures.push({
+            period: day,
+            publisher,
+            stage: 'daily',
+            code: 'day_already_finalized',
+          });
+          continue;
+        }
         this.storage.transactionSync(() => this.finalizeDay(day, publisher));
       } catch (error) {
         failures.push({
@@ -367,8 +417,9 @@ export class LiteReceiverStore {
 
   /** Exact marginals for one closed publisher/day, then erasure of its keys. */
   private finalizeDay(day: string, publisher: string): void {
+    this.exec(`INSERT INTO lite_finalized VALUES (?, ?)`, day, publisher);
     this.exec(
-      `INSERT OR REPLACE INTO lite_marginals
+      `INSERT INTO lite_marginals
        SELECT p.day, s.publisher, d.key, v.value, count(*), count(DISTINCT p.client_hash)
        FROM lite_pings p JOIN lite_sources s ON s.id = p.source_id,
          json_each(p.contributions) d, json_each(d.value) v
@@ -377,6 +428,10 @@ export class LiteReceiverStore {
       day,
       publisher,
     );
+    this.eraseKeys(day, publisher);
+  }
+
+  private eraseKeys(day: string, publisher: string): void {
     this.exec(
       `UPDATE lite_pings SET client_hash = NULL, contributions = NULL
        WHERE day = ? AND client_hash IS NOT NULL

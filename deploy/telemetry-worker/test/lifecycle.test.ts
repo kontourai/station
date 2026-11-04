@@ -4,6 +4,7 @@ import { nextMaintenance } from '../src/receiver.ts';
 import {
   call,
   fakeReceiver,
+  LITE_PATH,
   ping,
   post,
   provision,
@@ -13,7 +14,7 @@ import {
 beforeEach(() => vi.useFakeTimers({ toFake: ['Date'] }));
 afterEach(() => vi.useRealTimers());
 
-const LITE = '/v1/lite/kontour-nightly-v1';
+const LITE = LITE_PATH;
 const at = (iso: string) => vi.setSystemTime(new Date(iso));
 const operator = async (env: ReturnType<typeof testEnv>, path: string) => {
   const response = await call(env, path, { operator: true });
@@ -94,6 +95,75 @@ test('closing a day erases its salt and every contributor key', async () => {
     ),
   ).toEqual([{ n: 1 }]);
   expect(receiver.storage.alarmAt()).toBe(nextMaintenance(Date.now()));
+});
+
+test('a clock that steps back cannot reopen or refinalize a closed day', async () => {
+  at('2026-11-04T10:00:00Z');
+  const receiver = fakeReceiver();
+  const env = testEnv(receiver);
+  await provision(env);
+  for (const ip of ['192.0.2.1', '192.0.2.2', '192.0.2.3'])
+    expect((await post(env, LITE, ping(), { ip })).status).toBe(202);
+  at('2026-11-05T00:30:00Z');
+  await receiver.object.alarm();
+  const marginals = () =>
+    receiver.rows(
+      "SELECT dimension, value, pings, clients FROM lite_marginals WHERE day = '2026-11-04' ORDER BY dimension, value",
+    );
+  const finalized = marginals();
+  expect(finalized.find((row) => row.dimension === 'platform')).toEqual({
+    dimension: 'platform',
+    value: 'linux',
+    pings: 3,
+    clients: 3,
+  });
+
+  // The clock steps back into the closed day: refused, like the Node
+  // receiver's day mismatch, and no salt is recreated for it.
+  at('2026-11-04T23:00:00Z');
+  const refused = await post(env, LITE, ping(), { ip: '192.0.2.1' });
+  expect(refused.status).toBe(503);
+  expect(await refused.json()).toEqual({ error: 'storage_busy' });
+  expect(
+    receiver.rows(
+      "SELECT count(*) AS n FROM lite_salts WHERE day = '2026-11-04'",
+    ),
+  ).toEqual([{ n: 0 }]);
+  at('2026-11-05T02:00:00Z');
+  await receiver.object.alarm();
+  expect(marginals()).toEqual(finalized);
+
+  // Finalization is one-time: a pending row for a finalized day (from any
+  // path) has its key erased but never replaces the day's marginals.
+  const source = receiver.rows(
+    'SELECT source_id, ping FROM lite_pings LIMIT 1',
+  )[0];
+  receiver.storage.db
+    .prepare('INSERT INTO lite_pings VALUES (?, ?, ?, ?, ?, ?)')
+    .run(
+      String(source.source_id),
+      crypto.randomUUID(),
+      '2026-11-04',
+      String(source.ping),
+      'f'.repeat(64),
+      '{"platform":["darwin"]}',
+    );
+  await receiver.object.alarm();
+  expect(marginals()).toEqual(finalized);
+  expect(
+    receiver.rows(
+      'SELECT count(*) AS n FROM lite_pings WHERE client_hash IS NOT NULL',
+    ),
+  ).toEqual([{ n: 0 }]);
+  const daily = await operator(env, '/v1/operator/lite/daily');
+  expect(daily.finalizationDiagnostics.failures).toEqual([
+    {
+      period: '2026-11-04',
+      publisher: 'kontour',
+      stage: 'daily',
+      code: 'day_already_finalized',
+    },
+  ]);
 });
 
 test("the alarm erases a closed day's salt even when no request follows", async () => {
@@ -196,9 +266,30 @@ test('a closed week is published once over the fixed domain, and cursors are aut
     'SELECT * FROM lite_published ORDER BY dimension, value',
   );
 
-  // A second pass never republishes, even after more traffic.
+  // A second pass never republishes, even when every input the published
+  // week depends on changes: its exact counts and its publisher's catalog.
+  receiver.storage.db
+    .prepare(
+      "UPDATE lite_marginals SET clients = clients + 1000, pings = pings + 1000 WHERE day >= '2026-10-26' AND day < '2026-11-02'",
+    )
+    .run();
+  expect(
+    (
+      await post(
+        env,
+        '/v1/operator/lite/sources',
+        {
+          id: 'kontour-extra-v1',
+          publisher: 'kontour',
+          channels: ['stable'],
+          registryIds: ['extra.plugin'],
+          releaseVersions: ['9.9.9'],
+        },
+        { operator: true },
+      )
+    ).status,
+  ).toBe(201);
   at('2026-11-02T05:00:00Z');
-  await post(env, LITE, ping());
   await receiver.object.alarm();
   expect(
     receiver.rows('SELECT * FROM lite_published ORDER BY dimension, value'),

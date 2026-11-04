@@ -3,6 +3,7 @@ import {
   call,
   countingLimiter,
   fakeReceiver,
+  LITE_PATH,
   ping,
   post,
   provision,
@@ -18,7 +19,7 @@ beforeEach(() => {
 });
 afterEach(() => vi.useRealTimers());
 
-const LITE = '/v1/lite/kontour-nightly-v1';
+const LITE = LITE_PATH;
 
 test('a daily ping is accepted once, replays answer the same, and a changed payload conflicts', async () => {
   const receiver = fakeReceiver();
@@ -61,9 +62,10 @@ test('refusals: channel mismatch, invalid fields, unknown and revoked sources', 
   const env = testEnv(receiver);
   await provision(env);
 
-  const stable = await post(env, LITE, ping({ channel: 'stable' }));
-  expect(stable.status).toBe(400);
-  expect(await stable.json()).toEqual({ error: 'invalid_daily_ping' });
+  // A channel the source does not list.
+  const unlisted = await post(env, LITE, ping({ channel: 'dev' }));
+  expect(unlisted.status).toBe(400);
+  expect(await unlisted.json()).toEqual({ error: 'invalid_daily_ping' });
   const extra = await post(env, LITE, { ...ping(), secret: 'x' });
   expect(await extra.json()).toEqual({ error: 'invalid_daily_ping' });
   expect((await post(env, LITE, 'not json')).status).toBe(400);
@@ -74,7 +76,7 @@ test('refusals: channel mismatch, invalid fields, unknown and revoked sources', 
 
   const revoke = await call(
     env,
-    '/v1/operator/lite/sources/kontour-nightly-v1',
+    `/v1/operator/lite/sources/${LITE.split('/').pop()}`,
     {
       method: 'DELETE',
       operator: true,
@@ -224,4 +226,79 @@ test('only the documented routes answer', async () => {
   expect(page.headers.get('content-security-policy')).toContain(
     "script-src 'self'",
   );
+});
+
+test('one source admits every channel it lists and refuses the rest', async () => {
+  const receiver = fakeReceiver();
+  const env = testEnv(receiver);
+  const source = {
+    id: 'station',
+    publisher: 'kontour',
+    channels: ['nightly', 'preview', 'stable'],
+    registryIds: ['public.plugin'],
+    releaseVersions: [],
+    versionPolicy: 'semver',
+  };
+  const created = await post(env, '/v1/operator/lite/sources', source, {
+    operator: true,
+  });
+  expect(created.status).toBe(201);
+  for (const channel of ['nightly', 'preview', 'stable'])
+    expect(
+      (await post(env, '/v1/lite/station', ping({ channel }))).status,
+    ).toBe(202);
+  const dev = await post(env, '/v1/lite/station', ping({ channel: 'dev' }));
+  expect(dev.status).toBe(400);
+  expect(await dev.json()).toEqual({ error: 'invalid_daily_ping' });
+  // The publisher still comes only from the source mapping.
+  const feedback = await post(env, '/v1/lite/station', {
+    publisher: 'operator',
+    action: 'tier-lowered',
+    reason: 'privacy',
+  });
+  expect(feedback.status).toBe(400);
+  for (const channels of [
+    [],
+    ['stable', 'stable'],
+    ['stable', 'beta'],
+    'stable',
+  ])
+    expect(
+      (
+        await post(
+          env,
+          '/v1/operator/lite/sources',
+          { ...source, id: 'other', channels },
+          { operator: true },
+        )
+      ).status,
+    ).toBe(400);
+  // The single-channel field is replaced, not an alias.
+  const { channels: _channels, ...legacy } = source;
+  expect(
+    (
+      await post(
+        env,
+        '/v1/operator/lite/sources',
+        { ...legacy, id: 'legacy', channel: 'stable' },
+        { operator: true },
+      )
+    ).status,
+  ).toBe(400);
+  expect(receiver.rows('SELECT count(*) AS n FROM lite_pings')).toEqual([
+    { n: 3 },
+  ]);
+});
+
+test('an IPv6 header with a zone ID is not a client address', async () => {
+  const receiver = fakeReceiver();
+  const env = testEnv(receiver);
+  await provision(env);
+  expect((await post(env, LITE, ping(), { ip: 'fe80::1%eth0' })).status).toBe(
+    202,
+  );
+  const diagnostics = await call(env, '/v1/operator/diagnostics', {
+    operator: true,
+  });
+  expect(await diagnostics.json()).toEqual({ invalidClientIpHeaders: 1 });
 });

@@ -39,15 +39,14 @@ const address = () =>
   `10.${Math.floor(random() * 256)}.${Math.floor(random() * 256)}.${Math.floor(random() * 256)}`;
 
 const channels = ['nightly', 'preview', 'stable'] as const;
-for (const channel of channels)
-  store.createSource({
-    id: `kontour-${channel}-v1`,
-    publisher: 'kontour',
-    channel,
-    registryIds: [],
-    releaseVersions: [],
-    versionPolicy: 'semver',
-  });
+store.createSource({
+  id: 'station',
+  publisher: 'kontour',
+  channels: [...channels],
+  registryIds: [],
+  releaseVersions: [],
+  versionPolicy: 'semver',
+});
 
 const DAY = 86_400_000;
 const now = Date.now();
@@ -105,7 +104,7 @@ for (let day = start; day <= today; day += DAY) {
       ['android', 1],
     ]);
     store.ingest(
-      `kontour-${channel}-v1`,
+      'station',
       {
         ...dailyPing(),
         event_id: randomUUID(),
@@ -161,7 +160,7 @@ for (let day = start; day <= today; day += DAY) {
   }
   if (random() < 0.15)
     store.ingest(
-      'kontour-stable-v1',
+      'station',
       {
         publisher: 'kontour',
         action: 'tier-lowered',
