@@ -53,7 +53,10 @@ export function ToolAccountPanel({
           ? 'Your account connected'
           : 'Your account is required'}
       </span>
-      <Button onClick={() => void connect().catch(() => {})}>
+      <Button
+        pending={change.isPending}
+        onClick={() => void connect().catch(() => {})}
+      >
         Connect your account
       </Button>
       {url && (
@@ -82,10 +85,10 @@ export function ToolAccountPanel({
                 .then(() => {
                   setUrl(undefined);
                   setNotice('Your account is connected.');
+                  setCallback('');
                 })
                 .catch(() => setNotice('Could not finish sign-in.'))
                 .finally(() => {
-                  setCallback('');
                   change.reset();
                 })
                 .catch(() => {})

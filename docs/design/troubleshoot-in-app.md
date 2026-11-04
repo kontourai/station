@@ -1,15 +1,17 @@
 # Design: troubleshoot with an agent
 
-> **Reading status: current in-app troubleshooting contract (#4470, Phase 1).**
+> **Reading status: current in-app troubleshooting contract (#4470, Phases 1
+> and 3a).**
 > The [prepare route](../../src-server/routes/system/diagnostics.ts),
 > [troubleshoot service](../../src-server/services/infra/troubleshoot-service.ts),
 > [shared context rules](../../packages/shared/src/triage-context.ts),
 > [playbook](../../packages/shared/src/troubleshoot-playbook.md),
 > [station-control tools](../../src-server/tools/station-control-troubleshoot-tools.ts)
 > and [start flow](../../src-ui/src/components/troubleshoot/useStartTroubleshoot.ts)
-> own this path. The CLI half is [bounded guided triage](cli-triage.md).
-> Phase 2 (entry points where errors appear) and Phase 3 (an interactive CLI)
-> are planned in #4470 and not built.
+> own this path. The CLI half is [bounded guided triage](cli-triage.md), whose
+> interactive terminal mode follows the same playbook. Phase 2 (entry points
+> where errors appear) and the Phase 3 maintainer skill are planned in #4470
+> and not built.
 
 **Troubleshoot with an agent** opens a conversation with the Station
 Assistant (`station`) about a problem with Station itself. The assistant asks
@@ -99,13 +101,14 @@ The request and response types are in
 run directory, owner-only artifact writes, doctor/build/log summaries,
 per-field and whole-payload bounds, and the schema validators for both the
 CLI context and the in-app context. `station triage` re-exports its constants
-and validator from there, so its behavior did not change.
+and validator from there. The CLI context is schema v2: it adds `localLogs`,
+the local runtime's log directory with the home directory shown as `~`.
 
 Persisted context passes through `redactDeep`. Text that may leave the machine
 in an issue passes through `redactTroubleshootReportText`, which removes known
 credential shapes, 43-character Station credentials, non-public URLs (only
-`https://github.com/` and `https://kontourai.github.io/` are kept) and home
-directories (shown as `~`). Redaction is pattern-based; the person reviews the
+links into the `kontourai/station` repository and Station's docs site are
+kept) and home directories (shown as `~`). Redaction is pattern-based; the person reviews the
 text before anything is filed.
 
 ## Playbook and tools
@@ -126,6 +129,20 @@ Both station-control tools are pure (`routes: []`, read-only, auto-approved):
   returns the prefilled issue-form link. The link is at most 7,900
   characters. A field that does not fit is returned whole in `overflow` for
   the person to paste. An over-limit title or field is refused.
+  `station triage draft-report` calls the same shared drafter
+  (`draftTroubleshootReport`), so a terminal agent gets the same redacted text
+  and link.
+
+The playbook opens with a **terminal section** for an agent that
+`station triage` starts in a terminal. There it takes precedence over the
+steps that name in-app tools: Station and its tools may be down, so the agent
+works from the run directory's files, the `localLogs` directory in
+`context.json` (where `~` is the person's home directory) and Station read
+commands such as `station doctor`. It never kills or restarts a process without
+an explicit yes. To file, it uses `station triage draft-report`, shows the
+complete redacted text, gets a yes, and posts with `gh` only when `gh` is
+authenticated and the account has triage permission; the person running the
+command is the account holder, so the in-app owner check does not apply.
 
 The playbook's rules are **instructions to the agent, not enforcement**:
 treating logs and issue text as untrusted data, never restarting the Station it
@@ -159,6 +176,8 @@ grant needs a new grant mechanism; it is not part of Phase 1.
   `packages/shared/src/__tests__/troubleshoot-playbook.test.ts`.
 - Tool link, overflow and Station Assistant delivery:
   `src-server/tools/__tests__/station-control-troubleshoot-tools.test.ts`.
+- Terminal mode selection, launch arguments, the run's playbook bytes and
+  `draft-report`: `packages/cli/src/__tests__/triage.test.ts`.
 - Start flow, agent selection and fallback:
   `src-ui/src/components/troubleshoot/__tests__/TroubleshootHost.test.tsx`.
 

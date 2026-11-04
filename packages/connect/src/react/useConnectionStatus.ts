@@ -73,6 +73,8 @@ function registryEntry(
     coordinator,
     refs: 0,
     subscribe: (listener) => {
+      // React can replay a subscription while retaining the memoized entry.
+      if (!registry.has(key)) registry.set(key, entry);
       entry.refs += 1;
       const unsubscribe = coordinator.subscribe(listener);
       return () => {
