@@ -4783,8 +4783,13 @@ poll state, lists completed workflow runs through the external monitor's REST
 transport and secret-binding credential path, and records each run through the
 [normalizer](../../src-server/services/automation/github-workflow-run.ts) and
 [intake](../../src-server/services/automation/automation-intake.ts) as matched,
-no-match, refused or duplicate, opening and closing episodes. Observation alone starts nothing. Separately enabled native Task actions and
-isolated repairs consume retained intents after source/rule/grant checks; the
+no-match, refused or duplicate, opening and closing episodes. Observation alone starts nothing. Each rule has a mode: `off`, `observe` or `live`.
+Only a `live` rule opens an episode or retains an intent. For every matched rule,
+intake also records a per-rule decision with a bounded action snapshot. An
+`observe` rule's `would-start` or `suppressed` decision is evaluated without
+claims or attempts
+([observe mode](../design/automations.md#per-rule-observe-mode)). Separately enabled native Task actions and
+isolated repairs consume retained intents after source/rule/grant and `live`-mode checks; the
 scheduler invokes both consumers and awaits their shutdown before closing the
 shared ledger.
 
