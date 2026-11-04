@@ -2273,9 +2273,16 @@ unrecognised value, including every event persisted before the field, as
 `unknown`. Steers and engine-opened turns carry none. The value is the
 admitting Station's claim: a `turn.started` mirrored from another Station
 carries that Station's, so restart recovery must act only on this Station's
-own Sessions. Nothing acts on the field yet; restart recovery will continue
-only `task-dispatch` and `delegation` turns, and Automations keep their own
-recovery. Evidence: `turn-dispatch-origin.test.ts` (real service and event
+own Sessions. Its one consumer is [`RestartContinuation`](../../src-server/services/orchestration/restart-continuation.ts)
+(preview `continue-unattended-after-restart`): after boot it continues each
+`task-dispatch` or `delegation` turn interrupted-turn recovery settled
+(`whenInterruptedTurnsRecovered`), once, through the conversation inbox under
+the chat's Continue key, oldest Task first, skipping restart continuations,
+moved-on Sessions and done/canceled/blocked Tasks. Automations keep their own
+recovery. `isStationRestartContinuationTurn` marks that turn **Continued after
+restart** in the transcript. Evidence for the continuation:
+`restart-continuation.test.ts` (real service, inbox and production start port
+across two restarts) and `MessageBubble.stationRestartContinuation.test.tsx`. Evidence: `turn-dispatch-origin.test.ts` (real service and event
 store, early engine start), `client-origin-propagation.test.ts`,
 `conversation-start-ports.test.ts` (the production start ports over a real
 room binding), `scheduled-conversation-run-dispatch.test.ts` (a scheduled

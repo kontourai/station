@@ -570,7 +570,12 @@ sending holds it in the queue under the same key; an engine that refuses it as
 busy after Station began sending spends that key, and Continue for that
 interruption then only reports the refusal (type a message instead). Only a person's tap
 starts it; the outbox may replay an unanswered tap under the same key, as it
-does any send. A row without answer text has no Basis chip. The pill's state changes animate its width with
+does any send. Behind the separate `continue-unattended-after-restart`
+preview, Station itself may send that note for Task-dispatched or delegated
+work after a restart (#4512), under the same key, so a tap after it joins the
+same turn. Its turn, sent with Station's internal origin, renders as Station's
+row labelled **Continued after restart** (`stationRestartContinuation`), and
+like any newer row it retires the Continue action. A row without answer text has no Basis chip. The pill's state changes animate its width with
 the shared motion token, while the clock reserves a stable text column. A running
 tool call's label carries a highlight moving through its text; settled calls
 and approval requests stay still. The streaming row's "Running <tool>" line
