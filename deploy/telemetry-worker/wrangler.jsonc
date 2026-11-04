@@ -1,0 +1,69 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "station-telemetry",
+  "main": "src/worker.ts",
+  "compatibility_date": "2026-09-01",
+  // The shared Lite rules (packages/telemetry-broker/src/lite-core.ts) and the
+  // shared ping parser use synchronous node:crypto (SHA-256 and HMAC).
+  "compatibility_flags": ["nodejs_compat"],
+  // Served only on the Kontour domains; the workers.dev address stays off.
+  // Released senders post to the .com hostname, so both must keep working.
+  // The .io hostname is a custom domain (deploying creates its DNS record).
+  // The .com hostname is a zone route: its proxied DNS record already exists
+  // and is managed outside this repository, and a custom domain cannot be
+  // created over an existing record. Both zones must be on the deploying account.
+  "workers_dev": false,
+  "preview_urls": false,
+  "routes": [
+    { "pattern": "telemetry.kontourai.io", "custom_domain": true },
+    { "pattern": "telemetry.kontourai.com/*", "zone_name": "kontourai.com" }
+  ],
+  "vars": {
+    // Retained Lite rows (pings plus feedback), database bytes and UTC days
+    // kept including today. Ingestion refuses with 507 at either ceiling.
+    "LITE_MAX_ROWS": "1000000",
+    "LITE_MAX_BYTES": "1073741824",
+    "LITE_RETENTION_DAYS": "90"
+  },
+  // Secrets (set with `wrangler secret put`, never in this file):
+  //   OPERATOR_KEY  `sto_` + 43 base64url characters. Without it every
+  //                 /v1/operator route answers 503 and ingestion still works.
+  //
+  // Per-location and eventually consistent: cost ceilings, not accounting.
+  // Checked narrowest first, so a refused client never spends the shared
+  // budget. Bindings only offer 10 s or 60 s periods. The receiver also keeps
+  // its own 60-attempts-per-UTC-day budget per network (in the object).
+  "ratelimits": [
+    {
+      // POST /v1/lite/*, per IPv4 address or IPv6 /64. Counts every request,
+      // including refused and oversized bodies.
+      "name": "LITE_PER_IP_LIMITER",
+      "namespace_id": "4201",
+      "simple": { "limit": 60, "period": 60 }
+    },
+    {
+      // POST /v1/lite/* across all clients: bounds Durable Object requests.
+      "name": "LITE_GLOBAL_LIMITER",
+      "namespace_id": "4202",
+      "simple": { "limit": 1200, "period": 60 }
+    },
+    {
+      // Public aggregate cache misses and every operator request, per network.
+      "name": "READ_PER_IP_LIMITER",
+      "namespace_id": "4203",
+      "simple": { "limit": 60, "period": 60 }
+    }
+  ],
+  // All receiver state: one SQLite-backed Durable Object (src/receiver.ts),
+  // which the Workers Free plan includes. Deploying creates it; there is no
+  // namespace to create by hand. Its hourly alarm finalizes closed days,
+  // erases their salts and contributor keys, publishes closed weeks and
+  // applies retention.
+  "durable_objects": {
+    "bindings": [{ "name": "LITE_RECEIVER", "class_name": "LiteReceiver" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["LiteReceiver"] }],
+  // Error lines only: invocation logs would record request headers, which
+  // include client addresses and the operator's Bearer key.
+  "observability": { "enabled": true, "logs": { "invocation_logs": false } }
+}
