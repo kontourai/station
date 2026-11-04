@@ -964,14 +964,16 @@ verification.
   never hands ConPTY a file's 8-bit C1 controls.
 
   Run on Windows 11 Pro 26200 (Ryzen 5 7600X, Node 24.18.0, node-pty 1.1.0,
-  cmd.exe), revision `8d1c4f9`: `npm run test:focused --` with the seven
-  terminal process suites passed 99 tests (14 POSIX-only skipped), at a
-  saturated host's ×4 liveness scale. Fault injection, each reverted with
-  `git checkout` and rerun green: removing the Windows tree kill, making
-  ConPTY resize a no-op, skipping restore, starting a resumed channel one
-  record late, disabling the open-or-adopt reservation and writing the old
-  restore divider each failed the case that names the behavior.
-  `node tests/live/terminal-restart-journey.mjs` passed: a reload and
+  cmd.exe, Chromium 156): `npm run test:focused --` with the seven terminal
+  process suites passed 99 tests (14 POSIX-only skipped) at revision
+  `3882751`, on a saturated host at the ×4 liveness scale. Fault injection,
+  each reverted with `git checkout` and rerun green: removing the Windows
+  tree kill, making ConPTY resize a no-op, skipping restore, starting a
+  resumed channel one record late, disabling the open-or-adopt reservation
+  and writing the old restore divider each failed the case that names the
+  behavior.
+  `node tests/live/terminal-restart-journey.mjs` passed at `8d1c4f9` (the
+  same code; only this document uncommitted): a reload and
   `station restart` (a supervisor handoff) kept the shell's PID, a program
   printing 40 numbered lines across both lost none and the journal's
   sequence stayed contiguous; a full stop and start restored the same
