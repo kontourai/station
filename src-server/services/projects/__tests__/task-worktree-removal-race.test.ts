@@ -234,4 +234,28 @@ describe('Task worktree removal races (#4507)', () => {
     expect(outcome).toMatchObject({ outcome: 'kept', reason: 'failed' });
     expect(git(repo, 'branch', '--list', metadata.branch).trim()).not.toBe('');
   });
+
+  test('a refused include keeps the worktree and is described as included configuration', async () => {
+    const { parent, repo, metadata } = await taskWorktree();
+    const marker = join(parent, 'INCLUDED-FILTER-RAN');
+    const included = join(parent, 'included.gitconfig');
+    writeFileSync(
+      included,
+      `[filter "evil"]\n\tclean = sh -c 'touch ${marker}; cat'\n`,
+    );
+    git(repo, 'config', 'include.path', included);
+    writeFileSync(join(repo, '.git', 'info', 'attributes'), '* filter=evil\n');
+
+    const outcome = await new WorktreeProvisioningService().finalizeForTask({
+      metadata,
+      taskId: 'task-race',
+      terminalState: 'completed',
+    });
+
+    expect(existsSync(marker)).toBe(false);
+    expect(outcome).toMatchObject({ outcome: 'kept', reason: 'unsafe-config' });
+    const detail = (outcome as { detail?: string }).detail ?? '';
+    expect(detail).toContain('pulls in configuration from another file');
+    expect(detail).not.toContain('which git would run');
+  });
 });

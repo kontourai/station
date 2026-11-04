@@ -66,6 +66,30 @@ export interface TaskWorktreeProvisionResult {
   provenance: 'reused' | 'adopted' | 'created';
 }
 
+/**
+ * #4507: why a refused config keeps a Task worktree. A refused include
+ * (`include.path`, `includeIf.*.path`) is reported when the configuration
+ * it pulls in from another file is refused; every other refused key names
+ * a program git would run.
+ */
+function unsafeConfigDetail(keys: readonly string[]): string {
+  if (keys.length === 0)
+    return "The repository's config could not be read; the worktree was not touched.";
+  const includes = keys.filter((key) => /^include(if\..+)?\.path$/i.test(key));
+  const programs = keys.filter((key) => !includes.includes(key));
+  const parts = [
+    ...(programs.length > 0
+      ? [`sets ${programs.join(', ')}, which git would run`]
+      : []),
+    ...(includes.length > 0
+      ? [
+          `pulls in configuration from another file (${includes.join(', ')}) that Station refuses to run git with`,
+        ]
+      : []),
+  ];
+  return `The repository's own config ${parts.join(' and ')}; the worktree was not touched.`;
+}
+
 /** #4507: what finalizing a Task-owned worktree did. */
 export type TaskWorktreeFinalization =
   | { outcome: 'removed' | 'missing' }
@@ -741,10 +765,7 @@ export class WorktreeProvisioningService {
       kept: {
         outcome: 'kept' as const,
         reason: 'unsafe-config' as const,
-        detail:
-          error.keys.length > 0
-            ? `The repository's own config sets ${error.keys.join(', ')}, which git would run; the worktree was not touched.`
-            : "The repository's config could not be read; the worktree was not touched.",
+        detail: unsafeConfigDetail(error.keys),
       },
     });
     let repository: LiveRepository;
